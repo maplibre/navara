@@ -78,6 +78,10 @@ export class SSAO extends Pass<N8AOPostPass, unknown, SSAOOptions> {
     this.rawPass.configuration.gammaCorrection = false;
     // Navara manages transparency.
     this.rawPass.autoDetectTransparency = false;
+    // The composer buffer this pass copies into can carry live scene depth
+    // (depends on swap parity); n8ao leaves depthTest on, which culls the copy
+    // for anything nearer than sqrt(far) under logarithmic depth.
+    this.rawPass.copyQuad.material.depthTest = false;
   }
 
   get quality() {

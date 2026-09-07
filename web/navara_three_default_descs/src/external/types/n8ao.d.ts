@@ -1,6 +1,6 @@
 declare module "n8ao" {
   import { type Pass } from "postprocessing";
-  import { type Camera, type Scene } from "three";
+  import { type Camera, type Scene, type ShaderMaterial } from "three";
 
   export type QualityMode = "Performance" | "Low" | "Medium" | "High" | "Ultra";
 
@@ -24,6 +24,8 @@ declare module "n8ao" {
       colorMultiply: boolean;
     }>;
     constructor(scene: Scene, camera: Camera, width?: number, height?: number);
+    // Ref: https://github.com/N8python/n8ao/blob/9d6c776cf670e8f78bd91249c77775a2cd7ac984/src/N8AOPostPass.js#L172
+    readonly copyQuad: { material: ShaderMaterial };
     autoDetectTransparency: boolean;
     setSize(width: number, height: number): void;
     setQualityMode(mode: QualityMode): void;
