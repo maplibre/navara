@@ -8,7 +8,7 @@ vec2 getBatchTextureCoord(float batchId, float rowIndex) {
   // Planar 2D layout: batch IDs are arranged in a grid of width texSize.x
   // spanning batchRowGroups rows, and each attribute row occupies one
   // contiguous block of batchRowGroups physical rows (see batchBaseIndex in
-  // batchTexture.ts).
+  // web/navara_three/src/batchTexture/layout.ts).
   float batchRowGroups = texSize.y / BATCHED_TEXTURE_ROW_COUNT;
   float col = mod(batchId, texSize.x);
   float batchRow = floor(batchId / texSize.x);
