@@ -28,14 +28,14 @@ describe("polygonWaterEnhancer", () => {
   describe("programCacheKey", () => {
     it("should combine base cache key with water-specific state", () => {
       enhancer.mount({
-        base: { useBatchTexture: true },
+        base: { isTexturized: true },
         water: { water: true },
       });
 
       const cacheKey = enhancer.programCacheKey();
 
       // Should contain both base and water cache keys
-      expect(cacheKey).toContain('"useBatchTexture":true');
+      expect(cacheKey).toContain('"isTexturized":true');
       expect(cacheKey).toContain('"useWater":true');
     });
 

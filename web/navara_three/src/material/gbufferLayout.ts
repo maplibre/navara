@@ -231,10 +231,16 @@ export const GBUFFER_NORMAL_WRITE_BASIC =
  * replaces this by exact string match with
  * `TILE_EMISSIVE_EFFECT_BUFFER_REPLACEMENT`.
  *
+ * Under `USE_BATCH_EMISSIVE` the per-feature fold replaces the whole
+ * expression — mirroring the lit path, where it replaces
+ * `totalEmissiveRadiance` — so per-feature `emissiveIntensity: 0` really
+ * excludes a feature from bloom even when the layer's `uEmissiveIntensity`
+ * would otherwise keep the diffuse term contributing.
+ *
  * Effect writes are always macro invocations: the macros own the alpha, which
  * is the per-attachment blend factor rather than data (see the pars chunk).
  */
-export const GBUFFER_EFFECT_WRITE_BUILTIN = `GBUFFER_WRITE_EFFECT(uEffectIdsMask, diffuseColor.rgb * uEmissiveIntensity + emissive)`;
+export const GBUFFER_EFFECT_WRITE_BUILTIN = `GBUFFER_WRITE_EFFECT(uEffectIdsMask, NVR_BATCH_EMISSIVE_OR(diffuseColor.rgb * uEmissiveIntensity + emissive))`;
 
 /**
  * Selective-effect writes for custom `ShaderMaterial`

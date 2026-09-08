@@ -65,7 +65,6 @@ export const transformShader = (
 
   shader.defines.USE_SELECTIVE_EFFECT = 1;
 
-  // Merge defines from material.userData.defines (includes batch texture defines)
   if (material.userData.defines) {
     Object.assign(shader.defines, material.userData.defines);
   }

@@ -2,61 +2,33 @@
 uniform sampler2D batchDataTexture;
 in float _batchid;
 
-float decodeRGBAToFloat(vec4 rgba) {
-  uvec4 bytes = uvec4(rgba * 255.0);
-
-  uint value = bytes.r | (bytes.g << 8) | (bytes.b << 16) | (bytes.a << 24);
-
-  return uintBitsToFloat(value);
-}
-
 vec2 getBatchTextureCoord(float batchId, float rowIndex) {
   vec2 texSize = vec2(textureSize(batchDataTexture, 0));
 
-  // 2D layout: batch IDs are arranged in a grid of width texSize.x.
-  // Each "batch row" group occupies BATCHED_TEXTURE_ROW_COUNT physical rows.
+  // Planar 2D layout: batch IDs are arranged in a grid of width texSize.x
+  // spanning batchRowGroups rows, and each attribute row occupies one
+  // contiguous block of batchRowGroups physical rows (see batchBaseIndex in
+  // batchTexture.ts).
+  float batchRowGroups = texSize.y / BATCHED_TEXTURE_ROW_COUNT;
   float col = mod(batchId, texSize.x);
   float batchRow = floor(batchId / texSize.x);
 
   float u = (col + 0.5) / texSize.x;
-  float v = (batchRow * BATCHED_TEXTURE_ROW_COUNT + rowIndex + 0.5) / texSize.y;
+  float v = (rowIndex * batchRowGroups + batchRow + 0.5) / texSize.y;
 
   return vec2(u, v);
 }
 
-#ifdef USE_BATCH_COLOR_SHOW
-vec4 getBatchColorShow(float batchId) {
-  vec2 uv = getBatchTextureCoord(batchId, BATCHED_TEXTURE_ROW_COLOR_SHOW);
-
-  vec4 data = texture2D(batchDataTexture, uv);
-  return data;
+// Row and component assignment comes from the BATCHED_TEXTURE_ROW_* /
+// BATCHED_TEXTURE_COMP_* defines stamped from BatchTextureLayout. Fetches of
+// scalars sharing a row hit the same texel.
+vec4 getBatchTexel(float batchId, float rowIndex) {
+  return texture2D(batchDataTexture, getBatchTextureCoord(batchId, rowIndex));
 }
-#endif
 
-#ifdef USE_BATCH_HEIGHT
-float getBatchHeight(float batchId) {
-  vec2 uv = getBatchTextureCoord(batchId, BATCHED_TEXTURE_ROW_HEIGHT);
-  
-  vec4 data = texture2D(batchDataTexture, uv);
-  return decodeRGBAToFloat(data);
-}
-#endif
-
-#ifdef USE_BATCH_EXTRUDED_HEIGHT
-float getBatchExtrudedHeight(float batchId) {
-  vec2 uv = getBatchTextureCoord(batchId, BATCHED_TEXTURE_ROW_EXTRUDED_HEIGHT);
-  
-  vec4 data = texture2D(batchDataTexture, uv);
-  return decodeRGBAToFloat(data);
-}
-#endif
-
-#ifdef USE_BATCH_LINE_WIDTH
-float getBatchLineWidth(float batchId) {
-  vec2 uv = getBatchTextureCoord(batchId, BATCHED_TEXTURE_ROW_LINE_WIDTH);
-
-  vec4 data = texture2D(batchDataTexture, uv);
-  return decodeRGBAToFloat(data);
-}
+#ifdef USE_BATCH_EMISSIVE
+// Folded per-feature emissive (rgb × intensity); the fragment-side
+// declaration lives in gbuffer_pars_fragment.glsl.
+out vec3 nvr_vEmissive;
 #endif
 #endif // USE_BATCH_TEXTURE

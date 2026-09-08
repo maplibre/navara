@@ -42,10 +42,6 @@ describe("polygonBaseEnhancer", () => {
   describe("programCacheKey", () => {
     it("should return cache key based on shader-affecting state", () => {
       enhancer.mount({
-        useBatchTexture: true,
-        useBatchColorShow: false,
-        useBatchHeight: true,
-        useBatchExtrudedHeight: false,
         isTexturized: true,
         clampToGround: false,
         useRTE: true,
@@ -55,10 +51,6 @@ describe("polygonBaseEnhancer", () => {
       const parsed = JSON.parse(cacheKey);
 
       expect(parsed).toEqual({
-        useBatchTexture: true,
-        useBatchColorShow: false,
-        useBatchHeight: true,
-        useBatchExtrudedHeight: false,
         isTexturized: true,
         clampToGround: false,
         useRTE: true,
@@ -76,23 +68,12 @@ describe("polygonBaseEnhancer", () => {
       expect(cacheKey1).not.toBe(cacheKey2);
     });
 
-    it("should return different cache keys for different shader-affecting states", () => {
-      enhancer.mount({ useBatchTexture: false });
-      const cacheKey1 = enhancer.programCacheKey();
-
-      const enhancer2 = createPolygonBaseEnhancer(new MeshLambertMaterial());
-      enhancer2.mount({ useBatchTexture: true });
-      const cacheKey2 = enhancer2.programCacheKey();
-
-      expect(cacheKey1).not.toBe(cacheKey2);
-    });
-
     it("should return same cache key for same shader-affecting states with different non-affecting states", () => {
-      enhancer.mount({ useBatchTexture: true, addHeight: 10, opacity: 0.5 });
+      enhancer.mount({ addHeight: 10, opacity: 0.5 });
       const cacheKey1 = enhancer.programCacheKey();
 
       const enhancer2 = createPolygonBaseEnhancer(new MeshLambertMaterial());
-      enhancer2.mount({ useBatchTexture: true, addHeight: 100, opacity: 1.0 });
+      enhancer2.mount({ addHeight: 100, opacity: 1.0 });
       const cacheKey2 = enhancer2.programCacheKey();
 
       expect(cacheKey1).toBe(cacheKey2);

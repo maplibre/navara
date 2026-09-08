@@ -17,6 +17,16 @@
 // so A=1.0 means "replace dst" and A=0.0 means "keep dst". Packing data there
 // (e.g. merging emissive into effectIdBuffer) turns the blend factor into the
 // packed value and silently breaks blended selective meshes.
+
+// Per-feature emissive from the batch data texture, folded (rgb × intensity)
+// in the vertex stage (batch_texture_vertex.glsl). Declared here because this
+// chunk reaches every builtin fragment where USE_BATCH_EMISSIVE can be on.
+#ifdef USE_BATCH_EMISSIVE
+in vec3 nvr_vEmissive;
+#define NVR_BATCH_EMISSIVE_OR(fallback) nvr_vEmissive
+#else
+#define NVR_BATCH_EMISSIVE_OR(fallback) (fallback)
+#endif
 #ifndef USE_SHADOWMAP_DEPTH
 // The chunk is injected into every ShaderLib material, including ones that
 // never render into the G-buffer (the opaque/transparent scenes get only the

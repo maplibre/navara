@@ -111,10 +111,6 @@ describe("polylineBaseEnhancer", () => {
   describe("programCacheKey", () => {
     it("should return cache key based on shader-affecting state", () => {
       enhancer.mount({
-        useBatchTexture: true,
-        useBatchColorShow: false,
-        useBatchHeight: true,
-        useBatchLineWidth: false,
         isTexturized: true,
         useRTE: true,
       });
@@ -123,32 +119,30 @@ describe("polylineBaseEnhancer", () => {
       const parsed = JSON.parse(cacheKey);
 
       expect(parsed).toEqual({
-        useBatchTexture: true,
-        useBatchColorShow: false,
-        useBatchHeight: true,
-        useBatchLineWidth: false,
         isTexturized: true,
         useRTE: true,
       });
     });
 
-    it("should return different cache keys for different shader-affecting states", () => {
-      enhancer.mount({ useBatchTexture: false });
+    it("should return different cache keys for different userData defines", () => {
+      enhancer.mount({});
       const cacheKey1 = enhancer.programCacheKey();
 
-      const enhancer2 = createPolylineBaseEnhancer(new ShaderMaterial());
-      enhancer2.mount({ useBatchTexture: true });
+      const material2 = new ShaderMaterial();
+      material2.userData.defines = { USE_BATCH_HEIGHT: true };
+      const enhancer2 = createPolylineBaseEnhancer(material2);
+      enhancer2.mount({});
       const cacheKey2 = enhancer2.programCacheKey();
 
       expect(cacheKey1).not.toBe(cacheKey2);
     });
 
     it("should return same cache key for same shader-affecting states with different non-affecting states", () => {
-      enhancer.mount({ useBatchTexture: true, width: 2, color: 0xff0000 });
+      enhancer.mount({ width: 2, color: 0xff0000 });
       const cacheKey1 = enhancer.programCacheKey();
 
       const enhancer2 = createPolylineBaseEnhancer(new ShaderMaterial());
-      enhancer2.mount({ useBatchTexture: true, width: 10, color: 0x00ff00 });
+      enhancer2.mount({ width: 10, color: 0x00ff00 });
       const cacheKey2 = enhancer2.programCacheKey();
 
       expect(cacheKey1).toBe(cacheKey2);

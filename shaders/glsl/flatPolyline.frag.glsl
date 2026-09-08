@@ -21,7 +21,7 @@ void main() {
 
     #include <color_fragment>
 
-#ifdef USE_BATCH_COLOR_SHOW
+#ifdef USE_BATCH_SHOW_OPACITY
     diffuseColor.a *= nvr_vOpacity;
 #endif
 

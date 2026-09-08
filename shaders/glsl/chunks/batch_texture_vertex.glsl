@@ -1,28 +1,32 @@
 #ifdef USE_BATCH_TEXTURE
   float batchId = _batchid;
 
-  #ifdef USE_BATCH_COLOR_SHOW
-    vec4 batchColor = getBatchColorShow(batchId);
-    #ifdef USE_COLOR
-      vColor.rgb = batchColor.rgb;
-    #endif
-    // Unpack show (bit 7) and opacity (bits 0-6) from alpha channel
-    float packedByte = clamp(floor(batchColor.a * 255.0 + 0.5), 0.0, 255.0);  // round-to-nearest to avoid precision issues
-    nvr_vShow = step(128.0, packedByte);  // Extract bit 7: 0 or 1
-    nvr_vOpacity = mod(packedByte, 128.0) / 127.0;  // Extract bits 0-6: 0.0-1.0
+  #if defined(USE_BATCH_COLOR) && defined(USE_COLOR)
+    vColor.rgb = getBatchTexel(batchId, BATCHED_TEXTURE_ROW_COLOR).rgb;
   #endif
 
-  #ifdef USE_BATCH_EXTRUDED_HEIGHT
-    float extrudedHeight = getBatchExtrudedHeight(batchId);
-    addExtrudedHeight = extrudedHeight;
+  #ifdef USE_BATCH_SHOW_OPACITY
+    // Packed: sign(show) * (1 + opacity); see packShowOpacity in batchTexture.ts
+    float nvr_batchShowOpacity = getBatchTexel(batchId, BATCHED_TEXTURE_ROW_SHOW_OPACITY)[BATCHED_TEXTURE_COMP_SHOW_OPACITY];
+    nvr_vShow = step(0.0, nvr_batchShowOpacity);
+    nvr_vOpacity = clamp(abs(nvr_batchShowOpacity) - 1.0, 0.0, 1.0);
+  #endif
+
+  #ifdef USE_BATCH_EMISSIVE
+    // Both slots are always allocated together (see ensureEmissiveSlots).
+    nvr_vEmissive = getBatchTexel(batchId, BATCHED_TEXTURE_ROW_EMISSIVE).rgb
+      * getBatchTexel(batchId, BATCHED_TEXTURE_ROW_EMISSIVE_INTENSITY)[BATCHED_TEXTURE_COMP_EMISSIVE_INTENSITY];
   #endif
 
   #ifdef USE_BATCH_HEIGHT
-    float batchHeight = getBatchHeight(batchId);
-    addHeight = batchHeight;
+    addHeight = getBatchTexel(batchId, BATCHED_TEXTURE_ROW_HEIGHT)[BATCHED_TEXTURE_COMP_HEIGHT];
+  #endif
+
+  #ifdef USE_BATCH_EXTRUDED_HEIGHT
+    addExtrudedHeight = getBatchTexel(batchId, BATCHED_TEXTURE_ROW_EXTRUDED_HEIGHT)[BATCHED_TEXTURE_COMP_EXTRUDED_HEIGHT];
   #endif
 
   #ifdef USE_BATCH_LINE_WIDTH
-    batchLineWidth = getBatchLineWidth(batchId);
+    batchLineWidth = getBatchTexel(batchId, BATCHED_TEXTURE_ROW_LINE_WIDTH)[BATCHED_TEXTURE_COMP_LINE_WIDTH];
   #endif
 #endif

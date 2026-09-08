@@ -1,12 +1,7 @@
 import type { Color, Matrix4, Texture, Vector2, Vector3 } from "three";
 
 import type { UniformValue } from "../../../types";
-import type { BatchTextureFlags } from "../../batchTexture";
 import type { Mutates } from "../../MaterialEnhancer";
-
-type PolylineBatchTextureFlags = Required<
-  Omit<BatchTextureFlags, "useBatchExtrudedHeight" | "useBatchSize">
->;
 
 /**
  * Props for the polyline base enhancer.
@@ -48,35 +43,33 @@ export type PolylineBaseProps = {
   // Batch texture
   batchDataTexture?: UniformValue<Texture | null>;
 
-  // Batch texture state flags - track when batch attributes are being used
+  // When batchColorEnabled is true, material.color is set to white and actual colors come from batch texture
   batchColorEnabled?: boolean;
 
   // RTE (Relative To Eye) support
   useRTE?: boolean;
-} & Partial<PolylineBatchTextureFlags>;
+};
 
 /**
  * Immutable state for the polyline base enhancer.
  * This state is always replaced as a whole (never mutated).
  * Returned directly via states() - refresh after updates.
  */
-export type PolylineBaseState = Readonly<
-  {
-    useRTE: boolean;
-    isTexturized: boolean;
-    pickable: boolean;
-    effectIdsMask: number;
-    emissiveColor: number;
-    emissiveIntensity: number;
-    minMaxHeight: [number, number];
-    addHeight: number;
-    width: number;
-    maxWidth: number;
-    color: number;
-    // Batch texture state - when true, material.color is white and colors come from batch texture
-    batchColorEnabled: boolean;
-  } & PolylineBatchTextureFlags
->;
+export type PolylineBaseState = Readonly<{
+  useRTE: boolean;
+  isTexturized: boolean;
+  pickable: boolean;
+  effectIdsMask: number;
+  emissiveColor: number;
+  emissiveIntensity: number;
+  minMaxHeight: [number, number];
+  addHeight: number;
+  width: number;
+  maxWidth: number;
+  color: number;
+  // Batch texture state - when true, material.color is white and colors come from batch texture
+  batchColorEnabled: boolean;
+}>;
 
 /**
  * Mutable references (uniforms) for the polyline base enhancer.

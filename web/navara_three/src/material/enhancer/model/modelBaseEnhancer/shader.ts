@@ -1,3 +1,4 @@
+import BatchEmissiveFragment from "@shaders/glsl/chunks/batch_emissive_fragment.glsl";
 import BatchTextureParsVertex from "@shaders/glsl/chunks/batch_texture_pars_vertex.glsl";
 import BatchTextureVertex from "@shaders/glsl/chunks/batch_texture_vertex.glsl";
 import Pick from "@shaders/glsl/chunks/pick.glsl";
@@ -32,11 +33,6 @@ export const transformShader = (
   shader.defines ??= {};
   shader.defines.USE_SELECTIVE_EFFECT = 1;
 
-  // TODO: Handle batch texture defines in safe way.
-  // Merge defines from material.userData.defines (includes batch texture row defines)
-  // This is important for batch texture functionality which sets defines like:
-  // - BATCHED_TEXTURE_ROW_COLOR_SHOW, BATCHED_TEXTURE_ROW_HEIGHT, etc.
-  // - USE_BATCH_TEXTURE, USE_BATCH_COLOR_SHOW, USE_BATCH_HEIGHT, etc.
   if (material.userData.defines) {
     Object.assign(shader.defines, material.userData.defines);
   }
@@ -111,9 +107,16 @@ void main() {
       `
 #include <color_fragment>
 
-#ifdef USE_BATCH_COLOR_SHOW
+#ifdef USE_BATCH_SHOW_OPACITY
   diffuseColor.a *= nvr_vOpacity;
 #endif
+`,
+    )
+    .replace(
+      "#include <emissivemap_fragment>",
+      `
+${BatchEmissiveFragment}
+#include <emissivemap_fragment>
 `,
     )
     .replace(

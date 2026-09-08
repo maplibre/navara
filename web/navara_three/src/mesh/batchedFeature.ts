@@ -2,7 +2,6 @@ import { Unimplemented } from "@navaramap/core";
 import {
   BufferAttribute,
   BufferGeometry,
-  Color,
   Material,
   Mesh,
   Object3D,
@@ -11,20 +10,18 @@ import {
 } from "three";
 import invariant from "tiny-invariant";
 
-import type { CustomObject3DEventMap } from "../object3DEvent";
-
 import {
   BATCHED_ATTRIBUTE_NAMES,
-  getBatchDataTexture,
-  initBatchDataTexture,
   initBatchedMaterial,
   updateBatchAttribute,
   type BatchedAttributeName,
+  type BatchScalarKey,
   type BatchTextureConfig,
-  type BatchTextureRowKey,
+  type BatchVec3Key,
   type DefaultBatchAttributeValues,
-} from "./batchTexture";
-import type { FeatureMesh } from "./featureMesh";
+} from "../batchTexture";
+import type { CustomObject3DEventMap } from "../object3DEvent";
+
 import { PickableMesh } from "./pickableMesh";
 
 export type BatchedFeatureAttributes<
@@ -34,23 +31,19 @@ export type BatchedFeatureAttributes<
 } & Attr;
 
 /**
- * Batch texture rows per mesh type. A mesh's rows must only contain attributes
- * its shaders declare receiver variables for: `updateBatchAttribute` turns a
- * `USE_BATCH_*` define on whenever the row exists, and the shared
- * `batch_texture_vertex` chunk then assigns to the receiver — an undeclared one
- * (e.g. `addExtrudedHeight` in the polyline shaders) breaks shader compilation.
+ * SCALARS-row component assignment per mesh type. A mesh's scalars must only
+ * contain attributes its shaders declare receiver variables for:
+ * `updateBatchAttribute` turns a `USE_BATCH_*` define on whenever the slot
+ * exists, and the shared `batch_texture_vertex` chunk then assigns to the
+ * receiver — an undeclared one (e.g. `addExtrudedHeight` in the polyline
+ * shaders) breaks shader compilation.
  */
-export const POLYGON_BATCH_TEXTURE_ROWS: BatchTextureRowKey[] = [
-  "COLOR_SHOW",
-  "HEIGHT",
-  "EXTRUDED_HEIGHT",
+export const POLYGON_BATCH_SCALARS: BatchScalarKey[] = [
+  "height",
+  "extrudedHeight",
 ];
 
-export const POLYLINE_BATCH_TEXTURE_ROWS: BatchTextureRowKey[] = [
-  "COLOR_SHOW",
-  "HEIGHT",
-  "LINE_WIDTH",
-];
+export const POLYLINE_BATCH_SCALARS: BatchScalarKey[] = ["height", "lineWidth"];
 
 export class BatchedFeatureMesh<
   Buf extends BufferGeometry<BatchedFeatureAttributes> =
@@ -59,7 +52,7 @@ export class BatchedFeatureMesh<
   E extends CustomObject3DEventMap = CustomObject3DEventMap,
 >
   extends Mesh<Buf, M, E>
-  implements FeatureMesh, PickableMesh
+  implements PickableMesh
 {
   batchLength?: number;
   static _isBatchedAttributeName(v: string): v is BatchedAttributeName {
@@ -81,16 +74,25 @@ export class BatchedFeatureMesh<
   }
 
   /**
-   * Batch texture rows supported by this mesh type's shaders. Attributes
-   * without a row are silently ignored by `updateBatchAttribute`.
+   * SCALARS-row assignment supported by this mesh type's shaders. Attributes
+   * without a slot are silently ignored by `updateBatchAttribute`.
    */
-  _getBatchTextureRows(): BatchTextureRowKey[] {
+  _getBatchTextureScalars(): BatchScalarKey[] {
     throw new Unimplemented();
+  }
+
+  /**
+   * vec3 attributes supported by this mesh type's shaders (same receiver
+   * rule as scalars). Color is universal; override to add e.g. emissive.
+   */
+  _getBatchTextureVec3s(): BatchVec3Key[] {
+    return ["color"];
   }
 
   _initBatchedMaterial() {
     initBatchedMaterial(this.material, {
-      rows: this._getBatchTextureRows(),
+      scalars: this._getBatchTextureScalars(),
+      vec3s: this._getBatchTextureVec3s(),
       batchLength: 0,
     });
   }
@@ -99,23 +101,21 @@ export class BatchedFeatureMesh<
     invariant(this.batchLength != null);
 
     const config: BatchTextureConfig = {
-      rows: this._getBatchTextureRows(),
+      scalars: this._getBatchTextureScalars(),
+      vec3s: this._getBatchTextureVec3s(),
       batchLength: this.batchLength,
     };
 
-    initBatchDataTexture(this.material, config);
+    initBatchedMaterial(this.material, config);
   }
 
-  _getBatchDataTexture() {
-    return getBatchDataTexture(this.material);
-  }
-
+  /** Returns whether the write landed (see {@link updateBatchAttribute}). */
   _updateBatchAttribute(
     batchId: number,
     attribute: BatchedAttributeName,
     value: number | number[] | boolean,
-  ): void {
-    updateBatchAttribute(
+  ): boolean {
+    const wrote = updateBatchAttribute(
       this.material,
       batchId,
       attribute,
@@ -123,7 +123,8 @@ export class BatchedFeatureMesh<
       this._getDefaultBatchAttributeValues(),
     );
 
-    this.needsUpdate();
+    if (wrote) this.needsUpdate();
+    return wrote;
   }
 
   needsUpdate() {
@@ -131,38 +132,6 @@ export class BatchedFeatureMesh<
   }
 
   _getDefaultBatchAttributeValues(): DefaultBatchAttributeValues {
-    throw new Unimplemented();
-  }
-
-  _setFeatureColor(color: Color): void {
-    this._updateBatchAttribute(0, "color", color.toArray());
-  }
-
-  _getFeatureColor(): Color {
-    throw new Unimplemented();
-  }
-
-  _setFeatureShow(visible: boolean): void {
-    this._updateBatchAttribute(0, "show", visible);
-  }
-
-  _setFeatureExtrudedHeight(height: number): void {
-    this._updateBatchAttribute(0, "extrudedHeight", height);
-  }
-
-  _setFeatureHeight(height: number): void {
-    this._updateBatchAttribute(0, "height", height);
-  }
-
-  _setFeatureWidth(width: number): void {
-    this._updateBatchAttribute(0, "lineWidth", width);
-  }
-
-  _setFeatureOpacity(opacity: number): void {
-    this._updateBatchAttribute(0, "opacity", opacity);
-  }
-
-  _setFrustumCulled(_culled: boolean): void {
     throw new Unimplemented();
   }
 

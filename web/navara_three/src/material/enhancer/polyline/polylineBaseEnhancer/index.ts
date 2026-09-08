@@ -85,23 +85,12 @@ export function createPolylineBaseEnhancer(
 
       // Capture previous state for shader-affecting properties
       const prevIsTexturized = state.isTexturized;
-      const prevUseBatchTexture = state.useBatchTexture;
-      const prevUseBatchColorShow = state.useBatchColorShow;
-      const prevUseBatchHeight = state.useBatchHeight;
-      const prevUseBatchLineWidth = state.useBatchLineWidth;
 
       state = updateState(props, state);
       mutates.update(state);
 
       // Trigger shader recompilation if shader-affecting state changed
-      const shaderStateChanged =
-        state.isTexturized !== prevIsTexturized ||
-        state.useBatchTexture !== prevUseBatchTexture ||
-        state.useBatchColorShow !== prevUseBatchColorShow ||
-        state.useBatchHeight !== prevUseBatchHeight ||
-        state.useBatchLineWidth !== prevUseBatchLineWidth;
-
-      if (shaderStateChanged) {
+      if (state.isTexturized !== prevIsTexturized) {
         material.needsUpdate = true;
       }
 
@@ -124,14 +113,8 @@ export function createPolylineBaseEnhancer(
 
     programCacheKey: (): string => {
       invariant(state, "mount() must be called before programCacheKey");
-      // Return cache key based on all state that affects shader sources/defines
+      // Return cache key based on state that affects shader sources/defines.
       return JSON.stringify({
-        // Batch-texture related flags
-        useBatchTexture: state.useBatchTexture,
-        useBatchColorShow: state.useBatchColorShow,
-        useBatchHeight: state.useBatchHeight,
-        useBatchLineWidth: state.useBatchLineWidth,
-        // Additional shader-affecting state used by transformShader
         isTexturized: state.isTexturized,
         useRTE: state.useRTE,
         // Custom defines that may influence shader variants

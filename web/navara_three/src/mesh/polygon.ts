@@ -17,6 +17,15 @@ import {
 } from "three";
 
 import { PolygonOutlineMesh } from "..";
+import {
+  attachBatchedMaterial,
+  getBatchTextureUniform,
+  setBatchTextureRenderer,
+  type BatchedAttributeName,
+  type BatchScalarKey,
+  type BatchVec3Key,
+  type DefaultBatchAttributeValues,
+} from "../batchTexture";
 import type { EventContext } from "../event/context";
 import { applyLitOption } from "../material";
 import type { PolygonMaterialProps } from "../material/enhancer/polygon";
@@ -24,14 +33,9 @@ import { createPolygonMaterialEnhancer } from "../material/enhancer/polygon/poly
 
 import {
   BatchedFeatureMesh,
-  POLYGON_BATCH_TEXTURE_ROWS,
+  POLYGON_BATCH_SCALARS,
   type BatchedFeatureAttributes,
 } from "./batchedFeature";
-import type {
-  BatchedAttributeName,
-  BatchTextureRowKey,
-  DefaultBatchAttributeValues,
-} from "./batchTexture";
 import { GEOMETRY_TYPES } from "./constants";
 import { releaseGeometryArraysAfterUpload } from "./releaseGeometryArrays";
 import { setupRTECallback } from "./rtcRteHelper";
@@ -384,6 +388,16 @@ export class PolygonMesh extends BatchedFeatureMesh<
 
     const origin = this.material;
 
+    // Attach to the batch texture state so layout allocations bump this
+    // clone's needsUpdate too — its compiled defines come from the origin, so
+    // it must recompile whenever they change.
+    attachBatchedMaterial(origin, this.customDepthMaterial);
+    // The clone's compiled defines come from the origin, so key its program on
+    // the origin's key (which includes the per-instance batch layout defines);
+    // the prefix separates it from the origin's own program.
+    this.customDepthMaterial.customProgramCacheKey = () =>
+      `nvr-depth:${origin.customProgramCacheKey()}`;
+
     this.customDepthMaterial.onBeforeCompile = (shader, renderer) => {
       origin.onBeforeCompile(shader, renderer);
 
@@ -540,21 +554,12 @@ export class PolygonMesh extends BatchedFeatureMesh<
   }
 
   _getDefaultBatchAttributeValues(): DefaultBatchAttributeValues {
+    const base = this.getEnhancer().states().base;
     return {
       color: this.material.color,
+      emissive: new Color(base.emissiveColor),
+      emissiveIntensity: base.emissiveIntensity,
     };
-  }
-
-  _setFeatureColor(color: Color): void {
-    this.getEnhancer().update({
-      base: { batchColorEnabled: true, color: color.getHex() },
-    });
-  }
-
-  _setFeatureShow(visible: boolean): void {
-    this.visible = visible;
-    this.outline?._setFeatureShow(this.outline.visible && visible);
-    this.enableWater();
   }
 
   onBeforePicking(): void {
@@ -571,87 +576,76 @@ export class PolygonMesh extends BatchedFeatureMesh<
     batchId: number,
     attribute: BatchedAttributeName,
     value: number | number[] | boolean,
-  ): void {
+  ): boolean {
+    // Write the texture first: it validates the value and captures the
+    // backfill defaults before the enhancer resets material.color to white,
+    // and a rejected write must not stamp any define — the shaders have no
+    // safety net for an unwritten receiver.
+    if (!super._updateBatchAttribute(batchId, attribute, value)) return false;
+
     switch (attribute) {
       case "color": {
-        // When batch color is first used, enable batchColorEnabled and set material.color to white
+        // When batch color is first used, set material.color to white
+        // (multiplier identity: white * batch color = batch color).
         if (!this.getEnhancer().states().base.batchColorEnabled) {
-          // Set material.color to white (multiplier identity) and enable batch color mode
           this.getEnhancer().update({
             base: { batchColorEnabled: true, color: 0xffffff },
           });
         }
-        this.getEnhancer().update({ base: { useBatchColorShow: true } });
-        this.outline?.enableBatchColorShow();
         break;
       }
-      case "show": {
-        this.getEnhancer().update({ base: { useBatchColorShow: true } });
-        this.outline?.enableBatchColorShow();
+      // show and opacity share the packed showOpacity component.
+      case "show":
+      case "opacity": {
+        this.outline?.enableBatchShowOpacity();
         break;
       }
       case "height": {
-        this.getEnhancer().update({ base: { useBatchHeight: true } });
         this.outline?.enableBatchHeight();
         const h = value as number;
         if (h > this._maxBatchHeight) this._maxBatchHeight = h;
         if (h < this._minBatchHeight) this._minBatchHeight = h;
+        this._recalculateBoundingSphere();
         break;
       }
       case "extrudedHeight": {
-        this.getEnhancer().update({ base: { useBatchExtrudedHeight: true } });
         this.outline?.enableBatchExtrudedHeight();
         const eh = value as number;
         if (eh > this._maxBatchExtrudedHeight)
           this._maxBatchExtrudedHeight = eh;
-        break;
-      }
-      case "opacity": {
-        // Opacity is bundled with show in COLOR_SHOW's alpha channel
-        this.getEnhancer().update({ base: { useBatchColorShow: true } });
+        this._recalculateBoundingSphere();
         break;
       }
     }
-
-    // Call parent to update the batch texture
-    super._updateBatchAttribute(batchId, attribute, value);
-
-    if (attribute === "height" || attribute === "extrudedHeight") {
-      this._recalculateBoundingSphere();
-    }
+    return true;
   }
 
-  _getBatchTextureRows(): BatchTextureRowKey[] {
-    // No LINE_WIDTH: the polygon shaders declare no receiver for it,
+  _getBatchTextureScalars(): BatchScalarKey[] {
+    // No lineWidth: the polygon shaders declare no receiver for it,
     // so accepting the attribute would break shader compilation.
-    return POLYGON_BATCH_TEXTURE_ROWS;
+    return POLYGON_BATCH_SCALARS;
+  }
+
+  _getBatchTextureVec3s(): BatchVec3Key[] {
+    return ["color", "emissive"];
   }
 
   _initBatchDataTexture(): void {
-    // Call parent to create the texture
+    // Register batchLength; the texture itself is created lazily on the
+    // first attribute write.
     super._initBatchDataTexture();
+    // Claim the texture for this view's renderer before any write can
+    // create it (flushing is per-view over module-global queues).
+    setBatchTextureRenderer(this.material, this.ctx.viewContext.getRenderer());
 
-    // Update the enhancer with the new batchDataTexture
-    const texture = this._getBatchDataTexture();
-    if (texture) {
-      this.getEnhancer().update({
-        base: { useBatchTexture: true, batchDataTexture: { value: texture } },
-      });
+    // Hand the shared uniform ref to the enhancer: texture creation/growth
+    // swaps its `.value`, so no re-wiring is needed afterwards.
+    const uniform = getBatchTextureUniform(this.material);
+    if (uniform) {
+      this.getEnhancer().update({ base: { batchDataTexture: uniform } });
       // Share the same batch texture with outline (no duplicate data)
-      this.outline?.initBatchTexture(texture);
+      this.outline?.initBatchTexture(this.material);
     }
-  }
-
-  _setFeatureExtrudedHeight(height: number): void {
-    this.getEnhancer().update({ base: { addExtrudedHeight: height } });
-    this.outline?._setFeatureExtrudedHeight(height);
-    this._recalculateBoundingSphere();
-  }
-
-  _setFeatureHeight(height: number): void {
-    this.getEnhancer().update({ base: { addHeight: height } });
-    this.outline?._setFeatureHeight(height);
-    this._recalculateBoundingSphere();
   }
 
   get water(): boolean {

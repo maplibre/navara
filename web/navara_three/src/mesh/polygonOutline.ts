@@ -4,14 +4,17 @@ import {
 } from "@navaramap/engine";
 import { RTE_ONE_UNIFORM } from "@navaramap/three-api";
 import BatchTextureParsVertex from "@shaders/glsl/chunks/batch_texture_pars_vertex.glsl";
+import BatchTextureVertex from "@shaders/glsl/chunks/batch_texture_vertex.glsl";
 import BranchFreeTernary from "@shaders/glsl/chunks/branchFreeTernary.glsl";
 import ExtrudedHeightParsVertex from "@shaders/glsl/chunks/extruded_height_pars_vertex.glsl";
 import ExtrudedHeightVertex from "@shaders/glsl/chunks/extruded_height_vertex.glsl";
 import HeightParsVertex from "@shaders/glsl/chunks/height_pars_vertex.glsl";
 import HeightVertex from "@shaders/glsl/chunks/height_vertex.glsl";
+import ShowFragment from "@shaders/glsl/chunks/show_fragment.glsl";
+import ShowParsFragment from "@shaders/glsl/chunks/show_pars_fragment.glsl";
+import ShowParsVertex from "@shaders/glsl/chunks/show_pars_vertex.glsl";
 import {
-  Color,
-  type DataTexture,
+  type Material,
   InstancedBufferAttribute,
   type Intersection,
   Matrix4,
@@ -22,17 +25,19 @@ import {
 } from "three";
 import { Line2, LineGeometry, LineMaterial } from "three-stdlib";
 
+import {
+  attachBatchedMaterial,
+  enableDefine,
+  getBatchTextureUniform,
+} from "../batchTexture";
 import type { EventContext } from "../event/context";
 import { setupMaterialForMRT } from "../material";
 import { createReplacer } from "../utils/replacer";
 
-import { POLYGON_BATCH_TEXTURE_ROWS } from "./batchedFeature";
-import { initBatchedMaterial } from "./batchTexture";
-import type { FeatureMesh } from "./featureMesh";
 import { NvLineGeometry } from "./nvLineGeometry";
 import { setupRTECallback } from "./rtcRteHelper";
 
-export class PolygonOutlineMesh extends Line2 implements FeatureMesh {
+export class PolygonOutlineMesh extends Line2 {
   readonly ctx: EventContext;
   private resizeEventUnsubscribe?: () => void;
   /** True when the geometry carries RTE high/low positions (GeoJSON path). */
@@ -192,12 +197,8 @@ export class PolygonOutlineMesh extends Line2 implements FeatureMesh {
       value: 0.0,
     };
 
-    // Set up batch texture material defines (row indices, row count).
-    // The rows must match PolygonMesh's — the batch data texture is shared.
-    initBatchedMaterial(material, {
-      rows: POLYGON_BATCH_TEXTURE_ROWS,
-      batchLength: 0,
-    });
+    // Batch texture state (layout defines, shared uniform) is attached later
+    // by PolygonMesh via initBatchTexture — the batch data texture is shared.
 
     if (this.useRTE) {
       material.userData.defines ??= {};
@@ -250,8 +251,9 @@ export class PolygonOutlineMesh extends Line2 implements FeatureMesh {
       shader.uniforms.uAddHeight = material.userData.uAddHeight;
 
       // Batch texture uniform (shared from parent PolygonMesh)
-      if (material.userData.batchDataTexture) {
-        shader.uniforms.batchDataTexture = material.userData.batchDataTexture;
+      const batchUniform = getBatchTextureUniform(material);
+      if (batchUniform) {
+        shader.uniforms.batchDataTexture = batchUniform;
       }
 
       // RTE uniforms (updated per-frame via setupRTECallback)
@@ -272,7 +274,6 @@ export class PolygonOutlineMesh extends Line2 implements FeatureMesh {
         attribute vec3 instanceEnd;
         attribute vec4 scaleNormalAndCapStart;
         attribute vec4 scaleNormalAndCapEnd;
-        varying float nvr_vShow;
         uniform vec2 uMinMaxHeight;
         #ifdef USE_RTE
           attribute vec3 instanceStartHigh;
@@ -284,6 +285,7 @@ export class PolygonOutlineMesh extends Line2 implements FeatureMesh {
           uniform float u_rteOne;
           uniform mat4 modelViewMatrixRTE;
         #endif
+        ${ShowParsVertex}
         ${ExtrudedHeightParsVertex}
         ${HeightParsVertex}
         ${BranchFreeTernary}
@@ -296,21 +298,7 @@ export class PolygonOutlineMesh extends Line2 implements FeatureMesh {
         ${ExtrudedHeightVertex}
         ${HeightVertex}
 
-        nvr_vShow = 1.0;
-        #ifdef USE_BATCH_TEXTURE
-          float batchId = _batchid;
-          #ifdef USE_BATCH_COLOR_SHOW
-            // Color is ignored.
-            vec4 batchColorShow = getBatchColorShow(batchId);
-            nvr_vShow = batchColorShow.a;
-          #endif
-          #ifdef USE_BATCH_EXTRUDED_HEIGHT
-            addExtrudedHeight = getBatchExtrudedHeight(batchId);
-          #endif
-          #ifdef USE_BATCH_HEIGHT
-            addHeight = getBatchHeight(batchId);
-          #endif
-        #endif
+        ${BatchTextureVertex}
 
         vec3 nvr_heightOffsetStart = scaleNormalAndCapStart.xyz * nvr_branchFreeTernary(
           scaleNormalAndCapStart.w == 0.0,
@@ -349,15 +337,24 @@ export class PolygonOutlineMesh extends Line2 implements FeatureMesh {
         `,
         ).source;
 
-      shader.fragmentShader = createReplacer(shader.fragmentShader).replace(
-        "void main() {",
-        `
-        varying float nvr_vShow;
-        varying float nvr_vHasBatchColor;
+      shader.fragmentShader = createReplacer(shader.fragmentShader)
+        .replace(
+          "void main() {",
+          `
+        ${ShowParsFragment}
         void main() {
-          if (nvr_vShow < 0.5) discard;
+          ${ShowFragment}
         `,
-      ).source;
+        )
+        .replace(
+          "vec4 diffuseColor = vec4( diffuse, alpha );",
+          `
+        vec4 diffuseColor = vec4( diffuse, alpha );
+        #ifdef USE_BATCH_SHOW_OPACITY
+          diffuseColor.a *= nvr_vOpacity;
+        #endif
+        `,
+        ).source;
     };
 
     // Apply MRT compatibility
@@ -405,68 +402,31 @@ export class PolygonOutlineMesh extends Line2 implements FeatureMesh {
     }
   }
 
-  _setFeatureColor(color: Color) {
-    this.material.color.set(color);
-  }
-
-  _getFeatureColor() {
-    return this.material.color;
-  }
-
-  _setFeatureShow(visible: boolean): void {
-    this.visible = visible;
-  }
-
-  _setFrustumCulled(culled: boolean): void {
-    this.frustumCulled = culled;
-  }
-
-  _setFeatureExtrudedHeight(height: number): void {
-    this.material.userData.uAddExtrudedHeight.value = height;
-  }
-
-  _setFeatureHeight(height: number): void {
-    this.material.userData.uAddHeight.value = height;
-  }
-
-  _setFeatureWidth(_width: number): void {
-    // Width is not applicable to polygon outlines.
-    // This method is intentionally a no-op to satisfy the FeatureMesh interface.
-  }
-
-  _setFeatureOpacity(_opacity: number): void {
-    // Opacity adjustment is not applicable to polygon outlines.
-    // This method is intentionally a no-op to satisfy the FeatureMesh interface.
-  }
-
   // Utility method to update resolution (should be called when renderer size changes)
   updateResolution(width: number, height: number): void {
     this.material.resolution.set(width, height);
   }
 
-  initBatchTexture(texture: DataTexture) {
-    this.material.userData.batchDataTexture = { value: texture };
-    this.material.userData.defines ??= {};
-    this.material.userData.defines.USE_BATCH_TEXTURE = true;
-    this.material.needsUpdate = true;
+  initBatchTexture(source: Material) {
+    // Join the polygon mesh's batch texture state: the shared uniform becomes
+    // reachable via getBatchTextureUniform and every allocation stamps the
+    // layout defines (incl. USE_BATCH_TEXTURE) onto this material from then on.
+    attachBatchedMaterial(source, this.material);
   }
 
-  enableBatchColorShow() {
-    this.material.userData.defines ??= {};
-    this.material.userData.defines.USE_BATCH_COLOR_SHOW = true;
-    this.material.needsUpdate = true;
+  // enableDefine bumps needsUpdate only when the define actually changes, so
+  // the per-feature calls from PolygonMesh._updateBatchAttribute don't force
+  // a program re-acquisition per write.
+  enableBatchShowOpacity() {
+    enableDefine(this.material, "USE_BATCH_SHOW_OPACITY");
   }
 
   enableBatchHeight() {
-    this.material.userData.defines ??= {};
-    this.material.userData.defines.USE_BATCH_HEIGHT = true;
-    this.material.needsUpdate = true;
+    enableDefine(this.material, "USE_BATCH_HEIGHT");
   }
 
   enableBatchExtrudedHeight() {
-    this.material.userData.defines ??= {};
-    this.material.userData.defines.USE_BATCH_EXTRUDED_HEIGHT = true;
-    this.material.needsUpdate = true;
+    enableDefine(this.material, "USE_BATCH_EXTRUDED_HEIGHT");
   }
 
   // Clean up event listeners when the object is destroyed
