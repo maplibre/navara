@@ -6,7 +6,7 @@
   #endif
 
   #ifdef USE_BATCH_SHOW_OPACITY
-    // Packed: sign(show) * (1 + opacity); see packShowOpacity in batchTexture.ts
+    // Packed: sign(show) * (1 + opacity); see packShowOpacity in web/navara_three/src/batchTexture/core.ts
     float nvr_batchShowOpacity = getBatchTexel(batchId, BATCHED_TEXTURE_ROW_SHOW_OPACITY)[BATCHED_TEXTURE_COMP_SHOW_OPACITY];
     nvr_vShow = step(0.0, nvr_batchShowOpacity);
     nvr_vOpacity = clamp(abs(nvr_batchShowOpacity) - 1.0, 0.0, 1.0);
