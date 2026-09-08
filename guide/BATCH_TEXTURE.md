@@ -11,7 +11,7 @@ This guide explains the design and mechanisms. For the exact attribute set
 and per-mesh capability lists, read the code: they grow over time, while the
 mechanisms below stay fixed.
 
-Core implementation: `web/navara_three/src/mesh/batchTexture.ts` and the
+Core implementation: `web/navara_three/src/batchTexture/` (`core.ts`, `material.ts`, `layout.ts`, `types.ts`) and the
 shader chunks `shaders/glsl/chunks/batch_texture_pars_vertex.glsl` /
 `batch_texture_vertex.glsl`.
 
