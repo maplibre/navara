@@ -20,7 +20,7 @@ shader chunks `shaders/glsl/chunks/batch_texture_pars_vertex.glsl` /
 ```mermaid
 flowchart LR
     E[FeatureEvaluator] -->|"batchId, attribute, value"| M["mesh._updateBatchAttribute"]
-    M --> B["updateBatchAttribute<br/>(mesh/batchTexture.ts)"]
+    M --> B["updateBatchAttribute<br/>(batchTexture/core.ts)"]
     B --> D["material.userData.defines<br/>BATCHED_TEXTURE_* / USE_BATCH_*"]
     B --> T["CPU Float32Array<br/>+ dirty spans"]
     T -->|"flushBatchTextureUpdates<br/>(once per frame)"| G[(GPU DataTexture)]
