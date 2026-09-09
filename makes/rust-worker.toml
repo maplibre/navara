@@ -2,6 +2,38 @@
 #                               BUILD TASKS
 # ============================================================================
 # Generate JS bindings for worker WASM module
+[tasks.build-rust-worker-speed]
+description = "Build the geometry worker and its dependencies with opt-level 3"
+# Keep the release flags in makes/rust.toml in sync.
+env = { RUSTC_BOOTSTRAP = "1", RUSTFLAGS = '--cfg getrandom_backend="wasm_js" -Ctarget-feature=+simd128 -Zlocation-detail=none -Zunstable-options -Cpanic=immediate-abort' }
+script = ['''
+cargo build --profile release-worker-speed --target wasm32-unknown-unknown -Z build-std=std,panic_abort -p navara_wasm_worker
+''']
+
+[tasks.bindgen-rust-worker-speed]
+description = "Install the experimental speed-focused geometry worker into web/wasm"
+script = ['''
+#!/usr/bin/env bash
+set -euo pipefail
+wasm-bindgen target/wasm32-unknown-unknown/release-worker-speed/navara_wasm_worker.wasm --out-dir web/wasm/navara_engine_worker --target web
+if command -v wasm-opt &> /dev/null; then
+    wasm-opt -Oz --strip-debug --strip-producers web/wasm/navara_engine_worker/navara_wasm_worker_bg.wasm -o web/wasm/navara_engine_worker/navara_wasm_worker_bg.wasm
+fi
+cp crates/navara_wasm_worker/_package.json web/wasm/navara_engine_worker/package.json
+''']
+
+[tasks.build-worker-speed]
+run_task = { name = ["build-rust-worker-speed", "bindgen-rust-worker-speed"], parallel = false }
+
+[tasks.build-example-worker-speed]
+description = "Build examples with only the geometry worker optimized for speed"
+run_task = { name = ["build-all", "build-worker-speed", "build-web-example"], parallel = false }
+
+[tasks.bench-worker-speed]
+description = "Compare size and browser terrain rendering with the two release worker profiles"
+command = "node"
+args = ["scripts/bench-worker-speed.mjs", "--build"]
+
 [tasks.bindgen-rust-worker]
 script = ['''
 #!/usr/bin/env bash

@@ -20,3 +20,11 @@ navara_core.workspace = true
 navara_math.workspace = true
 navara_buffer_store.workspace = true
 rustc-hash.workspace = true
+
+[dev-dependencies]
+wasm-bindgen.workspace = true
+flate2.workspace = true
+
+[[example]]
+name = "terrain_simd_bench"
+crate-type = ["cdylib"]

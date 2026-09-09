@@ -2333,6 +2333,7 @@ dependencies = [
  "bevy_ecs",
  "bevy_log",
  "earcutr",
+ "flate2",
  "itertools 0.15.0",
  "navara_buffer_store",
  "navara_core",
@@ -2340,6 +2341,7 @@ dependencies = [
  "radians",
  "rustc-hash",
  "serde",
+ "wasm-bindgen",
 ]
 
 [[package]]

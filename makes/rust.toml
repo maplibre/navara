@@ -9,11 +9,11 @@
 # toolchain through RUSTC_BOOTSTRAP=1, so the shipped compiler stays a tested
 # stable release. Requires the rust-src component
 # (`rustup component add rust-src`). RUSTFLAGS overrides the target rustflags
-# in .cargo/config.toml, so the getrandom cfg must be repeated here.
+# in .cargo/config.toml, so the getrandom cfg and SIMD feature must be repeated here.
 # Panics in these builds trap immediately without a message; use
 # `cargo make build-debug` to diagnose panics with readable messages.
 [tasks.build-rust-all-wasm]
-env = { RUSTC_BOOTSTRAP = "1", RUSTFLAGS = '--cfg getrandom_backend="wasm_js" -Zlocation-detail=none -Zunstable-options -Cpanic=immediate-abort' }
+env = { RUSTC_BOOTSTRAP = "1", RUSTFLAGS = '--cfg getrandom_backend="wasm_js" -Ctarget-feature=+simd128 -Zlocation-detail=none -Zunstable-options -Cpanic=immediate-abort' }
 script = ['''
 cargo build --release --target wasm32-unknown-unknown -Z build-std=std,panic_abort -p navara_wasm -p navara_wasm_worker -p navara_wasm_font_worker -p navara_wasm_api
 ''']
@@ -76,6 +76,11 @@ copy /Y "crates\navara_wasm\_package.json" "web\wasm\navara_engine\package.json"
 # ============================================================================
 #                               SIZE REPORT
 # ============================================================================
+[tasks.bench-terrain-simd]
+description = "Compare terrain WASM with SIMD on/off and opt-level z/3 (Node/V8)"
+command = "node"
+args = ["scripts/bench-terrain-simd.mjs"]
+
 # Print raw and compressed sizes of the built WASM modules in web/wasm/.
 # Run after a release build (e.g. `cargo make build-all`) to track size changes.
 [tasks.size-report]

@@ -1,2 +1,4 @@
 [target.wasm32-unknown-unknown]
-rustflags = ['--cfg', 'getrandom_backend="wasm_js"']
+# All WASM modules require SIMD-capable runtimes. Keep release flags in
+# makes/rust.toml in sync: that task overrides this target configuration.
+rustflags = ['--cfg', 'getrandom_backend="wasm_js"', '-C', 'target-feature=+simd128']

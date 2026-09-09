@@ -161,3 +161,9 @@ codegen-units = 1
 # wasm32-unknown-unknown cannot unwind; abort removes landing-pad codegen.
 panic = "abort"
 strip = "debuginfo"
+
+# Opt-in experiment: compile only navara_wasm_worker with this profile so its
+# dependencies can favor speed without changing the other WASM modules.
+[profile.release-worker-speed]
+inherits = "release"
+opt-level = 3
