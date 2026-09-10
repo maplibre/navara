@@ -28,6 +28,29 @@ description = "Build the non-SIMD fallback .wasm for every module"
 command = "node"
 args = ["scripts/build-wasm-fallback.mjs"]
 
+# Dev and debug builds regenerate the JS glue and the primary `.wasm` but do not
+# rebuild the non-SIMD fallback (that would double an already slow watch loop).
+# A stale fallback paired with fresh bindings is far worse than a missing one —
+# it would load and then misbehave — so remove it. A non-SIMD runtime then fails
+# with a clean 404 instead, which is the correct signal for a dev build.
+[tasks.clean-wasm-fallback]
+description = "Remove non-SIMD fallback artifacts (dev/debug builds ship SIMD only)"
+script = ['''
+#!/usr/bin/env bash
+rm -f web/wasm/navara_engine/navara_wasm_bg.nosimd.wasm \
+      web/wasm/navara_engine_worker/navara_wasm_worker_bg.nosimd.wasm \
+      web/wasm/navara_font_worker/navara_wasm_font_worker_bg.nosimd.wasm \
+      web/wasm/navara_engine_api/navara_wasm_api_bg.nosimd.wasm
+''']
+
+[tasks.clean-wasm-fallback.windows]
+script = ['''
+del /Q "web\wasm\navara_engine\navara_wasm_bg.nosimd.wasm" 2>nul
+del /Q "web\wasm\navara_engine_worker\navara_wasm_worker_bg.nosimd.wasm" 2>nul
+del /Q "web\wasm\navara_font_worker\navara_wasm_font_worker_bg.nosimd.wasm" 2>nul
+del /Q "web\wasm\navara_engine_api\navara_wasm_api_bg.nosimd.wasm" 2>nul
+''']
+
 [tasks.build-debug-rust-all-wasm]
 script = ['''
 cargo build --release --features debug --target wasm32-unknown-unknown -p navara_wasm -p navara_wasm_worker -p navara_wasm_font_worker -p navara_wasm_api
