@@ -357,22 +357,19 @@ to a growing `Vec`; and DEM sampling is strided (`x * (terrain_w - 1) / segments
 a gather rather than a contiguous read. Terrain is close to a worst case for
 `simd128`, and the measurements below confirm it.
 
-## Benchmark
+## Benchmark (historical)
 
-```sh
-cargo make bench-terrain-simd
-node scripts/bench-terrain-simd.mjs --skip-build   # re-measure existing artifacts
-```
+> The harness behind this section — `scripts/bench-terrain-simd.mjs` and the
+> `terrain_simd_bench` example crate — has been removed. It measured
+> `tile_triangles`, which production only reaches as a flat-tile fallback; the
+> real raster-DEM path is Martini. The numbers are kept because they are the
+> evidence for the conclusions, but treat them as a record, not as something to
+> re-run. `scripts/bench-examples.mjs` measures the real paths instead.
 
-Requires the repository's Rust toolchain and WASM target, `wasm-bindgen`,
-`wasm-opt`, `wasm-dis`, and Node. Results and the four compiled variants land in
-`target/terrain-simd-bench/`.
-
-The benchmark compiles [crates/navara_geometry/examples/terrain_simd_bench.rs](../crates/navara_geometry/examples/terrain_simd_bench.rs)
-four ways — SIMD off/on, crossed with `opt-level` `z`/`3` — and runs
-`wasm-bindgen` and `wasm-opt -Oz` over each. Unlike the shipping release task it
-uses the normal precompiled standard library, without the immediate-abort
-rebuild, so its binary sizes are benchmark sizes, not engine download sizes.
+It compiled a synthetic terrain benchmark four ways — SIMD off/on, crossed with
+`opt-level` `z`/`3` — running `wasm-bindgen` and `wasm-opt -Oz` over each.
+Unlike the shipping release task it used the normal precompiled standard
+library, so its binary sizes were benchmark sizes, not engine download sizes.
 
 Workloads, all on deterministic synthetic input:
 
@@ -591,7 +588,7 @@ Every crate declares `wasm-opt = ['-O4']` under
 wasm-pack — it runs `cargo build` plus `wasm-bindgen` plus `wasm-opt -Oz` from
 cargo-make. That metadata has never taken effect. **Leave it that way.**
 
-Measured with SIMD off, two runs (`BENCH_SIMD=0 BENCH_WASM_OPT=Oz,O4`), median
+Measured with SIMD off, two runs of the (since removed) terrain harness, median
 ms; positive = slower:
 
 Two optimizers are involved, so each column names both: **rustc opt-level** first,
@@ -634,15 +631,13 @@ work is concentrated:
 
 ```sh
 cargo make build-worker-speed          # build and install the profile
-node scripts/bench-worker-speed.mjs --build
 ```
 
-`scripts/bench-worker-speed.mjs` swaps only the worker artifact into a real
-scene — headless Chrome, a synthetic GSI DEM served to every tile request, a
-fixed camera over Fuji — and alternates the two profiles across 7 rounds each,
-with a fresh browser context per round. It wraps `Worker.postMessage` to time
-each worker task individually, and refuses to run if the candidate needs imports
-the baseline wrapper does not provide.
+Measured with a dedicated harness (since removed — `scripts/bench-examples.mjs`
+uses the same technique on real pages and supersedes it): headless Chrome, a
+synthetic GSI DEM served to every tile request, a fixed camera over Fuji, the
+two profiles alternating across 7 rounds each with a fresh browser context per
+round, timing each worker task through a wrapped `Worker.postMessage`.
 
 Chrome 152, 960x640, 2026-09-09. Median ms per worker task:
 

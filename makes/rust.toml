@@ -99,11 +99,6 @@ copy /Y "crates\navara_wasm\_package.json" "web\wasm\navara_engine\package.json"
 # ============================================================================
 #                               SIZE REPORT
 # ============================================================================
-[tasks.bench-terrain-simd]
-description = "Compare terrain WASM with SIMD on/off and opt-level z/3 (Node/V8)"
-command = "node"
-args = ["scripts/bench-terrain-simd.mjs"]
-
 # Print raw and compressed sizes of the built WASM modules in web/wasm/.
 # Run after a release build (e.g. `cargo make build-all`) to track size changes.
 [tasks.size-report]

@@ -29,11 +29,6 @@ run_task = { name = ["build-rust-worker-speed", "bindgen-rust-worker-speed"], pa
 description = "Build examples with only the geometry worker optimized for speed"
 run_task = { name = ["build-all", "build-worker-speed", "build-web-example"], parallel = false }
 
-[tasks.bench-worker-speed]
-description = "Compare size and browser terrain rendering with the two release worker profiles"
-command = "node"
-args = ["scripts/bench-worker-speed.mjs", "--build"]
-
 [tasks.bindgen-rust-worker]
 script = ['''
 #!/usr/bin/env bash
