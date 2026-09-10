@@ -1,4 +1,6 @@
 [target.wasm32-unknown-unknown]
-# All WASM modules require SIMD-capable runtimes. Keep release flags in
-# makes/rust.toml in sync: that task overrides this target configuration.
+# `simd128` is enabled for the primary artifacts. A non-SIMD fallback of every
+# module is built alongside them (`scripts/build-wasm-fallback.mjs`) and selected
+# at runtime, so this does not raise the browser floor. Keep makes/rust.toml in
+# sync: its RUSTFLAGS override this target configuration rather than merging.
 rustflags = ['--cfg', 'getrandom_backend="wasm_js"', '-C', 'target-feature=+simd128']

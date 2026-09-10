@@ -1,9 +1,14 @@
+import { wasmInitInput } from "@navaramap/core";
 import init, { type InitOutput } from "@navaramap/engine-worker";
+// Non-SIMD build of the same module, loaded only when this runtime lacks
+// `simd128`. Detection has to happen here, inside the worker: the main thread's
+// result does not travel with the module.
+import fallbackUrl from "@navaramap/engine-worker/navara_wasm_worker_bg.nosimd.wasm?url";
 
 let WASM: Promise<InitOutput> | undefined;
 
 export async function waitWasm(): Promise<InitOutput> {
-  WASM ??= init();
+  WASM ??= init(wasmInitInput(fallbackUrl));
   return WASM;
 }
 

@@ -13,6 +13,7 @@
   },
   "files": [
     "navara_wasm_worker_bg.wasm",
+    "navara_wasm_worker_bg.nosimd.wasm",
     "navara_wasm_worker.js",
     "navara_wasm_worker.d.ts"
   ],

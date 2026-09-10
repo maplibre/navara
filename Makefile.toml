@@ -20,7 +20,7 @@ PROJ_NAME = "navara"
 # Then run wasm-bindgen for each output
 [tasks.build-all]
 description = "Build all WASM modules with shared compilation (release)"
-run_task = { name = ["build-rust-all-wasm", "bindgen-all"], parallel = false }
+run_task = { name = ["build-rust-all-wasm", "bindgen-all", "build-rust-wasm-fallback"], parallel = false }
 
 [tasks.build-debug-all]
 description = "Build all WASM modules with shared compilation (release + debug)"

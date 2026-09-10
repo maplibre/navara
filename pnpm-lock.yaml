@@ -237,6 +237,9 @@ importers:
 
   web/navara_font:
     dependencies:
+      '@navaramap/core':
+        specifier: workspace:*
+        version: link:../navara_core
       '@navaramap/engine-api':
         specifier: workspace:*
         version: link:../wasm/navara_engine_api
@@ -7553,7 +7556,7 @@ snapshots:
       '@types/hast': 3.0.5
       '@types/mdast': 4.0.4
       js-yaml: 4.3.1
-      picomatch: 4.0.5
+      picomatch: 4.0.7
       retext-smartypants: 6.2.0
       shiki: 4.4.3
       smol-toml: 1.7.0

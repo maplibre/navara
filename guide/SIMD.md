@@ -1,30 +1,200 @@
 # WebAssembly SIMD
 
-Navara enables standard WebAssembly `simd128` for all four WASM modules. The flags
-live in `.cargo/config.toml` and in the release build task in `makes/rust.toml`.
-Keep both in sync: the release task sets `RUSTFLAGS`, which overrides the target
-configuration.
+Navara enables `simd128` for its primary WASM artifacts **and ships a non-SIMD
+build of every module alongside them**, selected at runtime. Enabling SIMD
+therefore costs nothing in browser support.
 
-**Summary of the investigation:** enabling `simd128` is safe, slightly reduces
-binary size, and is essentially free — but it does not speed up Navara's own
-geometry code. LLVM auto-vectorizes almost nothing in this workspace at the
-shipped `opt-level = "z"`, and the parts that do vectorize live in dependencies.
-The two levers that _do_ move terrain mesh time are the optimization level
-(~1.85x, at a ~21% download-size cost) and hoisting redundant transcendentals out
-of the vertex loop (~4x, at no size cost). In a real browser scene, raising just
-the worker's optimization level cut `constructTerrainMesh` by 31% but moved
-time-to-terrain only ~2%, because tile fetching dominates that path. Details and
-measurements below.
+Be clear-eyed about what SIMD buys here: measured three ways, it produced **no
+detectable speedup in any real example page**. The reason to keep it on is the
+~2% smaller primary artifacts and the headroom for future SIMD-aware
+dependencies — not throughput.
 
-The generated modules require a runtime with WebAssembly SIMD, with no scalar
-fallback. Chrome 91, Firefox 89, and Safari 16.4 are the baselines; Safari is the
-binding constraint. Supporting older runtimes would mean shipping separate scalar
-artifacts and feature-detecting before initializing each module, including
-workers. SIMD does not require shared memory or cross-origin isolation.
+| Method                                      | Result                                           |
+| ------------------------------------------- | ------------------------------------------------ |
+| Static attribution (`simd-attribution.mjs`) | 3 lane-math ops in Navara's own code, out of 750 |
+| Node microbenchmarks                        | ±1% except a synthetic decode loop               |
+| Real example pages in Chrome, 8 rounds      | every worker task's range overlaps               |
 
-Core globe coordinates remain `f64`; the TypeScript API and worker message
-formats are unchanged. Release builds still use `opt-level = "z"` and the
-existing `wasm-opt -Oz` pass.
+The cause is structural: Navara's geometry is `f64` transcendental math, which
+WebAssembly SIMD cannot vectorize at all, and `glam`'s hand-written SIMD backend
+is `f32`-only so `bevy_math` never reaches it.
+
+## How the dual build works
+
+Every module is built twice. `cargo make build-all` runs the normal SIMD build,
+then `scripts/build-wasm-fallback.mjs` rebuilds the same crates without
+`simd128` into a separate `--target-dir` and drops each result beside its
+primary:
+
+```
+web/wasm/navara_engine/navara_wasm_bg.wasm          # simd128
+web/wasm/navara_engine/navara_wasm_bg.nosimd.wasm   # fallback
+```
+
+**One JS glue serves both.** `wasm-bindgen` generates its bindings from the Rust
+API surface, not from codegen flags, so the two glues are byte-identical. The
+fallback script asserts that on every build and fails loudly if it ever stops
+being true — pairing a fallback binary with mismatched bindings would be a
+miserable bug to chase.
+
+At startup each entry point probes for SIMD and hands `init()` the fallback URL
+when it is missing:
+
+```ts
+import { wasmInitInput } from "@navaramap/core";
+import fallbackUrl from "@navaramap/engine/navara_wasm_bg.nosimd.wasm?url";
+
+await initCore(wasmInitInput(fallbackUrl));
+```
+
+`wasmInitInput` returns `undefined` when SIMD is present, so `init()` resolves
+its own default URL and the primary loads unchanged.
+
+There are **five** such call sites, and all of them matter:
+
+| Context     | File                                      | Module             |
+| ----------- | ----------------------------------------- | ------------------ |
+| Main thread | `web/navara_three/src/index.ts`           | engine             |
+| Main thread | `web/navara_three_api/src/index.ts`       | engine-api         |
+| Main thread | `web/navara_font/src/cssFontFamily.ts`    | engine-api         |
+| Tile worker | `web/navara_worker/src/tasks/waitWasm.ts` | engine-worker      |
+| Font worker | `web/navara_font/src/fontWorker.ts`       | engine-font-worker |
+
+**Each worker must probe for itself.** A worker loads its own `.wasm`, and the
+main thread's detection result does not travel with it. Missing a worker is the
+easy mistake: the page would work while the worker fails to instantiate, and a
+worker's failure does not reject `view.init()`.
+
+Costs: WASM build time roughly doubles (`build-debug-all` and `build-dev-all`
+skip the fallback), and the published packages carry ~11 MB of extra raw
+artifacts that are only ever downloaded by runtimes without SIMD.
+
+### Verifying it
+
+```sh
+# primary has vector instructions, fallback has none
+for f in web/wasm/navara_engine/navara_wasm_bg.wasm \
+         web/wasm/navara_engine/navara_wasm_bg.nosimd.wasm; do
+  echo "$f $(wasm-dis "$f" | grep -cE '\b(i8x16|i16x8|i32x4|i64x2|f32x4|f64x2|v128)\.')"
+done
+```
+
+To exercise the fallback path in a browser, note that no Chrome or V8 flag
+disables SIMD any more — it is unconditionally shipped. Force it at the module
+level instead, with a Vite `transform` that rewrites
+`WebAssembly.validate(SIMD_PROBE)` to `false` in `navara_core/src/wasm.ts`. That
+reaches the worker bundles too, which a Playwright `addInitScript` does not.
+
+Verified on 2026-09-10, `terrain/raster` in Chrome 152:
+
+| Mode           | `.wasm` fetched                                                                | Result              |
+| -------------- | ------------------------------------------------------------------------------ | ------------------- |
+| Default        | `navara_wasm_bg.wasm`, `navara_wasm_api_bg.wasm`, `navara_wasm_worker_bg.wasm` | 394 tasks, 0 errors |
+| Forced no-SIMD | `..._bg.nosimd.wasm` for all three, **including the worker**                   | 392 tasks, 0 errors |
+
+Both render identically.
+
+## What actually sets Navara's browser floor
+
+**Turning SIMD off does not make Navara run on old browsers.** SIMD was never the
+only post-MVP WebAssembly feature in the binaries. `rustc` enables six of them by
+default for `wasm32-unknown-unknown`, and they are still there:
+
+```sh
+rustc --print cfg --target wasm32-unknown-unknown | grep target_feature
+# bulk-memory  multivalue  mutable-globals
+# nontrapping-fptoint  reference-types  sign-ext
+```
+
+Confirm what a built module actually requires with
+`wasm-opt --print-features <module>.wasm -o /dev/null`.
+
+Approximate first versions (verify against caniuse before relying on these):
+
+| Feature                       | Chrome | Firefox |   Safari |
+| ----------------------------- | -----: | ------: | -------: |
+| `sign-ext`, `mutable-globals` |     74 |      61 |     13.0 |
+| `multivalue`                  |     85 |      78 |     13.1 |
+| `bulk-memory`                 |     75 |      79 | **15.0** |
+| `nontrapping-fptoint`         |     75 |      64 | **15.0** |
+| `reference-types`             | **96** |      79 | **15.0** |
+| `simd128` _(primary only)_    |     91 |      89 |   _16.4_ |
+
+Because the fallback is shipped and chosen at runtime, `simd128` does **not** set
+the floor. What remains does:
+
+| Path                           | Chrome | Firefox |   Safari |
+| ------------------------------ | -----: | ------: | -------: |
+| SIMD primary                   |     96 |      89 |     16.4 |
+| **Fallback (effective floor)** | **96** |  **79** | **15.0** |
+
+A Safari 15 user loads the fallback and Navara works; a Safari 16.4 user gets the
+SIMD build. Without the fallback the floor would be 16.4. Chrome does not move
+either way — `reference-types` binds it at 96 regardless.
+
+Going below Safari 15 would mean disabling `reference-types` and `bulk-memory`
+too (`-Ctarget-feature=-reference-types,-bulk-memory,...`). That is a much larger
+change: `wasm-bindgen` output depends on reference types, and dropping bulk
+memory costs size and speed. It has not been attempted.
+
+### What happens on a runtime below the floor
+
+The module fails to **compile**, not to run. `WebAssembly.instantiate` rejects
+with a `CompileError` as soon as it validates an unsupported opcode, so the
+failure is deterministic and happens at startup — there is no partially working
+engine and no slow path. It surfaces in two places:
+
+- **Main thread** — `await Promise.all([initCore(), initNavaraApi()])` in
+  `ThreeView.init()` ([web/navara_three/src/index.ts](../web/navara_three/src/index.ts))
+  rejects, so `await view.init()` rejects.
+- **Workers** — the tile-worker pool and font worker load their own `.wasm`.
+  Those failures happen inside the worker, so they do not reject `init()` and are
+  easier to miss.
+
+### Detecting support before initializing
+
+Validate a tiny module that uses the feature. Validation is cheap, synchronous,
+and touches no network. This probe covers the current floor (`reference-types`
+via an `externref` parameter); swap in the `simd128` bytes if SIMD is ever
+re-enabled:
+
+```ts
+/** `(func (param externref))` — rejected by runtimes without reference types. */
+export const hasWasmReferenceTypes = (): boolean =>
+  WebAssembly.validate(
+    new Uint8Array([
+      0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00, 0x01, 0x05, 0x01, 0x60,
+      0x01, 0x6f, 0x00, 0x03, 0x02, 0x01, 0x00, 0x0a, 0x04, 0x01, 0x02, 0x00,
+      0x0b,
+    ]),
+  );
+
+/** `i8x16.splat` + `i8x16.popcnt` — only needed if `simd128` is re-enabled. */
+export const hasWasmSimd = (): boolean =>
+  WebAssembly.validate(
+    new Uint8Array([
+      0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00, 0x01, 0x05, 0x01, 0x60,
+      0x00, 0x01, 0x7b, 0x03, 0x02, 0x01, 0x00, 0x0a, 0x0a, 0x01, 0x08, 0x00,
+      0x41, 0x00, 0xfd, 0x0f, 0xfd, 0x62, 0x0b,
+    ]),
+  );
+```
+
+Feature-detect rather than sniffing the user agent, and guard before `init()` so
+the user sees a real message instead of a `CompileError`:
+
+```ts
+if (!hasWasmReferenceTypes()) {
+  showUnsupportedBrowserNotice();
+} else {
+  await view.init();
+}
+```
+
+This is what the dual build above already does for `simd128`. The same trick
+could in principle cover `reference-types`, but that is a far larger change:
+`wasm-bindgen`'s output depends on reference types, and dropping bulk memory
+costs size and speed. It has not been attempted.
 
 ## Where SIMD instructions actually land
 
@@ -44,12 +214,12 @@ are overwhelmingly just a wider `memcpy` of vertex, index, and struct data.
 Measured on 2026-09-09 against the shipping release configuration
 (`opt-level = "z"`, `build-std`, `panic=immediate-abort`):
 
-| Module          | v128 total | lane math | load/store/const |
-| --------------- | ---------: | --------: | ---------------: |
-| Main engine     |     21,676 |       750 |           20,926 |
-| Geometry worker |      1,793 |       108 |            1,685 |
-| Font worker     |     11,181 |     3,224 |            7,957 |
-| API             |      1,598 |       114 |            1,484 |
+| Module          | `v128` instructions<br>(total) | of which<br>lane math | of which<br>load/store/const |
+| --------------- | -----------------------------: | --------------------: | ---------------------------: |
+| Main engine     |                         21,676 |                   750 |                       20,926 |
+| Geometry worker |                          1,793 |                   108 |                        1,685 |
+| Font worker     |                         11,181 |                 3,224 |                        7,957 |
+| API             |                          1,598 |                   114 |                        1,484 |
 
 The equivalent scalar builds contain zero `v128` instructions, which is the
 control for these counts.
@@ -80,6 +250,45 @@ with `--dir` pointing at an `opt-level = 3` build.
 auto-vectorization also depends on changing the optimization level — and, as the
 timings below show, even where the vectorizer fires the wall-clock effect is
 mostly absent.
+
+### Why `bevy_math` / `glam` contributes nothing
+
+`glam` (via `bevy_math`) does ship hand-written WebAssembly SIMD, and enabling
+`simd128` already switches it on — `glam/src/f32.rs` selects the backend with
+`#[cfg(target_feature = "simd128")] mod wasm;`. So the question is reasonable.
+
+It contributes nothing here for one reason: **that backend exists only for the
+`f32` types.** `glam/src/f32/` carries `wasm/`, `sse2/`, `neon/`, `coresimd/`,
+and `scalar/` backends covering `Vec3A`, `Vec4`, `Mat2`, `Mat3A`, `Mat4`, and
+`Quat`. `glam/src/f64/` has no backend directory at all — `dvec3.rs`,
+`dvec4.rs`, `dmat4.rs`, and `dquat.rs` are plain scalar structs.
+
+And [navara_math](../crates/navara_math/src/vertex.rs) aliases every public type
+to the `f64` variants:
+
+```rust
+pub type Vec3 = RawDVec3; // glam::DVec3
+pub type Mat4 = RawDMat4; // glam::DMat4
+pub type Quat = RawDQuat; // glam::DQuat
+```
+
+The built engine confirms it: every one of the ~205 `glam` symbols in
+`navara_wasm.wasm` is under `glam::f64::`. glam's SIMD backend is compiled in and
+never called, because no `f32` glam type is ever instantiated.
+
+This is not an oversight to fix. ECEF coordinates are on the order of 6.4e6 m,
+where `f32`'s 24-bit mantissa gives roughly half-metre resolution — visible
+jitter. `f64` is the right choice for globe coordinates, and the `f32` vertex
+buffers are only produced after RTC translation has made the values small.
+
+Two consequences worth remembering:
+
+- Switching `navara_math` to `f32` glam types to unlock the SIMD backend would
+  trade correctness for a speedup that the profile does not show a need for —
+  glam appears nowhere in the lane-math attribution above.
+- glam's `core-simd` feature does not help either; it sits in the same `f32`-only
+  cfg chain. A hypothetical `f64` backend would give 2 lanes per `v128` at best,
+  which is why upstream has not written one.
 
 ### Why terrain does not vectorize
 
@@ -145,29 +354,62 @@ variants contain none.
 
 ### Results
 
-Median ms/iteration, Node 25.2.1 on an Apple M4 Pro (macOS ARM64), 2026-09-09.
-Last three columns are the change from enabling SIMD at each optimization level,
-and the change from `z` to `3` with SIMD off.
+**The four builds compared.** Every table below uses these short names:
 
-| Workload               | scalar-z | simd-z | scalar-3 | simd-3 | simd@z |     simd@3 |  o3@scalar |
-| ---------------------- | -------: | -----: | -------: | -----: | -----: | ---------: | ---------: |
-| decode/Mapbox          |   0.0790 | 0.0790 |   0.0768 | 0.0695 |  -0.1% |  **-9.6%** |      -2.8% |
-| decode/Terrarium       |   0.0781 | 0.0783 |   0.0764 | 0.0695 |  +0.3% |  **-8.9%** |      -2.2% |
-| decode/GSI             |   0.1859 | 0.2327 |   0.2410 | 0.0706 | +25.2% | **-70.7%** |     +29.7% |
-| mesh/Mapbox            |   0.3068 | 0.3074 |   0.1676 | 0.1672 |  +0.2% |      -0.3% | **-45.4%** |
-| mesh/Terrarium         |   0.3038 | 0.3003 |   0.1673 | 0.1673 |  -1.2% |       0.0% | **-44.9%** |
-| mesh/GSI               |   0.3055 | 0.3036 |   0.1642 | 0.1654 |  -0.6% |      +0.7% | **-46.3%** |
-| mesh_hoisted/Mapbox    |   0.0713 | 0.0710 |   0.0555 | 0.0557 |  -0.4% |      +0.3% |     -22.0% |
-| mesh_hoisted/Terrarium |   0.0714 | 0.0714 |   0.0562 | 0.0560 |   0.0% |      -0.3% |     -21.3% |
-| mesh_hoisted/GSI       |   0.0748 | 0.0751 |   0.0573 | 0.0568 |  +0.4% |      -0.8% |     -23.4% |
-| polyline               |   1.9711 | 1.9773 |   1.3868 | 1.4018 |  +0.3% |      +1.1% | **-29.6%** |
-| inflate                |   3.7592 | 3.7309 |   3.4310 | 3.4173 |  -0.8% |      -0.4% |      -8.7% |
+| Short name | `rustc` opt-level | `simd128` | Notes          |
+| ---------- | ----------------- | --------- | -------------- |
+| `scalar-z` | `"z"` (size)      | off       |                |
+| `simd-z`   | `"z"` (size)      | **on**    | **what ships** |
+| `scalar-3` | `3` (speed)       | off       |                |
+| `simd-3`   | `3` (speed)       | **on**    |                |
+
+Node 25.2.1, Apple M4 Pro (macOS ARM64), 2026-09-09.
+
+#### How long each workload took
+
+**Milliseconds per iteration (median). Lower is better.**
+
+| Workload               | `scalar-z` | `simd-z` | `scalar-3` | `simd-3` |
+| ---------------------- | ---------: | -------: | ---------: | -------: |
+| decode/Mapbox          |     0.0790 |   0.0790 |     0.0768 |   0.0695 |
+| decode/Terrarium       |     0.0781 |   0.0783 |     0.0764 |   0.0695 |
+| decode/GSI             |     0.1859 |   0.2327 |     0.2410 |   0.0706 |
+| mesh/Mapbox            |     0.3068 |   0.3074 |     0.1676 |   0.1672 |
+| mesh/Terrarium         |     0.3038 |   0.3003 |     0.1673 |   0.1673 |
+| mesh/GSI               |     0.3055 |   0.3036 |     0.1642 |   0.1654 |
+| mesh_hoisted/Mapbox    |     0.0713 |   0.0710 |     0.0555 |   0.0557 |
+| mesh_hoisted/Terrarium |     0.0714 |   0.0714 |     0.0562 |   0.0560 |
+| mesh_hoisted/GSI       |     0.0748 |   0.0751 |     0.0573 |   0.0568 |
+| polyline               |     1.9711 |   1.9773 |     1.3868 |   1.4018 |
+| inflate                |     3.7592 |   3.7309 |     3.4310 |   3.4173 |
+
+#### What each change bought
+
+**Percent change in run time. Negative = faster = good.** Anything within about
+±2% is run-to-run noise, not a result.
+
+| Workload               | Turning SIMD on<br>(at opt-level `z`) | Turning SIMD on<br>(at opt-level `3`) | Going `z`→`3`<br>(SIMD off) |
+| ---------------------- | ------------------------------------: | ------------------------------------: | --------------------------: |
+| decode/Mapbox          |                                 -0.1% |                             **-9.6%** |                       -2.8% |
+| decode/Terrarium       |                                 +0.3% |                             **-8.9%** |                       -2.2% |
+| decode/GSI             |                                +25.2% |                            **-70.7%** |                      +29.7% |
+| mesh/Mapbox            |                                 +0.2% |                                 -0.3% |                  **-45.4%** |
+| mesh/Terrarium         |                                 -1.2% |                                  0.0% |                  **-44.9%** |
+| mesh/GSI               |                                 -0.6% |                                 +0.7% |                  **-46.3%** |
+| mesh_hoisted/Mapbox    |                                 -0.4% |                                 +0.3% |                      -22.0% |
+| mesh_hoisted/Terrarium |                                  0.0% |                                 -0.3% |                      -21.3% |
+| mesh_hoisted/GSI       |                                 +0.4% |                                 -0.8% |                      -23.4% |
+| polyline               |                                 +0.3% |                                 +1.1% |                  **-29.6%** |
+| inflate                |                                 -0.8% |                                 -0.4% |                       -8.7% |
+
+The two SIMD columns are the answer to "is SIMD worth it": everything in them is
+noise except the `decode` row, and `decode` is not a loop production runs.
+The third column is the optimization level, and it is where the real movement is.
 
 Reading of these numbers:
 
 - **SIMD does nothing measurable for real terrain mesh construction, polyline
-  construction, or inflate**, at either optimization level. Every one of those
-  deltas is within run-to-run noise.
+  construction, or inflate**, at either optimization level.
 - **SIMD helps only the contiguous decode loop, and only at `opt-level = 3`**
   (~-9%). The -71% on GSI at `3` is large and reproducible across runs, but it is
   specific: the GSI decoder branches per pixel, and on synthetic random RGB that
@@ -189,32 +431,99 @@ These are Node/V8 CPU measurements, not browser frame-rate or tile-visibility
 measurements. Repeat representative scenes in supported browsers before making
 user-facing performance claims or changing the release optimization level.
 
+## Real example pages in a browser
+
+Everything above is a microbenchmark. `scripts/bench-examples.mjs` is the
+opposite: it loads the shipped demo pages in headless Chrome, swaps only the four
+`.wasm` artifacts between runs, and times each worker task the engine dispatches.
+
+```sh
+node scripts/bench-examples.mjs --build            # build both variants first
+node scripts/bench-examples.mjs --rounds 8 --only basemap/vector-map
+node scripts/bench-examples.mjs --headed           # watch it run
+```
+
+Tile responses are recorded to `target/example-bench/tiles` on the first run and
+replayed from disk afterwards, so both variants see byte-identical input. The
+harness aborts if the variant alias never applied — without that guard both runs
+would silently load whatever is in `web/wasm/` and the comparison would be
+meaningless.
+
+Chrome 152, 1280x800, 8 rounds per variant, alternating order. CPU ms per page
+load, summed per worker method:
+
+**`terrain/raster`** — the real Martini raster-DEM path:
+
+| Worker task            | scalar | simd |  delta | ranges  |
+| ---------------------- | -----: | ---: | -----: | ------- |
+| `constructTerrainMesh` |   1889 | 1872 |  -0.9% | overlap |
+| `getImageDataFromBlob` |    484 |  486 |  +0.4% | overlap |
+| `warmUp`               |    359 |  300 | -16.4% | overlap |
+| `upsampleTerrainMesh`  |     85 |   79 |  -7.1% | overlap |
+
+**`basemap/vector-map`** — MVT parse plus polygon/polyline batching:
+
+| Worker task                       | scalar | simd | delta | ranges  |
+| --------------------------------- | -----: | ---: | ----: | ------- |
+| `constructPolygonBatchedFeature`  |    996 | 1030 | +3.4% | overlap |
+| `parseMvtTile`                    |    917 |  909 | -0.9% | overlap |
+| `constructPolylineBatchedFeature` |    349 |  357 | +2.3% | overlap |
+
+**Every row's per-round range overlaps.** There is no effect to report.
+
+> Two traps this exposed, worth repeating for anyone extending the harness:
+>
+> - **Three rounds is not enough.** At 3 rounds `parseMvtTile` looked like a
+>   consistent -12% win. At 8 rounds it is -0.9%. Its per-round spread is ~40% of
+>   its own value, so three samples could never have supported that claim.
+>   Measure the variance first, then choose the round count.
+> - **Chrome quantizes `performance.now()` to 0.1 ms.** A task with a 1.6 ms
+>   median has ~16 ticks of resolution, so "1.6 vs 1.7 ms" is a one-tick
+>   difference, not 6%. Prefer per-round sums over medians for sub-millisecond
+>   tasks, and ignore anything at the 0.1 ms floor entirely.
+
 ## Size
 
-Full release builds through the production pipeline (`build-std`,
-`panic=immediate-abort`, `wasm-bindgen`, `wasm-opt -Oz`), measured 2026-09-09
-with Rust 1.98.0 and Binaryen 126. Bytes after gzip-9.
+> **These are release builds.** `cargo make web` runs `build-debug-all`, whose
+> output is ~15% larger because it keeps panic messages and source paths. To
+> reproduce the numbers here: `cargo make build-all && cargo make size-report`.
 
-| Module          |  scalar-z |    simd-z |  scalar-3 |    simd-3 |
-| --------------- | --------: | --------: | --------: | --------: |
-| Main engine     | 1,668,652 | 1,636,589 | 2,012,896 | 1,980,044 |
-| Geometry worker |   703,722 |   702,327 |   764,612 |   761,634 |
-| Font worker     | 1,113,108 | 1,107,791 | 1,212,668 | 1,167,620 |
-| API             |   716,034 |   714,616 |   786,629 |   783,744 |
+Full release pipeline (`build-std`, `panic=immediate-abort`, `wasm-bindgen`,
+`wasm-opt -Oz`), Rust 1.98.0, Binaryen 126, 2026-09-09.
 
-SIMD is size-neutral to slightly positive: -1.9% gzip on the main engine, -0.2%
-on the worker, -0.5% on the font worker. These are code-generation differences,
-not evidence of a runtime improvement.
+**Download size — gzip-9 bytes. Lower is better.**
 
-`opt-level = 3` costs **+20.6% gzip on the main engine** (1.64 MB to 1.98 MB),
-+8.7% on the worker, +8.9% on the font worker, and +9.9% on the API. That is the
-price of the ~1.9x mesh-construction win above.
+| Module          | `scalar-z` | `simd-z` (ships) | `scalar-3` |  `simd-3` |
+| --------------- | ---------: | ---------------: | ---------: | --------: |
+| Main engine     |  1,668,652 |    **1,636,589** |  2,012,896 | 1,980,044 |
+| Geometry worker |    703,722 |      **702,327** |    764,612 |   761,634 |
+| Font worker     |  1,113,108 |    **1,107,791** |  1,212,668 | 1,167,620 |
+| API             |    716,034 |      **714,616** |    786,629 |   783,744 |
 
-Sizes above use the `gzip -9` CLI, matching `cargo make size-report`. Note that
-Node's `zlib.gzipSync({level: 9})` produces noticeably larger output for the same
-bytes (741,690 vs 702,327 for the worker), so absolute figures from
-`scripts/bench-worker-speed.mjs` are not comparable with this table — only ratios
-within one tool are.
+**Uncompressed size — bytes on disk. This is what `ls` shows you.**
+
+| Module          | `scalar-z` | `simd-z` (ships) |
+| --------------- | ---------: | ---------------: |
+| Main engine     |  4,653,282 |    **4,571,904** |
+| Geometry worker |  1,820,491 |    **1,815,223** |
+| Font worker     |  2,948,536 |    **2,911,530** |
+| API             |  1,855,030 |    **1,850,829** |
+
+The gap between the two tables is just compression: the engine is 4.6 MB on disk
+and 1.6 MB over the wire. Users pay the gzip number; wasm compile time scales
+with the uncompressed one.
+
+**What each change costs, as a percentage of the shipping build:**
+
+| Change                   | Main engine | Worker | Font worker |   API |
+| ------------------------ | ----------: | -----: | ----------: | ----: |
+| Enabling SIMD (`z`)      |       -1.9% |  -0.2% |       -0.5% | -0.2% |
+| Raising opt-level to `3` |      +20.6% |  +8.7% |       +8.9% | +9.9% |
+
+SIMD is size-neutral to slightly positive — it makes the binaries marginally
+_smaller_. That is a code-generation difference, not evidence of a runtime
+improvement. Raising the optimization level is the expensive one, and the
++20.6% on the main engine is the price of the ~1.85x mesh win above.
 
 ## `wasm-opt -O4` is a trap
 
@@ -233,14 +542,18 @@ cargo-make. That metadata has never taken effect. **Leave it that way.**
 Measured with SIMD off, two runs (`BENCH_SIMD=0 BENCH_WASM_OPT=Oz,O4`), median
 ms; positive = slower:
 
-| Workload      | z + `-Oz` | z + `-O4` | `-O4` @ z | 3 + `-Oz` | 3 + `-O4` | `-O4` @ 3 |
-| ------------- | --------: | --------: | --------: | --------: | --------: | --------: |
-| mesh/Mapbox   |    0.3053 |    0.3322 |     +8.8% |    0.1623 |    0.1653 |     +1.8% |
-| mesh/GSI      |    0.2989 |    0.3327 |    +11.3% |    0.1656 |    0.1681 |     +1.5% |
-| mesh_hoisted  |    0.0708 |    0.0943 |    +33.1% |    0.0552 |    0.0601 |     +8.9% |
-| polyline      |    1.9457 |    1.9791 |     +1.7% |    1.3693 |    1.4213 |     +3.8% |
-| decode/Mapbox |    0.0772 |    0.0785 |     +1.6% |    0.0767 |    0.0758 |     -1.2% |
-| inflate       |    3.6832 |    3.6834 |      0.0% |    3.4020 |    3.3784 |     -0.7% |
+Two optimizers are involved, so each column names both: **rustc opt-level** first,
+then **wasm-opt level**. Times are median ms; the change columns are
+**positive = slower = worse**.
+
+| Workload      | rustc `z`<br>wasm-opt `-Oz` | rustc `z`<br>wasm-opt `-O4` | change | rustc `3`<br>wasm-opt `-Oz` | rustc `3`<br>wasm-opt `-O4` | change |
+| ------------- | --------------------------: | --------------------------: | -----: | --------------------------: | --------------------------: | -----: |
+| mesh/Mapbox   |                      0.3053 |                      0.3322 |  +8.8% |                      0.1623 |                      0.1653 |  +1.8% |
+| mesh/GSI      |                      0.2989 |                      0.3327 | +11.3% |                      0.1656 |                      0.1681 |  +1.5% |
+| mesh_hoisted  |                      0.0708 |                      0.0943 | +33.1% |                      0.0552 |                      0.0601 |  +8.9% |
+| polyline      |                      1.9457 |                      1.9791 |  +1.7% |                      1.3693 |                      1.4213 |  +3.8% |
+| decode/Mapbox |                      0.0772 |                      0.0785 |  +1.6% |                      0.0767 |                      0.0758 |  -1.2% |
+| inflate       |                      3.6832 |                      3.6834 |   0.0% |                      3.4020 |                      3.3784 |  -0.7% |
 
 `-O4` makes the compute workloads **slower**, most sharply on the tightest loop
 (+33%), and is neutral on the memory-bound ones. The likely reason is that
@@ -254,12 +567,12 @@ And it is not free in size (gzip-9, engine): `-Oz` 1,668,644 to `-O4` 1,689,488,
 
 **The optimization knob that actually buys speed is `rustc`'s, not Binaryen's:**
 
-| Configuration          | mesh/Mapbox |  vs base | engine gzip | vs base |
-| ---------------------- | ----------: | -------: | ----------: | ------: |
-| `z` + `-Oz` (shipping) |      0.3053 |        - |   1,668,644 |       - |
-| `z` + `-O4`            |      0.3322 |    +8.8% |   1,689,488 |   +1.2% |
-| `3` + `-Oz`            |      0.1623 | **-47%** |   2,012,888 |  +20.6% |
-| `3` + `-O4`            |      0.1653 |     -46% |   2,029,605 |  +21.6% |
+| rustc | wasm-opt | mesh time (ms)<br>lower better |      vs shipping | engine download<br>(gzip bytes) | vs shipping |
+| ----- | -------- | -----------------------------: | ---------------: | ------------------------------: | ----------: |
+| `z`   | `-Oz`    |            0.3053 _(shipping)_ |                - |             1,668,644 _(ships)_ |           - |
+| `z`   | `-O4`    |                         0.3322 | **+8.8% slower** |                       1,689,488 |       +1.2% |
+| `3`   | `-Oz`    |                         0.1623 |  **-47% faster** |                       2,012,888 |      +20.6% |
+| `3`   | `-O4`    |                         0.1653 |      -46% faster |                       2,029,605 |      +21.6% |
 
 ## Worker-only `opt-level = 3`, measured in a browser
 
@@ -281,18 +594,18 @@ the baseline wrapper does not provide.
 
 Chrome 152, 960x640, 2026-09-09. Median ms per worker task:
 
-| Worker task            | baseline (`z`) | speed (`3`) |  delta | samples |
-| ---------------------- | -------------: | ----------: | -----: | ------: |
-| `constructTerrainMesh` |           6.70 |        4.60 | -31.3% |     224 |
-| `warmUp`               |          13.80 |        8.50 | -38.4% |      84 |
-| `getImageDataFromBlob` |           3.70 |        3.80 |  +2.7% |     224 |
-| `getWasmMemoryUsage`   |           0.10 |        0.10 |   0.0% |     418 |
+| Worker task            | rustc `z` (ms) | rustc `3` (ms) | change<br>(- = faster) | samples |
+| ---------------------- | -------------: | -------------: | ---------------------: | ------: |
+| `constructTerrainMesh` |           6.70 |           4.60 |                 -31.3% |     224 |
+| `warmUp`               |          13.80 |           8.50 |                 -38.4% |      84 |
+| `getImageDataFromBlob` |           3.70 |           3.80 |                  +2.7% |     224 |
+| `getWasmMemoryUsage`   |           0.10 |           0.10 |                   0.0% |     418 |
 
-| Scene metric     | baseline |  speed | delta |
-| ---------------- | -------: | -----: | ----: |
-| `initMs`         |     39.6 |   39.5 | -0.3% |
-| `firstTerrainMs` |   1205.7 | 1181.0 | -2.0% |
-| `lastTerrainMs`  |   1206.5 | 1181.7 | -2.1% |
+| Scene metric (ms) | rustc `z` | rustc `3` | change<br>(- = faster) |
+| ----------------- | --------: | --------: | ---------------------: |
+| `initMs`          |      39.6 |      39.5 |                  -0.3% |
+| `firstTerrainMs`  |    1205.7 |    1181.0 |                  -2.0% |
+| `lastTerrainMs`   |    1206.5 |    1181.7 |                  -2.1% |
 
 This corroborates the microbenchmark and calibrates it. `constructTerrainMesh`
 improves 31% in the real pipeline against the 45% the isolated function showed —
@@ -310,27 +623,33 @@ gzipped.
 
 ## Conclusions
 
-- **Keep `simd128` enabled.** It costs no measurable runtime and slightly reduces
-  binary size, and it gives dependencies (`tiny-skia`, `miniz_oxide`,
-  `simd_adler32`, `serde_json`) their vector paths. Its one real cost is the
-  runtime baseline — Safari 16.4+, no scalar fallback — so the decision is a
-  browser-support decision, not a performance one. Expect wider `memcpy` and
-  little else for Navara's own code.
-- **Do not expect SIMD to speed up geometry.** The bottleneck is `f64`
-  transcendental math, which WebAssembly SIMD cannot vectorize. Hand-writing
-  `core::arch::wasm32` intrinsics for the terrain path would not address it.
+- **`simd128` is on, with a non-SIMD fallback shipped beside every module.**
+  Enabling it costs no browser support: the effective floor stays Safari 15.0 /
+  Chrome 96 / Firefox 79.
+- **Do not expect SIMD to speed up geometry.** No real example page showed a
+  difference across 8 rounds. The bottleneck is `f64` transcendental math, which
+  WebAssembly SIMD cannot vectorize. Hand-written `core::arch::wasm32` intrinsics
+  would not address it either; the one place they could help is bulk DEM decode,
+  and only after Martini stops decoding each pixel ~6 times (below).
+- **Switching `navara_math` to `f32` glam types to unlock glam's SIMD backend
+  would trade globe precision for a speedup the profile does not show a need
+  for.** ECEF coordinates need `f64`.
 - **The best available terrain win is scalar, not vector:** hoist
   `mercator_y_to_lat` and the per-row/per-column `sin`/`cos` out of the
-  `tile_triangles` inner loop. The prototype shows 4.1-4.3x on mesh construction
-  at the shipped `opt-level = "z"`, with bit-identical output and no size cost —
-  more than raising `opt-level` buys, for free. This is not yet applied to
-  production code.
-- **`wasm-opt -O4` is not the lever it looks like.** It is 9-11% _slower_ than
-  `-Oz` on mesh construction (33% on the tightest loop) and still costs size. The
-  dead `wasm-opt = ['-O4']` metadata in every crate should stay dead.
-- **Raising `opt-level` is a real but expensive option, and the worker-only
-  profile is the sane version of it.** It cuts `constructTerrainMesh` 31% in a
-  real browser scene for +8.1% on the worker download, versus +21% gzip to raise
-  the whole engine. But time-to-terrain moved only ~2% in that scene, so this is
-  worth doing for CPU headroom under load, not for first-paint. Validate against
-  a fetch-bound real-tile scene before shipping it.
+  `tile_triangles` inner loop — 4.1-4.3x with bit-identical output and no size
+  cost. Note this applies to `tile_triangles`, which production only reaches as a
+  flat-tile fallback; the main raster-DEM path is Martini.
+- **Martini decodes each DEM pixel about six times.** `compute_errors` walks
+  131,070 triangles calling `get_height` three times each — ~393,000
+  `decode_height_from_dem` calls for a 65,536-pixel grid, with no cache.
+  `compute_height_at_point` in the same file already caches decoded heights in a
+  `Vec<f32>`; the Martini path does not. Unmeasured, but the most promising
+  terrain lead.
+- **`wasm-opt -O4` is not the lever it looks like.** 9-11% _slower_ than `-Oz`
+  on mesh construction. The dead `wasm-opt = ['-O4']` metadata in every crate
+  should stay dead.
+- **Raising `rustc`'s `opt-level` is the real speed lever**, and the worker-only
+  profile is the sane version: `constructTerrainMesh` -31% in a browser for +8.7%
+  on the worker download, versus +21% gzip to raise the whole engine. But
+  time-to-terrain moved only ~2% in that scene, so it is worth doing for CPU
+  headroom under load, not for first paint.

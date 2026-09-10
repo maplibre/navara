@@ -1,4 +1,10 @@
-import { EventManager, EventHandler, Globe, Plugin } from "@navaramap/core";
+import {
+  EventManager,
+  EventHandler,
+  Globe,
+  Plugin,
+  wasmInitInput,
+} from "@navaramap/core";
 import type {
   CameraPosition,
   ColorMap,
@@ -17,6 +23,8 @@ import initCore, {
   type TerrainHeightUpdatedEvent,
   type TextureFragmentStatus,
 } from "@navaramap/engine";
+// Non-SIMD build of the engine, used only when the runtime lacks `simd128`.
+import engineFallbackUrl from "@navaramap/engine/navara_wasm_bg.nosimd.wasm?url";
 import {
   FontManager,
   type FontFamily,
@@ -1462,7 +1470,10 @@ export default class ThreeView<
     // Fetch WASM resources. Atmosphere textures are not fetched here: they
     // load lazily once a consumer (sky, sun light, aerial perspective, ...)
     // registers via atmosphere.onTexturesReady().
-    await Promise.all([initCore(), initNavaraApi()]);
+    await Promise.all([
+      initCore(wasmInitInput(engineFallbackUrl)),
+      initNavaraApi(),
+    ]);
 
     this._core = new Core(newId());
     this._core.start();
