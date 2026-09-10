@@ -28,27 +28,35 @@ description = "Build the non-SIMD fallback .wasm for every module"
 command = "node"
 args = ["scripts/build-wasm-fallback.mjs"]
 
-# Dev and debug builds regenerate the JS glue and the primary `.wasm` but do not
-# rebuild the non-SIMD fallback (that would double an already slow watch loop).
-# A stale fallback paired with fresh bindings is far worse than a missing one —
-# it would load and then misbehave — so remove it. A non-SIMD runtime then fails
-# with a clean 404 instead, which is the correct signal for a dev build.
-[tasks.clean-wasm-fallback]
-description = "Remove non-SIMD fallback artifacts (dev/debug builds ship SIMD only)"
+# Dev and debug builds do not rebuild the non-SIMD fallback — that would double
+# an already slow watch loop. But the fallback URL is a *static* `?url` import,
+# so the file must exist for Vite to resolve it at all. Copy the SIMD build into
+# its place instead: the import resolves, the binary always pairs with the glue
+# just generated beside it, and a non-SIMD runtime hitting a dev server fails at
+# instantiation the way it would with no fallback at all. Leaving a stale
+# fallback from an earlier `build-all` would be the dangerous option — it loads,
+# then misbehaves against mismatched bindings.
+#
+# Only `build-all` produces a real fallback, and only that output is published.
+[tasks.stub-wasm-fallback]
+description = "Point the fallback at the SIMD build (dev/debug only; not publishable)"
 script = ['''
 #!/usr/bin/env bash
-rm -f web/wasm/navara_engine/navara_wasm_bg.nosimd.wasm \
-      web/wasm/navara_engine_worker/navara_wasm_worker_bg.nosimd.wasm \
-      web/wasm/navara_font_worker/navara_wasm_font_worker_bg.nosimd.wasm \
-      web/wasm/navara_engine_api/navara_wasm_api_bg.nosimd.wasm
+set -euo pipefail
+for pair in \
+    "navara_engine/navara_wasm" \
+    "navara_engine_worker/navara_wasm_worker" \
+    "navara_font_worker/navara_wasm_font_worker" \
+    "navara_engine_api/navara_wasm_api"; do
+    src="web/wasm/${pair}_bg.wasm"
+    if [ -f "$src" ]; then cp "$src" "web/wasm/${pair}_bg.nosimd.wasm"; fi
+done
+echo "dev build: non-SIMD fallbacks are copies of the SIMD build (not publishable)"
 ''']
 
-[tasks.clean-wasm-fallback.windows]
+[tasks.stub-wasm-fallback.windows]
 script = ['''
-del /Q "web\wasm\navara_engine\navara_wasm_bg.nosimd.wasm" 2>nul
-del /Q "web\wasm\navara_engine_worker\navara_wasm_worker_bg.nosimd.wasm" 2>nul
-del /Q "web\wasm\navara_font_worker\navara_wasm_font_worker_bg.nosimd.wasm" 2>nul
-del /Q "web\wasm\navara_engine_api\navara_wasm_api_bg.nosimd.wasm" 2>nul
+for %%P in (navara_engine\navara_wasm navara_engine_worker\navara_wasm_worker navara_font_worker\navara_wasm_font_worker navara_engine_api\navara_wasm_api) do @copy /Y "web\wasm\%%P_bg.wasm" "web\wasm\%%P_bg.nosimd.wasm" >nul 2>&1
 ''']
 
 [tasks.build-debug-rust-all-wasm]
