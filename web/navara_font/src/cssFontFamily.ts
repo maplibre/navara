@@ -1,9 +1,8 @@
-import { wasmInitInput } from "@navaramap/core";
-import initApi, {
+import {
   parseCssUnicodeRange as wasmParseCssUnicodeRange,
   parseFontFamilyFromCss as wasmParseFontFamilyFromCss,
 } from "@navaramap/engine-api";
-import apiFallbackUrl from "@navaramap/engine-api/navara_wasm_api_bg.nosimd.wasm?url";
+import initApi from "@navaramap/engine-api/auto";
 
 import type { FontFamily, UnicodeRange } from "./types";
 
@@ -49,7 +48,7 @@ export type FetchCssFontFamilyOptions = CssFontFaceFilter & {
 // the first is still in flight).
 let apiReady: Promise<unknown> | undefined;
 function ensureApi(): Promise<unknown> {
-  return (apiReady ??= initApi(wasmInitInput(apiFallbackUrl)));
+  return (apiReady ??= initApi());
 }
 
 /**

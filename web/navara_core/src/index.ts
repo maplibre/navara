@@ -13,4 +13,3 @@ export * from "./abstracts";
 export * from "./color";
 export * from "./globe";
 export * from "./plugin";
-export * from "./wasm";

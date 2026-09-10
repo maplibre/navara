@@ -237,9 +237,6 @@ importers:
 
   web/navara_font:
     dependencies:
-      '@navaramap/core':
-        specifier: workspace:*
-        version: link:../navara_core
       '@navaramap/engine-api':
         specifier: workspace:*
         version: link:../wasm/navara_engine_api

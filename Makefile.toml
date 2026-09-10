@@ -20,15 +20,15 @@ PROJ_NAME = "navara"
 # Then run wasm-bindgen for each output
 [tasks.build-all]
 description = "Build all WASM modules with shared compilation (release)"
-run_task = { name = ["build-rust-all-wasm", "bindgen-all", "build-rust-wasm-fallback"], parallel = false }
+run_task = { name = ["build-rust-all-wasm", "bindgen-all", "build-rust-wasm-fallback", "write-wasm-selector"], parallel = false }
 
 [tasks.build-debug-all]
 description = "Build all WASM modules with shared compilation (release + debug)"
-run_task = { name = ["build-debug-rust-all-wasm", "bindgen-all", "stub-wasm-fallback"], parallel = false }
+run_task = { name = ["build-debug-rust-all-wasm", "bindgen-all", "write-wasm-selector-simd-only"], parallel = false }
 
 [tasks.build-dev-all]
 description = "Build all WASM modules with shared compilation (dev)"
-run_task = { name = ["build-dev-rust-all-wasm", "bindgen-dev-all", "stub-wasm-fallback"], parallel = false }
+run_task = { name = ["build-dev-rust-all-wasm", "bindgen-dev-all", "write-wasm-selector-simd-only"], parallel = false }
 
 # Run wasm-bindgen for all modules (can be parallel since cargo build is done)
 [tasks.bindgen-all]

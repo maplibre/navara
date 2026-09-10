@@ -1,6 +1,5 @@
-import { wasmInitInput } from "@navaramap/core";
 import type { LatLngHeight, Window as WindowObject } from "@navaramap/core";
-import initApi, {
+import {
   Window,
   LLE,
   Vec3,
@@ -24,8 +23,7 @@ import initApi, {
   getWGS84Flattening as nvGetWGS84Flattening,
   getWGS84Eccentricity as nvGetWGS84Eccentricity,
 } from "@navaramap/engine-api";
-// Non-SIMD build of the API module, used only when the runtime lacks `simd128`.
-import apiFallbackUrl from "@navaramap/engine-api/navara_wasm_api_bg.nosimd.wasm?url";
+import initApi from "@navaramap/engine-api/auto";
 import { Vector3, Vector2, Matrix4, PerspectiveCamera } from "three";
 
 import {
@@ -54,7 +52,7 @@ export * from "./ellipsoidGeodesic";
  * Initializes the Navara API WASM module. Must be called before using other API functions.
  */
 export async function initNavaraApi() {
-  await initApi(wasmInitInput(apiFallbackUrl));
+  await initApi();
 }
 
 /**

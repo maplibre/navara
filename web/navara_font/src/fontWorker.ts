@@ -1,7 +1,6 @@
 /// <reference lib="webworker" />
 
-import { wasmInitInput } from "@navaramap/core";
-import init, {
+import {
   type FontAtlas,
   FontCache,
   composite_key,
@@ -9,8 +8,8 @@ import init, {
   type WasmShapedGlyph,
   type WasmGlyphMetrics,
 } from "@navaramap/engine-font-worker";
-// See waitWasm.ts: each worker probes for SIMD itself and picks its own binary.
-import fallbackUrl from "@navaramap/engine-font-worker/navara_wasm_font_worker_bg.nosimd.wasm?url";
+// See waitWasm.ts: each worker selects its own binary.
+import init from "@navaramap/engine-font-worker/auto";
 
 let fontCache: FontCache;
 /** WASM linear memory, kept from init() for heap-size reporting. */
@@ -18,7 +17,7 @@ let wasmMemory: WebAssembly.Memory | undefined;
 
 async function ensureWasm(): Promise<void> {
   if (!fontCache) {
-    const output = await init(wasmInitInput(fallbackUrl));
+    const output = await init();
     wasmMemory = output.memory;
     fontCache = new FontCache();
   }

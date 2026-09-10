@@ -41,7 +41,6 @@
     "access": "public"
   },
   "dependencies": {
-    "@navaramap/core": "workspace:*",
     "@navaramap/engine-api": "workspace:*",
     "@navaramap/engine-font-worker": "workspace:*",
     "@navaramap/worker": "workspace:*",

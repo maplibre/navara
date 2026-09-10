@@ -19,45 +19,27 @@ script = ['''
 cargo build --release --target wasm32-unknown-unknown -Z build-std=std,panic_abort -p navara_wasm -p navara_wasm_worker -p navara_wasm_font_worker -p navara_wasm_api
 ''']
 
-# Build the non-SIMD fallback of every module, dropped beside the primaries as
-# `<crate>_bg.nosimd.wasm`. The web packages pick between them at runtime, so
-# enabling `simd128` does not raise the browser floor. Roughly doubles WASM
-# build time; `build-debug-all` and `build-dev-all` skip it.
-[tasks.build-rust-wasm-fallback]
-description = "Build the non-SIMD fallback .wasm for every module"
-command = "node"
-args = ["scripts/build-wasm-fallback.mjs"]
-
-# Dev and debug builds do not rebuild the non-SIMD fallback — that would double
-# an already slow watch loop. But the fallback URL is a *static* `?url` import,
-# so the file must exist for Vite to resolve it at all. Copy the SIMD build into
-# its place instead: the import resolves, the binary always pairs with the glue
-# just generated beside it, and a non-SIMD runtime hitting a dev server fails at
-# instantiation the way it would with no fallback at all. Leaving a stale
-# fallback from an earlier `build-all` would be the dangerous option — it loads,
-# then misbehaves against mismatched bindings.
+# Only publishable builds carry the non-SIMD fallback. `build-all` builds it and
+# generates a selector that reaches for it; dev and debug builds generate a
+# SIMD-only selector instead, so they skip the second cargo build entirely and
+# leave no reference to a binary they did not produce.
 #
-# Only `build-all` produces a real fallback, and only that output is published.
-[tasks.stub-wasm-fallback]
-description = "Point the fallback at the SIMD build (dev/debug only; not publishable)"
-script = ['''
-#!/usr/bin/env bash
-set -euo pipefail
-for pair in \
-    "navara_engine/navara_wasm" \
-    "navara_engine_worker/navara_wasm_worker" \
-    "navara_font_worker/navara_wasm_font_worker" \
-    "navara_engine_api/navara_wasm_api"; do
-    src="web/wasm/${pair}_bg.wasm"
-    if [ -f "$src" ]; then cp "$src" "web/wasm/${pair}_bg.nosimd.wasm"; fi
-done
-echo "dev build: non-SIMD fallbacks are copies of the SIMD build (not publishable)"
-''']
+# The selector has to be generated for exactly this reason: any static reference
+# to the fallback would force the file to exist in every build.
+[tasks.build-rust-wasm-fallback]
+description = "Build the non-SIMD fallback .wasm for every module (release)"
+command = "node"
+args = ["scripts/build-wasm-fallback.mjs", "--mode", "release"]
 
-[tasks.stub-wasm-fallback.windows]
-script = ['''
-for %%P in (navara_engine\navara_wasm navara_engine_worker\navara_wasm_worker navara_font_worker\navara_wasm_font_worker navara_engine_api\navara_wasm_api) do @copy /Y "web\wasm\%%P_bg.wasm" "web\wasm\%%P_bg.nosimd.wasm" >nul 2>&1
-''']
+[tasks.write-wasm-selector]
+description = "Generate each package's auto.js (SIMD with non-SIMD fallback)"
+command = "node"
+args = ["scripts/write-wasm-selector.mjs"]
+
+[tasks.write-wasm-selector-simd-only]
+description = "Generate each package's auto.js (SIMD only; dev/debug builds)"
+command = "node"
+args = ["scripts/write-wasm-selector.mjs", "--none"]
 
 [tasks.build-debug-rust-all-wasm]
 script = ['''

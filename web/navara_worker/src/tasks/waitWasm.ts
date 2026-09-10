@@ -1,14 +1,12 @@
-import { wasmInitInput } from "@navaramap/core";
-import init, { type InitOutput } from "@navaramap/engine-worker";
-// Non-SIMD build of the same module, loaded only when this runtime lacks
-// `simd128`. Detection has to happen here, inside the worker: the main thread's
-// result does not travel with the module.
-import fallbackUrl from "@navaramap/engine-worker/navara_wasm_worker_bg.nosimd.wasm?url";
+import { type InitOutput } from "@navaramap/engine-worker";
+// Generated selector. The probe runs here, inside the worker: a worker loads
+// its own WASM and the main thread's detection result does not travel with it.
+import init from "@navaramap/engine-worker/auto";
 
 let WASM: Promise<InitOutput> | undefined;
 
 export async function waitWasm(): Promise<InitOutput> {
-  WASM ??= init(wasmInitInput(fallbackUrl));
+  WASM ??= init();
   return WASM;
 }
 

@@ -21,53 +21,105 @@ is `f32`-only so `bevy_math` never reaches it.
 
 ## How the dual build works
 
-Every module is built twice. `cargo make build-all` runs the normal SIMD build,
-then `scripts/build-wasm-fallback.mjs` rebuilds the same crates without
-`simd128` into a separate `--target-dir` and drops each result beside its
-primary:
+Only **publishable** builds carry the fallback. `cargo make build-all` runs the
+normal SIMD build, then `scripts/build-wasm-fallback.mjs` rebuilds the same
+crates without `simd128` into a separate `--target-dir` and drops each result
+beside its primary:
 
 ```
 web/wasm/navara_engine/navara_wasm_bg.wasm          # simd128
 web/wasm/navara_engine/navara_wasm_bg.nosimd.wasm   # fallback
+web/wasm/navara_engine/auto.js                      # generated selector
 ```
 
-**One JS glue serves both.** `wasm-bindgen` generates its bindings from the Rust
-API surface, not from codegen flags, so the two glues are byte-identical. The
-fallback script asserts that on every build and fails loudly if it ever stops
-being true — pairing a fallback binary with mismatched bindings would be a
-miserable bug to chase.
+| Build                                | Fallback built | Selector generated    |
+| ------------------------------------ | -------------- | --------------------- |
+| `build-all` (publish, deploy)        | **yes**        | probes, can fall back |
+| `build-debug-all` (`cargo make web`) | no             | SIMD only             |
+| `build-dev-all`                      | no             | SIMD only             |
 
-At startup each entry point probes for SIMD and hands `init()` the fallback URL
-when it is missing:
+Dev builds skip the second cargo build entirely — a no-op `build-debug-all` runs
+in ~6s — and delete any fallback left behind by an earlier `build-all`, so the
+package never contains a binary nothing references.
 
-```ts
-import { wasmInitInput } from "@navaramap/core";
-import fallbackUrl from "@navaramap/engine/navara_wasm_bg.nosimd.wasm?url";
+**Which browser a build must support is not knowable at build time.** One
+deployed bundle serves Safari 15 and Safari 17 at once, so a publishable build
+has to contain both binaries and choose per visitor. What _is_ knowable is what
+a build is _for_: a dev server serves one known browser, so it needs only the
+SIMD build.
 
-await initCore(wasmInitInput(fallbackUrl));
+### Why the selector is generated
+
+`scripts/write-wasm-selector.mjs` writes an `auto.js` into each package. That
+indirection is what makes the table above possible.
+
+Any _static_ reference to the fallback — `import ... ?url`, or a `new URL()` a
+bundler can analyse — forces the file to exist in **every** build, because the
+bundler resolves it at transform time regardless of what the running browser
+supports. Generating the module lets the SIMD-only variant simply not mention
+the file:
+
+```js
+// build-all: probes, falls back
+export default function initAuto(moduleOrPath) {
+  if (moduleOrPath !== undefined) return init(moduleOrPath);
+  return init(
+    hasSimd()
+      ? undefined
+      : { module_or_path: new URL("./navara_wasm_bg.nosimd.wasm", import.meta.url) },
+  );
+}
+
+// dev build: nothing to select between, nothing to resolve
+export { default } from "./navara_wasm.js";
 ```
 
-`wasmInitInput` returns `undefined` when SIMD is present, so `init()` resolves
-its own default URL and the primary loads unchanged.
+The probe is inlined rather than imported so the published packages stay
+dependency-free, and it lives inside the package so the URL resolves against
+the binaries beside it.
 
-There are **five** such call sites, and all of them matter:
+**One JS glue serves both binaries.** `wasm-bindgen` generates its bindings from
+the Rust API surface, not from codegen flags, so the two glues are byte-identical.
+The fallback script asserts that on every build and fails loudly otherwise —
+pairing a fallback with mismatched bindings would be a miserable bug to chase.
+The most common trigger is a mode mismatch: a stray `cargo make web` watch loop
+overwriting `web/wasm/` with a debug build while a release fallback is being
+built.
 
-| Context     | File                                      | Module             |
-| ----------- | ----------------------------------------- | ------------------ |
-| Main thread | `web/navara_three/src/index.ts`           | engine             |
-| Main thread | `web/navara_three_api/src/index.ts`       | engine-api         |
-| Main thread | `web/navara_font/src/cssFontFamily.ts`    | engine-api         |
-| Tile worker | `web/navara_worker/src/tasks/waitWasm.ts` | engine-worker      |
-| Font worker | `web/navara_font/src/fontWorker.ts`       | engine-font-worker |
+### Call sites
 
-**Each worker must probe for itself.** A worker loads its own `.wasm`, and the
-main thread's detection result does not travel with it. Missing a worker is the
-easy mistake: the page would work while the worker fails to instantiate, and a
-worker's failure does not reject `view.init()`.
+Consumers just call `init()`; the selector does the rest.
 
-Costs: WASM build time roughly doubles (`build-debug-all` and `build-dev-all`
-skip the fallback), and the published packages carry ~11 MB of extra raw
-artifacts that are only ever downloaded by runtimes without SIMD.
+| Context     | File                                      | Imports from                         |
+| ----------- | ----------------------------------------- | ------------------------------------ |
+| Main thread | `web/navara_three/src/index.ts`           | `@navaramap/engine/auto`             |
+| Main thread | `web/navara_three_api/src/index.ts`       | `@navaramap/engine-api/auto`         |
+| Main thread | `web/navara_font/src/cssFontFamily.ts`    | `@navaramap/engine-api/auto`         |
+| Tile worker | `web/navara_worker/src/tasks/waitWasm.ts` | `@navaramap/engine-worker/auto`      |
+| Font worker | `web/navara_font/src/fontWorker.ts`       | `@navaramap/engine-font-worker/auto` |
+
+**Each worker probes for itself.** A worker loads its own `.wasm`, and the main
+thread's result does not travel with it. Missing a worker is the easy mistake:
+the page would work while the worker fails to instantiate, and a worker's
+failure does not reject `view.init()`.
+
+### Incremental rebuilds
+
+`wasm-bindgen` and `wasm-opt` do not rebuild incrementally the way cargo does,
+so the fallback script stamps what each artifact was built from and skips
+modules that cannot have changed. `--only <crate,...>` narrows it further.
+
+| Situation                             | Result               |
+| ------------------------------------- | -------------------- |
+| Nothing changed                       | 0 rebuilt — **0.3s** |
+| One crate touched, used by one module | 1 rebuilt, 3 skipped |
+| One crate touched, shared by all      | 4 rebuilt (~44s)     |
+
+The two inputs are fingerprinted differently, and the difference matters:
+cargo's output by size and mtime (it only rewrites on real change, and
+dev-profile binaries run to hundreds of MB — too big to hash every build), the
+glue by content hash (`bindgen-all` rewrites all four glue files every build,
+so mtime there would never match and the skip would never fire).
 
 ### Verifying it
 
