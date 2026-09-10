@@ -1,0 +1,160 @@
+{
+  "label": "Azərbaycan",
+  "short": "AZ",
+  "htmlLang": "az",
+  "meta": {
+    "title": "Navara, açıq mənbəli 3D xəritə mühərriki",
+    "description": "Navara genişləndirmə imkanları zəngin olan 3D xəritə mühərrikidir. Peyk təsvirləri və relyefdən tutmuş 3D şəhər modelləri və vektor məlumatlarına qədər GIS məlumatlarını yükləyin, sonra öz vizuallaşdırmalarınızı onların üzərinə qatlarla əlavə edin."
+  },
+  "nav": {
+    "docs": "Sənədlər",
+    "examples": "Nümunələr",
+    "github": "GitHub"
+  },
+  "hero": {
+    "posterAlt": "Orbitdən 3D qlobusa enişi göstərən Navara tanıtım videosu",
+    "fullscreen": "Videonu tam ekranda oynat",
+    "play": "Videonu oynat",
+    "mediaAttributionLabel": "Məlumatların müəlliflik qeydləri"
+  },
+  "intro": {
+    "h1Html": "Gözəl qlobus,<br /><span>mürəkkəblik olmadan.</span>",
+    "h1Sub": null,
+    "copyHtml": "Navara <b>genişləndirmə imkanları zəngin olan 3D xəritə mühərrikidir</b>. Peyk təsvirləri və relyefdən tutmuş 3D şəhər modelləri və vektor məlumatlarına qədər müxtəlif GIS məlumatlarını yükləyin, sonra öz vizuallaşdırmalarınızı onların üzərinə sərbəst şəkildə qatlarla əlavə edin. Deklarativ üslubla başlayın, plaginlərlə qabaqcıl funksiyalar əlavə edin və tətbiqinizin ehtiyaclarına uyğun xüsusi təsvirlərlə daha irəli gedin.",
+    "ctaExamples": "Nümunələri sınayın",
+    "ctaDocs": "Sənədləri oxuyun",
+    "gettingStarted": "Başlanğıc bələdçisi"
+  },
+  "why": {
+    "eyebrow": "Niyə Navara",
+    "h2Html": "Mürəkkəb olanı sadə<br />və <mark>gözəl</mark> edin.",
+    "values": [
+      {
+        "title": "Dərhal yüksək keyfiyyət",
+        "desc": "Cəmi bir neçə sətir kodla gözəl səhnələr yaradın."
+      },
+      {
+        "title": "İdarəetmə sizin əlinizdədir",
+        "desc": "Çoxsaylı effektləri ən kiçik detalına qədər tənzimləyin."
+      },
+      {
+        "title": "Genişləndirmək yalnız başlanğıcdır",
+        "desc": "Öz vizuallaşdırmalarınızı yaratmaq, genişləndirmək və yenidən istifadə etmək üçün çevik təməl."
+      },
+      {
+        "title": "Uzunmüddətli istifadə üçün qurulub",
+        "desc": "Rust və WebAssembly üzərində qurulan, vizuallaşdırma mühərrikindən asılı olmayan arxitektura. WebGPU və yerli platforma dəstəyi planlaşdırılır."
+      }
+    ],
+    "apiLede": {
+      "title": "Deklarativ və genişləndirilə bilən.",
+      "sub": "Plaginlər, API-lər və şeyderlərlə istədiyiniz kimi genişləndirin."
+    },
+    "apiSegments": [
+      {
+        "label": "Deklarativ",
+        "scene": "3D kafellər, relyef və əsas xəritəni deklarativ şəkildə əlavə edin.",
+        "desc": "GIS məlumatlarını vizuallaşdırmaq üçün qatları və materialları konfiqurasiya obyektləri kimi bəyan edin."
+      },
+      {
+        "label": "Plagin",
+        "scene": "Atmosfer, günəş, buludlar və kölgələri bir dəfəyə əlavə etmək üçün DefaultPlugin plaginindən istifadə edin.",
+        "desc": "Xüsusi məqsədlər üçün hazırlanmış funksiyaları asanlıqla plagin kimi əlavə edin və mürəkkəb funksionallıqdan yenidən istifadə edin."
+      },
+      {
+        "label": "API",
+        "scene": "Hər bina ölçülmüş hündürlüyünə görə qiymətləndirilir və hər coğrafi obyekt ayrıca rənglənir.",
+        "desc": "Coğrafi obyektlərin qiymətləndirilməsini, seçilməsini, geodeziya əməliyyatlarını və kameranı çevik idarə edin."
+      },
+      {
+        "label": "Şeyder",
+        "scene": "Gecə görünüşü əlavə etmək üçün FogLight şeyderindən istifadə edin.",
+        "desc": "Öz şeyder və effektləriniz üçün Three.js kitabxanasının imkanlarına tam çıxış."
+      }
+    ],
+    "mediaAttributionLabel": "Məlumatların müəlliflik qeydləri"
+  },
+  "hello": {
+    "eyebrow": "Salam, dünya",
+    "h2": "Bir neçə sətir kodla qlobus.",
+    "cta": "Başlanğıc bələdçisini izləyin",
+    "mediaAttributionLabel": "Məlumatların müəlliflik qeydləri"
+  },
+  "arch": {
+    "eyebrow": "Arxitektura",
+    "h2Html": "<mark>Qrafik interfeyssiz GIS nüvəsi</mark>,<br />vizuallaşdırma mühərrikindən asılı deyil.",
+    "sourceTitle": "Rust / WASM",
+    "sourceSub": "Məlumatların təhlili, həndəsənin qurulması və daha çoxu",
+    "renderTitle": "Three.js və daha çoxu",
+    "renderSub": "Həndəsə vizuallaşdırma mühərriki ilə çəkilir",
+    "diagramAlt": "Arxitektura diaqramı: Rust / WASM məlumatları təhlil edir və həndəsəni qurur. Nəticəni bu gün Three.js çəkir, gələcəkdə isə digər mühərriklərdə və yerli platformalarda da çəkmək mümkün olacaq."
+  },
+  "gallery": {
+    "eyebrow": "Qalereya",
+    "h2": "Tablo kimi görünən GIS.",
+    "tutorial": {
+      "label": "Dərsliklər"
+    },
+    "example": {
+      "label": "Nümunələr"
+    },
+    "showcase": {
+      "label": "Layihələr"
+    },
+    "mediaAttributionLabel": "Məlumatların müəlliflik qeydləri"
+  },
+  "maplibre": {
+    "eyebrow": "Açıq mənbə, MapLibre ailəsi",
+    "h2": "Üslublarınızı və kafellərinizi birbaşa 3D-yə daşıyın.",
+    "copy": "MapLibre açıq mənbə icması ilə birlikdə müasir veb xəritəçiliyini formalaşdırıb. Navara da açıq mənbəlidir (MIT / Apache-2.0) və bu xəritəçiliyi 3D-yə genişləndirir.",
+    "items": [
+      "MapLibre üslublarını dəstəkləyir (MapLibre üslub plagini hazırlanır), beləliklə mövcud MapLibre resurslarınızdan olduğu kimi yenidən istifadə edə bilərsiniz.",
+      "Yeni nəsil MapLibre kafel (MLT) formatına dəstək planlaşdırılır."
+    ],
+    "roadmap": "Yol xəritəsinə baxın",
+    "mediaAttributionLabel": "Məlumatların müəlliflik qeydləri"
+  },
+  "outro": {
+    "h2": "Navara ilə yaratmağa başlayın.",
+    "ctaPrimary": "Başlayın",
+    "ctaSecondary": "Nümunələri sınayın",
+    "mediaAttributionLabel": "Məlumatların müəlliflik qeydləri"
+  },
+  "footer": {
+    "docs": "Sənədlər",
+    "github": "GitHub",
+    "discord": "Discord",
+    "credit": "Navara · MIT / Apache-2.0"
+  },
+  "imageAlts": {
+    "hero": "Əsas təsvir: Navara ilə çəkilmiş qlobus",
+    "why-tier-1": "Kağız kimi ağ əsas xəritə üzərində deklarativ üslubla göstərilən PLATEAU binaları və relyef",
+    "why-tier-2": "Plagin vasitəsilə fotoreal atmosfer əlavə edilmiş eyni səhnə",
+    "why-tier-3": "Məkan əməliyyatları ilə ölçülmüş hündürlüklərinə görə rənglənmiş binalar",
+    "why-tier-4": "Xüsusi şeyderlə gecəyə çevrilmiş, duman işıqları ilə işıqlandırılan eyni səhnə",
+    "hello-result": "Çəkilmiş nəticədə NASA Blue Marble təsvirləri üzərində fotoreal atmosferlə əhatələnmiş qlobus görünür",
+    "outro-bg": "glow-globe nümunəsi şəhər işıqları ilə işıqlandırılan gecə qlobusunu çəkir",
+    "tutorial-wide": "Realistik atmosfer",
+    "tutorial-left": "Qövs xətlərinin vizuallaşdırılması",
+    "tutorial-right": "Daxili məkanın kəşfi",
+    "example-row1-left": "Atmosfer",
+    "example-row1-right": "Buludlar",
+    "example-row2-left": "Hündürlük istilik xəritəsi",
+    "example-row2-center": "Yağış və qar",
+    "example-row2-right": "Günəş və günün vaxtı",
+    "example-row3-left": "Mətn etiketləri",
+    "example-row3-right": "Suda əksolunmalar (SSR)",
+    "example-row4-left": "Coğrafi obyektlərin rəngləri",
+    "example-row4-center-left": "Seçici parıltı",
+    "example-row4-center-right": "Qauss ləkələri",
+    "example-row4-right": "Duman işığı",
+    "showcase-1": "Sumida çayında atəşfəşanlıq - 3D simulyasiya",
+    "showcase-2": "Yaponiyanın mövsümi cəbhələri",
+    "showcase-3": "Pax Atlas",
+    "showcase-4": "Zəlzələnin nəbzi",
+    "showcase-5": "Cizgi üslubunda Navara",
+    "showcase-6": "Şincuku yeraltı dünyası - uşaq gözü ilə labirint",
+    "maplibre-logo": "MapLibre loqosu",
+    "maplibre-visual": "MapLibre üslubu ilə çəkilmiş xəritə"
+  }
+}
