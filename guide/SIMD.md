@@ -133,9 +133,25 @@ done
 
 To exercise the fallback path in a browser, note that no Chrome or V8 flag
 disables SIMD any more — it is unconditionally shipped. Force it at the module
-level instead, with a Vite `transform` that rewrites
-`WebAssembly.validate(SIMD_PROBE)` to `false` in `navara_core/src/wasm.ts`. That
-reaches the worker bundles too, which a Playwright `addInitScript` does not.
+level instead. The probe lives in the generated selectors — one `auto.js` per
+package under `web/wasm/` — so a Vite `transform` that rewrites its
+`WebAssembly.validate(SIMD_PROBE)` call to `false` reaches every module,
+including the worker bundles, which a Playwright `addInitScript` does not:
+
+```ts
+{
+  name: "force-nosimd",
+  transform(code, id) {
+    if (!id.endsWith("/auto.js")) return;
+    return code.replace("WebAssembly.validate(SIMD_PROBE)", "false");
+  },
+}
+```
+
+Build with `cargo make build-all` first. It is the only variant whose selectors
+contain the probe at all: `build-dev-all` and `build-debug-all` generate the
+SIMD-only selector, which re-exports `init` and has no fallback binary to
+reach for.
 
 Verified on 2026-09-10, `terrain/raster` in Chrome 152:
 

@@ -20,7 +20,7 @@ export default defineConfig((env) => {
       rollupOptions: {
         ...common.build.rollupOptions,
         external: [
-          ...(common.build.rollupOptions.external as string[]),
+          ...(common.build.rollupOptions.external as (string | RegExp)[]),
           "@navaramap/three",
           "@navaramap/core",
           "three",

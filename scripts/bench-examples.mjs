@@ -148,17 +148,68 @@ for (const variant of ["simd", "scalar"]) {
     variants[variant][pkg] = resolve(dir, `${crate}.js`);
   }
 }
-// A scalar build must contain no v128 opcode, and the SIMD build must contain some.
-// 0xfd is the SIMD prefix byte; checking the section bytes directly avoids a
-// wasm-dis dependency here.
+// Ask the artifact itself which target features it was built with, rather than
+// trusting that the RUSTFLAGS above reached the binary now filed under this
+// variant (a stale `target/example-bench` would otherwise time the same build
+// twice and report a dead heat). LLVM records them in a `target_features`
+// custom section that survives `wasm-opt` and wasm-bindgen, so no `wasm-dis`
+// dependency is needed. Returns null when the section is absent.
+function targetFeatures(file) {
+  const bytes = readFileSync(file);
+  let offset = 8; // magic + version
+  const leb = () => {
+    let result = 0;
+    let shift = 0;
+    let byte;
+    do {
+      byte = bytes[offset++];
+      result |= (byte & 0x7f) << shift;
+      shift += 7;
+    } while (byte & 0x80);
+    return result >>> 0;
+  };
+  while (offset < bytes.length) {
+    const id = bytes[offset++];
+    const size = leb();
+    const end = offset + size;
+    if (id === 0) {
+      const nameLength = leb();
+      if (bytes.toString("utf8", offset, offset + nameLength) === "target_features") {
+        offset += nameLength;
+        const count = leb();
+        const features = [];
+        for (let i = 0; i < count; i++) {
+          const prefix = String.fromCharCode(bytes[offset++]); // + - =
+          const length = leb();
+          features.push(prefix + bytes.toString("utf8", offset, offset + length));
+          offset += length;
+        }
+        return features;
+      }
+    }
+    offset = end;
+  }
+  return null;
+}
+
 for (const variant of ["simd", "scalar"]) {
-  const total = MODULES.reduce(
-    (n, [crate]) =>
-      n + readFileSync(resolve(out, variant, crate, `${crate}_bg.wasm`)).length,
-    0,
-  );
+  const wantSimd = variant === "simd";
+  let total = 0;
+  for (const [crate] of MODULES) {
+    const file = resolve(out, variant, crate, `${crate}_bg.wasm`);
+    const features = targetFeatures(file);
+    if (features === null)
+      throw new Error(`${file} has no target_features section; cannot verify the variant.`);
+    if (features.includes("+simd128") !== wantSimd)
+      throw new Error(
+        `${crate} under ${variant}/ ${wantSimd ? "lacks" : "has"} +simd128 ` +
+          `(${features.join(" ")}). The artifacts in ${out} do not match the ` +
+          `variant they are filed under — re-run with --build.`,
+      );
+    total += readFileSync(file).length;
+  }
   console.log(
-    `${variant}: ${MODULES.length} modules, ${(total / 1048576).toFixed(2)} MB raw`,
+    `${variant}: ${MODULES.length} modules, ${(total / 1048576).toFixed(2)} MB raw, simd128=${wantSimd}`,
   );
 }
 
@@ -183,10 +234,16 @@ async function startServer(name) {
     // alias change, which reloads the page in the middle of a measurement.
     cacheDir: resolve(out, `.vite-${name}`),
     resolve: {
-      alias: Object.entries(variants[name]).map(([find, replacement]) => ({
-        find,
-        replacement,
-      })),
+      // A string `find` matches the id and anything under it, so the bare
+      // package name would rewrite `@navaramap/engine-api/auto` into
+      // `<...>/navara_wasm_api.js/auto` and fail to resolve. Map the selector
+      // subpath explicitly, and before the root: this harness picks the
+      // variant by building it, so `/auto` has nothing left to select between
+      // and points at the same glue.
+      alias: Object.entries(variants[name]).flatMap(([find, replacement]) => [
+        { find: `${find}/auto`, replacement },
+        { find, replacement },
+      ]),
     },
     server: {
       host: "127.0.0.1",

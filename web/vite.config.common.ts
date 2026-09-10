@@ -84,6 +84,27 @@ export function assetFileNamesPreservingAssetsDir(assetInfo: {
     : "assets/[name]-[hash][extname]";
 }
 
+// The wasm-bindgen packages. Every library build must leave these external:
+// each keeps its instantiated `wasm` in a module-level variable, so a bundled
+// second copy of the glue is a second, independent singleton.
+export const WASM_PACKAGES = [
+  "@navaramap/engine",
+  "@navaramap/engine-worker",
+  "@navaramap/engine-font-worker",
+  "@navaramap/engine-api",
+] as const;
+
+// Rollup matches string `external` entries against the import id exactly, so
+// the bare package names above do not cover subpaths. Each package also
+// exposes `/auto` — the generated SIMD selector — and importing it is what
+// pulls the glue in: `init()` would initialize the bundled copy while every
+// binding imported from the external package kept reading an uninitialized
+// one. Match the subpaths too.
+export const wasmExternals: (string | RegExp)[] = [
+  ...WASM_PACKAGES,
+  new RegExp(`^(?:${WASM_PACKAGES.join("|")})/`),
+];
+
 function getPluginName(plugin: PluginOption): string | undefined {
   if (plugin && typeof plugin === "object" && "name" in plugin) {
     return plugin.name;
@@ -96,7 +117,7 @@ export function composePlugins(
   additionalPlugins: PluginOption[] = [],
 ): PluginOption[] {
   const basePlugins: PluginOption[] = [
-    watchPackages(["@navaramap/engine", "@navaramap/engine-worker", "@navaramap/engine-font-worker", "@navaramap/engine-api"]),
+    watchPackages([...WASM_PACKAGES]),
     noInlineWasm(),
     tsconfig(),
     dts({ bundleTypes: true, tsconfigPath: "./tsconfig.build.json" }),
@@ -132,7 +153,7 @@ export const commonConfig = (name: string, env: ConfigEnv) => ({
     outDir: "dist",
     emptyOutDir: true,
     rollupOptions: {
-      external: ["@navaramap/engine", "@navaramap/engine-worker", "@navaramap/engine-font-worker", "@navaramap/engine-api"],
+      external: wasmExternals,
     },
     watch:
       env.mode === "watch"
