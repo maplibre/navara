@@ -9,8 +9,8 @@
 # toolchain through RUSTC_BOOTSTRAP=1, so the shipped compiler stays a tested
 # stable release. Requires the rust-src component
 # (`rustup component add rust-src`). RUSTFLAGS overrides the target rustflags
-# in .cargo/config.toml, so the getrandom cfg must be repeated here. SIMD is off;
-# see guide/SIMD.md for the measurements behind that.
+# in .cargo/config.toml, so the getrandom cfg and `+simd128` must be repeated
+# here. See guide/SIMD.md for why SIMD is on and how the fallback is selected.
 # Panics in these builds trap immediately without a message; use
 # `cargo make build-debug` to diagnose panics with readable messages.
 [tasks.build-rust-all-wasm]
@@ -29,7 +29,7 @@ cargo build --release --target wasm32-unknown-unknown -Z build-std=std,panic_abo
 [tasks.build-rust-wasm-fallback]
 description = "Build the non-SIMD fallback .wasm for every module (release)"
 command = "node"
-args = ["scripts/build-wasm-fallback.mjs", "--mode", "release"]
+args = ["scripts/build-wasm-fallback.mjs"]
 
 [tasks.write-wasm-selector]
 description = "Generate each package's auto.js (SIMD with non-SIMD fallback)"

@@ -2,21 +2,17 @@
 //
 // The primary artifacts are built with `simd128` (see .cargo/config.toml). This
 // rebuilds the same crates without it and drops each result beside its primary
-// as `<crate>_bg.nosimd.wasm`. At runtime the web packages probe for SIMD and
-// hand the fallback URL to `init()` when it is missing, so the browser floor
-// stays where the rest of the WebAssembly features put it rather than being
-// raised to Safari 16.4 (see guide/SIMD.md).
+// as `<crate>_bg.nosimd.wasm`. `scripts/write-wasm-selector.mjs` then generates
+// the `auto.js` that picks between them at runtime, so enabling SIMD does not
+// raise the browser floor (see guide/SIMD.md).
 //
-// Every build mode produces a fallback, so the package always contains both
-// binaries. That matters beyond tidiness: the fallback URL is a *static* `?url`
-// import, so the file has to exist for the bundler to resolve it at all — a
-// mode that skipped it would fail to build, and one that faked it with a copy
-// would ship a SIMD binary under the fallback's name.
+//   node scripts/build-wasm-fallback.mjs
+//   node scripts/build-wasm-fallback.mjs --only navara_wasm_worker
 //
-//   node scripts/build-wasm-fallback.mjs --mode release|debug|dev
-//
-// Each mode mirrors the flags of its counterpart in makes/rust.toml, minus
-// `+simd128`, so the fallback is a like-for-like twin of the primary beside it.
+// Only publishable builds run this — `cargo make build-all`. Dev and debug
+// builds generate a SIMD-only selector instead and skip it entirely. The flags
+// below mirror [tasks.build-rust-all-wasm] in makes/rust.toml, minus `+simd128`,
+// so the fallback is a like-for-like twin of the primary beside it.
 //
 // Both builds go through wasm-bindgen, which generates the JS glue from the
 // Rust API surface — not from codegen flags — so the two glues are identical
@@ -53,59 +49,12 @@ const MODULES = [
 ];
 
 const TARGET_DIR = "target/wasm-nosimd";
-
-const modeArg = process.argv.indexOf("--mode");
-const MODE = modeArg === -1 ? "release" : process.argv[modeArg + 1];
-
-/**
- * Per-mode counterpart of the primary build. `cargo` holds the flags that
- * differ from `makes/rust.toml` only by the missing `+simd128`; `profileDir` is
- * where cargo leaves the artifacts; `optimize` and `keepDebug` mirror what the
- * matching bindgen task does.
- */
-const MODES = {
-  // [tasks.build-rust-all-wasm] + [tasks.bindgen-*]
-  release: {
-    cargo: ["--release", "-Z", "build-std=std,panic_abort"],
-    rustflags:
-      '--cfg getrandom_backend="wasm_js" -Zlocation-detail=none -Zunstable-options -Cpanic=immediate-abort',
-    bootstrap: true,
-    profileDir: "release",
-    optimize: true,
-    keepDebug: false,
-  },
-  // [tasks.build-debug-rust-all-wasm] + [tasks.bindgen-*]
-  debug: {
-    cargo: ["--release", "--features", "debug"],
-    rustflags: '--cfg getrandom_backend="wasm_js"',
-    bootstrap: false,
-    profileDir: "release",
-    optimize: true,
-    keepDebug: false,
-  },
-  // [tasks.build-dev-rust-all-wasm] + [tasks.bindgen-dev-*]
-  dev: {
-    cargo: ["--features", "debug"],
-    rustflags: '--cfg getrandom_backend="wasm_js"',
-    bootstrap: false,
-    profileDir: "debug",
-    optimize: false,
-    keepDebug: true,
-  },
-};
+const OUT = `${TARGET_DIR}/wasm32-unknown-unknown/release`;
 
 const onlyArg = process.argv.indexOf("--only");
 /** Restrict to a comma-separated list of crates, e.g. --only navara_wasm_worker. */
 const ONLY =
   onlyArg === -1 ? null : new Set(process.argv[onlyArg + 1].split(","));
-
-const config = MODES[MODE];
-if (!config) {
-  throw new Error(
-    `Unknown --mode ${MODE}. Expected one of: ${Object.keys(MODES).join(", ")}`,
-  );
-}
-const OUT = `${TARGET_DIR}/wasm32-unknown-unknown/${config.profileDir}`;
 
 function run(program, args, env) {
   const result = spawnSync(program, args, {
@@ -121,16 +70,19 @@ run(
   "cargo",
   [
     "build",
+    "--release",
     "--target",
     "wasm32-unknown-unknown",
     "--target-dir",
     TARGET_DIR,
-    ...config.cargo,
+    "-Z",
+    "build-std=std,panic_abort",
     ...MODULES.flatMap(([crate]) => ["-p", crate]),
   ],
   {
-    ...(config.bootstrap ? { RUSTC_BOOTSTRAP: "1" } : {}),
-    RUSTFLAGS: config.rustflags,
+    RUSTC_BOOTSTRAP: "1",
+    RUSTFLAGS:
+      '--cfg getrandom_backend="wasm_js" -Zlocation-detail=none -Zunstable-options -Cpanic=immediate-abort',
   },
 );
 
@@ -153,7 +105,7 @@ try {
 }
 // The two inputs need different treatment. Cargo rewrites its output only when
 // the content changed, so size+mtime is both cheap and accurate there — and the
-// dev-profile binaries are hundreds of MB, too big to hash on every build.
+// binaries run to several MB, needlessly slow to hash on every build.
 // wasm-bindgen, by contrast, rewrites all four glue files on every primary
 // build even when nothing changed, so mtime there would never match and the
 // skip would never fire; hash its (~600 KB) output instead.
@@ -172,7 +124,7 @@ for (const [crate, pkg] of MODULES) {
 
   const shipped = resolve(root, "web/wasm", pkg, `${crate}.js`);
   const dest = resolve(root, "web/wasm", pkg, `${crate}_bg.nosimd.wasm`);
-  const key = `${MODE}:${crate}`;
+  const key = crate;
   const stamp = fingerprint(`${OUT}/${crate}.wasm`, shipped);
   if (stamps[key] === stamp && existsSync(dest)) {
     skipped++;
@@ -189,7 +141,6 @@ for (const [crate, pkg] of MODULES) {
       staging,
       "--target",
       "web",
-      ...(config.keepDebug ? ["--keep-debug"] : []),
     ]);
 
     // The shipped glue must work for both binaries; see the note above.
@@ -197,16 +148,15 @@ for (const [crate, pkg] of MODULES) {
     if (!readFileSync(shipped).equals(readFileSync(fallback))) {
       throw new Error(
         `${crate}: wasm-bindgen glue differs between the SIMD and non-SIMD builds.\n` +
-          `Most often this means the two were built in different modes — this run is ` +
-          `--mode ${MODE}, so ${pkg}/${crate}.js must come from the matching primary ` +
-          `build (a stray 'cargo make web' watch loop will overwrite it with a debug ` +
-          `build). If the modes do match, the Rust API surface has diverged: ship the ` +
-          `fallback's glue too, or drop the fallback for this module.`,
+          `Most often ${pkg}/${crate}.js is not from the matching release build — a ` +
+          `stray 'cargo make web' watch loop overwrites it with a debug build. If it ` +
+          `is, the Rust API surface has diverged: ship the fallback's glue too, or ` +
+          `drop the fallback for this module.`,
       );
     }
 
     const staged = resolve(staging, `${crate}_bg.wasm`);
-    if (config.optimize && hasWasmOpt) {
+    if (hasWasmOpt) {
       run("wasm-opt", [
         "-Oz",
         "--strip-debug",
@@ -231,7 +181,7 @@ for (const [crate, pkg] of MODULES) {
 }
 writeFileSync(STAMPS, JSON.stringify(stamps, null, 2) + "\n");
 console.log(
-  `\n${MODE}: ${built} rebuilt, ${skipped} up to date — ` +
+  `\n${built} rebuilt, ${skipped} up to date — ` +
     `${total.toLocaleString()} bytes of fallback artifacts ` +
     `(served only to runtimes without SIMD)`,
 );

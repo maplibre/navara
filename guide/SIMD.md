@@ -625,19 +625,24 @@ And it is not free in size (gzip-9, engine): `-Oz` 1,668,644 to `-O4` 1,689,488,
 
 ## Worker-only `opt-level = 3`, measured in a browser
 
-A `release-worker-speed` profile in the root `Cargo.toml` raises the optimization
-level for the geometry worker only, where the size cost is smallest and the CPU
-work is concentrated:
+Raising `opt-level` to 3 for the geometry worker only — where the size cost is
+smallest and the CPU work is concentrated — was measured and is recorded here as
+a lead. **The profile and its build tasks have been removed**: they were opt-in,
+nothing invoked them, and they predated the fallback. Left in place they would
+have been a trap — `build-worker-speed` regenerates the worker's JS glue from a
+different `opt-level`, which (unlike a SIMD/scalar difference) _does_ change the
+glue, leaving the fallback binary paired with bindings it was not built against.
 
-```sh
-cargo make build-worker-speed          # build and install the profile
-```
+To pursue this, re-add a profile inheriting `release` with `opt-level = 3` for
+`navara_wasm_worker`, and make sure the fallback **and** the selector are
+regenerated after the worker is swapped. Measure with
+`scripts/bench-examples.mjs`.
 
-Measured with a dedicated harness (since removed — `scripts/bench-examples.mjs`
-uses the same technique on real pages and supersedes it): headless Chrome, a
-synthetic GSI DEM served to every tile request, a fixed camera over Fuji, the
-two profiles alternating across 7 rounds each with a fresh browser context per
-round, timing each worker task through a wrapped `Worker.postMessage`.
+The numbers below come from a dedicated harness (since removed): headless
+Chrome, a synthetic GSI DEM served to every tile request, a fixed camera over
+Fuji, the two profiles alternating across 7 rounds each with a fresh browser
+context per round, timing each worker task through a wrapped
+`Worker.postMessage`.
 
 Chrome 152, 960x640, 2026-09-09. Median ms per worker task:
 

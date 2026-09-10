@@ -1,9 +1,10 @@
 // Measure real example pages in a real browser with WebAssembly SIMD on and off.
 //
-// Everything else in scripts/bench-terrain-simd.mjs is a synthetic microbenchmark
-// in Node. This one loads the shipped example pages in headless Chrome, swaps only
-// the four `.wasm` artifacts between runs, and times the actual worker tasks the
-// engine dispatches.
+// Loads the shipped example pages in headless Chrome, swaps only the four
+// `.wasm` artifacts between runs, and times the actual worker tasks the engine
+// dispatches. Unlike a synthetic microbenchmark this exercises the code paths
+// production really uses — which is how it showed that SIMD changes nothing
+// measurable (see guide/SIMD.md).
 //
 //   node scripts/bench-examples.mjs --build          # build both variants first
 //   node scripts/bench-examples.mjs                  # reuse target/example-bench
@@ -17,7 +18,12 @@ import { createRequire } from "node:module";
 import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import {
-  copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync,
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  readdirSync,
+  writeFileSync,
 } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -44,10 +50,19 @@ const PORT = Number(flag("port", "4180"));
 
 // CPU-heavy paths worth separating. Each is a demo URL under /demo/.
 const EXAMPLES = [
-  { id: "terrain/raster", why: "raster-DEM terrain: Martini + constructTerrainMesh" },
+  {
+    id: "terrain/raster",
+    why: "raster-DEM terrain: Martini + constructTerrainMesh",
+  },
   { id: "terrain/quantized-mesh", why: "quantized-mesh terrain decode" },
-  { id: "basemap/vector-map", why: "MVT parse + polygon/polyline batching + labels" },
-  { id: "tiles-3d/buildings", why: "3D tiles, glTF parsing, quantized-mesh terrain" },
+  {
+    id: "basemap/vector-map",
+    why: "MVT parse + polygon/polyline batching + labels",
+  },
+  {
+    id: "tiles-3d/buildings",
+    why: "3D tiles, glTF parsing, quantized-mesh terrain",
+  },
   { id: "gis/text", why: "label layout and the font worker" },
 ].filter((e) => !flag("only", null) || e.id === flag("only", null));
 
@@ -62,7 +77,11 @@ const MODULES = [
 ];
 
 function run(program, args, env) {
-  const r = spawnSync(program, args, { cwd: root, stdio: "inherit", env: { ...process.env, ...env } });
+  const r = spawnSync(program, args, {
+    cwd: root,
+    stdio: "inherit",
+    env: { ...process.env, ...env },
+  });
   if (r.error) throw r.error;
   if (r.status !== 0) throw new Error(`${program} exited ${r.status}`);
 }
@@ -72,25 +91,46 @@ function run(program, args, env) {
 // feature differs; everything else matches makes/rust.toml.
 // ---------------------------------------------------------------------------
 if (has("build")) {
-  for (const [variant, feature] of [["simd", "+simd128"], ["scalar", "-simd128"]]) {
+  for (const [variant, feature] of [
+    ["simd", "+simd128"],
+    ["scalar", "-simd128"],
+  ]) {
     console.log(`\n=== building ${variant} ===`);
-    run("cargo", [
-      "build", "--release", "--target", "wasm32-unknown-unknown",
-      "-Z", "build-std=std,panic_abort",
-      ...MODULES.flatMap(([crate]) => ["-p", crate]),
-    ], {
-      RUSTC_BOOTSTRAP: "1",
-      RUSTFLAGS: `--cfg getrandom_backend="wasm_js" -Ctarget-feature=${feature} -Zlocation-detail=none -Zunstable-options -Cpanic=immediate-abort`,
-    });
+    run(
+      "cargo",
+      [
+        "build",
+        "--release",
+        "--target",
+        "wasm32-unknown-unknown",
+        "-Z",
+        "build-std=std,panic_abort",
+        ...MODULES.flatMap(([crate]) => ["-p", crate]),
+      ],
+      {
+        RUSTC_BOOTSTRAP: "1",
+        RUSTFLAGS: `--cfg getrandom_backend="wasm_js" -Ctarget-feature=${feature} -Zlocation-detail=none -Zunstable-options -Cpanic=immediate-abort`,
+      },
+    );
     for (const [crate] of MODULES) {
       const dir = resolve(out, variant, crate);
       mkdirSync(dir, { recursive: true });
       run("wasm-bindgen", [
         `target/wasm32-unknown-unknown/release/${crate}.wasm`,
-        "--out-dir", dir, "--target", "web",
+        "--out-dir",
+        dir,
+        "--target",
+        "web",
       ]);
       const wasm = resolve(dir, `${crate}_bg.wasm`);
-      run("wasm-opt", ["-Oz", "--strip-debug", "--strip-producers", wasm, "-o", wasm]);
+      run("wasm-opt", [
+        "-Oz",
+        "--strip-debug",
+        "--strip-producers",
+        wasm,
+        "-o",
+        wasm,
+      ]);
     }
   }
 }
@@ -102,7 +142,8 @@ for (const variant of ["simd", "scalar"]) {
   for (const [crate, pkg] of MODULES) {
     const dir = resolve(out, variant, crate);
     const wasm = resolve(dir, `${crate}_bg.wasm`);
-    if (!existsSync(wasm)) throw new Error(`Missing ${wasm}. Run with --build first.`);
+    if (!existsSync(wasm))
+      throw new Error(`Missing ${wasm}. Run with --build first.`);
     // wasm-bindgen writes `<crate>.js` beside the binary; that is the package entry.
     variants[variant][pkg] = resolve(dir, `${crate}.js`);
   }
@@ -112,8 +153,13 @@ for (const variant of ["simd", "scalar"]) {
 // wasm-dis dependency here.
 for (const variant of ["simd", "scalar"]) {
   const total = MODULES.reduce(
-    (n, [crate]) => n + readFileSync(resolve(out, variant, crate, `${crate}_bg.wasm`)).length, 0);
-  console.log(`${variant}: ${MODULES.length} modules, ${(total / 1048576).toFixed(2)} MB raw`);
+    (n, [crate]) =>
+      n + readFileSync(resolve(out, variant, crate, `${crate}_bg.wasm`)).length,
+    0,
+  );
+  console.log(
+    `${variant}: ${MODULES.length} modules, ${(total / 1048576).toFixed(2)} MB raw`,
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -137,18 +183,30 @@ async function startServer(name) {
     // alias change, which reloads the page in the middle of a measurement.
     cacheDir: resolve(out, `.vite-${name}`),
     resolve: {
-      alias: Object.entries(variants[name]).map(([find, replacement]) => ({ find, replacement })),
+      alias: Object.entries(variants[name]).map(([find, replacement]) => ({
+        find,
+        replacement,
+      })),
     },
-    server: { host: "127.0.0.1", port: PORT, strictPort: true, open: false, hmr: false },
-    plugins: [{
-      name: "example-bench-verify",
-      configureServer(s) {
-        s.middlewares.use((req, _res, next) => {
-          if ((req.url ?? "").includes(`example-bench/${name}/`)) servedFromVariant++;
-          next();
-        });
+    server: {
+      host: "127.0.0.1",
+      port: PORT,
+      strictPort: true,
+      open: false,
+      hmr: false,
+    },
+    plugins: [
+      {
+        name: "example-bench-verify",
+        configureServer(s) {
+          s.middlewares.use((req, _res, next) => {
+            if ((req.url ?? "").includes(`example-bench/${name}/`))
+              servedFromVariant++;
+            next();
+          });
+        },
       },
-    }],
+    ],
   });
   await server.listen();
   return server;
@@ -158,7 +216,12 @@ async function startServer(name) {
 // Instrumentation injected before any page script runs.
 // ---------------------------------------------------------------------------
 const instrument = () => {
-  window.__bench = { tasks: [], frames: [], lastTaskAt: 0, started: performance.now() };
+  window.__bench = {
+    tasks: [],
+    frames: [],
+    lastTaskAt: 0,
+    started: performance.now(),
+  };
   const Native = window.Worker;
   window.Worker = class extends Native {
     constructor(...args) {
@@ -174,7 +237,11 @@ const instrument = () => {
       });
     }
     postMessage(message, ...rest) {
-      if (message?.method) this.__pending.set(message.id, { method: message.method, start: performance.now() });
+      if (message?.method)
+        this.__pending.set(message.id, {
+          method: message.method,
+          start: performance.now(),
+        });
       return super.postMessage(message, ...rest);
     }
   };
@@ -191,7 +258,8 @@ const instrument = () => {
 // ---------------------------------------------------------------------------
 // Tile record/replay so every variant sees identical bytes.
 // ---------------------------------------------------------------------------
-const cachePath = (url) => resolve(tileCache, createHash("sha1").update(url).digest("hex"));
+const cachePath = (url) =>
+  resolve(tileCache, createHash("sha1").update(url).digest("hex"));
 let recorded = 0;
 let replayed = 0;
 
@@ -202,31 +270,57 @@ async function installTileCache(page) {
     // so swallow it and let the request die quietly.
     try {
       const url = route.request().url();
-      if (url.startsWith(`http://127.0.0.1:${PORT}`)) return await route.continue();
+      if (url.startsWith(`http://127.0.0.1:${PORT}`))
+        return await route.continue();
       const file = cachePath(url);
       if (existsSync(file)) {
         replayed++;
         const meta = JSON.parse(readFileSync(`${file}.json`, "utf8"));
-        return await route.fulfill({ status: meta.status, headers: meta.headers, body: readFileSync(file) });
+        return await route.fulfill({
+          status: meta.status,
+          headers: meta.headers,
+          body: readFileSync(file),
+        });
       }
       const response = await route.fetch();
       const body = await response.body();
       writeFileSync(file, body);
-      writeFileSync(`${file}.json`, JSON.stringify({
-        status: response.status(),
-        headers: { "content-type": response.headers()["content-type"] ?? "application/octet-stream" },
-      }));
+      writeFileSync(
+        `${file}.json`,
+        JSON.stringify({
+          status: response.status(),
+          headers: {
+            "content-type":
+              response.headers()["content-type"] ?? "application/octet-stream",
+          },
+        }),
+      );
       recorded++;
-      return await route.fulfill({ status: response.status(), headers: response.headers(), body });
+      return await route.fulfill({
+        status: response.status(),
+        headers: response.headers(),
+        body,
+      });
     } catch {
-      try { await route.abort(); } catch { /* page already gone */ }
+      try {
+        await route.abort();
+      } catch {
+        /* page already gone */
+      }
     }
   });
 }
 
-const median = (a) => { if (!a.length) return null; const s = [...a].sort((x, y) => x - y); return s[Math.floor(s.length / 2)]; };
+const median = (a) => {
+  if (!a.length) return null;
+  const s = [...a].sort((x, y) => x - y);
+  return s[Math.floor(s.length / 2)];
+};
 
-const browser = await chromium.launch({ headless: !has("headed"), channel: "chrome" });
+const browser = await chromium.launch({
+  headless: !has("headed"),
+  channel: "chrome",
+});
 const rows = [];
 try {
   // Round -1 is unmeasured: it records tiles and warms Vite's transform cache.
@@ -237,39 +331,64 @@ try {
       const server = await startServer(name);
       try {
         for (const example of EXAMPLES) {
-          const context = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+          const context = await browser.newContext({
+            viewport: { width: 1280, height: 800 },
+          });
           await context.addInitScript(instrument);
           const page = await context.newPage();
           await installTileCache(page);
           const errors = [];
           let timedOut = false;
           page.on("pageerror", (e) => errors.push(e.message));
-          page.on("console", (m) => { if (m.type() === "error") errors.push(m.text()); });
+          page.on("console", (m) => {
+            if (m.type() === "error") errors.push(m.text());
+          });
 
-          await page.goto(`http://127.0.0.1:${PORT}/demo/${example.id}.html`, { waitUntil: "load" });
+          await page.goto(`http://127.0.0.1:${PORT}/demo/${example.id}.html`, {
+            waitUntil: "load",
+          });
           // Settled = the engine stopped dispatching worker tasks.
-          await page.waitForFunction(
-            (quiet) => {
-              const b = window.__bench;
-              return b && b.tasks.length > 0 && performance.now() - b.lastTaskAt > quiet;
-            },
-            QUIET_MS,
-            { timeout: MAX_MS },
-          ).catch(() => { timedOut = true; });
+          await page
+            .waitForFunction(
+              (quiet) => {
+                const b = window.__bench;
+                return (
+                  b &&
+                  b.tasks.length > 0 &&
+                  performance.now() - b.lastTaskAt > quiet
+                );
+              },
+              QUIET_MS,
+              { timeout: MAX_MS },
+            )
+            .catch(() => {
+              timedOut = true;
+            });
 
           const state = await page.evaluate(() => ({
-            tasks: window.__bench.tasks, frames: window.__bench.frames,
+            tasks: window.__bench.tasks,
+            frames: window.__bench.frames,
           }));
           if (round === 0 && name === "simd") {
-            await page.screenshot({ path: resolve(out, `${example.id.replace(/\//g, "-")}.png`) });
+            await page.screenshot({
+              path: resolve(out, `${example.id.replace(/\//g, "-")}.png`),
+            });
           }
           if (round >= 0) {
-            rows.push({ example: example.id, variant: name, round, tasks: state.tasks, frames: state.frames, errors: errors.slice(0, 3) });
+            rows.push({
+              example: example.id,
+              variant: name,
+              round,
+              tasks: state.tasks,
+              frames: state.frames,
+              errors: errors.slice(0, 3),
+            });
             process.stdout.write(
               `  ${example.id.padEnd(26)} ${name.padEnd(7)} round ${round}: ` +
-              `${String(state.tasks.length).padStart(4)} worker tasks` +
-              `${timedOut ? "  [timeout]" : ""}` +
-              `${errors.length ? `  ERRORS: ${errors[0].slice(0, 120)}` : ""}\n`);
+                `${String(state.tasks.length).padStart(4)} worker tasks` +
+                `${timedOut ? "  [timeout]" : ""}` +
+                `${errors.length ? `  ERRORS: ${errors[0].slice(0, 120)}` : ""}\n`,
+            );
           }
           await context.close();
         }
@@ -278,14 +397,19 @@ try {
       }
       // Proves the alias took effect; without it both runs would silently use
       // whatever is in web/wasm and the comparison would be meaningless.
-      if (!servedFromVariant) throw new Error(`variant "${name}" was never served — alias did not apply`);
+      if (!servedFromVariant)
+        throw new Error(
+          `variant "${name}" was never served — alias did not apply`,
+        );
     }
   }
 } finally {
   await browser.close();
 }
 
-console.log(`\ntiles: ${recorded} recorded, ${replayed} replayed from ${tileCache}\n`);
+console.log(
+  `\ntiles: ${recorded} recorded, ${replayed} replayed from ${tileCache}\n`,
+);
 
 // ---------------------------------------------------------------------------
 // Report: per example, per worker method, median ms across all rounds.
@@ -295,7 +419,7 @@ for (const example of EXAMPLES) {
   const bucket = {};
   for (const row of rows.filter((r) => r.example === example.id)) {
     for (const t of row.tasks) {
-      ((bucket[t.method] ??= { simd: [], scalar: [] })[row.variant]).push(t.ms);
+      (bucket[t.method] ??= { simd: [], scalar: [] })[row.variant].push(t.ms);
     }
   }
   const methods = Object.entries(bucket)
@@ -313,19 +437,37 @@ for (const example of EXAMPLES) {
   report.push({ example: example.id, why: example.why, methods });
 
   console.log(`\n### ${example.id} — ${example.why}`);
-  if (!methods.length) { console.log("  (no worker tasks recorded)"); continue; }
-  console.table(methods.map((m) => ({
-    "worker task": m.method,
-    "scalar ms": m.scalarMs.toFixed(2),
-    "simd ms": m.simdMs.toFixed(2),
-    "delta": `${m.deltaPct >= 0 ? "+" : ""}${m.deltaPct.toFixed(1)}%`,
-    "cpu/run scalar ms": m.totalScalarMs.toFixed(0),
-    "cpu/run simd ms": m.totalSimdMs.toFixed(0),
-    "n": m.samples,
-  })));
+  if (!methods.length) {
+    console.log("  (no worker tasks recorded)");
+    continue;
+  }
+  console.table(
+    methods.map((m) => ({
+      "worker task": m.method,
+      "scalar ms": m.scalarMs.toFixed(2),
+      "simd ms": m.simdMs.toFixed(2),
+      delta: `${m.deltaPct >= 0 ? "+" : ""}${m.deltaPct.toFixed(1)}%`,
+      "cpu/run scalar ms": m.totalScalarMs.toFixed(0),
+      "cpu/run simd ms": m.totalSimdMs.toFixed(0),
+      n: m.samples,
+    })),
+  );
 }
 
-writeFileSync(resolve(out, "results.json"), JSON.stringify({
-  rounds: ROUNDS, examples: EXAMPLES, report, rows: rows.map(({ frames, ...r }) => ({ ...r, frameCount: frames.length })),
-}, null, 2) + "\n");
+writeFileSync(
+  resolve(out, "results.json"),
+  JSON.stringify(
+    {
+      rounds: ROUNDS,
+      examples: EXAMPLES,
+      report,
+      rows: rows.map(({ frames, ...r }) => ({
+        ...r,
+        frameCount: frames.length,
+      })),
+    },
+    null,
+    2,
+  ) + "\n",
+);
 console.log(`\nResults: ${out}/results.json`);
