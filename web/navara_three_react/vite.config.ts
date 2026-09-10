@@ -12,7 +12,7 @@ export default defineConfig((env) => {
         ...(common.build?.rollupOptions ?? {}),
         external: [
           ...(Array.isArray(common.build?.rollupOptions?.external)
-            ? (common.build?.rollupOptions?.external as (string | RegExp)[])
+            ? (common.build?.rollupOptions?.external as string[])
             : []),
           "react",
           "react-dom",

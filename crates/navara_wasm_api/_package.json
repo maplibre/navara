@@ -13,10 +13,7 @@
   },
   "files": [
     "navara_wasm_api_bg.wasm",
-    "navara_wasm_api_bg.nosimd.wasm",
     "navara_wasm_api.js",
-    "auto.js",
-    "auto.d.ts",
     "navara_wasm_api.d.ts"
   ],
   "main": "navara_wasm_api.js",

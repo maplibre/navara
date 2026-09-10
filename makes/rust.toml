@@ -10,7 +10,7 @@
 # stable release. Requires the rust-src component
 # (`rustup component add rust-src`). RUSTFLAGS overrides the target rustflags
 # in .cargo/config.toml, so the getrandom cfg and `+simd128` must be repeated
-# here. See guide/SIMD.md for why SIMD is on and how the fallback is selected.
+# here. See guide/SIMD.md for the measurements behind enabling SIMD.
 # Panics in these builds trap immediately without a message; use
 # `cargo make build-debug` to diagnose panics with readable messages.
 [tasks.build-rust-all-wasm]
@@ -18,28 +18,6 @@ env = { RUSTC_BOOTSTRAP = "1", RUSTFLAGS = '--cfg getrandom_backend="wasm_js" -C
 script = ['''
 cargo build --release --target wasm32-unknown-unknown -Z build-std=std,panic_abort -p navara_wasm -p navara_wasm_worker -p navara_wasm_font_worker -p navara_wasm_api
 ''']
-
-# Only publishable builds carry the non-SIMD fallback. `build-all` builds it and
-# generates a selector that reaches for it; dev and debug builds generate a
-# SIMD-only selector instead, so they skip the second cargo build entirely and
-# leave no reference to a binary they did not produce.
-#
-# The selector has to be generated for exactly this reason: any static reference
-# to the fallback would force the file to exist in every build.
-[tasks.build-rust-wasm-fallback]
-description = "Build the non-SIMD fallback .wasm for every module (release)"
-command = "node"
-args = ["scripts/build-wasm-fallback.mjs"]
-
-[tasks.write-wasm-selector]
-description = "Generate each package's auto.js (SIMD with non-SIMD fallback)"
-command = "node"
-args = ["scripts/write-wasm-selector.mjs"]
-
-[tasks.write-wasm-selector-simd-only]
-description = "Generate each package's auto.js (SIMD only; dev/debug builds)"
-command = "node"
-args = ["scripts/write-wasm-selector.mjs", "--none"]
 
 [tasks.build-debug-rust-all-wasm]
 script = ['''

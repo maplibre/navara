@@ -1,5 +1,5 @@
 import type { LatLngHeight, Window as WindowObject } from "@navaramap/core";
-import {
+import initApi, {
   Window,
   LLE,
   Vec3,
@@ -23,7 +23,6 @@ import {
   getWGS84Flattening as nvGetWGS84Flattening,
   getWGS84Eccentricity as nvGetWGS84Eccentricity,
 } from "@navaramap/engine-api";
-import initApi from "@navaramap/engine-api/auto";
 import { Vector3, Vector2, Matrix4, PerspectiveCamera } from "three";
 
 import {

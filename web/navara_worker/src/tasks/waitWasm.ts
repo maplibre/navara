@@ -1,7 +1,4 @@
-import type { InitOutput } from "@navaramap/engine-worker";
-// Generated selector. The probe runs here, inside the worker: a worker loads
-// its own WASM and the main thread's detection result does not travel with it.
-import init from "@navaramap/engine-worker/auto";
+import init, { type InitOutput } from "@navaramap/engine-worker";
 
 let WASM: Promise<InitOutput> | undefined;
 

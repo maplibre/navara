@@ -9,7 +9,7 @@ import type {
   LatLngHeight,
   LatLng,
 } from "@navaramap/core";
-import {
+import initCore, {
   Core,
   CameraDirection,
   DynamicSse as EngineDynamicSse,
@@ -17,9 +17,6 @@ import {
   type TerrainHeightUpdatedEvent,
   type TextureFragmentStatus,
 } from "@navaramap/engine";
-// Generated selector: instantiates the SIMD build, or the non-SIMD fallback
-// when the runtime cannot load it. Publishable builds ship both binaries.
-import initCore from "@navaramap/engine/auto";
 import {
   FontManager,
   type FontFamily,

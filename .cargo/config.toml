@@ -1,6 +1,5 @@
 [target.wasm32-unknown-unknown]
-# `simd128` is enabled for the primary artifacts. A non-SIMD fallback of every
-# module is built alongside them (`scripts/build-wasm-fallback.mjs`) and selected
-# at runtime, so this does not raise the browser floor. Keep makes/rust.toml in
-# sync: its RUSTFLAGS override this target configuration rather than merging.
+# `simd128` requires a SIMD-capable runtime (Safari 16.4+) and has no scalar
+# fallback. Keep makes/rust.toml in sync: its RUSTFLAGS override this target
+# configuration rather than merging with it. See guide/SIMD.md.
 rustflags = ['--cfg', 'getrandom_backend="wasm_js"', '-C', 'target-feature=+simd128']

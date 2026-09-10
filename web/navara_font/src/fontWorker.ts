@@ -1,6 +1,6 @@
 /// <reference lib="webworker" />
 
-import {
+import init, {
   type FontAtlas,
   FontCache,
   composite_key,
@@ -8,8 +8,6 @@ import {
   type WasmShapedGlyph,
   type WasmGlyphMetrics,
 } from "@navaramap/engine-font-worker";
-// See waitWasm.ts: each worker selects its own binary.
-import init from "@navaramap/engine-font-worker/auto";
 
 let fontCache: FontCache;
 /** WASM linear memory, kept from init() for heap-size reporting. */

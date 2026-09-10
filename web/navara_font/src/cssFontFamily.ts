@@ -1,8 +1,7 @@
-import {
+import initApi, {
   parseCssUnicodeRange as wasmParseCssUnicodeRange,
   parseFontFamilyFromCss as wasmParseFontFamilyFromCss,
 } from "@navaramap/engine-api";
-import initApi from "@navaramap/engine-api/auto";
 
 import type { FontFamily, UnicodeRange } from "./types";
 
