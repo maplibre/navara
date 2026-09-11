@@ -227,12 +227,6 @@ The engine supports comprehensive geospatial data formats:
 
 ### **Computational Optimizations**
 
-- **WebAssembly SIMD** - all WASM modules are built with `simd128`, which sets
-  the browser floor at Safari 16.4 and has no scalar fallback. It makes the
-  binaries ~2% smaller; measured three ways it produced no detectable speedup,
-  because Navara's geometry is `f64` transcendental math that WebAssembly SIMD
-  cannot vectorize. See [SIMD.md](SIMD.md) for the attribution, benchmarks and
-  the features that set the floor.
 - **Web Workers** - CPU-intensive tasks offloaded to background threads
 - **WASM Performance** - Core algorithms implemented in Rust
 - **Memory Management** - Efficient buffer pooling and zero-copy transfers

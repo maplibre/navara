@@ -84,11 +84,6 @@ export function assetFileNamesPreservingAssetsDir(assetInfo: {
     : "assets/[name]-[hash][extname]";
 }
 
-// The wasm-bindgen packages. Every library build must leave these external:
-// each keeps its instantiated `wasm` in a module-level variable, so a bundled
-// second copy of the glue would be a second, independent singleton.
-export const WASM_PACKAGES = ["@navaramap/engine", "@navaramap/engine-worker", "@navaramap/engine-font-worker", "@navaramap/engine-api"];
-
 function getPluginName(plugin: PluginOption): string | undefined {
   if (plugin && typeof plugin === "object" && "name" in plugin) {
     return plugin.name;
@@ -101,7 +96,7 @@ export function composePlugins(
   additionalPlugins: PluginOption[] = [],
 ): PluginOption[] {
   const basePlugins: PluginOption[] = [
-    watchPackages(WASM_PACKAGES),
+    watchPackages(["@navaramap/engine", "@navaramap/engine-worker", "@navaramap/engine-font-worker", "@navaramap/engine-api"]),
     noInlineWasm(),
     tsconfig(),
     dts({ bundleTypes: true, tsconfigPath: "./tsconfig.build.json" }),
@@ -137,7 +132,7 @@ export const commonConfig = (name: string, env: ConfigEnv) => ({
     outDir: "dist",
     emptyOutDir: true,
     rollupOptions: {
-      external: WASM_PACKAGES,
+      external: ["@navaramap/engine", "@navaramap/engine-worker", "@navaramap/engine-font-worker", "@navaramap/engine-api"],
     },
     watch:
       env.mode === "watch"

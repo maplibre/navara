@@ -1,5 +1,2 @@
 [target.wasm32-unknown-unknown]
-# `simd128` requires a SIMD-capable runtime (Safari 16.4+) and has no scalar
-# fallback. Keep makes/rust.toml in sync: its RUSTFLAGS override this target
-# configuration rather than merging with it. See guide/SIMD.md.
 rustflags = ['--cfg', 'getrandom_backend="wasm_js"', '-C', 'target-feature=+simd128']
