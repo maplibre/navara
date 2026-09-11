@@ -74,6 +74,22 @@ wasm-bindgen target/wasm32-unknown-unknown/debug/navara_wasm.wasm --out-dir web/
 REM Generate package.json for pnpm workspace
 copy /Y "crates\navara_wasm\_package.json" "web\wasm\navara_engine\package.json"
 ''']
+# Native compiler-vectorization tests, followed by the actual browser comparison.
+# Keep them sequential: compilation or another benchmark distorts frame timings.
+[tasks.bench-simd]
+description = "Compare native Rust vectorization and browser frame times"
+run_task = { name = ["bench-simd-native", "bench-simd-frames"], parallel = false }
+
+[tasks.bench-simd-native]
+description = "Time production Rust APIs in native mock workloads and inspect vectorized code"
+command = "node"
+args = ["scripts/bench-simd-native.mjs"]
+
+[tasks.bench-simd-frames]
+description = "Compare full update + render frame time with WASM SIMD off and on"
+command = "node"
+args = ["scripts/bench-examples.mjs", "--build", "--headed", "--rounds", "5"]
+
 # ============================================================================
 #                               SIZE REPORT
 # ============================================================================

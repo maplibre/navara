@@ -51,6 +51,13 @@ const MOVEMENT = new Set([
   "load64_splat",
   "load32_zero",
   "load64_zero",
+  "splat",
+  "extract_lane",
+  "extract_lane_s",
+  "extract_lane_u",
+  "replace_lane",
+  "shuffle",
+  "swizzle",
 ]);
 
 // Both rustc manglings prefix the symbol with the crate that defined the item.
@@ -77,10 +84,9 @@ async function analyze(path) {
     if (!current || !/(?:x16|x8|x4|x2|v128)\./.test(line)) continue;
     let total = 0;
     let math = 0;
-    for (const match of line.matchAll(LANE)) {
-      void match;
+    for (const [, op] of line.matchAll(LANE)) {
       total += 1;
-      math += 1;
+      if (!MOVEMENT.has(op)) math += 1;
     }
     for (const [, op] of line.matchAll(V128)) {
       total += 1;
@@ -119,7 +125,7 @@ for (const module of modules) {
   }
   console.log(
     `${module}: ${total} v128 instructions — ${math} lane math, ` +
-      `${total - math} load/store/const, across ${functions.size} functions`,
+      `${total - math} data movement, across ${functions.size} functions`,
   );
   if (!total) {
     console.log("");
@@ -132,7 +138,7 @@ for (const module of modules) {
       .map(([crate, entry]) => ({
         crate,
         laneMath: entry.math,
-        loadStoreConst: entry.total - entry.math,
+        dataMovement: entry.total - entry.math,
         functions: entry.functions,
       })),
   );

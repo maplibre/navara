@@ -1,19 +1,7 @@
-// Measure real example pages in a real browser with WebAssembly SIMD on and off.
-//
-// Loads the shipped example pages in headless Chrome, swaps only the four
-// `.wasm` artifacts between runs, and times the actual worker tasks the engine
-// dispatches. Unlike a synthetic microbenchmark this exercises the code paths
-// production really uses — which is how it showed that SIMD changes nothing
-// measurable (see guide/SIMD.md).
-//
-//   node scripts/bench-examples.mjs --build          # build both variants first
-//   node scripts/bench-examples.mjs                  # reuse target/example-bench
-//   node scripts/bench-examples.mjs --rounds 5 --only terrain/raster
-//   node scripts/bench-examples.mjs --headed         # watch it run
-//
-// Tile responses are recorded to target/example-bench/tiles on the first run and
-// replayed from disk afterwards, so every variant sees byte-identical input and
-// the numbers do not move with network weather. Delete that directory to refresh.
+// Compare complete example frame CPU time with WebAssembly SIMD off and on.
+// node scripts/bench-examples.mjs --build --headed --rounds 5
+// See guide/SIMD.md. All reported times are milliseconds; positive improvement
+// means SIMD was faster. --frames remains accepted for older commands.
 import { createRequire } from "node:module";
 import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
@@ -22,11 +10,13 @@ import {
   existsSync,
   mkdirSync,
   readFileSync,
-  readdirSync,
+  rmSync,
   writeFileSync,
 } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import os from "node:os";
+import { compare, comparisonRow, mean, percentile } from "./bench-stats.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const require = createRequire(resolve(root, "web/navara_three/package.json"));
@@ -37,34 +27,105 @@ const out = resolve(root, "target/example-bench");
 const tileCache = resolve(out, "tiles");
 mkdirSync(tileCache, { recursive: true });
 
+// Two runs at once corrupt each other: they share the per-variant Vite cache
+// dirs, so each invalidates the other's pre-bundled deps mid-measurement, and
+// they overwrite the same result files. The symptom is a page that reloads
+// while being measured, which surfaces as the variant-not-served check below.
+// Refuse to start instead.
+const LOCK = resolve(out, ".bench.lock");
+const alive = (pid) => {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+};
+if (existsSync(LOCK)) {
+  const owner = Number(readFileSync(LOCK, "utf8").trim());
+  if (alive(owner)) {
+    console.error(
+      `Another benchmark run is in progress (pid ${owner}).\n` +
+        `Wait for it, or stop it and delete ${LOCK}.`,
+    );
+    process.exit(1);
+  }
+  // Owner is gone — a previous run was killed before it could clean up.
+}
+writeFileSync(LOCK, String(process.pid));
+const releaseLock = () => {
+  try {
+    if (
+      existsSync(LOCK) &&
+      readFileSync(LOCK, "utf8").trim() === String(process.pid)
+    )
+      rmSync(LOCK);
+  } catch {
+    // Nothing useful to do while exiting.
+  }
+};
+process.on("exit", releaseLock);
+for (const signal of ["SIGINT", "SIGTERM"])
+  process.on(signal, () => {
+    releaseLock();
+    process.exit(130);
+  });
+
 const flag = (name, fallback) => {
   const i = process.argv.indexOf(`--${name}`);
   return i === -1 ? fallback : process.argv[i + 1];
 };
 const has = (name) => process.argv.includes(`--${name}`);
 
-const ROUNDS = Number(flag("rounds", "4"));
+const ROUNDS = Number(flag("rounds", "5"));
 const QUIET_MS = Number(flag("quiet", "2500")); // no worker task for this long = settled
-const MAX_MS = Number(flag("max", "45000"));
-const PORT = Number(flag("port", "4180"));
+const MAX_MS = Number(flag("max", "90000"));
+// 0 asks the OS for a free port, so a second run — or a `cargo make web` dev
+// server — cannot collide with this one. Pass --port to pin it.
+const PORT = Number(flag("port", "0"));
+/** Port the dev server actually bound to; set by `startServer`. */
+let activePort = PORT;
+// Every frame includes the complete engine update and render submission.
+const FRAME_WINDOW_MS = Number(flag("frame-window", "8000"));
+const WORKERS = Number(flag("workers", "4"));
+for (const [name, value] of Object.entries({
+  rounds: ROUNDS,
+  quiet: QUIET_MS,
+  max: MAX_MS,
+  "frame-window": FRAME_WINDOW_MS,
+  workers: WORKERS,
+})) {
+  if (!Number.isInteger(value) || value <= 0)
+    throw new Error(`--${name} must be a positive integer`);
+}
 
 // CPU-heavy paths worth separating. Each is a demo URL under /demo/.
-const EXAMPLES = [
-  {
-    id: "terrain/raster",
-    why: "raster-DEM terrain: Martini + constructTerrainMesh",
-  },
-  { id: "terrain/quantized-mesh", why: "quantized-mesh terrain decode" },
+const ALL_EXAMPLES = [
+  { id: "terrain/raster", why: "terrain and globe coordinate processing" },
   {
     id: "basemap/vector-map",
-    why: "MVT parse + polygon/polyline batching + labels",
+    why: "vector geometry, labels and tile visibility",
   },
-  {
-    id: "tiles-3d/buildings",
-    why: "3D tiles, glTF parsing, quantized-mesh terrain",
-  },
-  { id: "gis/text", why: "label layout and the font worker" },
-].filter((e) => !flag("only", null) || e.id === flag("only", null));
+  { id: "gis/text", why: "text transforms and label decluttering" },
+  { id: "terrain/quantized-mesh", why: "quantized-mesh terrain" },
+  { id: "tiles-3d/buildings", why: "model transforms and visibility" },
+];
+const only = flag("only", null);
+const selected = typeof only === "string" ? only.split(",") : [];
+if (
+  has("only") &&
+  (!selected.length ||
+    selected.some((id) => !ALL_EXAMPLES.some((e) => e.id === id)))
+) {
+  console.error(
+    `Invalid --only example: ${JSON.stringify(only) ?? "(missing value)"}.\n` +
+      `Choose one or comma-separated names: ${ALL_EXAMPLES.map((e) => e.id).join(", ")}`,
+  );
+  process.exit(1);
+}
+const EXAMPLES = has("only")
+  ? ALL_EXAMPLES.filter((e) => selected.includes(e.id))
+  : ALL_EXAMPLES.slice(0, 3);
 
 // crate -> the npm package name the web code imports. `vite-plugin-wasm` inlines
 // the `.wasm` into the JS glue in dev, so there is no `_bg.wasm` HTTP request to
@@ -115,6 +176,11 @@ if (has("build")) {
     for (const [crate] of MODULES) {
       const dir = resolve(out, variant, crate);
       mkdirSync(dir, { recursive: true });
+      // Preserve named Rust output for SIMD attribution before stripping names.
+      copyFileSync(
+        resolve(root, `target/wasm32-unknown-unknown/release/${crate}.wasm`),
+        resolve(out, variant, `${crate}.wasm`),
+      );
       run("wasm-bindgen", [
         `target/wasm32-unknown-unknown/release/${crate}.wasm`,
         "--out-dir",
@@ -174,14 +240,19 @@ function targetFeatures(file) {
     const end = offset + size;
     if (id === 0) {
       const nameLength = leb();
-      if (bytes.toString("utf8", offset, offset + nameLength) === "target_features") {
+      if (
+        bytes.toString("utf8", offset, offset + nameLength) ===
+        "target_features"
+      ) {
         offset += nameLength;
         const count = leb();
         const features = [];
         for (let i = 0; i < count; i++) {
           const prefix = String.fromCharCode(bytes[offset++]); // + - =
           const length = leb();
-          features.push(prefix + bytes.toString("utf8", offset, offset + length));
+          features.push(
+            prefix + bytes.toString("utf8", offset, offset + length),
+          );
           offset += length;
         }
         return features;
@@ -199,7 +270,9 @@ for (const variant of ["simd", "scalar"]) {
     const file = resolve(out, variant, crate, `${crate}_bg.wasm`);
     const features = targetFeatures(file);
     if (features === null)
-      throw new Error(`${file} has no target_features section; cannot verify the variant.`);
+      throw new Error(
+        `${file} has no target_features section; cannot verify the variant.`,
+      );
     if (features.includes("+simd128") !== wantSimd)
       throw new Error(
         `${crate} under ${variant}/ ${wantSimd ? "lacks" : "has"} +simd128 ` +
@@ -213,12 +286,15 @@ for (const variant of ["simd", "scalar"]) {
   );
 }
 
+if (has("build-only")) process.exit(0);
+
 // ---------------------------------------------------------------------------
-// Dev server. The middleware swaps the wasm bytes; everything else is the real
-// example app, served exactly as `cargo make web` would serve it.
+// Dev server. Aliases select matching WASM binaries and JS glue; everything else
+// is the real example app, served as `cargo make web` would serve it.
 // ---------------------------------------------------------------------------
-let variant = "simd";
 let servedFromVariant = 0;
+/** Requests served from each variant's directory, summed over the whole run. */
+const servedTotals = { simd: 0, scalar: 0 };
 
 // Vite resolves the four wasm packages through `resolve.alias`, so selecting a
 // variant means restarting the server with different alias targets. The
@@ -234,25 +310,60 @@ async function startServer(name) {
     // alias change, which reloads the page in the middle of a measurement.
     cacheDir: resolve(out, `.vite-${name}`),
     resolve: {
-      // A string `find` matches the id and anything under it, so the bare
-      // package name would rewrite `@navaramap/engine-api/auto` into
-      // `<...>/navara_wasm_api.js/auto` and fail to resolve. Map the selector
-      // subpath explicitly, and before the root: this harness picks the
-      // variant by building it, so `/auto` has nothing left to select between
-      // and points at the same glue.
-      alias: Object.entries(variants[name]).flatMap(([find, replacement]) => [
-        { find: `${find}/auto`, replacement },
-        { find, replacement },
-      ]),
+      alias: Object.entries(variants[name]).map(([find, replacement]) => ({
+        find,
+        replacement,
+      })),
     },
     server: {
       host: "127.0.0.1",
       port: PORT,
-      strictPort: true,
+      strictPort: PORT !== 0,
       open: false,
       hmr: false,
     },
     plugins: [
+      {
+        name: "example-bench-frames",
+        enforce: "pre",
+        transform(code, id) {
+          if (id.endsWith("navara_three/src/concurrency.ts")) {
+            const anchor = "Math.max(navigator.hardwareConcurrency, 1)";
+            if (!code.includes(anchor))
+              throw new Error("Worker-count instrumentation anchor moved");
+            return code.replace(anchor, String(WORKERS));
+          }
+          if (!id.endsWith("navara_three/src/index.ts")) return null;
+          const animation = "this._renderFlag.animation = !!options.animation;";
+          const begin = "      this._stats?.begin();";
+          const end = "      this._stats?.end();";
+          for (const anchor of [animation, begin, end]) {
+            if (code.split(anchor).length !== 2)
+              throw new Error("Frame instrumentation anchor moved");
+          }
+          return code
+            .replace(animation, "this._renderFlag.animation = true;")
+            .replace(
+              begin,
+              `
+              const __benchStart = performance.now();
+              ${begin}`,
+            )
+            .replace(
+              end,
+              `
+              ${end}
+              if (globalThis.__bench?.sampling) {
+                const b = globalThis.__bench;
+                const elapsed = performance.now() - __benchStart;
+                b.cpuMs.push(elapsed);
+                if (b.previousFrame !== null) b.intervalMs.push(time - b.previousFrame);
+                b.previousFrame = time;
+              }
+            `,
+            );
+        },
+      },
       {
         name: "example-bench-verify",
         configureServer(s) {
@@ -266,6 +377,7 @@ async function startServer(name) {
     ],
   });
   await server.listen();
+  activePort = server.httpServer.address().port;
   return server;
 }
 
@@ -274,42 +386,48 @@ async function startServer(name) {
 // ---------------------------------------------------------------------------
 const instrument = () => {
   window.__bench = {
-    tasks: [],
-    frames: [],
-    lastTaskAt: 0,
-    started: performance.now(),
+    tasks: 0,
+    pending: 0,
+    lastTaskAt: performance.now(),
+    sampling: false,
+    cpuMs: [],
+    intervalMs: [],
+    previousFrame: null,
   };
   const Native = window.Worker;
   window.Worker = class extends Native {
     constructor(...args) {
       super(...args);
-      this.__pending = new Map();
+      this.__pending = new Set();
       this.addEventListener("message", ({ data }) => {
-        const p = this.__pending.get(data?.id);
-        if (!p || data?.isEvent) return;
-        this.__pending.delete(data.id);
-        const ms = performance.now() - p.start;
-        window.__bench.tasks.push({ method: p.method, ms });
-        window.__bench.lastTaskAt = performance.now();
+        if (data?.isEvent || !this.__pending.delete(data?.id)) return;
+        const b = window.__bench;
+        b.pending--;
+        b.tasks++;
+        b.lastTaskAt = performance.now();
       });
     }
     postMessage(message, ...rest) {
-      if (message?.method)
-        this.__pending.set(message.id, {
-          method: message.method,
-          start: performance.now(),
-        });
+      // Memory telemetry is periodic and must not prevent settling.
+      const method = message?.method ?? message?.type;
+      if (
+        message?.id != null &&
+        method &&
+        !["getWasmMemoryUsage", "getMemoryStats"].includes(method) &&
+        !this.__pending.has(message.id)
+      ) {
+        this.__pending.add(message.id);
+        window.__bench.pending++;
+        window.__bench.lastTaskAt = performance.now();
+      }
       return super.postMessage(message, ...rest);
     }
+    terminate() {
+      window.__bench.pending -= this.__pending.size;
+      this.__pending.clear();
+      return super.terminate();
+    }
   };
-  let prev = performance.now();
-  const tick = () => {
-    const now = performance.now();
-    window.__bench.frames.push(now - prev);
-    prev = now;
-    requestAnimationFrame(tick);
-  };
-  requestAnimationFrame(tick);
 };
 
 // ---------------------------------------------------------------------------
@@ -320,19 +438,21 @@ const cachePath = (url) =>
 let recorded = 0;
 let replayed = 0;
 
-async function installTileCache(page) {
+async function installTileCache(page, errors) {
   await page.route("**/*", async (route) => {
     // A route can outlive its page: closing the context mid-flight disposes the
     // response and every call here throws. None of that is a measurement error,
     // so swallow it and let the request die quietly.
     try {
       const url = route.request().url();
-      if (url.startsWith(`http://127.0.0.1:${PORT}`))
+      if (url.startsWith(`http://127.0.0.1:${activePort}`))
         return await route.continue();
       const file = cachePath(url);
       if (existsSync(file)) {
         replayed++;
         const meta = JSON.parse(readFileSync(`${file}.json`, "utf8"));
+        if (meta.status < 200 || meta.status >= 300)
+          throw new Error(`Cached HTTP ${meta.status}: ${url}`);
         return await route.fulfill({
           status: meta.status,
           headers: meta.headers,
@@ -340,6 +460,7 @@ async function installTileCache(page) {
         });
       }
       const response = await route.fetch();
+      if (!response.ok()) throw new Error(`HTTP ${response.status()}: ${url}`);
       const body = await response.body();
       writeFileSync(file, body);
       writeFileSync(
@@ -358,7 +479,8 @@ async function installTileCache(page) {
         headers: response.headers(),
         body,
       });
-    } catch {
+    } catch (error) {
+      if (!page.isClosed()) errors.push(String(error));
       try {
         await route.abort();
       } catch {
@@ -368,163 +490,203 @@ async function installTileCache(page) {
   });
 }
 
-const median = (a) => {
-  if (!a.length) return null;
-  const s = [...a].sort((x, y) => x - y);
-  return s[Math.floor(s.length / 2)];
-};
-
 const browser = await chromium.launch({
   headless: !has("headed"),
   channel: "chrome",
 });
 const rows = [];
+const failures = [];
+console.log(
+  "Before = SIMD OFF; after = SIMD ON. Timing the complete update + render callback.",
+);
 try {
-  // Round -1 is unmeasured: it records tiles and warms Vite's transform cache.
+  // Warm each variant and record external assets before measured rounds.
   for (let round = -1; round < ROUNDS; round++) {
     for (const name of round % 2 ? ["scalar", "simd"] : ["simd", "scalar"]) {
-      variant = name;
       servedFromVariant = 0;
       const server = await startServer(name);
       try {
         for (const example of EXAMPLES) {
           const context = await browser.newContext({
             viewport: { width: 1280, height: 800 },
+            deviceScaleFactor: 1,
           });
-          await context.addInitScript(instrument);
-          const page = await context.newPage();
-          await installTileCache(page);
           const errors = [];
-          let timedOut = false;
-          page.on("pageerror", (e) => errors.push(e.message));
-          page.on("console", (m) => {
-            if (m.type() === "error") errors.push(m.text());
-          });
-
-          await page.goto(`http://127.0.0.1:${PORT}/demo/${example.id}.html`, {
-            waitUntil: "load",
-          });
-          // Settled = the engine stopped dispatching worker tasks.
-          await page
-            .waitForFunction(
+          try {
+            await context.addInitScript(instrument);
+            const page = await context.newPage();
+            page.on("pageerror", (e) => errors.push(e.message));
+            page.on("console", (m) => {
+              if (m.type() === "error") errors.push(m.text());
+            });
+            await installTileCache(page, errors);
+            await page.goto(
+              `http://127.0.0.1:${activePort}/demo/${example.id}.html`,
+              { waitUntil: "load" },
+            );
+            await page.waitForFunction(
               (quiet) => {
                 const b = window.__bench;
                 return (
                   b &&
-                  b.tasks.length > 0 &&
+                  b.tasks > 0 &&
+                  b.pending === 0 &&
                   performance.now() - b.lastTaskAt > quiet
                 );
               },
               QUIET_MS,
               { timeout: MAX_MS },
-            )
-            .catch(() => {
-              timedOut = true;
+            );
+            // Additional warmup for shaders/JIT after the worker queue settles.
+            await page.waitForTimeout(2000);
+            await page.evaluate(() => {
+              Object.assign(window.__bench, {
+                sampling: true,
+                cpuMs: [],
+                intervalMs: [],
+                previousFrame: null,
+              });
             });
-
-          const state = await page.evaluate(() => ({
-            tasks: window.__bench.tasks,
-            frames: window.__bench.frames,
-          }));
-          if (round === 0 && name === "simd") {
-            await page.screenshot({
-              path: resolve(out, `${example.id.replace(/\//g, "-")}.png`),
+            await page.waitForTimeout(FRAME_WINDOW_MS);
+            const state = await page.evaluate(() => {
+              window.__bench.sampling = false;
+              return window.__bench;
             });
-          }
-          if (round >= 0) {
-            rows.push({
+            if (errors.length) throw new Error(errors.slice(0, 3).join("; "));
+            if (state.cpuMs.length < 60 || state.intervalMs.length < 59)
+              throw new Error("Too few frames");
+            if (round === 0)
+              await page.screenshot({
+                path: resolve(
+                  out,
+                  `${example.id.replaceAll("/", "-")}-${name}.png`,
+                ),
+              });
+            if (round >= 0)
+              rows.push({
+                example: example.id,
+                variant: name,
+                round,
+                cpuMs: state.cpuMs,
+                intervalMs: state.intervalMs,
+                tasks: state.tasks,
+              });
+            console.log(
+              `  ${example.id} | SIMD ${name === "simd" ? "ON " : "OFF"} | ${round < 0 ? "warmup" : `round ${round + 1}/${ROUNDS}`} | ` +
+                `frame CPU ${mean(state.cpuMs).toFixed(3)} ms | frame interval ${mean(state.intervalMs).toFixed(3)} ms | ${state.cpuMs.length} frames`,
+            );
+          } catch (error) {
+            failures.push({
               example: example.id,
               variant: name,
               round,
-              tasks: state.tasks,
-              frames: state.frames,
-              errors: errors.slice(0, 3),
+              error: String(error),
             });
-            process.stdout.write(
-              `  ${example.id.padEnd(26)} ${name.padEnd(7)} round ${round}: ` +
-                `${String(state.tasks.length).padStart(4)} worker tasks` +
-                `${timedOut ? "  [timeout]" : ""}` +
-                `${errors.length ? `  ERRORS: ${errors[0].slice(0, 120)}` : ""}\n`,
+            console.error(
+              `  FAILED ${example.id} ${name} round ${round + 1}: ${String(error).split("\n")[0]}`,
             );
+          } finally {
+            await context.close();
           }
-          await context.close();
         }
       } finally {
         await server.close();
       }
-      // Proves the alias took effect; without it both runs would silently use
-      // whatever is in web/wasm and the comparison would be meaningless.
-      if (!servedFromVariant)
-        throw new Error(
-          `variant "${name}" was never served — alias did not apply`,
-        );
+      servedTotals[name] += servedFromVariant;
     }
   }
 } finally {
   await browser.close();
 }
 
-console.log(
-  `\ntiles: ${recorded} recorded, ${replayed} replayed from ${tileCache}\n`,
-);
-
-// ---------------------------------------------------------------------------
-// Report: per example, per worker method, median ms across all rounds.
-// ---------------------------------------------------------------------------
 const report = [];
 for (const example of EXAMPLES) {
-  const bucket = {};
-  for (const row of rows.filter((r) => r.example === example.id)) {
-    for (const t of row.tasks) {
-      (bucket[t.method] ??= { simd: [], scalar: [] })[row.variant].push(t.ms);
-    }
-  }
-  const methods = Object.entries(bucket)
-    .filter(([, v]) => v.simd.length && v.scalar.length)
-    .map(([method, v]) => ({
-      method,
-      scalarMs: median(v.scalar),
-      simdMs: median(v.simd),
-      deltaPct: (median(v.simd) / median(v.scalar) - 1) * 100,
-      samples: `${v.scalar.length}/${v.simd.length}`,
-      totalScalarMs: v.scalar.reduce((a, b) => a + b, 0) / ROUNDS,
-      totalSimdMs: v.simd.reduce((a, b) => a + b, 0) / ROUNDS,
-    }))
-    .sort((a, b) => b.totalScalarMs - a.totalScalarMs);
-  report.push({ example: example.id, why: example.why, methods });
-
-  console.log(`\n### ${example.id} — ${example.why}`);
-  if (!methods.length) {
-    console.log("  (no worker tasks recorded)");
+  const samples = (variant) =>
+    rows
+      .filter((r) => r.example === example.id && r.variant === variant)
+      .sort((a, b) => a.round - b.round);
+  const before = samples("scalar");
+  const after = samples("simd");
+  if (
+    before.length !== ROUNDS ||
+    after.length !== ROUNDS ||
+    !servedTotals.scalar ||
+    !servedTotals.simd
+  )
     continue;
-  }
-  console.table(
-    methods.map((m) => ({
-      "worker task": m.method,
-      "scalar ms": m.scalarMs.toFixed(2),
-      "simd ms": m.simdMs.toFixed(2),
-      delta: `${m.deltaPct >= 0 ? "+" : ""}${m.deltaPct.toFixed(1)}%`,
-      "cpu/run scalar ms": m.totalScalarMs.toFixed(0),
-      "cpu/run simd ms": m.totalSimdMs.toFixed(0),
-      n: m.samples,
-    })),
-  );
+  report.push({
+    example: example.id,
+    why: example.why,
+    cpu: compare(
+      before.map((r) => mean(r.cpuMs)),
+      after.map((r) => mean(r.cpuMs)),
+    ),
+    cpuP95: compare(
+      before.map((r) => percentile(r.cpuMs, 95)),
+      after.map((r) => percentile(r.cpuMs, 95)),
+    ),
+    interval: compare(
+      before.map((r) => mean(r.intervalMs)),
+      after.map((r) => mean(r.intervalMs)),
+    ),
+  });
 }
-
+console.log(
+  "\nComplete frame CPU time: update + render submission (ms, lower is better).",
+);
+console.log(
+  "Before = SIMD OFF; after = SIMD ON; positive improvement = faster.",
+);
+console.table(report.map((r) => comparisonRow(r.example, r.cpu)));
+console.log(
+  "\nFrame interval: includes GPU/scheduling/vsync waits; not isolated GPU execution time (ms).",
+);
+console.table(report.map((r) => comparisonRow(r.example, r.interval)));
 writeFileSync(
-  resolve(out, "results.json"),
+  resolve(out, "frames.json"),
   JSON.stringify(
     {
+      date: new Date().toISOString(),
+      cpu: os.cpus()[0].model,
+      browser: browser.version(),
+      platform: `${os.platform()} ${os.release()} ${os.arch()}`,
+      artifactHashes: Object.fromEntries(
+        ["scalar", "simd"].map((variant) => [
+          variant,
+          Object.fromEntries(
+            MODULES.map(([crate]) => [
+              crate,
+              createHash("sha256")
+                .update(
+                  readFileSync(
+                    resolve(out, variant, crate, `${crate}_bg.wasm`),
+                  ),
+                )
+                .digest("hex"),
+            ]),
+          ),
+        ]),
+      ),
+      viewport: { width: 1280, height: 800, deviceScaleFactor: 1 },
+      headed: has("headed"),
+      workerPoolSize: WORKERS,
       rounds: ROUNDS,
-      examples: EXAMPLES,
+      frameWindowMs: FRAME_WINDOW_MS,
+      servedTotals,
+      recorded,
+      replayed,
       report,
-      rows: rows.map(({ frames, ...r }) => ({
-        ...r,
-        frameCount: frames.length,
-      })),
+      failures,
+      rows,
     },
     null,
     2,
   ) + "\n",
 );
-console.log(`\nResults: ${out}/results.json`);
+console.log(`\nResults: ${out}/frames.json`);
+if (report.length !== EXAMPLES.length) {
+  console.error(
+    "Incomplete measurements: failed examples were excluded; inspect failures in frames.json.",
+  );
+  process.exitCode = 1;
+}

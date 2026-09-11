@@ -161,15 +161,31 @@ swaps only the four `.wasm` artifacts between runs, and times each worker task
 the engine dispatches:
 
 ```sh
-node scripts/bench-examples.mjs --build              # build both variants first
-node scripts/bench-examples.mjs --rounds 8 --only basemap/vector-map
-node scripts/bench-examples.mjs --headed             # watch it run
+cargo make bench-simd                                # the full comparison
 ```
 
-Tile responses are recorded to `target/example-bench/tiles` on the first run and
-replayed afterwards, so both variants see byte-identical input. The harness
-aborts if the variant swap never applied — without that guard both runs would
-silently load the same build.
+That is `scripts/bench-examples.mjs --build --frames --rounds 5`. The script
+also takes:
+
+| Flag                  | Effect                                             |
+| --------------------- | -------------------------------------------------- |
+| `--build`             | build both variants first (needed on a clean tree) |
+| `--frames`            | also measure main-thread frame time (see below)    |
+| `--rounds <n>`        | rounds per variant, alternating order (default 4)  |
+| `--only <example>`    | one example, e.g. `--only terrain/raster`          |
+| `--frame-window <ms>` | frame sampling window after settle (default 8000)  |
+| `--headed`            | watch it run                                       |
+| `--port <n>`          | pin the dev-server port (default: a free one)      |
+
+Results land in `target/example-bench/results.json` (worker tasks) and
+`frames.json` (frame time). Only one run at a time: they share the per-variant
+Vite cache dirs, so a second run invalidates the first's pre-bundled deps
+mid-measurement. A lockfile enforces this — a second run exits with the owning
+pid rather than corrupting both. Tile responses are recorded to
+`target/example-bench/tiles` on the first run and replayed afterwards, so both
+variants see byte-identical input; delete that directory to refresh. The
+harness aborts if the variant swap never applied — without that guard both runs
+would silently load the same build.
 
 Chrome 152, 8 rounds per variant, alternating order. CPU ms per page load:
 
