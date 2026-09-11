@@ -220,7 +220,7 @@ import { Color } from "@navaramap/three";
 
 **Type:** `number | undefined`
 
-**Description:** 発光の強度を指定します。Bloom エフェクトが有効な場合のデフォルト値は 0.3 です。
+**Description:** 発光の強度を指定します。
 
 **Default:** `undefined`
 
