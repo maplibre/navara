@@ -81,7 +81,7 @@ pub struct PointMaterial {
     #[wasm_bindgen(getter_with_clone, js_name = effectIds)]
     #[serde(rename = "effectIds")]
     pub effect_ids: Option<Vec<String>>,
-    /// Emissive glow intensity (default: 0.3 when Bloom enabled)
+    /// Emissive glow intensity (omitted = 0, no emissive output)
     #[wasm_bindgen(js_name = emissiveIntensity)]
     #[serde(rename = "emissiveIntensity")]
     pub emissive_intensity: Option<f32>,
@@ -224,7 +224,7 @@ pub struct BillboardMaterial {
     #[wasm_bindgen(getter_with_clone, js_name = effectIds)]
     #[serde(rename = "effectIds")]
     pub effect_ids: Option<Vec<String>>,
-    /// Emissive glow intensity (default: 0.3 when Bloom enabled)
+    /// Emissive glow intensity (omitted = 0, no emissive output)
     #[wasm_bindgen(js_name = emissiveIntensity)]
     #[serde(rename = "emissiveIntensity")]
     pub emissive_intensity: Option<f32>,
@@ -446,7 +446,7 @@ pub struct TextMaterial {
     #[wasm_bindgen(getter_with_clone, js_name = effectIds)]
     #[serde(rename = "effectIds")]
     pub effect_ids: Option<Vec<String>>,
-    /// Emissive glow intensity (default: 0.3 when Bloom enabled)
+    /// Emissive glow intensity (omitted = 0, no emissive output)
     #[wasm_bindgen(js_name = emissiveIntensity)]
     #[serde(rename = "emissiveIntensity")]
     pub emissive_intensity: Option<f32>,
@@ -644,7 +644,7 @@ pub struct PolylineMaterial {
     #[wasm_bindgen(getter_with_clone, js_name = effectIds)]
     #[serde(rename = "effectIds")]
     pub effect_ids: Option<Vec<String>>,
-    /// Emissive glow intensity (default: 0.3 when Bloom enabled)
+    /// Emissive glow intensity (omitted = 0, no emissive output)
     #[wasm_bindgen(js_name = emissiveIntensity)]
     #[serde(rename = "emissiveIntensity")]
     pub emissive_intensity: Option<f32>,
@@ -934,7 +934,7 @@ pub struct PolygonMaterial {
     #[wasm_bindgen(getter_with_clone, js_name = effectIds)]
     #[serde(rename = "effectIds")]
     pub effect_ids: Option<Vec<String>>,
-    /// Emissive glow intensity (default: 0.3 when Bloom enabled)
+    /// Emissive glow intensity (omitted = 0, no emissive output)
     #[wasm_bindgen(js_name = emissiveIntensity)]
     #[serde(rename = "emissiveIntensity")]
     pub emissive_intensity: Option<f32>,
@@ -1289,7 +1289,7 @@ pub struct ModelMaterial {
     #[wasm_bindgen(getter_with_clone, js_name = effectIds)]
     #[serde(rename = "effectIds")]
     pub effect_ids: Option<Vec<String>>,
-    /// Emissive glow intensity (default: 0.3 when Bloom enabled)
+    /// Emissive glow intensity (omitted = 0, no emissive output)
     #[wasm_bindgen(js_name = emissiveIntensity)]
     #[serde(rename = "emissiveIntensity")]
     pub emissive_intensity: Option<f32>,

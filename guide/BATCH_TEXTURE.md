@@ -123,24 +123,26 @@ undeclared receiver breaks shader compilation.
 
 New attributes reuse one of these patterns rather than inventing new ones:
 
-- **Allocation-time defaults**: Allocating a slot backfills its default for
-  **every** batch before the triggering write lands, so features the
-  evaluate callback never styles keep the mesh's own look instead of reading
-  zeros (e.g. `color` backfills the mesh's default color, `height` /
-  `extrudedHeight` the material's height offsets — see
-  `DefaultBatchAttributeValues`).
+- **Allocation-time defaults**: Allocating a slot backfills a **fixed
+  default** for every batch before the triggering write lands — never a
+  material value: `color` → white (multiplier identity), `opacity` → 1,
+  `height`/`extrudedHeight` → 0, `show` → `material.visible`. Evaluator
+  callbacks are expected to style an attribute for every feature once they
+  style it for any, so unstyled features read these constants (do not plumb
+  material state into backfills or add shader-side fallback machinery for
+  them). The texture allocation is zero-filled, so a non-zero default must
+  be actively backfilled.
 - **Packed components**: Two half-attributes can share one component with a
   sign/bias encoding. Writes to one half unpack, merge, and repack so the
   other half survives. `show`/`opacity` use `sign(show) * (1 + opacity)`,
   where the +1 bias keeps the sign unambiguous at opacity 0
   (`packShowOpacity`). Packing also keeps the pair a single texel fetch.
 - **Paired slots**: Attributes the shader folds into one varying are
-  allocated together on the first write of either, each backfilled from the
-  mesh material, so the fold never mixes a written value with an
-  uninitialized one. `emissive` (vec3) + `emissiveIntensity` (scalar) fold
-  to `nvr_vEmissive = rgb × intensity` in the vertex stage. A disabled mesh
-  default (intensity 0) is remapped to the visually identical `(black, 1)`
-  so intensity stays a usable identity multiplier (`emissiveDefaults`).
+  allocated together on the first write of either, so the fold never mixes a
+  written value with an uninitialized one. `emissive` (vec3) +
+  `emissiveIntensity` (scalar) fold to `nvr_vEmissive = rgb × intensity` in
+  the vertex stage; the pair backfills `(black, 1)` — dark, with intensity
+  kept a usable identity multiplier.
 - **Sentinels**: A reserved out-of-range value can mean "fall back to the
   material default" when 0 is a legal styled value (e.g. `lineWidth < 0`,
   `size < 0`).
@@ -204,7 +206,9 @@ on first write of the corresponding attribute. `material.needsUpdate` is
 only bumped when a define actually changes, so repeated per-feature writes
 don't trigger program rebuilds. Enabling an attribute can also flip
 material-level switches its shader path needs (e.g. batch color turns
-`vertexColors` on for vColor sourcing).
+`vertexColors` on for vColor sourcing and resets the material color to
+white, so texel colors and the white backfill pass through the
+`material × vColor` fold unchanged).
 
 These defines vary **per material instance** (allocation follows write
 order), and neither three.js nor the enhancers include
