@@ -441,6 +441,19 @@ pub struct TextMaterial {
     #[wasm_bindgen(getter_with_clone, js_name = geometryTypes)]
     #[serde(rename = "geometryTypes")]
     pub geometry_types: Option<Vec<String>>,
+    // SelectiveEffect
+    /// IDs of selective effects to apply (e.g., "bloom", "outline")
+    #[wasm_bindgen(getter_with_clone, js_name = effectIds)]
+    #[serde(rename = "effectIds")]
+    pub effect_ids: Option<Vec<String>>,
+    /// Emissive glow intensity (default: 0.3 when Bloom enabled)
+    #[wasm_bindgen(js_name = emissiveIntensity)]
+    #[serde(rename = "emissiveIntensity")]
+    pub emissive_intensity: Option<f32>,
+    /// Emissive glow color in 0xRRGGBB format
+    #[wasm_bindgen(js_name = emissiveColor)]
+    #[serde(rename = "emissiveColor")]
+    pub emissive_color: Option<u32>,
 }
 
 impl From<TextMaterial> for navara_material::TextMaterial {
@@ -485,6 +498,9 @@ impl From<TextMaterial> for navara_material::TextMaterial {
             declutter_priority: val.declutter_priority.unwrap_or(default.declutter_priority),
             geometry_types: parse_geometry_types(&val.geometry_types)
                 .unwrap_or(default.geometry_types),
+            effect_ids: val.effect_ids.or(default.effect_ids),
+            emissive_intensity: val.emissive_intensity.or(default.emissive_intensity),
+            emissive_color: val.emissive_color.or(default.emissive_color),
         }
     }
 }
@@ -525,6 +541,9 @@ impl<'a> From<&'a navara_material::TextMaterial> for TextMaterial {
             declutter: Some(value.declutter),
             declutter_priority: Some(value.declutter_priority),
             geometry_types: Some(geometry_type_names(&value.geometry_types)),
+            effect_ids: value.effect_ids.clone(),
+            emissive_intensity: value.emissive_intensity,
+            emissive_color: value.emissive_color,
         }
     }
 }
@@ -570,6 +589,9 @@ impl TextMaterial {
             declutter_priority: self.declutter_priority.unwrap_or(other.declutter_priority),
             geometry_types: parse_geometry_types(&self.geometry_types)
                 .unwrap_or_else(|| other.geometry_types.clone()),
+            effect_ids: self.effect_ids.clone().or_else(|| other.effect_ids.clone()),
+            emissive_intensity: self.emissive_intensity.or(other.emissive_intensity),
+            emissive_color: self.emissive_color.or(other.emissive_color),
         }
     }
 }

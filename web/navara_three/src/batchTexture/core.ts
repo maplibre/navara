@@ -29,13 +29,30 @@ import type {
 /** Materials whose color was already reset to white for the batch color path. */
 const batchColorTouched = new WeakSet<Material>();
 
-/** Sentinel written when a scalar value is not finite. */
-const SCALAR_FALLBACK: Record<BatchScalarKey, number> = {
-  height: 0.0,
-  extrudedHeight: 0.0,
-  // Negative value indicates shader should fall back to minMaxHeightAndWidth.z
-  lineWidth: -1.0,
-};
+/**
+ * Per-scalar default, backfilled on slot allocation and written when a value
+ * is not finite. Sentinels for attributes where every real number is a legal
+ * styled value get their material fallback in the shader; height-like
+ * attributes take the mesh material's own value so unstyled features keep
+ * the mesh's look (same principle as the vec3 backfill).
+ */
+function scalarDefault(
+  key: BatchScalarKey,
+  defaults: DefaultBatchAttributeValues,
+): number {
+  switch (key) {
+    case "height":
+      return defaults.height ?? 0.0;
+    case "extrudedHeight":
+      return defaults.extrudedHeight ?? 0.0;
+    // Negative value indicates shader should fall back to minMaxHeightAndWidth.z
+    case "lineWidth":
+      return -1.0;
+    // Negative value indicates shader should fall back to the material size
+    case "size":
+      return -1.0;
+  }
+}
 
 /**
  * Pack show and opacity into a single float: `sign(show) * (1 + opacity)`.
@@ -290,11 +307,12 @@ function allocateScalarSlot(
 function ensureScalarSlot(
   state: BatchTextureState,
   key: BatchScalarKey,
+  defaultValues: DefaultBatchAttributeValues,
 ): BatchSlot | undefined {
   if (!state.supported.has(key)) return undefined;
   return (
     state.layout.getScalarSlot(key) ??
-    allocateScalarSlot(state, key, SCALAR_FALLBACK[key])
+    allocateScalarSlot(state, key, scalarDefault(key, defaultValues))
   );
 }
 
@@ -320,6 +338,62 @@ export function getBatchDataTexture(
   material: Material,
 ): DataTexture | undefined {
   return getBatchTextureState(material)?.uniform.value ?? undefined;
+}
+
+/**
+ * Read one batch's scalar attribute back from the CPU-side texture data.
+ * Returns undefined when the slot was never allocated (no write happened) —
+ * callers fall back to their material-level default, mirroring the shader.
+ */
+export function readBatchScalar(
+  material: Material,
+  batchId: number,
+  key: BatchScalarKey,
+): number | undefined {
+  const state = getBatchTextureState(material);
+  const slot = state?.layout.getScalarSlot(key);
+  const data = state?.uniform.value?.image.data as Float32Array | undefined;
+  if (!state || !slot || !data) return undefined;
+  return data[
+    batchBaseIndex(state.width, state.groups, batchId, slot.row) + slot.comp
+  ];
+}
+
+/**
+ * Read one batch's vec3 attribute back from the CPU-side texture data into
+ * `target`. Returns undefined when the row was never allocated.
+ */
+export function readBatchVec3(
+  material: Material,
+  batchId: number,
+  key: BatchVec3Key,
+  target: Color,
+): Color | undefined {
+  const state = getBatchTextureState(material);
+  const row = state?.layout.getVec3Row(key);
+  const data = state?.uniform.value?.image.data as Float32Array | undefined;
+  if (!state || row == null || !data) return undefined;
+  const base = batchBaseIndex(state.width, state.groups, batchId, row);
+  return target.setRGB(data[base], data[base + 1], data[base + 2]);
+}
+
+/**
+ * Read one batch's packed show/opacity back from the CPU-side texture data.
+ * Returns undefined when the slot was never allocated.
+ */
+export function readBatchShowOpacity(
+  material: Material,
+  batchId: number,
+): { show: number; opacity: number } | undefined {
+  const state = getBatchTextureState(material);
+  const slot = state?.layout.getScalarSlot("showOpacity");
+  const data = state?.uniform.value?.image.data as Float32Array | undefined;
+  if (!state || !slot || !data) return undefined;
+  return unpackShowOpacity(
+    data[
+      batchBaseIndex(state.width, state.groups, batchId, slot.row) + slot.comp
+    ],
+  );
 }
 
 /** The texture and its CPU-side data. Only valid right after an ensure* call. */
@@ -348,6 +422,8 @@ export function updateBatchAttribute(
   const state = getBatchTextureState(material);
   // Without a known batchLength the texture cannot exist yet; nothing to write.
   if (!state || state.batchLength === 0) return false;
+  // Out-of-range ids would land in another feature's texels.
+  if (batchId < 0 || batchId >= state.batchLength) return false;
 
   switch (attribute) {
     case "color": {
@@ -461,17 +537,18 @@ export function updateBatchAttribute(
     }
     case "height":
     case "extrudedHeight":
-    case "lineWidth": {
+    case "lineWidth":
+    case "size": {
       if (typeof value !== "number") return false;
 
-      const slot = ensureScalarSlot(state, attribute);
+      const slot = ensureScalarSlot(state, attribute, defaultValues);
       if (!slot) return false;
 
       enableDefine(material, `USE_BATCH_${SCALAR_DEFINE_SUFFIX[attribute]}`);
 
       const sanitized = Number.isFinite(value)
         ? value
-        : SCALAR_FALLBACK[attribute];
+        : scalarDefault(attribute, defaultValues);
       const { texture, data } = textureData(state);
       const baseIndex = batchBaseIndex(
         state.width,

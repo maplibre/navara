@@ -1,4 +1,4 @@
-import ThreeView, { Color } from "@navaramap/three";
+import ThreeView, { Color, fetchFontFamilyFromCss } from "@navaramap/three";
 import {
   DefaultPlugin,
   type DefaultDescriptions,
@@ -81,6 +81,66 @@ const run = async () => {
 
   addPlateauLayer(TILES_3D_DATASETS.plateauChiyoda.url);
   addPlateauLayer(TILES_3D_DATASETS.plateauChuo.url);
+
+  // Text labels with per-feature emissive: only the glyph fill blooms —
+  // outline and background stay dark.
+  view.addFontFamily(
+    await fetchFontFamilyFromCss(
+      "Arsenal",
+      "https://fonts.googleapis.com/css2?family=Arsenal:wght@700",
+    ),
+  );
+  const labelSource = view.addSource({
+    type: "geojson",
+    data: {
+      type: "FeatureCollection",
+      features: [
+        {
+          type: "Feature",
+          geometry: { type: "Point", coordinates: [139.7671, 35.6812] },
+          properties: { name: "TOKYO", glow: 1.5 },
+        },
+        {
+          type: "Feature",
+          geometry: { type: "Point", coordinates: [139.7745, 35.6847] },
+          properties: { name: "NIHONBASHI", glow: 0.6 },
+        },
+        {
+          type: "Feature",
+          geometry: { type: "Point", coordinates: [139.76, 35.675] },
+          properties: { name: "MARUNOUCHI", glow: 0 },
+        },
+      ],
+    },
+  });
+  const textLayer = view.addLayer({
+    type: "vector",
+    source: labelSource,
+    text: {
+      font: "Arsenal",
+      color: new Color().setStyle("#ffffff"),
+      size: 26,
+      sizeInMeters: false,
+      clampToGround: true,
+      height: 250,
+      outlineColor: new Color().setStyle("#000000"),
+      outlineWidth: 4,
+      effectIds: [bloomEffect.id],
+    },
+  });
+  textLayer.on("featureUpdated", ({ evaluator }) => {
+    evaluator.evaluate(
+      ({ properties }) => {
+        const glow = (properties?.["glow"] as number) ?? 0;
+        return {
+          text: (properties?.["name"] as string) ?? "",
+          emissive: new Color().setStyle("#7fd0ff"),
+          emissiveIntensity: glow,
+        };
+      },
+      { filters: ["name", "glow"] },
+    );
+  });
 
   const gsiTerrainDem = view.addSource({
     type: "quantized-mesh",

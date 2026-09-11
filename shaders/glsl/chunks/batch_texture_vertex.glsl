@@ -1,5 +1,11 @@
 #ifdef USE_BATCH_TEXTURE
-  float batchId = _batchid;
+  // Default source is the `_batchid` attribute; a shader without one (e.g.
+  // sdfText, whose glyph instances get the feature index via the label data
+  // texture) overrides NVR_BATCH_ID_EXPR before this include.
+  #ifndef NVR_BATCH_ID_EXPR
+  #define NVR_BATCH_ID_EXPR _batchid
+  #endif
+  float batchId = NVR_BATCH_ID_EXPR;
 
   #if defined(USE_BATCH_COLOR) && defined(USE_COLOR)
     vColor.rgb = getBatchTexel(batchId, BATCHED_TEXTURE_ROW_COLOR).rgb;
@@ -28,5 +34,11 @@
 
   #ifdef USE_BATCH_LINE_WIDTH
     batchLineWidth = getBatchTexel(batchId, BATCHED_TEXTURE_ROW_LINE_WIDTH)[BATCHED_TEXTURE_COMP_LINE_WIDTH];
+  #endif
+
+  #ifdef USE_BATCH_SIZE
+    // Negative = fall back to the material size (see SCALAR_FALLBACK in
+    // web/navara_three/src/batchTexture/core.ts)
+    batchSize = getBatchTexel(batchId, BATCHED_TEXTURE_ROW_SIZE)[BATCHED_TEXTURE_COMP_SIZE];
   #endif
 #endif

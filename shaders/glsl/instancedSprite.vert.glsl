@@ -2,12 +2,14 @@
 #include "chunks/horizon_culling_pars_vertex.glsl"
 #include "chunks/sprite_height_pars_vertex.glsl"
 #include "chunks/pixelToWorld.glsl"
+#include "chunks/height_pars_vertex.glsl"
+#include "chunks/batch_texture_pars_vertex.glsl"
 
 #ifdef USE_RTE
-    attribute vec3 instancePositionLOW; 
-    attribute vec3 instancePositionHIGH; 
+    attribute vec3 instancePositionLOW;
+    attribute vec3 instancePositionHIGH;
 #else
-    attribute vec3 instancePosition; 
+    attribute vec3 instancePosition;
 #endif
 
 #ifdef BILLBOARD
@@ -18,13 +20,11 @@
     uniform vec2 uAtlasSize;
 #endif
 
-attribute vec4 instanceParams; // x=height, y=size, z=show, w=opacity
-attribute vec3 instanceColor;
 attribute float instanceBatchID;
 // Animated hide factor from the screen-space declutter pass (0 = shown,
 // 1 = hidden); opacity is scaled by (1.0 - instanceDeclutterHide) and the
 // instance is only hard-culled once the fade completes. Kept separate from
-// instanceParams.z (show) so user visibility and declutter results compose.
+// the batch texture's `show` so user visibility and declutter results compose.
 attribute float instanceDeclutterHide;
 
 uniform vec3 uRTCCenter;
@@ -38,6 +38,10 @@ uniform vec3 uEyeRTELow;
 // (see chunks/rte_pars_vertex.glsl).
 uniform float u_rteOne;
 uniform float uScale;
+// Mesh-level style defaults; per-feature overrides come from the batch data
+// texture (USE_BATCH_*).
+uniform vec3 uColor;
+uniform float uOpacity;
 uniform bool uSizeInMeters;
 uniform vec2 uCenter;
 uniform float uFovRad;
@@ -50,10 +54,16 @@ varying float vFragDepth;
 varying float vOpacity; // Pass opacity to fragment shader
 
 void main() {
-    float instanceHeight = instanceParams.x;
-    float instanceSize = instanceParams.y;
-    float instanceShow = instanceParams.z;
-    vOpacity = instanceParams.w * (1.0 - instanceDeclutterHide);
+    // Batch receivers: mesh-level defaults, overridden per feature by
+    // batch_texture_vertex when the corresponding USE_BATCH_* is on.
+    #include "chunks/height_vertex.glsl"
+    float batchSize = -1.0; // Negative = use uScale
+    float nvr_vShow = 1.0;
+    float nvr_vOpacity = 1.0;
+    vColor = uColor;
+    #include "chunks/batch_texture_vertex.glsl"
+
+    vOpacity = nvr_vOpacity * uOpacity * (1.0 - instanceDeclutterHide);
 
 #ifdef USE_RTE
     vec3 absTransformed = instancePositionHIGH + instancePositionLOW;
@@ -68,7 +78,6 @@ void main() {
     vUv = uv;
 #endif
     vBatchID = instanceBatchID;
-    vColor = instanceColor;
 
     // An empty atlas rect means no image is packed for this instance yet (a
     // material with no `url`, a per-feature image still loading, or a failed
@@ -80,7 +89,7 @@ void main() {
     bool nvr_hasImage = true;
 #endif
 
-    if (instanceShow <= 0.5 || instanceDeclutterHide >= 0.999 || !nvr_hasImage) {
+    if (nvr_vShow < 0.5 || instanceDeclutterHide >= 0.999 || !nvr_hasImage) {
         gl_Position = vec4(2.0, 2.0, 2.0, 1.0); // Cull the vertex by moving it outside of the clip space
         return;
     }
@@ -105,11 +114,11 @@ void main() {
     mvPosition = viewMatrixRTC * vec4(instancePosition, 1.0);
 #endif
 
-    mvPosition += mvr_getMvHeightOffset(absTransformed, instanceHeight);
+    mvPosition += mvr_getMvHeightOffset(absTransformed, addHeight);
     vec2 center = clamp(uCenter, vec2(-0.5), vec2(0.5)); // Ensure center is within the bounds of the sprite
 
-    // Use per-instance size when set (>= 0.0). A negative value means "use uScale".
-    float scale = instanceSize >= 0.0 ? instanceSize : uScale;
+    // Use per-feature size when set (>= 0.0). A negative value means "use uScale".
+    float scale = batchSize >= 0.0 ? batchSize : uScale;
     float clampedScale = max(0.0, scale); // Prevent negative scaling
 #ifdef BILLBOARD
     // Per-instance image aspect from the atlas rect (guard empty rects).

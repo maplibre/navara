@@ -48,6 +48,9 @@ export const createBaseMutates = (
     uEyeRTELow: { value: new Vector3(0, 0, 0) },
     uEyeRTEHigh: { value: new Vector3(0, 0, 0) },
     nvr_uPickable: { value: 0.0 },
+    uEffectIdsMask: { value: 0 },
+    uEmissiveColor: { value: new Color(0, 0, 0) },
+    uEmissiveIntensity: { value: 0 },
     uAtlas: { value: null },
     uColorAtlas: { value: null },
     // Default to 1.0 to avoid divide-by-zero in the shader before a texture
@@ -73,6 +76,9 @@ export const createBaseMutates = (
       refs.uBackgroundOutlineColor.value.set(state.backgroundOutlineColor);
       refs.uBackgroundOutlineWidth.value = state.backgroundOutlineWidth;
       refs.nvr_uPickable.value = state.pickable ? 1.0 : 0.0;
+      refs.uEffectIdsMask.value = state.effectIdsMask;
+      refs.uEmissiveColor.value.set(state.emissiveColor);
+      refs.uEmissiveIntensity.value = state.emissiveIntensity;
     },
 
     updateUniforms: (uniforms) => {
@@ -96,12 +102,18 @@ export const createBaseMutates = (
       uniforms.uEyeRTEHigh = refs.uEyeRTEHigh;
       uniforms.u_rteOne = RTE_ONE_UNIFORM;
       uniforms.nvr_uPickable = refs.nvr_uPickable;
+      uniforms.uEffectIdsMask = refs.uEffectIdsMask;
+      uniforms.uEmissiveColor = refs.uEmissiveColor;
+      uniforms.uEmissiveIntensity = refs.uEmissiveIntensity;
       uniforms.uAtlas = refs.uAtlas;
       uniforms.uColorAtlas = refs.uColorAtlas;
       uniforms.uSdfAtlasSize = refs.uSdfAtlasSize;
       uniforms.uColorAtlasSize = refs.uColorAtlasSize;
       uniforms.uLabelData = refs.uLabelData;
       uniforms.uLabelTexSize = refs.uLabelTexSize;
+      if (refs.batchDataTexture) {
+        uniforms.batchDataTexture = refs.batchDataTexture;
+      }
     },
 
     updatePerFrame: (
@@ -168,6 +180,11 @@ export const createBaseMutates = (
 
     setRtcCenter: (center: [number, number, number]) => {
       refs.uRTCCenter.value.set(center[0], center[1], center[2]);
+    },
+
+    setBatchDataTexture: (texture: UniformValue<DataTexture | null>) => {
+      // Keep the shared ref itself: batch texture growth swaps its `.value`.
+      refs.batchDataTexture = texture;
     },
   };
 };

@@ -24,11 +24,12 @@ import invariant from "tiny-invariant";
 
 import {
   attachBatchedMaterial,
-  getBatchTextureUniform,
   initBatchedMaterial,
-  setBatchTextureRenderer,
+  MODEL_BATCH_SUPPORT,
+  registerBatchedMaterial,
   updateBatchAttribute,
   type BatchTextureConfig,
+  type BatchTextureSupport,
 } from "../batchTexture";
 import type { EventContext } from "../event/context";
 import { applyLitOption } from "../material";
@@ -51,9 +52,10 @@ export type ModelMaterial = MeshStandardMaterial | MeshPhysicalMaterial;
 export type ModelBatchedAttributeName =
   "color" | "show" | "opacity" | "emissive" | "emissiveIntensity";
 
+/** @deprecated Use {@link MODEL_BATCH_SUPPORT}; `batchLength` is per-mesh
+ *  state, not part of the mesh type's capability. */
 export const MODEL_BATCH_TEXTURE_CONFIG: BatchTextureConfig = {
-  scalars: [],
-  vec3s: ["color", "emissive"],
+  ...MODEL_BATCH_SUPPORT,
   batchLength: 0,
 };
 
@@ -195,10 +197,17 @@ export class ModelMesh
     releaseGeometryArraysAfterUpload(geometry);
   }
 
+  _getBatchTextureSupport(): BatchTextureSupport {
+    return MODEL_BATCH_SUPPORT;
+  }
+
   _initBatchedMaterial(
     mesh: Mesh<BufferGeometry<NormalBufferAttributes>, ModelMaterial>,
   ) {
-    initBatchedMaterial(mesh.material, MODEL_BATCH_TEXTURE_CONFIG);
+    initBatchedMaterial(mesh.material, {
+      ...this._getBatchTextureSupport(),
+      batchLength: 0,
+    });
   }
 
   _initBatchDataTexture(
@@ -206,23 +215,12 @@ export class ModelMesh
   ): void {
     invariant(this.batchLength != null);
 
-    const config: BatchTextureConfig = {
-      ...MODEL_BATCH_TEXTURE_CONFIG,
-      batchLength: this.batchLength,
-    };
-
-    initBatchedMaterial(mesh.material, config);
-    // Claim the texture for this view's renderer before any write can
-    // create it (flushing is per-view over module-global queues).
-    setBatchTextureRenderer(mesh.material, this.ctx.viewContext.getRenderer());
-
-    // Hand the shared uniform ref to the enhancer: texture creation/growth
-    // swaps its `.value`, so no re-wiring is needed afterwards.
-    const uniform = getBatchTextureUniform(mesh.material);
-    const enhancer = this._enhancers.get(mesh);
-    if (uniform && enhancer) {
-      enhancer.update({ base: { batchDataTexture: uniform } });
-    }
+    const uniform = registerBatchedMaterial(
+      mesh.material,
+      { ...this._getBatchTextureSupport(), batchLength: this.batchLength },
+      this.ctx.viewContext.getRenderer(),
+    );
+    this._enhancers.get(mesh)?.update({ base: { batchDataTexture: uniform } });
   }
 
   _updateBatchAttribute(

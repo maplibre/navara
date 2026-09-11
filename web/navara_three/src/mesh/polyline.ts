@@ -9,12 +9,13 @@ import {
   ShaderMaterial,
   Vector2,
 } from "three";
+import invariant from "tiny-invariant";
 
 import {
-  getBatchTextureUniform,
-  setBatchTextureRenderer,
+  registerBatchedMaterial,
+  POLYLINE_BATCH_SUPPORT,
   type BatchedAttributeName,
-  type BatchScalarKey,
+  type BatchTextureSupport,
   type DefaultBatchAttributeValues,
 } from "../batchTexture";
 import type { EventContext } from "../event/context";
@@ -23,7 +24,6 @@ import { createPolylineMaterialEnhancer } from "../material/enhancer";
 
 import {
   BatchedFeatureMesh,
-  POLYLINE_BATCH_SCALARS,
   type BatchedFeatureAttributes,
 } from "./batchedFeature";
 import { GEOMETRY_TYPES } from "./constants";
@@ -354,26 +354,20 @@ export class PolylineMesh extends BatchedFeatureMesh<
     this._update(meshMaterial, mesh.active);
   }
 
-  _getBatchTextureScalars(): BatchScalarKey[] {
-    // No extrudedHeight: the polyline shaders declare no receiver for it,
-    // so accepting the attribute would break shader compilation.
-    return POLYLINE_BATCH_SCALARS;
+  _getBatchTextureSupport(): BatchTextureSupport {
+    return POLYLINE_BATCH_SUPPORT;
   }
 
   _initBatchDataTexture(): void {
+    invariant(this.batchLength != null);
     // Register batchLength; the texture itself is created lazily on the
     // first attribute write.
-    super._initBatchDataTexture();
-    // Claim the texture for this view's renderer before any write can
-    // create it (flushing is per-view over module-global queues).
-    setBatchTextureRenderer(this.material, this.ctx.viewContext.getRenderer());
-
-    // Hand the shared uniform ref to the enhancer: texture creation/growth
-    // swaps its `.value`, so no re-wiring is needed afterwards.
-    const uniform = getBatchTextureUniform(this.material);
-    if (uniform) {
-      this.getEnhancer().update({ base: { batchDataTexture: uniform } });
-    }
+    const uniform = registerBatchedMaterial(
+      this.material,
+      { ...this._getBatchTextureSupport(), batchLength: this.batchLength },
+      this.ctx.viewContext.getRenderer(),
+    );
+    this.getEnhancer().update({ base: { batchDataTexture: uniform } });
   }
 
   _updateBatchAttribute(
@@ -526,6 +520,7 @@ export class PolylineMesh extends BatchedFeatureMesh<
   _getDefaultBatchAttributeValues(): DefaultBatchAttributeValues {
     return {
       color: this.color,
+      height: this.getEnhancer().states().addHeight,
     };
   }
 

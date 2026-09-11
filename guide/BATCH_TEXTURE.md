@@ -111,7 +111,8 @@ physical row
 
 Each mesh type declares the attributes its shaders can receive
 (`BatchTextureConfig.scalars` / `.vec3s`). These are capability lists, not
-preallocations. See `POLYGON_BATCH_SCALARS` etc. in `mesh/batchedFeature.ts`
+preallocations. See `POLYGON_BATCH_SUPPORT` etc. in
+`web/navara_three/src/batchTexture/support.ts`
 for the current lists. The list must only contain attributes with declared
 receiver variables in that mesh type's shaders: a slot outside the list is
 never allocated (the write is silently ignored and reported back via the
@@ -125,7 +126,9 @@ New attributes reuse one of these patterns rather than inventing new ones:
 - **Allocation-time defaults**: Allocating a slot backfills its default for
   **every** batch before the triggering write lands, so features the
   evaluate callback never styles keep the mesh's own look instead of reading
-  zeros (e.g. `color` backfills the mesh's default color).
+  zeros (e.g. `color` backfills the mesh's default color, `height` /
+  `extrudedHeight` the material's height offsets — see
+  `DefaultBatchAttributeValues`).
 - **Packed components**: Two half-attributes can share one component with a
   sign/bias encoding. Writes to one half unpack, merge, and repack so the
   other half survives. `show`/`opacity` use `sign(show) * (1 + opacity)`,
@@ -139,7 +142,14 @@ New attributes reuse one of these patterns rather than inventing new ones:
   default (intensity 0) is remapped to the visually identical `(black, 1)`
   so intensity stays a usable identity multiplier (`emissiveDefaults`).
 - **Sentinels**: A reserved out-of-range value can mean "fall back to the
-  material default" when 0 is a legal styled value (e.g. `lineWidth < 0`).
+  material default" when 0 is a legal styled value (e.g. `lineWidth < 0`,
+  `size < 0`).
+- **CPU read-back**: `readBatchScalar` / `readBatchVec3` /
+  `readBatchShowOpacity` return a written value or its backfilled default
+  from the CPU-side array — the same values the shader samples. `undefined` means
+  "slot never allocated": the caller falls back to its material-level
+  default, mirroring the shader's un-defined path (the declutter pass reads
+  sprite show/size/height this way).
 
 ## Texture lifecycle
 
@@ -182,6 +192,12 @@ Allocation stamps the layout as defines on `material.userData.defines`
 The shared chunk exposes `getBatchTexel(batchId, rowIndex)`, and each
 attribute fetches its own row and component. Fetches of slots sharing a row
 hit the same texel and are collapsed by the compiler.
+
+The batch id defaults to the `_batchid` vertex attribute (per-vertex for
+polygon-like meshes, per-instance for sprites). A shader whose geometry
+carries no such attribute overrides the `NVR_BATCH_ID_EXPR` define before
+including `batch_texture_vertex` — sdfText's glyph instances read their
+feature index out of the label data texture's STATE row instead.
 
 Feature defines (`USE_BATCH_TEXTURE`, `USE_BATCH_<ATTR>`) are enabled lazily
 on first write of the corresponding attribute. `material.needsUpdate` is

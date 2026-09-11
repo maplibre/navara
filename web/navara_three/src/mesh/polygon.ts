@@ -15,15 +15,15 @@ import {
   Mesh as ThreeMesh,
   Vector3,
 } from "three";
+import invariant from "tiny-invariant";
 
 import { PolygonOutlineMesh } from "..";
 import {
   attachBatchedMaterial,
-  getBatchTextureUniform,
-  setBatchTextureRenderer,
+  registerBatchedMaterial,
   type BatchedAttributeName,
-  type BatchScalarKey,
-  type BatchVec3Key,
+  POLYGON_BATCH_SUPPORT,
+  type BatchTextureSupport,
   type DefaultBatchAttributeValues,
 } from "../batchTexture";
 import type { EventContext } from "../event/context";
@@ -33,7 +33,6 @@ import { createPolygonMaterialEnhancer } from "../material/enhancer/polygon/poly
 
 import {
   BatchedFeatureMesh,
-  POLYGON_BATCH_SCALARS,
   type BatchedFeatureAttributes,
 } from "./batchedFeature";
 import { GEOMETRY_TYPES } from "./constants";
@@ -559,6 +558,8 @@ export class PolygonMesh extends BatchedFeatureMesh<
       color: this.material.color,
       emissive: new Color(base.emissiveColor),
       emissiveIntensity: base.emissiveIntensity,
+      height: base.addHeight,
+      extrudedHeight: base.addExtrudedHeight,
     };
   }
 
@@ -620,32 +621,22 @@ export class PolygonMesh extends BatchedFeatureMesh<
     return true;
   }
 
-  _getBatchTextureScalars(): BatchScalarKey[] {
-    // No lineWidth: the polygon shaders declare no receiver for it,
-    // so accepting the attribute would break shader compilation.
-    return POLYGON_BATCH_SCALARS;
-  }
-
-  _getBatchTextureVec3s(): BatchVec3Key[] {
-    return ["color", "emissive"];
+  _getBatchTextureSupport(): BatchTextureSupport {
+    return POLYGON_BATCH_SUPPORT;
   }
 
   _initBatchDataTexture(): void {
+    invariant(this.batchLength != null);
     // Register batchLength; the texture itself is created lazily on the
     // first attribute write.
-    super._initBatchDataTexture();
-    // Claim the texture for this view's renderer before any write can
-    // create it (flushing is per-view over module-global queues).
-    setBatchTextureRenderer(this.material, this.ctx.viewContext.getRenderer());
-
-    // Hand the shared uniform ref to the enhancer: texture creation/growth
-    // swaps its `.value`, so no re-wiring is needed afterwards.
-    const uniform = getBatchTextureUniform(this.material);
-    if (uniform) {
-      this.getEnhancer().update({ base: { batchDataTexture: uniform } });
-      // Share the same batch texture with outline (no duplicate data)
-      this.outline?.initBatchTexture(this.material);
-    }
+    const uniform = registerBatchedMaterial(
+      this.material,
+      { ...this._getBatchTextureSupport(), batchLength: this.batchLength },
+      this.ctx.viewContext.getRenderer(),
+    );
+    this.getEnhancer().update({ base: { batchDataTexture: uniform } });
+    // Share the same batch texture with outline (no duplicate data)
+    this.outline?.initBatchTexture(this.material);
   }
 
   get water(): boolean {

@@ -19,6 +19,16 @@ import {
 import invariant from "tiny-invariant";
 
 import {
+  readBatchScalar,
+  readBatchShowOpacity,
+  registerBatchedMaterial,
+  SPRITE_BATCH_SUPPORT,
+  updateBatchAttribute,
+  type BatchedAttributeName,
+  type BatchTextureSupport,
+  type DefaultBatchAttributeValues,
+} from "../../batchTexture";
+import {
   DECLUTTER_FADE_MS,
   type DeclutterCandidate,
   type DeclutterParticipant,
@@ -26,6 +36,7 @@ import {
 import type { EventContext } from "../../event/context";
 import { createInstancedSpriteMaterialEnhancer } from "../../material/enhancer";
 import type { CustomObject3DEventMap } from "../../object3DEvent";
+import { buildBatchIndexMap } from "../batchIndexMap";
 import { GEOMETRY_TYPES, type GeometryType } from "../constants";
 import { PickableMesh } from "../pickableMesh";
 
@@ -60,6 +71,11 @@ type PositionsInfo = {
 /** Reusable Vector2 to avoid per-frame allocations in onBeforeRender. */
 const _tmpSize = new Vector2();
 
+/** Reusable scratch for per-feature style writes. */
+const _tmpColorArray: [number, number, number] = [0, 0, 0];
+const _tmpDefaultColor = new Color();
+const _tmpDefaultEmissive = new Color();
+
 // Coupled with crates/navara_feature/src/geometry/point.rs::pixel_to_world
 export class InstancedSpriteMesh
   extends Mesh<BufferGeometry, Material | Material[], CustomObject3DEventMap>
@@ -73,11 +89,15 @@ export class InstancedSpriteMesh
    * fan out to all of them. `null` means instances and features are 1:1.
    */
   private _batchIndexToInstances: Map<number, number[]> | null = null;
+  /**
+   * Per-instance feature (batch) index, mirroring the `_batchid` attribute for
+   * CPU-side reads (declutter). `null` means instances and features are 1:1.
+   */
+  private _instanceBatchIndex: Float32Array | null = null;
+  /** Feature count — the batch data texture's column count. */
+  private _batchLength = 0;
   /** Instance count of the current geometry; bounds the identity fallback. */
   private _instanceCount = 0;
-  private _initialColor: Color = new Color(0xffffff);
-  private _initialHeight = 0.0;
-  private _initialSize = -1.0; // Negative value indicates "use uScale" in shader
   private _atlas?: BillboardAtlas;
   private _defaultUrl?: string;
   /** Atlas rect of the current default image; re-applied to an instance when
@@ -162,14 +182,13 @@ export class InstancedSpriteMesh
   collectDeclutterCandidates(out: DeclutterCandidate[]): void {
     if (!this.visible || !this._declutter || !this._anchors) return;
     const enhancer = this._enhancedMaterial;
-    const params = this.geometry?.getAttribute("instanceParams") as
-      InstancedBufferAttribute | undefined;
-    if (!enhancer || !params) return;
+    if (!enhancer) return;
+    const material = this.material as ShaderMaterial;
 
     const state = enhancer.states();
     const cx = Math.min(Math.max(state.center[0], -0.5), 0.5);
     const cy = Math.min(Math.max(state.center[1], -0.5), 0.5);
-    // Mirror of instancedSprite.vert.glsl:115-118 — aspect is per-instance
+    // Mirror of instancedSprite.vert.glsl — aspect is per-instance
     // (from the atlas rect), not a material-level uniform; there is no
     // material-wide "aspect" state to read.
     const uvRect = state.billboard
@@ -177,15 +196,23 @@ export class InstancedSpriteMesh
           InstancedBufferAttribute | undefined)
       : undefined;
     const anchors = this._anchors;
+    const batchIndices = this._instanceBatchIndex;
     const overrides = this._declutterPriorityOverrides;
     const targets = this._declutterTargets;
-    const count = Math.min(params.count, anchors.length / 3);
+    const count = Math.min(this._instanceCount, anchors.length / 3);
 
     for (let i = 0; i < count; i++) {
-      if (params.getZ(i) <= 0.5) continue; // hidden by user `show`
-      const instanceSize = params.getY(i);
-      const size = instanceSize >= 0.0 ? instanceSize : state.scale;
+      // Style values mirror the shader: read the batch data texture, falling
+      // back to the material-level state where a slot was never allocated.
+      const batchIndex = batchIndices ? batchIndices[i] : i;
+      const showOpacity = readBatchShowOpacity(material, batchIndex);
+      if (showOpacity && showOpacity.show < 0.5) continue; // hidden by user `show`
+      const batchSize = readBatchScalar(material, batchIndex, "size");
+      const size =
+        batchSize !== undefined && batchSize >= 0.0 ? batchSize : state.scale;
       if (size <= 0.0) continue;
+      const addHeight =
+        readBatchScalar(material, batchIndex, "height") ?? state.addHeight;
 
       const override = overrides ? overrides[i] : Number.NaN;
       const rectH = uvRect ? uvRect.getW(i) : 0;
@@ -202,7 +229,7 @@ export class InstancedSpriteMesh
         anchorX: anchors[i * 3],
         anchorY: anchors[i * 3 + 1],
         anchorZ: anchors[i * 3 + 2],
-        addHeight: params.getX(i),
+        addHeight,
         minX: (-0.5 - cx) * aspect * size,
         maxX: (0.5 - cx) * aspect * size,
         minY: (-0.5 - cy) * size,
@@ -337,7 +364,15 @@ export class InstancedSpriteMesh
       this.updateVisibility();
     }
 
-    // Update enhancer state for uniform-backed properties
+    // Update enhancer state for uniform-backed properties. Style defaults
+    // (color/opacity/addHeight) are uniforms; per-feature overrides live in
+    // the batch data texture and win once written.
+    // `color` only until batch color is enabled: from then on every feature
+    // reads the texture (written value or the backfilled snapshot), same
+    // snapshot semantics as PolygonMesh._update.
+    const batchColorEnabled = !!(
+      material.userData.defines as Record<string, unknown> | undefined
+    )?.USE_BATCH_COLOR;
     enhancer.update({
       base: {
         scale: m.material.size ?? 100.0,
@@ -346,6 +381,9 @@ export class InstancedSpriteMesh
         offsetDepth: m.material.offsetDepth ?? true,
         transparent: m.material.transparent ?? true,
         depthTest: m.material.depthTest ?? true,
+        color: batchColorEnabled ? undefined : (m.material.color ?? 0xffffff),
+        opacity: m.material.opacity ?? 1.0,
+        addHeight: m.material.height ?? 0.0,
         effectIdsMask:
           this.ctx.viewContext.selectiveEffectRegistry?.computeMask(
             m.material.effectIds ?? [],
@@ -354,37 +392,6 @@ export class InstancedSpriteMesh
         emissiveIntensity: m.material.emissiveIntensity ?? 0,
       },
     });
-
-    // Color (per-instance attribute)
-    if (this._initialColor.getHex() !== (m.material.color ?? 0xffffff)) {
-      this._initialColor.setHex(m.material.color ?? 0xffffff);
-      const colorAttr = this.geometry.getAttribute(
-        "instanceColor",
-      ) as InstancedBufferAttribute;
-      const instanceCount = colorAttr.count;
-      for (let i = 0; i < instanceCount; i++) {
-        colorAttr.setXYZ(
-          i,
-          this._initialColor.r,
-          this._initialColor.g,
-          this._initialColor.b,
-        );
-      }
-      colorAttr.needsUpdate = true;
-    }
-
-    // Height (per-instance attribute - X component of instanceParams vec4)
-    if (this._initialHeight !== (m.material.height ?? 0.0)) {
-      this._initialHeight = m.material.height ?? 0.0;
-      const paramsAttr = this.geometry.getAttribute(
-        "instanceParams",
-      ) as InstancedBufferAttribute;
-      const instanceCount = paramsAttr.count;
-      for (let i = 0; i < instanceCount; i++) {
-        paramsAttr.setX(i, m.material.height ?? 0.0);
-      }
-      paramsAttr.needsUpdate = true;
-    }
 
     // Position updates (per-instance attributes)
     {
@@ -470,34 +477,21 @@ export class InstancedSpriteMesh
     instancedGeometry.setAttribute("uv", new BufferAttribute(uvs, 2));
     instancedGeometry.instanceCount = instanceCount;
 
-    // Add Custom Attributes
-    // instanceParams: vec4(height, size, show, opacity)
-    const paramsBuffer = new Float32Array(instanceCount * 4);
-    const colorBuffer = new Float32Array(instanceCount * 3);
-
-    this._initialColor = new Color().setHex(m.material.color ?? 0xffffff);
-    // instanceSize defaults to a negative value to indicate "use uScale" in the shader.
-    this._initialSize = -1.0;
-    const initialShow =
-      m.material.show !== undefined ? (m.material.show ? 1.0 : 0.0) : 1.0;
-    const initialOpacityRaw = m.material.opacity ?? 1.0;
-    const initialOpacity = Number.isFinite(initialOpacityRaw)
-      ? Math.max(0.0, Math.min(1.0, initialOpacityRaw))
-      : 1.0;
-
-    for (let i = 0; i < instanceCount; i++) {
-      paramsBuffer[i * 4 + 0] = m.material.height ?? 0.0; // height
-      paramsBuffer[i * 4 + 1] = this._initialSize; // size
-      paramsBuffer[i * 4 + 2] = initialShow; // show
-      paramsBuffer[i * 4 + 3] = initialOpacity; // opacity
-
-      colorBuffer[i * 3 + 0] = this._initialColor.r;
-      colorBuffer[i * 3 + 1] = this._initialColor.g;
-      colorBuffer[i * 3 + 2] = this._initialColor.b;
-    }
-
     this._instanceCount = instanceCount;
     this._rebuildBatchIndexMap(m);
+    this._batchLength = m.batch_length;
+
+    // Per-instance feature index for the batch data texture lookup. An
+    // identity mapping (the common case) gets a plain ramp.
+    let batchIdArray = this._instanceBatchIndex;
+    if (!batchIdArray) {
+      batchIdArray = new Float32Array(instanceCount);
+      for (let i = 0; i < instanceCount; i++) batchIdArray[i] = i;
+    }
+    instancedGeometry.setAttribute(
+      "_batchid",
+      new InstancedBufferAttribute(batchIdArray, 1),
+    );
 
     if (m instanceof NavaraBillboardMesh) {
       // instanceUvRect: vec4(x, y, w, h) — this instance's atlas sub-rect in
@@ -529,14 +523,6 @@ export class InstancedSpriteMesh
         new InstancedBufferAttribute(pos, positionsInfo.positionSize),
       );
     }
-    instancedGeometry.setAttribute(
-      "instanceParams",
-      new InstancedBufferAttribute(paramsBuffer, 4),
-    );
-    instancedGeometry.setAttribute(
-      "instanceColor",
-      new InstancedBufferAttribute(colorBuffer, 3),
-    );
     // Declutter hide factors (0 = shown … 1 = hidden). Decluttered instances
     // start hidden and fade in once the placement pass grants them space, so
     // dense tiles don't flash their full clutter before the first pass runs.
@@ -582,6 +568,9 @@ export class InstancedSpriteMesh
         pickable: false,
         transparent: m.material.transparent ?? true,
         depthTest: m.material.depthTest ?? true,
+        color: m.material.color ?? 0xffffff,
+        opacity: m.material.opacity ?? 1.0,
+        addHeight: m.material.height ?? 0.0,
         rtcCenter: [m.transform.tx, m.transform.ty, m.transform.tz],
       },
     });
@@ -621,6 +610,15 @@ export class InstancedSpriteMesh
     // Set custom program cache key and onBeforeCompile
     material.customProgramCacheKey = enhancer.programCacheKey;
     material.onBeforeCompile = enhancer.transformShader;
+
+    // Register for per-feature styling. Slots and the texture itself are
+    // allocated lazily on the first attribute write.
+    const batchUniform = registerBatchedMaterial(
+      material,
+      { ...this._getBatchTextureSupport(), batchLength: this._batchLength },
+      this.ctx.viewContext.getRenderer(),
+    );
+    enhancer.update({ base: { batchDataTexture: batchUniform } });
 
     // Handle billboard texture
     if (isBillboard && m.material.url) {
@@ -807,42 +805,18 @@ export class InstancedSpriteMesh
   }
 
   /**
-   * Group instances by their feature's batch index from the geometry's
-   * per-instance `batch_index` buffer. The u32 view is consumed synchronously,
-   * so other wasm calls may detach views, so it must not be stored. The handle
-   * stays owned by the ECS geometry, whose destroy path frees it
-   * (`remove_from_buf`). An identity mapping (every feature owns exactly one
-   * instance, the common case) skips the map entirely.
+   * See {@link buildBatchIndexMap}. The batch_index handle stays owned by the
+   * ECS geometry, whose destroy path frees it (`remove_from_buf`).
    */
   private _rebuildBatchIndexMap(
     m: NavaraPointMesh | NavaraBillboardMesh,
   ): void {
     const batchIndexData = m.geometry.batch_index?.data;
-    const batchIndices =
-      batchIndexData !== undefined ? this.ctx.buf.u32(batchIndexData) : null;
-    this._batchIndexToInstances = null;
-    if (!batchIndices) return;
-
-    let identity = true;
-    for (let i = 0; i < batchIndices.length; i++) {
-      if (batchIndices[i] !== i) {
-        identity = false;
-        break;
-      }
-    }
-    if (identity) return;
-
-    const map = new Map<number, number[]>();
-    for (let i = 0; i < batchIndices.length; i++) {
-      const batchIndex = batchIndices[i];
-      let instances = map.get(batchIndex);
-      if (!instances) {
-        instances = [];
-        map.set(batchIndex, instances);
-      }
-      instances.push(i);
-    }
-    this._batchIndexToInstances = map;
+    const built = buildBatchIndexMap(
+      batchIndexData !== undefined ? this.ctx.buf.u32(batchIndexData) : null,
+    );
+    this._instanceBatchIndex = built?.perInstance ?? null;
+    this._batchIndexToInstances = built?.byBatchIndex ?? null;
   }
 
   /** All instances owned by the feature at `batchIndex`; empty when unknown. */
@@ -855,70 +829,85 @@ export class InstancedSpriteMesh
       : [];
   }
 
-  setFeatureColorByBatchIndex(batchIndex: number, color: Color) {
-    const instances = this.instancesOfBatchIndex(batchIndex);
-    if (instances.length === 0) return;
+  _getBatchTextureSupport(): BatchTextureSupport {
+    return SPRITE_BATCH_SUPPORT;
+  }
 
-    const colorAttr = this.geometry.getAttribute(
-      "instanceColor",
-    ) as InstancedBufferAttribute;
-    for (const instanceId of instances) {
-      colorAttr.setXYZ(instanceId, color.r, color.g, color.b);
-    }
-    colorAttr.needsUpdate = true;
+  /**
+   * Write one per-feature style into the batch data texture (bounds and
+   * value validation, slot allocation, and define stamping live in
+   * {@link updateBatchAttribute}). One write covers every instance of the
+   * feature — no per-instance fan-out.
+   */
+  private _updateBatchAttribute(
+    batchIndex: number,
+    attribute: BatchedAttributeName,
+    value: number | number[] | boolean,
+  ): boolean {
+    return updateBatchAttribute(
+      this.material as ShaderMaterial,
+      batchIndex,
+      attribute,
+      value,
+      this._defaultBatchAttributeValues(),
+    );
+  }
+
+  /** Allocation-time backfill defaults, from the mesh-level material state. */
+  private _defaultBatchAttributeValues(): DefaultBatchAttributeValues {
+    const state = this.getEnhancer().states();
+    return {
+      color: _tmpDefaultColor.setHex(state.color),
+      emissive: _tmpDefaultEmissive.setHex(state.emissiveColor),
+      emissiveIntensity: state.emissiveIntensity,
+      height: state.addHeight,
+    };
+  }
+
+  setFeatureColorByBatchIndex(batchIndex: number, color: Color) {
+    this._updateBatchAttribute(
+      batchIndex,
+      "color",
+      color.toArray(_tmpColorArray),
+    );
   }
 
   setFeatureShowByBatchIndex(batchIndex: number, rawVisible: boolean) {
-    const instances = this.instancesOfBatchIndex(batchIndex);
-    if (instances.length === 0) return;
-
-    const paramsAttr = this.geometry.getAttribute(
-      "instanceParams",
-    ) as InstancedBufferAttribute;
-    for (const instanceId of instances) {
-      paramsAttr.setZ(instanceId, rawVisible ? 1.0 : 0.0);
+    if (this._updateBatchAttribute(batchIndex, "show", rawVisible)) {
+      this.ctx.declutter?.markDirty();
     }
-    paramsAttr.needsUpdate = true;
-    this.ctx.declutter?.markDirty();
   }
 
   setFeatureOpacityByBatchIndex(batchIndex: number, opacity: number) {
-    const instances = this.instancesOfBatchIndex(batchIndex);
-    if (instances.length === 0) return;
-
-    const paramsAttr = this.geometry.getAttribute(
-      "instanceParams",
-    ) as InstancedBufferAttribute;
-    const clampedOpacity = Number.isFinite(opacity)
-      ? Math.max(0.0, Math.min(1.0, opacity))
-      : 1.0;
-    for (const instanceId of instances) {
-      paramsAttr.setW(instanceId, clampedOpacity);
-    }
-    paramsAttr.needsUpdate = true;
+    this._updateBatchAttribute(batchIndex, "opacity", opacity);
   }
 
   setFeatureHeightByBatchIndex(batchIndex: number, height: number) {
-    const instances = this.instancesOfBatchIndex(batchIndex);
-    if (instances.length === 0) return;
-
-    const paramsAttr = this.geometry.getAttribute(
-      "instanceParams",
-    ) as InstancedBufferAttribute;
-
-    const sanitizedHeight = Number.isFinite(height) ? height : 0.0;
-    for (const instanceId of instances) {
-      paramsAttr.setX(instanceId, sanitizedHeight);
+    if (this._updateBatchAttribute(batchIndex, "height", height)) {
+      this.ctx.declutter?.markDirty();
     }
-    paramsAttr.needsUpdate = true;
-    this.ctx.declutter?.markDirty();
+  }
+
+  setFeatureEmissiveByBatchIndex(batchIndex: number, emissive: Color) {
+    this._updateBatchAttribute(
+      batchIndex,
+      "emissive",
+      emissive.toArray(_tmpColorArray),
+    );
+  }
+
+  setFeatureEmissiveIntensityByBatchIndex(
+    batchIndex: number,
+    intensity: number,
+  ) {
+    this._updateBatchAttribute(batchIndex, "emissiveIntensity", intensity);
   }
 
   /**
    * Set one instance's declutter fade target; the attribute animates toward
-   * it in {@link stepDeclutterFade}. Deliberately separate from the `show`
-   * component of `instanceParams` so user-driven visibility and declutter
-   * results compose instead of clobbering each other.
+   * it in {@link stepDeclutterFade}. Deliberately separate from the batch
+   * texture's `show` so user-driven visibility and declutter results compose
+   * instead of clobbering each other.
    */
   setDeclutterHiddenByInstance(instanceIndex: number, hidden: boolean) {
     const targets = this._declutterTargets;
@@ -963,23 +952,9 @@ export class InstancedSpriteMesh
   }
 
   setFeatureSizeByBatchIndex(batchIndex: number, size: number) {
-    const instances = this.instancesOfBatchIndex(batchIndex);
-    if (instances.length === 0) return;
-
-    const paramsAttr = this.geometry.getAttribute(
-      "instanceParams",
-    ) as InstancedBufferAttribute;
-
-    const sanitizedSize = Number.isFinite(size)
-      ? size < 0.0
-        ? -1.0
-        : size
-      : -1.0;
-    for (const instanceId of instances) {
-      paramsAttr.setY(instanceId, sanitizedSize);
+    if (this._updateBatchAttribute(batchIndex, "size", size)) {
+      this.ctx.declutter?.markDirty();
     }
-    paramsAttr.needsUpdate = true;
-    this.ctx.declutter?.markDirty();
   }
 
   /**
@@ -1067,6 +1042,7 @@ export class InstancedSpriteMesh
 
     // Clear internal collections to release references
     this._batchIndexToInstances = null;
+    this._instanceBatchIndex = null;
     this._anchors = null;
     this._declutterTargets = null;
     this._declutterPriorityOverrides = null;

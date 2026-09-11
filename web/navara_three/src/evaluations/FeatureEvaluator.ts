@@ -62,9 +62,9 @@ export type EvaluatableMaterialProperty = {
   declutterPriority: AvailableMaterialProperty["declutterPriority"];
   /** Image URL for billboards; packed into a shared per-mesh texture atlas. */
   image: string;
-  /** Emissive color expression (for polygons/3D Tiles models). */
+  /** Emissive color expression (for polygons/3D Tiles models/points/billboards/text). */
   emissive: AvailableMaterialProperty["emissiveColor"];
-  /** Emissive intensity expression (for polygons/3D Tiles models). */
+  /** Emissive intensity expression (for polygons/3D Tiles models/points/billboards/text). */
   emissiveIntensity: AvailableMaterialProperty["emissiveIntensity"];
 };
 
@@ -400,11 +400,12 @@ export class FeatureEvaluator {
    *   packed into the layer's texture atlas. Return `null` to clear a
    *   previous per-feature image and revert to the material's default `url`;
    *   omit the key to leave it unchanged.
-   * - `emissive` - Emissive color (for batched polygons/3D Tiles models;
-   *   ignored on models without batch/feature ids); pairs with
-   *   `emissiveIntensity` and drives selective bloom
+   * - `emissive` - Emissive color (for batched polygons/3D Tiles models/
+   *   points/billboards/text; ignored on models without batch/feature ids).
+   *   Pairs with `emissiveIntensity` and drives selective bloom. On text only
+   *   the glyph fill glows — outline and background stay dark.
    * - `emissiveIntensity` - Emissive intensity multiplier (for batched
-   *   polygons/3D Tiles models)
+   *   polygons/3D Tiles models/points/billboards/text)
    *
    * Note: Evaluated styles override the layer's default styles.
    *
@@ -488,6 +489,15 @@ export class FeatureEvaluator {
           evaluated.declutterPriority,
         );
       }
+      if (evaluated.emissive != null) {
+        obj.setFeatureEmissiveByBatchIndex(batchIndex, evaluated.emissive.raw);
+      }
+      if (evaluated.emissiveIntensity != null) {
+        obj.setFeatureEmissiveIntensityByBatchIndex(
+          batchIndex,
+          evaluated.emissiveIntensity,
+        );
+      }
       if ("image" in evaluated) {
         // Async by nature (the image may need fetching); the atlas dedupes
         // loads by URL so evaluating many features costs one fetch per image.
@@ -523,6 +533,18 @@ export class FeatureEvaluator {
         obj.setFeatureDeclutterPriorityByBatchIndex(
           batchIndex,
           evaluated.declutterPriority,
+        );
+      }
+      if (evaluated.emissive != null && obj instanceof BatchedSdfTextMesh) {
+        obj.setFeatureEmissiveByBatchIndex(batchIndex, evaluated.emissive.raw);
+      }
+      if (
+        evaluated.emissiveIntensity != null &&
+        obj instanceof BatchedSdfTextMesh
+      ) {
+        obj.setFeatureEmissiveIntensityByBatchIndex(
+          batchIndex,
+          evaluated.emissiveIntensity,
         );
       }
       return;

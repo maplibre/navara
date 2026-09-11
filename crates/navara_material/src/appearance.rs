@@ -306,6 +306,10 @@ pub struct TextMaterial {
     /// geometry only; opting in `Line`/`Polygon` also emits a label per
     /// line-string / polygon-ring vertex.
     pub geometry_types: Vec<SourceGeometryType>,
+    // post effect
+    pub effect_ids: Option<Vec<String>>,
+    pub emissive_intensity: Option<f32>,
+    pub emissive_color: Option<u32>,
 }
 
 impl Default for TextMaterial {
@@ -345,6 +349,10 @@ impl Default for TextMaterial {
             declutter: true,
             declutter_priority: 0.0,
             geometry_types: vec![SourceGeometryType::Point],
+            // post effect
+            effect_ids: None,
+            emissive_intensity: None,
+            emissive_color: None,
         }
     }
 }

@@ -26,6 +26,9 @@ export const DEFAULT_BASE_PROPS: Required<
   backgroundOutlineColor: 0xff0000,
   backgroundOutlineWidth: 0.1,
   pickable: false,
+  effectIdsMask: 0,
+  emissiveColor: 0,
+  emissiveIntensity: 0,
   depthTest: true,
   transparent: true,
 };
@@ -46,6 +49,9 @@ export const DEFAULT_BASE_STATE: SdfTextBaseState = {
   backgroundOutlineColor: hexToColor(DEFAULT_BASE_PROPS.backgroundOutlineColor),
   backgroundOutlineWidth: DEFAULT_BASE_PROPS.backgroundOutlineWidth,
   pickable: DEFAULT_BASE_PROPS.pickable,
+  effectIdsMask: DEFAULT_BASE_PROPS.effectIdsMask,
+  emissiveColor: DEFAULT_BASE_PROPS.emissiveColor,
+  emissiveIntensity: DEFAULT_BASE_PROPS.emissiveIntensity,
   depthTest: DEFAULT_BASE_PROPS.depthTest,
   transparent: DEFAULT_BASE_PROPS.transparent,
 };
@@ -88,6 +94,10 @@ export const updateState = (
     backgroundOutlineWidth:
       props.backgroundOutlineWidth ?? currentState.backgroundOutlineWidth,
     pickable: props.pickable ?? currentState.pickable,
+    effectIdsMask: props.effectIdsMask ?? currentState.effectIdsMask,
+    emissiveColor: props.emissiveColor ?? currentState.emissiveColor,
+    emissiveIntensity:
+      props.emissiveIntensity ?? currentState.emissiveIntensity,
     depthTest: props.depthTest ?? currentState.depthTest,
     transparent: props.transparent ?? currentState.transparent,
   };

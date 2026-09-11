@@ -79,6 +79,9 @@ export function createInstancedSpriteBaseEnhancer(
       if (props.texture) {
         mutates.setTexture(props.texture);
       }
+      if (props.batchDataTexture) {
+        mutates.setBatchDataTexture(props.batchDataTexture);
+      }
 
       updateMaterialProps(material, mergedProps);
     },
@@ -91,6 +94,9 @@ export function createInstancedSpriteBaseEnhancer(
 
       if (props.texture) {
         mutates.setTexture(props.texture);
+      }
+      if (props.batchDataTexture) {
+        mutates.setBatchDataTexture(props.batchDataTexture);
       }
 
       updateMaterialProps(material, props);
@@ -111,7 +117,6 @@ export function createInstancedSpriteBaseEnhancer(
       return JSON.stringify({
         useRTE: state.useRTE,
         billboard: state.billboard,
-        userDataDefines: material.userData?.defines ?? undefined,
       });
     },
   };

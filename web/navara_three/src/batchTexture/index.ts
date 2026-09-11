@@ -2,6 +2,9 @@ export {
   flushBatchTextureUpdates,
   getBatchDataTexture,
   packShowOpacity,
+  readBatchScalar,
+  readBatchShowOpacity,
+  readBatchVec3,
   unpackShowOpacity,
   updateBatchAttribute,
 } from "./core";
@@ -16,8 +19,17 @@ export {
   getBatchTextureLayout,
   getBatchTextureUniform,
   initBatchedMaterial,
+  registerBatchedMaterial,
   setBatchTextureRenderer,
 } from "./material";
+export {
+  MODEL_BATCH_SUPPORT,
+  POLYGON_BATCH_SUPPORT,
+  POLYLINE_BATCH_SUPPORT,
+  SPRITE_BATCH_SUPPORT,
+  TEXT_BATCH_SUPPORT,
+  type BatchTextureSupport,
+} from "./support";
 export {
   BATCHED_ATTRIBUTE_NAMES,
   BATCH_SCALAR_KEYS,

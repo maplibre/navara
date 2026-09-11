@@ -8,6 +8,7 @@ export const BATCHED_ATTRIBUTE_NAMES = [
   "height",
   "extrudedHeight",
   "lineWidth",
+  "size",
   "emissive",
   "emissiveIntensity",
 ] as const;
@@ -24,6 +25,7 @@ export const BATCH_SCALAR_KEYS = [
   "height",
   "extrudedHeight",
   "lineWidth",
+  "size",
 ] as const;
 
 export type BatchScalarKey = (typeof BATCH_SCALAR_KEYS)[number];
@@ -64,4 +66,8 @@ export type DefaultBatchAttributeValues = {
   /** Mesh default emissive; only needed by mesh types supporting `emissive`. */
   emissive?: Color;
   emissiveIntensity?: number;
+  /** Mesh default height offset (uAddHeight); backfilled on slot allocation
+   *  so unstyled features keep the material height. Defaults to 0. */
+  height?: number;
+  extrudedHeight?: number;
 };

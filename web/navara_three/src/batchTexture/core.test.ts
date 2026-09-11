@@ -6,6 +6,8 @@ import {
   flushBatchTextureUpdates,
   getBatchDataTexture,
   packShowOpacity,
+  readBatchScalar,
+  readBatchShowOpacity,
   unpackShowOpacity,
   updateBatchAttribute,
 } from "./core";
@@ -310,7 +312,55 @@ describe("emissive", () => {
   });
 });
 
+describe("read-back", () => {
+  test("readBatchScalar returns undefined before allocation, then written values and the backfilled sentinel", () => {
+    const { material } = setupBatchMaterial(4, ["height", "size"]);
+    expect(readBatchScalar(material, 0, "size")).toBeUndefined();
+
+    updateBatchAttribute(material, 1, "size", 24, WHITE);
+
+    expect(material.userData.defines.USE_BATCH_SIZE).toBe(true);
+    expect(readBatchScalar(material, 1, "size")).toBe(24);
+    // Untouched batch reads the "use material default" sentinel the
+    // allocation backfilled — the CPU sees what the shader sees.
+    expect(readBatchScalar(material, 3, "size")).toBe(-1);
+  });
+
+  test("readBatchShowOpacity unpacks independent show and opacity writes", () => {
+    const { material } = setupBatchMaterial(4);
+    expect(readBatchShowOpacity(material, 0)).toBeUndefined();
+
+    updateBatchAttribute(material, 2, "show", false, WHITE);
+    updateBatchAttribute(material, 2, "opacity", 0.25, WHITE);
+
+    expect(readBatchShowOpacity(material, 2)).toEqual({
+      show: 0,
+      opacity: 0.25,
+    });
+    // Untouched batch reads the backfilled default (visible, opacity 1).
+    expect(readBatchShowOpacity(material, 0)).toEqual({ show: 1, opacity: 1 });
+  });
+
+  test("height allocation backfills the material default so unstyled batches keep the mesh height", () => {
+    const { material } = setupBatchMaterial(4);
+    updateBatchAttribute(material, 1, "height", 40, {
+      ...WHITE,
+      height: 250,
+    });
+
+    expect(readBatchScalar(material, 1, "height")).toBe(40);
+    expect(readBatchScalar(material, 3, "height")).toBe(250);
+  });
+});
+
 describe("updateBatchAttribute", () => {
+  test("out-of-range batch ids are rejected without stamping defines", () => {
+    const { material } = setupBatchMaterial(4);
+    expect(updateBatchAttribute(material, 4, "height", 1, WHITE)).toBe(false);
+    expect(updateBatchAttribute(material, -1, "height", 1, WHITE)).toBe(false);
+    expect(material.userData.defines?.USE_BATCH_HEIGHT).toBeUndefined();
+  });
+
   test("show and opacity share one channel and preserve each other", () => {
     const { material } = setupBatchMaterial(10);
     const texture = () => {

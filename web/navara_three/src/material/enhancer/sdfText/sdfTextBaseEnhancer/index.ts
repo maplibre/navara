@@ -61,7 +61,7 @@ export function createSdfTextBaseEnhancer(
         state && mutates,
         "mount() must be called before transformShader",
       );
-      transformShader(shader, state, mutates);
+      transformShader(shader, state, mutates, material);
     },
 
     mount: (props: SdfTextBaseProps): void => {

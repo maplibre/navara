@@ -1,4 +1,4 @@
-import type { Matrix4, Texture, Vector2, Vector3 } from "three";
+import type { Color, Matrix4, Texture, Vector2, Vector3 } from "three";
 
 import type { UniformValue } from "../../../types";
 import type { Mutates } from "../../MaterialEnhancer";
@@ -19,6 +19,12 @@ export type InstancedSpriteBaseProps = {
   alphaTest?: number;
   pickable?: boolean;
 
+  // Mesh-level style defaults; per-feature overrides come from the batch
+  // data texture.
+  color?: number;
+  opacity?: number;
+  addHeight?: number;
+
   // SelectiveEffect
   effectIdsMask?: number;
   emissiveColor?: number;
@@ -31,6 +37,8 @@ export type InstancedSpriteBaseProps = {
   // External uniform refs / values (may change over time)
   rtcCenter?: [number, number, number];
   texture?: UniformValue<Texture | null>;
+  /** Shared batch data texture ref; growth swaps its `.value` in place. */
+  batchDataTexture?: UniformValue<Texture | null>;
   /** Billboard atlas dimensions in pixels; normalizes instanceUvRect in the shader. */
   atlasSize?: [number, number];
   fovRad?: number;
@@ -53,6 +61,9 @@ export type InstancedSpriteBaseState = Readonly<{
   offsetDepth: boolean;
   alphaTest: number;
   pickable: boolean;
+  color: number;
+  opacity: number;
+  addHeight: number;
   effectIdsMask: number;
   emissiveColor: number;
   emissiveIntensity: number;
@@ -80,6 +91,9 @@ export type InstancedSpriteBaseRefs = {
   /** Always 1.0 — blocks fast-math reassociation of the RTE recombination. */
   u_rteOne?: UniformValue<number>;
   uScale: UniformValue<number>;
+  uColor: UniformValue<Color>;
+  uOpacity: UniformValue<number>;
+  uAddHeight: UniformValue<number>;
   uCenter: UniformValue<Vector2>;
   uSizeInMeters: UniformValue<boolean>;
   uOffsetDepth: UniformValue<boolean>;
@@ -88,13 +102,16 @@ export type InstancedSpriteBaseRefs = {
   uAtlasSize: UniformValue<Vector2>;
   nvr_uPickable: UniformValue<number>;
   uEffectIdsMask: UniformValue<number>;
-  uEmissiveColor: UniformValue<Vector3>;
+  uEmissiveColor: UniformValue<Color>;
   uEmissiveIntensity: UniformValue<number>;
   uFovRad: UniformValue<number>;
   uScreenHeightPx: UniformValue<number>;
 
   // External ref - only present in billboard mode
   uTexture?: UniformValue<Texture | null>;
+
+  // Shared batch data texture ref (set once per-feature styling starts)
+  batchDataTexture?: UniformValue<Texture | null>;
 };
 
 export type InstancedSpriteBaseUniforms = Partial<InstancedSpriteBaseRefs>;
@@ -144,5 +161,11 @@ export type InstancedSpriteBaseMutates = Mutates<
      * Set texture external ref.
      */
     setTexture: (texture: UniformValue<Texture | null>) => void;
+
+    /**
+     * Set the batch data texture ref (an external ref shared with the
+     * batchTexture core, whose `.value` is swapped on growth).
+     */
+    setBatchDataTexture: (texture: UniformValue<Texture | null>) => void;
   }
 >;

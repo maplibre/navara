@@ -20,16 +20,18 @@ export const sdfRadiusFor = (useMsdf: boolean): number => atlasRangePx(useMsdf);
  * here because the enhancer owns the shader.
  */
 export const LabelRow = {
-  /** xyz = anchor high (RTE) or RTC-relative anchor, w = fontSize. */
-  POSITION_HIGH_SIZE: 0,
-  /** xyz = anchor low (RTE only), w = addHeight. */
-  POSITION_LOW_HEIGHT: 1,
-  /** rgb = colour, a = opacity. */
-  COLOR_OPACITY: 2,
+  /** xyz = anchor high (RTE) or RTC-relative anchor, w = reserved. */
+  POSITION_HIGH: 0,
+  /** xyz = anchor low (RTE only), w = reserved. */
+  POSITION_LOW: 1,
   /** x = textWidth, y = textHeight, z = bgMinY, w = bgMaxY (all in ems). */
-  BOX: 3,
-  /** x = declutterHide, y = batchId, z = show, w = reserved. */
-  STATE: 4,
+  BOX: 2,
+  /**
+   * x = declutterHide, y = batchId, z = show, w = batchIndex.
+   * batchIndex keys the *shared batch data texture* holding the per-feature
+   * style (color/opacity/size/height) — see guide/BATCH_TEXTURE.md.
+   */
+  STATE: 3,
 } as const;
 
 /** Texels per label. Derived from {@link LabelRow} so the two can't disagree. */
@@ -64,6 +66,11 @@ export type SdfTextBaseProps = {
   backgroundOutlineWidth?: number;
   pickable?: boolean;
 
+  // SelectiveEffect
+  effectIdsMask?: number;
+  emissiveColor?: number; // hex
+  emissiveIntensity?: number;
+
   // Material properties (set directly on material, not via uniforms)
   depthTest?: boolean;
   transparent?: boolean;
@@ -93,6 +100,9 @@ export type SdfTextBaseState = Readonly<{
   backgroundOutlineColor: Color;
   backgroundOutlineWidth: number;
   pickable: boolean;
+  effectIdsMask: number;
+  emissiveColor: number;
+  emissiveIntensity: number;
 
   // Material properties
   depthTest: boolean;
@@ -126,6 +136,9 @@ export type SdfTextBaseRefs = {
   /** Always 1.0 — blocks fast-math reassociation of the RTE recombination. */
   u_rteOne?: UniformValue<number>;
   nvr_uPickable: UniformValue<number>;
+  uEffectIdsMask: UniformValue<number>;
+  uEmissiveColor: UniformValue<Color>;
+  uEmissiveIntensity: UniformValue<number>;
   uAtlas: UniformValue<DataTexture | null>;
   /** COLRv1 RGBA atlas. `null` when the font has no color glyphs. */
   uColorAtlas: UniformValue<DataTexture | null>;
@@ -139,6 +152,9 @@ export type SdfTextBaseRefs = {
   /** Dimensions of `uLabelData` in texels, for the shader's index-to-texel
    *  math. Read as an `ivec2`. */
   uLabelTexSize: UniformValue<Vector2>;
+  /** Shared batch data texture ref (per-feature style); growth swaps its
+   *  `.value` in place. */
+  batchDataTexture?: UniformValue<DataTexture | null>;
 };
 
 export type SdfTextBaseUniforms = Partial<SdfTextBaseRefs>;
@@ -191,5 +207,10 @@ export type SdfTextBaseMutates = Mutates<
      * RTC mode; in RTE mode anchors carry their own high/low split.
      */
     setRtcCenter: (center: [number, number, number]) => void;
+    /**
+     * Set the batch data texture ref (an external ref shared with the
+     * batchTexture core, whose `.value` is swapped on growth).
+     */
+    setBatchDataTexture: (texture: UniformValue<DataTexture | null>) => void;
   }
 >;

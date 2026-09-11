@@ -15,9 +15,7 @@ import {
   initBatchedMaterial,
   updateBatchAttribute,
   type BatchedAttributeName,
-  type BatchScalarKey,
-  type BatchTextureConfig,
-  type BatchVec3Key,
+  type BatchTextureSupport,
   type DefaultBatchAttributeValues,
 } from "../batchTexture";
 import type { CustomObject3DEventMap } from "../object3DEvent";
@@ -29,21 +27,6 @@ export type BatchedFeatureAttributes<
 > = {
   _batchid?: BufferAttribute;
 } & Attr;
-
-/**
- * SCALARS-row component assignment per mesh type. A mesh's scalars must only
- * contain attributes its shaders declare receiver variables for:
- * `updateBatchAttribute` turns a `USE_BATCH_*` define on whenever the slot
- * exists, and the shared `batch_texture_vertex` chunk then assigns to the
- * receiver — an undeclared one (e.g. `addExtrudedHeight` in the polyline
- * shaders) breaks shader compilation.
- */
-export const POLYGON_BATCH_SCALARS: BatchScalarKey[] = [
-  "height",
-  "extrudedHeight",
-];
-
-export const POLYLINE_BATCH_SCALARS: BatchScalarKey[] = ["height", "lineWidth"];
 
 export class BatchedFeatureMesh<
   Buf extends BufferGeometry<BatchedFeatureAttributes> =
@@ -74,25 +57,16 @@ export class BatchedFeatureMesh<
   }
 
   /**
-   * SCALARS-row assignment supported by this mesh type's shaders. Attributes
-   * without a slot are silently ignored by `updateBatchAttribute`.
+   * This mesh type's batch-texture capability (see the receiver rule on
+   * {@link BatchTextureSupport} in batchTexture/support.ts).
    */
-  _getBatchTextureScalars(): BatchScalarKey[] {
+  _getBatchTextureSupport(): BatchTextureSupport {
     throw new Unimplemented();
-  }
-
-  /**
-   * vec3 attributes supported by this mesh type's shaders (same receiver
-   * rule as scalars). Color is universal; override to add e.g. emissive.
-   */
-  _getBatchTextureVec3s(): BatchVec3Key[] {
-    return ["color"];
   }
 
   _initBatchedMaterial() {
     initBatchedMaterial(this.material, {
-      scalars: this._getBatchTextureScalars(),
-      vec3s: this._getBatchTextureVec3s(),
+      ...this._getBatchTextureSupport(),
       batchLength: 0,
     });
   }
@@ -100,13 +74,10 @@ export class BatchedFeatureMesh<
   _initBatchDataTexture(): void {
     invariant(this.batchLength != null);
 
-    const config: BatchTextureConfig = {
-      scalars: this._getBatchTextureScalars(),
-      vec3s: this._getBatchTextureVec3s(),
+    initBatchedMaterial(this.material, {
+      ...this._getBatchTextureSupport(),
       batchLength: this.batchLength,
-    };
-
-    initBatchedMaterial(this.material, config);
+    });
   }
 
   /** Returns whether the write landed (see {@link updateBatchAttribute}). */

@@ -3,9 +3,14 @@ import type {
   TextMaterial as NavaraTextMaterial,
 } from "@navaramap/engine";
 import type { ShapeTextResult } from "@navaramap/font";
-import { Color, PerspectiveCamera } from "three";
+import { Color, PerspectiveCamera, type ShaderMaterial } from "three";
 import { describe, expect, it, vi } from "vitest";
 
+import {
+  readBatchScalar,
+  readBatchShowOpacity,
+  readBatchVec3,
+} from "../../batchTexture";
 import type { EventContext } from "../../event/context";
 
 import { BatchedSdfTextMesh } from "./batchedSdfText";
@@ -90,6 +95,7 @@ function textMeshEvent(mat: NavaraTextMaterial): NavaraTextMesh {
   return {
     material: mat,
     transform: { tx: 0, ty: 0, tz: 0 },
+    batch_length: 2,
     geometry: {
       batch_ids: { data: new Float32Array([0, 1]), size: 1 },
       position: { data: new Float32Array([0, 0, 0, 10, 0, 0]), size: 3 },
@@ -97,12 +103,16 @@ function textMeshEvent(mat: NavaraTextMaterial): NavaraTextMesh {
   } as unknown as NavaraTextMesh;
 }
 
+/** viewContext mock: no real renderer, so the batch texture flushes freely. */
+const viewContext = { getRenderer: () => undefined };
+
 function makeMesh(mat = material()) {
   const fontManager = makeFontManager();
   const ctx = {
     buf: { removeF32: (d: Float32Array) => d },
     fontManager,
     renderFlag: { forceUpdate: false },
+    viewContext,
   } as unknown as EventContext;
   const mesh = new BatchedSdfTextMesh(ctx, textMeshEvent(mat), "font", {
     layerId: "layer",
@@ -111,17 +121,25 @@ function makeMesh(mat = material()) {
 }
 
 // Read back what the vertex shader would sample, rather than the private
-// LabelRecord — these are the writes the fix is about.
+// LabelRecord — these are the writes the fix is about. Style lives in the
+// shared batch data texture (keyed by the label's feature index); show stays
+// in the label data texture's STATE row.
 const store = (mesh: BatchedSdfTextMesh) =>
   (mesh as unknown as { _labelData: LabelDataTexture })._labelData;
+const batchMat = (mesh: BatchedSdfTextMesh) => mesh.material as ShaderMaterial;
+const batchIndexOf = (mesh: BatchedSdfTextMesh, slot: number) =>
+  (mesh as unknown as { _labels: { batchIndex: number }[] })._labels[slot]
+    .batchIndex;
 const sizeOf = (mesh: BatchedSdfTextMesh, slot: number) =>
-  store(mesh).getComponent(slot, LabelRow.POSITION_HIGH_SIZE, 3);
+  readBatchScalar(batchMat(mesh), batchIndexOf(mesh, slot), "size");
 const heightOf = (mesh: BatchedSdfTextMesh, slot: number) =>
-  store(mesh).getComponent(slot, LabelRow.POSITION_LOW_HEIGHT, 3);
+  readBatchScalar(batchMat(mesh), batchIndexOf(mesh, slot), "height");
 const opacityOf = (mesh: BatchedSdfTextMesh, slot: number) =>
-  store(mesh).getComponent(slot, LabelRow.COLOR_OPACITY, 3);
+  readBatchShowOpacity(batchMat(mesh), batchIndexOf(mesh, slot))?.opacity;
+const _readColor = new Color();
 const redOf = (mesh: BatchedSdfTextMesh, slot: number) =>
-  store(mesh).getComponent(slot, LabelRow.COLOR_OPACITY, 0);
+  readBatchVec3(batchMat(mesh), batchIndexOf(mesh, slot), "color", _readColor)
+    ?.r;
 const showOf = (mesh: BatchedSdfTextMesh, slot: number) =>
   store(mesh).getComponent(slot, LabelRow.STATE, 2);
 
@@ -222,6 +240,7 @@ describe("BatchedSdfTextMesh multi-instance fan-out", () => {
     return {
       material: mat,
       transform: { tx: 0, ty: 0, tz: 0 },
+      batch_length: 2,
       geometry: {
         batch_ids: { data: new Float32Array([7, 8, 9]), size: 1 },
         batch_index: { data: new Uint32Array([0, 0, 1]), size: 1 },
@@ -242,6 +261,7 @@ describe("BatchedSdfTextMesh multi-instance fan-out", () => {
       },
       fontManager,
       renderFlag: { forceUpdate: false },
+      viewContext,
     } as unknown as EventContext;
     const mesh = new BatchedSdfTextMesh(
       ctx,
@@ -317,6 +337,7 @@ describe("BatchedSdfTextMesh deferred font preparation", () => {
       fontManager,
       declutter,
       renderFlag: { forceUpdate: false },
+      viewContext,
     } as unknown as EventContext;
   }
 
