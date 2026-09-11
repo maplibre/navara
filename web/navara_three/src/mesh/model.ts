@@ -229,20 +229,13 @@ export class ModelMesh
     attribute: ModelBatchedAttributeName,
     value: number | number[] | boolean,
   ): void {
-    // Write the texture first: it validates the value and captures the
-    // backfill defaults before the enhancer resets material.color to white,
-    // and a rejected write must not stamp any define — the shaders have no
-    // safety net for an unwritten receiver.
+    // Write the texture first: a rejected write must not stamp any define —
+    // the shaders have no safety net for an unwritten receiver.
     const wrote = updateBatchAttribute(
       mesh.material,
       batchId,
       attribute,
       value,
-      {
-        color: mesh.material.color,
-        emissive: mesh.material.emissive,
-        emissiveIntensity: mesh.material.emissiveIntensity,
-      },
     );
     if (!wrote) return;
 

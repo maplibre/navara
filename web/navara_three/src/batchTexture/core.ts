@@ -23,28 +23,21 @@ import type {
   BatchSlot,
   BatchVec3Key,
   BatchedAttributeName,
-  DefaultBatchAttributeValues,
 } from "./types";
 
 /** Materials whose color was already reset to white for the batch color path. */
 const batchColorTouched = new WeakSet<Material>();
 
 /**
- * Per-scalar default, backfilled on slot allocation and written when a value
- * is not finite. Sentinels for attributes where every real number is a legal
- * styled value get their material fallback in the shader; height-like
- * attributes take the mesh material's own value so unstyled features keep
- * the mesh's look (same principle as the vec3 backfill).
+ * Per-scalar fixed default, backfilled on slot allocation and written when a
+ * value is not finite.
  */
-function scalarDefault(
-  key: BatchScalarKey,
-  defaults: DefaultBatchAttributeValues,
-): number {
+function scalarDefault(key: BatchScalarKey): number {
   switch (key) {
     case "height":
-      return defaults.height ?? 0.0;
+      return 0.0;
     case "extrudedHeight":
-      return defaults.extrudedHeight ?? 0.0;
+      return 0.0;
     // Negative value indicates shader should fall back to minMaxHeightAndWidth.z
     case "lineWidth":
       return -1.0;
@@ -194,23 +187,30 @@ function ensureTextureRows(state: BatchTextureState): Float32Array {
   return data;
 }
 
+const WHITE = new Color(1, 1, 1);
+const BLACK = new Color(0, 0, 0);
+
+/** Fixed vec3 default: color → white (multiplier identity), emissive → black. */
+function vec3Default(key: BatchVec3Key): Color {
+  return key === "color" ? WHITE : BLACK;
+}
+
 /**
  * Row index of a vec3 attribute, allocating it on first use. Returns
  * undefined for attributes outside the mesh type's capability list (the
  * write is then silently ignored). Allocation fills components 0-2 with the
- * mesh's default for every batch, so features the evaluate callback never
- * styles keep the mesh's own look instead of reading zeros. Component 3
- * belongs to whichever scalar claims it.
+ * fixed default for every batch. Component 3 belongs to whichever scalar
+ * claims it.
  */
 function ensureVec3Row(
   state: BatchTextureState,
   key: BatchVec3Key,
-  defaultColor: Color,
 ): number | undefined {
   if (!state.supportedVec3s.has(key)) return undefined;
   const existing = state.layout.getVec3Row(key);
   if (existing != null) return existing;
 
+  const defaultColor = vec3Default(key);
   const row = state.layout.allocateVec3(key);
   // A vec3 always opens a fresh row, so the texture was just (re)created and
   // does a full first upload — no dirty marking needed for the fill.
@@ -225,47 +225,22 @@ function ensureVec3Row(
   return row;
 }
 
-const BLACK = new Color(0, 0, 0);
-
-/**
- * Backfill defaults for the emissive slot pair. A mesh default intensity of 0
- * means "emissive disabled" — but backfilling 0 would also zero the
- * `rgb × intensity` fold for features that style only `emissive`, so the
- * disabled pair maps to the visually identical (black, 1): untouched features
- * stay dark and emissive-only styling gets an identity multiplier (matching
- * mesh types whose material intensity defaults to 1).
- */
-function emissiveDefaults(defaultValues: DefaultBatchAttributeValues): {
-  emissive: Color;
-  emissiveIntensity: number;
-} {
-  const intensity = defaultValues.emissiveIntensity ?? 1;
-  return intensity > 0
-    ? {
-        emissive: defaultValues.emissive ?? BLACK,
-        emissiveIntensity: intensity,
-      }
-    : { emissive: BLACK, emissiveIntensity: 1 };
-}
-
 /**
  * Slots for emissive styling. The vec3 row and the intensity scalar are
  * allocated together — the shader folds them into one varying
  * (`emissive × intensity`) in the vertex stage, so both must hold valid
- * per-feature values as soon as either attribute is written. Defaults come
- * from the mesh material (see {@link emissiveDefaults}), so untouched
- * features keep its emissive look.
+ * per-feature values as soon as either attribute is written. The defaults
+ * (black, 1) keep untouched features dark while giving emissive-only styling
+ * an identity intensity multiplier.
  */
 function ensureEmissiveSlots(
   state: BatchTextureState,
-  defaultValues: DefaultBatchAttributeValues,
 ): { row: number; intensity: BatchSlot } | undefined {
-  const defaults = emissiveDefaults(defaultValues);
-  const row = ensureVec3Row(state, "emissive", defaults.emissive);
+  const row = ensureVec3Row(state, "emissive");
   if (row == null) return undefined;
   const intensity =
     state.layout.getScalarSlot("emissiveIntensity") ??
-    allocateScalarSlot(state, "emissiveIntensity", defaults.emissiveIntensity);
+    allocateScalarSlot(state, "emissiveIntensity", 1);
   return { row, intensity };
 }
 
@@ -307,12 +282,11 @@ function allocateScalarSlot(
 function ensureScalarSlot(
   state: BatchTextureState,
   key: BatchScalarKey,
-  defaultValues: DefaultBatchAttributeValues,
 ): BatchSlot | undefined {
   if (!state.supported.has(key)) return undefined;
   return (
     state.layout.getScalarSlot(key) ??
-    allocateScalarSlot(state, key, scalarDefault(key, defaultValues))
+    allocateScalarSlot(state, key, scalarDefault(key))
   );
 }
 
@@ -417,7 +391,6 @@ export function updateBatchAttribute(
   batchId: number,
   attribute: BatchedAttributeName,
   value: number | number[] | boolean,
-  defaultValues: DefaultBatchAttributeValues,
 ): boolean {
   const state = getBatchTextureState(material);
   // Without a known batchLength the texture cannot exist yet; nothing to write.
@@ -428,7 +401,7 @@ export function updateBatchAttribute(
   switch (attribute) {
     case "color": {
       if (!(value instanceof Array)) return false;
-      const row = ensureVec3Row(state, "color", defaultValues.color);
+      const row = ensureVec3Row(state, "color");
       if (row == null) return false;
       enableBatchColor(material);
 
@@ -449,10 +422,9 @@ export function updateBatchAttribute(
 
       const { texture, data } = textureData(state);
       const baseIndex = batchBaseIndex(state.width, state.groups, batchId, row);
-      const fallback = defaultValues.color;
-      data[baseIndex] = Number.isFinite(value[0]) ? value[0] : fallback.r;
-      data[baseIndex + 1] = Number.isFinite(value[1]) ? value[1] : fallback.g;
-      data[baseIndex + 2] = Number.isFinite(value[2]) ? value[2] : fallback.b;
+      data[baseIndex] = Number.isFinite(value[0]) ? value[0] : WHITE.r;
+      data[baseIndex + 1] = Number.isFinite(value[1]) ? value[1] : WHITE.g;
+      data[baseIndex + 2] = Number.isFinite(value[2]) ? value[2] : WHITE.b;
       markTexelDirty(texture, baseIndex);
       return true;
     }
@@ -495,7 +467,7 @@ export function updateBatchAttribute(
     }
     case "emissive": {
       if (!(value instanceof Array)) return false;
-      const slots = ensureEmissiveSlots(state, defaultValues);
+      const slots = ensureEmissiveSlots(state);
       if (!slots) return false;
       enableDefine(material, "USE_BATCH_EMISSIVE");
 
@@ -508,22 +480,19 @@ export function updateBatchAttribute(
       );
       // Sanitize like the scalar cases: a NaN texel would poison the HDR
       // emissive G-buffer and grow through the bloom mip chain.
-      const fallback = emissiveDefaults(defaultValues).emissive;
-      data[baseIndex] = Number.isFinite(value[0]) ? value[0] : fallback.r;
-      data[baseIndex + 1] = Number.isFinite(value[1]) ? value[1] : fallback.g;
-      data[baseIndex + 2] = Number.isFinite(value[2]) ? value[2] : fallback.b;
+      data[baseIndex] = Number.isFinite(value[0]) ? value[0] : BLACK.r;
+      data[baseIndex + 1] = Number.isFinite(value[1]) ? value[1] : BLACK.g;
+      data[baseIndex + 2] = Number.isFinite(value[2]) ? value[2] : BLACK.b;
       markTexelDirty(texture, baseIndex);
       return true;
     }
     case "emissiveIntensity": {
       if (typeof value !== "number") return false;
-      const slots = ensureEmissiveSlots(state, defaultValues);
+      const slots = ensureEmissiveSlots(state);
       if (!slots) return false;
       enableDefine(material, "USE_BATCH_EMISSIVE");
 
-      const sanitized = Number.isFinite(value)
-        ? value
-        : emissiveDefaults(defaultValues).emissiveIntensity;
+      const sanitized = Number.isFinite(value) ? value : 1;
       const { texture, data } = textureData(state);
       const baseIndex = batchBaseIndex(
         state.width,
@@ -541,14 +510,14 @@ export function updateBatchAttribute(
     case "size": {
       if (typeof value !== "number") return false;
 
-      const slot = ensureScalarSlot(state, attribute, defaultValues);
+      const slot = ensureScalarSlot(state, attribute);
       if (!slot) return false;
 
       enableDefine(material, `USE_BATCH_${SCALAR_DEFINE_SUFFIX[attribute]}`);
 
       const sanitized = Number.isFinite(value)
         ? value
-        : scalarDefault(attribute, defaultValues);
+        : scalarDefault(attribute);
       const { texture, data } = textureData(state);
       const baseIndex = batchBaseIndex(
         state.width,

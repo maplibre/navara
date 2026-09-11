@@ -20,7 +20,6 @@ import {
   updateBatchAttribute,
   type BatchedAttributeName,
   type BatchTextureSupport,
-  type DefaultBatchAttributeValues,
 } from "../../batchTexture";
 import {
   DECLUTTER_FADE_MS,
@@ -55,8 +54,6 @@ import { PendingSettlement } from "./pendingSettlement";
 const _tmpSize = new Vector2();
 const _tmpColor = new Color();
 const _tmpColorArray: [number, number, number] = [0, 0, 0];
-const _tmpDefaultColor = new Color();
-const _tmpDefaultEmissive = new Color();
 const _visibility = createAnchorVisibilityState();
 
 type PositionsInfoBase = {
@@ -540,18 +537,7 @@ export class BatchedSdfTextMesh
       batchIndex,
       attribute,
       value,
-      this._defaultBatchAttributeValues(),
     );
-  }
-
-  /** Allocation-time backfill defaults, from the batch's material. */
-  private _defaultBatchAttributeValues(): DefaultBatchAttributeValues {
-    return {
-      color: _tmpDefaultColor.setHex(this._material.color ?? 0xffffff),
-      emissive: _tmpDefaultEmissive.setHex(this._material.emissiveColor ?? 0),
-      emissiveIntensity: this._material.emissiveIntensity ?? 0,
-      height: this._material.height ?? 0,
-    };
   }
 
   private _writeStyle(record: LabelRecord): void {

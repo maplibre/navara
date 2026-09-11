@@ -40,5 +40,4 @@ export {
   type BatchTextureUniform,
   type BatchVec3Key,
   type BatchedAttributeName,
-  type DefaultBatchAttributeValues,
 } from "./types";

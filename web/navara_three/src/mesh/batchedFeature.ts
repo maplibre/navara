@@ -16,7 +16,6 @@ import {
   updateBatchAttribute,
   type BatchedAttributeName,
   type BatchTextureSupport,
-  type DefaultBatchAttributeValues,
 } from "../batchTexture";
 import type { CustomObject3DEventMap } from "../object3DEvent";
 
@@ -91,7 +90,6 @@ export class BatchedFeatureMesh<
       batchId,
       attribute,
       value,
-      this._getDefaultBatchAttributeValues(),
     );
 
     if (wrote) this.needsUpdate();
@@ -100,10 +98,6 @@ export class BatchedFeatureMesh<
 
   needsUpdate() {
     this.dispatchEvent({ type: "needsUpdate" } as any); // Events aren't inferred well.
-  }
-
-  _getDefaultBatchAttributeValues(): DefaultBatchAttributeValues {
-    throw new Unimplemented();
   }
 
   onBeforePicking(_pickingCoord?: Vector2) {

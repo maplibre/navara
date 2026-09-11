@@ -6,7 +6,6 @@ import {
 import {
   BufferAttribute,
   BufferGeometry,
-  Color,
   MeshBasicMaterial,
   MeshLambertMaterial,
   RGBADepthPacking,
@@ -24,7 +23,6 @@ import {
   type BatchedAttributeName,
   POLYGON_BATCH_SUPPORT,
   type BatchTextureSupport,
-  type DefaultBatchAttributeValues,
 } from "../batchTexture";
 import type { EventContext } from "../event/context";
 import { applyLitOption } from "../material";
@@ -552,17 +550,6 @@ export class PolygonMesh extends BatchedFeatureMesh<
     this._debugBoundingSphereMesh.scale.setScalar(radius);
   }
 
-  _getDefaultBatchAttributeValues(): DefaultBatchAttributeValues {
-    const base = this.getEnhancer().states().base;
-    return {
-      color: this.material.color,
-      emissive: new Color(base.emissiveColor),
-      emissiveIntensity: base.emissiveIntensity,
-      height: base.addHeight,
-      extrudedHeight: base.addExtrudedHeight,
-    };
-  }
-
   onBeforePicking(): void {
     this.getEnhancer().update({ base: { pickable: true } });
     this.needsUpdate();
@@ -578,10 +565,8 @@ export class PolygonMesh extends BatchedFeatureMesh<
     attribute: BatchedAttributeName,
     value: number | number[] | boolean,
   ): boolean {
-    // Write the texture first: it validates the value and captures the
-    // backfill defaults before the enhancer resets material.color to white,
-    // and a rejected write must not stamp any define — the shaders have no
-    // safety net for an unwritten receiver.
+    // Write the texture first: a rejected write must not stamp any define —
+    // the shaders have no safety net for an unwritten receiver.
     if (!super._updateBatchAttribute(batchId, attribute, value)) return false;
 
     switch (attribute) {

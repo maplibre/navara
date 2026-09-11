@@ -16,7 +16,6 @@ import {
   POLYLINE_BATCH_SUPPORT,
   type BatchedAttributeName,
   type BatchTextureSupport,
-  type DefaultBatchAttributeValues,
 } from "../batchTexture";
 import type { EventContext } from "../event/context";
 import { applyLitOption } from "../material";
@@ -375,10 +374,8 @@ export class PolylineMesh extends BatchedFeatureMesh<
     attribute: BatchedAttributeName,
     value: number | number[] | boolean,
   ): boolean {
-    // Write the texture first: it validates the value and captures the
-    // backfill defaults before the enhancer resets material.color to white,
-    // and a rejected write must not stamp any define — the shaders have no
-    // safety net for an unwritten receiver.
+    // Write the texture first: a rejected write must not stamp any define —
+    // the shaders have no safety net for an unwritten receiver.
     if (!super._updateBatchAttribute(batchId, attribute, value)) return false;
 
     if (attribute === "color") {
@@ -515,13 +512,6 @@ export class PolylineMesh extends BatchedFeatureMesh<
     }
     this.needsUpdate();
     enhancer.mutates().setPickingCoord(PICKING_COORD_SENTINEL);
-  }
-
-  _getDefaultBatchAttributeValues(): DefaultBatchAttributeValues {
-    return {
-      color: this.color,
-      height: this.getEnhancer().states().addHeight,
-    };
   }
 
   clone() {

@@ -1,4 +1,4 @@
-import { Color, MeshBasicMaterial, type WebGLRenderer } from "three";
+import { MeshBasicMaterial, type WebGLRenderer } from "three";
 import { vi } from "vitest";
 
 import { initBatchedMaterial } from "./material";
@@ -23,8 +23,6 @@ export function setupBatchMaterial(
   initBatchedMaterial(material, config);
   return { material, config };
 }
-
-export const WHITE = { color: new Color(1, 1, 1) };
 
 export function mockRenderer(): WebGLRenderer {
   return { initTexture: vi.fn() } as unknown as WebGLRenderer;

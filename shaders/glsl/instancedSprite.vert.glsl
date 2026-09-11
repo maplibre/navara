@@ -59,11 +59,11 @@ void main() {
     #include "chunks/height_vertex.glsl"
     float batchSize = -1.0; // Negative = use uScale
     float nvr_vShow = 1.0;
-    float nvr_vOpacity = 1.0;
+    float nvr_vOpacity = uOpacity;
     vColor = uColor;
     #include "chunks/batch_texture_vertex.glsl"
 
-    vOpacity = nvr_vOpacity * uOpacity * (1.0 - instanceDeclutterHide);
+    vOpacity = nvr_vOpacity * (1.0 - instanceDeclutterHide);
 
 #ifdef USE_RTE
     vec3 absTransformed = instancePositionHIGH + instancePositionLOW;

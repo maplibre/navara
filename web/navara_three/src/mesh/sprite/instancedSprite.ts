@@ -26,7 +26,6 @@ import {
   updateBatchAttribute,
   type BatchedAttributeName,
   type BatchTextureSupport,
-  type DefaultBatchAttributeValues,
 } from "../../batchTexture";
 import {
   DECLUTTER_FADE_MS,
@@ -73,8 +72,6 @@ const _tmpSize = new Vector2();
 
 /** Reusable scratch for per-feature style writes. */
 const _tmpColorArray: [number, number, number] = [0, 0, 0];
-const _tmpDefaultColor = new Color();
-const _tmpDefaultEmissive = new Color();
 
 // Coupled with crates/navara_feature/src/geometry/point.rs::pixel_to_world
 export class InstancedSpriteMesh
@@ -368,8 +365,8 @@ export class InstancedSpriteMesh
     // (color/opacity/addHeight) are uniforms; per-feature overrides live in
     // the batch data texture and win once written.
     // `color` only until batch color is enabled: from then on every feature
-    // reads the texture (written value or the backfilled snapshot), same
-    // snapshot semantics as PolygonMesh._update.
+    // reads the texture (written value or the fixed default), same semantics
+    // as PolygonMesh._update.
     const batchColorEnabled = !!(
       material.userData.defines as Record<string, unknown> | undefined
     )?.USE_BATCH_COLOR;
@@ -571,6 +568,12 @@ export class InstancedSpriteMesh
         color: m.material.color ?? 0xffffff,
         opacity: m.material.opacity ?? 1.0,
         addHeight: m.material.height ?? 0.0,
+        effectIdsMask:
+          this.ctx.viewContext.selectiveEffectRegistry?.computeMask(
+            m.material.effectIds ?? [],
+          ) ?? 0,
+        emissiveColor: m.material.emissiveColor ?? 0,
+        emissiveIntensity: m.material.emissiveIntensity ?? 0,
         rtcCenter: [m.transform.tx, m.transform.ty, m.transform.tz],
       },
     });
@@ -849,19 +852,7 @@ export class InstancedSpriteMesh
       batchIndex,
       attribute,
       value,
-      this._defaultBatchAttributeValues(),
     );
-  }
-
-  /** Allocation-time backfill defaults, from the mesh-level material state. */
-  private _defaultBatchAttributeValues(): DefaultBatchAttributeValues {
-    const state = this.getEnhancer().states();
-    return {
-      color: _tmpDefaultColor.setHex(state.color),
-      emissive: _tmpDefaultEmissive.setHex(state.emissiveColor),
-      emissiveIntensity: state.emissiveIntensity,
-      height: state.addHeight,
-    };
   }
 
   setFeatureColorByBatchIndex(batchIndex: number, color: Color) {
