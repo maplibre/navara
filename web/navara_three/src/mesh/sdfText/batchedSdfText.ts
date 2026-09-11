@@ -197,6 +197,12 @@ export class BatchedSdfTextMesh
   /** Sparse anchor slot → label; labels are created on first per-feature touch. */
   private _labelByInstance: (LabelRecord | undefined)[] = [];
   /**
+   * Anchors whose evaluator said `show:false` before any label existed. The
+   * evaluator applies `show` before `text`, so without parking the intent
+   * here a later text setter would create the label visible.
+   */
+  private _hiddenBeforeLabel = new Set<number>();
+  /**
    * Feature (batch) index → this feature's anchor slots. A feature owns
    * multiple anchors for MultiPoint geometry and for labels derived from
    * line/polygon vertices via `geometryTypes`, so per-feature styling must fan
@@ -438,7 +444,9 @@ export class BatchedSdfTextMesh
       run: null,
       glyphKeys: [],
       retainedKeys: null,
-      requestedShow: material.show ?? true,
+      requestedShow: this._hiddenBeforeLabel.delete(instanceIndex)
+        ? false
+        : (material.show ?? true),
       // No text yet, so nothing is shown regardless of `requestedShow`.
       show: false,
       fontSize: material.size ?? 16.0,
@@ -1200,6 +1208,10 @@ export class BatchedSdfTextMesh
     const fontSizeChanged = fontSize !== (prevMaterial.size ?? 16.0);
     const addHeightChanged = addHeight !== (prevMaterial.height ?? 0);
 
+    // A changed material show clobbers evaluator overrides — including hide
+    // intents parked on anchors that never got a label.
+    if (showChanged) this._hiddenBeforeLabel.clear();
+
     for (const record of this._labels) {
       if (styleChanged) {
         record.colorHex = colorHex;
@@ -1380,7 +1392,10 @@ export class BatchedSdfTextMesh
       const record = rawVisible
         ? this._ensureLabel(instanceIndex)
         : this._labelByInstance[instanceIndex];
-      if (!record) continue;
+      if (!record) {
+        if (!rawVisible) this._hiddenBeforeLabel.add(instanceIndex);
+        continue;
+      }
       record.requestedShow = rawVisible;
       this._recomputeShow(record);
     }

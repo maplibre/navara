@@ -230,6 +230,36 @@ describe("BatchedSdfTextMesh material updates vs per-feature values", () => {
   });
 });
 
+// The evaluator applies `show` before `text`. A show:false for a feature with
+// no label yet must survive until the text setter creates the label — labels
+// stay lazily allocated, so the intent is parked, not applied.
+describe("BatchedSdfTextMesh show:false before the first text", () => {
+  it("keeps the label hidden when show:false precedes the first text", () => {
+    const { mesh } = makeMesh();
+    mesh.setFeatureShowByBatchIndex(0, false);
+    mesh.setTextByBatchIndex(0, "AB");
+    expect(showOf(mesh, 0)).toBe(0);
+  });
+
+  it("keeps a parked show:false through an unchanged material", async () => {
+    const { mesh } = makeMesh();
+    mesh.setFeatureShowByBatchIndex(0, false);
+
+    await mesh._update(textMeshEvent(material()));
+
+    mesh.setTextByBatchIndex(0, "AB");
+    expect(showOf(mesh, 0)).toBe(0);
+  });
+
+  it("lets a later show:true supersede the parked hide", () => {
+    const { mesh } = makeMesh();
+    mesh.setFeatureShowByBatchIndex(0, false);
+    mesh.setFeatureShowByBatchIndex(0, true);
+    mesh.setTextByBatchIndex(0, "AB");
+    expect(showOf(mesh, 0)).toBe(1);
+  });
+});
+
 // A feature owns several anchors for MultiPoint geometry and for labels
 // derived from line/polygon vertices via `geometryTypes`. Per-feature setters
 // address features (batch indices), so they must fan out to every anchor the
