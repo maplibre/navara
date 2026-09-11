@@ -178,6 +178,62 @@ import { Color } from "@navaramap/three";
 }
 ```
 
+### effectIds
+
+**Type:** `string[] | undefined`
+
+**Description:** Specifies the IDs of selective effects to apply (e.g., "bloom", "outline"). Used in conjunction with SelectiveBloomEffectDesc or SelectiveOutlineEffectDesc. With bloom, only the glyph fill glows. The outline and background stay dark.
+
+**Default:** `undefined`
+
+**Example:**
+
+```typescript
+{
+  text: {
+    effectIds: ["bloom", "outline"]
+  }
+}
+```
+
+### emissiveColor
+
+**Type:** `Color | undefined`
+
+**Description:** Specifies the emissive color as a `Color` instance.
+
+**Default:** `undefined`
+
+**Example:**
+
+```typescript
+import { Color } from "@navaramap/three";
+
+{
+  text: {
+    emissiveColor: new Color().setHex(0xff0000)
+  }
+}
+```
+
+### emissiveIntensity
+
+**Type:** `number | undefined`
+
+**Description:** Specifies the emissive intensity. The default value is 0.3 when the Bloom effect is enabled.
+
+**Default:** `undefined`
+
+**Example:**
+
+```typescript
+{
+  text: {
+    emissiveIntensity: 0.5
+  }
+}
+```
+
 ### font
 
 **Type:** `string | undefined`

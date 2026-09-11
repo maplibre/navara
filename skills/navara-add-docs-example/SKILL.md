@@ -39,6 +39,7 @@ description: >
 ## Writing rules that trip people up
 
 - **Terminology:** rendered things are "objects"; classes/config are "**Descriptor**" (never translate this term); resource layers added via `addLayer()` stay "layer" / 「レイヤー」.
+- **API/feature names are never transliterated into katakana** in `ja/`: write "Selective Bloom", not 「セレクティブブルーム」. Surround the English term with half-width spaces inside Japanese text.
 - **Links must be lowercase** (Starlight lowercases directory slugs): `../../../three/api/feature-evaluator/`, not `.../API/...`; spaces become hyphens (`Resource Layer/` → `resource-layer/`), never `%20`.
 - Prefer relative paths for page links, `@assets/` for images, `@components/` for component imports.
 - Every code block declares its language; frontmatter needs `title`, `description`, `sidebar.order`.

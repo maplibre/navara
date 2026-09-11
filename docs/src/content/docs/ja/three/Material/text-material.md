@@ -178,6 +178,62 @@ import { Color } from "@navaramap/three";
 }
 ```
 
+### effectIds
+
+**Type:** `string[] | undefined`
+
+**Description:** 適用する Selective Effect の ID を指定します（例: "bloom", "outline"）。SelectiveBloomEffectDesc や SelectiveOutlineEffectDesc と連携して使用します。Bloom ではグリフの塗り部分のみが発光し、アウトラインと背景は発光しません。
+
+**Default:** `undefined`
+
+**Example:**
+
+```typescript
+{
+  text: {
+    effectIds: ["bloom", "outline"]
+  }
+}
+```
+
+### emissiveColor
+
+**Type:** `Color | undefined`
+
+**Description:** 発光色を`Color`インスタンスで指定します。
+
+**Default:** `undefined`
+
+**Example:**
+
+```typescript
+import { Color } from "@navaramap/three";
+
+{
+  text: {
+    emissiveColor: new Color().setHex(0xff0000)
+  }
+}
+```
+
+### emissiveIntensity
+
+**Type:** `number | undefined`
+
+**Description:** 発光の強度を指定します。Bloom エフェクトが有効な場合のデフォルト値は 0.3 です。
+
+**Default:** `undefined`
+
+**Example:**
+
+```typescript
+{
+  text: {
+    emissiveIntensity: 0.5
+  }
+}
+```
+
 ### font
 
 **Type:** `string | undefined`

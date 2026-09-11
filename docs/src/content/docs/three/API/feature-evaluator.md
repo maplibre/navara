@@ -148,6 +148,8 @@ The callback function can return an object containing the following properties:
 | `opacity` | `number` | Feature opacity, range 0.0-1.0 (for polygons/points/billboards/models/text) |
 | `declutterPriority` | `number` | Placement priority for decluttering. Higher wins an overlap (for points/billboards/text with [`declutter`](../../../three/material/text-material/#declutter) enabled). Overrides the layer's `declutterPriority` |
 | `image` | `string \| null` | Image URL (for billboard features). Each distinct URL is loaded once and packed into the layer's texture atlas. Return `null` to clear a previous per-feature image and revert to the billboard material's default `url` (the feature becomes invisible if the material has no `url`) |
+| `emissive` | `Color` | Emissive color (for batched polygons/3D Tiles models/points/billboards/text, ignored on models without batch/feature ids). Pairs with `emissiveIntensity` and drives selective bloom. On text only the glyph fill glows, while the outline and background stay dark |
+| `emissiveIntensity` | `number` | Emissive intensity multiplier (for batched polygons/3D Tiles models/points/billboards/text) |
 
 :::note
 Evaluated styles override the layer's default styles.
@@ -275,6 +277,20 @@ layer.on("featureUpdated", ({ evaluator }) => {
 });
 ```
 
+```typescript
+// Make features glow per property via selective bloom
+// (the layer's material must list the bloom effect in `effectIds`)
+layer.on("featureUpdated", ({ evaluator }) => {
+  evaluator.evaluate(
+    ({ properties }) => ({
+      emissive: new Color().setStyle("#7fd0ff"),
+      emissiveIntensity: (properties?.["glow"] as number) ?? 0,
+    }),
+    { filters: ["glow"] },
+  );
+});
+```
+
 ## EvaluatedValue Type
 
 Type definition that can be returned from the `evaluate()` callback:
@@ -305,6 +321,14 @@ type EvaluatedValue = {
    * packed into the layer's texture atlas. `null` clears a previous
    * per-feature image, reverting to the billboard material's default url */
   image?: string | null;
+  /** Emissive color (for batched polygons/3D Tiles models/points/billboards/
+   * text; ignored on models without batch/feature ids). Pairs with
+   * `emissiveIntensity` and drives selective bloom. On text only the glyph
+   * fill glows, while the outline and background stay dark */
+  emissive?: Color;
+  /** Emissive intensity multiplier (for batched polygons/3D Tiles
+   * models/points/billboards/text) */
+  emissiveIntensity?: number;
 };
 ```
 
