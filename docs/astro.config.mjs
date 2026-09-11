@@ -6,7 +6,7 @@ import { readdir } from "fs/promises";
 
 // Locale directory names to exclude from sidebar generation.
 // These are handled by Starlight's built-in locale routing.
-const localeDirectories = new Set(["ja"]);
+const localeDirectories = new Set(["ja", "az"]);
 
 /**
  * Automatically generate sidebar sections based on directory structure
@@ -62,6 +62,10 @@ export default defineConfig({
         },
         ja: {
           label: "日本語",
+        },
+        az: {
+          lang: "az",
+          label: "Azərbaycanca",
         },
       },
       customCss: ["./src/styles/theme.css", "./src/styles/mermaid.css"],
