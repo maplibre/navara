@@ -200,7 +200,7 @@ import { Color } from "@navaramap/three";
 
 **Type:** `Color | undefined`
 
-**Description:** Specifies the emissive intensity.
+**Description:** Specifies the emissive color as a `Color` instance.
 
 **Default:** `undefined`
 
