@@ -87,7 +87,7 @@ import { Color } from "@navaramap/three";
 
 **Type:** `string[] | undefined`
 
-**Description:** 適用するセレクティブエフェクトの ID を指定します（例: "bloom", "outline"）。SelectiveBloomEffectDesc や SelectiveOutlineEffectDesc と連携して使用します。
+**Description:** 適用する Selective Effect の ID を指定します（例: "bloom", "outline"）。SelectiveBloomEffectDesc や SelectiveOutlineEffectDesc と連携して使用します。
 
 **Default:** `undefined`
 
@@ -125,7 +125,7 @@ import { Color } from "@navaramap/three";
 
 **Type:** `number | undefined`
 
-**Description:** 発光の強度を指定します。Bloom エフェクトが有効な場合のデフォルト値は 0.3 です。
+**Description:** 発光の強度を指定します。
 
 **Default:** `undefined`
 
@@ -266,7 +266,7 @@ import { Color } from "@navaramap/three";
 ```
 
 :::note
-`transparent` を有効にすると、セレクティブエフェクトを使用する際に予期しない動作を引き起こす可能性があります。
+`transparent` を有効にすると、Selective Effect を使用する際に予期しない動作を引き起こす可能性があります。
 :::
 
 ### tiled
