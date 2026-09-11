@@ -78,7 +78,7 @@ void main() {
 
         #ifdef USE_SELECTIVE_EFFECT
             // Per-feature emissive (batch texture) replaces the material term.
-            GBUFFER_WRITE_EFFECT(uEffectIdsMask, NVR_BATCH_EMISSIVE_OR((color.rgb + uEmissiveColor) * uEmissiveIntensity))
+            GBUFFER_WRITE_EFFECT(uEffectIdsMask, NVR_BATCH_EMISSIVE_OR((color.rgb + uEmissiveColor) * uEmissiveIntensity) * alphaForColor)
         #else
             GBUFFER_WRITE_EFFECT_ZERO
         #endif
