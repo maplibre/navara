@@ -170,6 +170,7 @@ if (has("build")) {
       ],
       {
         RUSTC_BOOTSTRAP: "1",
+        CARGO_PROFILE_RELEASE_OPT_LEVEL: "z",
         RUSTFLAGS: `--cfg getrandom_backend="wasm_js" -Ctarget-feature=${feature} -Zlocation-detail=none -Zunstable-options -Cpanic=immediate-abort`,
       },
     );
@@ -641,7 +642,13 @@ console.table(report.map((r) => comparisonRow(r.example, r.cpu)));
 console.log(
   "\nFrame interval: includes GPU/scheduling/vsync waits; not isolated GPU execution time (ms).",
 );
-console.table(report.map((r) => comparisonRow(r.example, r.interval)));
+console.table(
+  report.map((r) => ({
+    example: r.example,
+    "SIMD OFF ms": r.interval.beforeMs.toFixed(2),
+    "SIMD ON ms": r.interval.afterMs.toFixed(2),
+  })),
+);
 writeFileSync(
   resolve(out, "frames.json"),
   JSON.stringify(
