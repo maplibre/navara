@@ -63,10 +63,6 @@ export default defineConfig({
         ja: {
           label: "日本語",
         },
-        az: {
-          lang: "az",
-          label: "Azərbaycanca",
-        },
       },
       customCss: ["./src/styles/theme.css", "./src/styles/mermaid.css"],
       components: {
