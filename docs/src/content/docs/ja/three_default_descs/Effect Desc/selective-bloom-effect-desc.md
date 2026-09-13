@@ -5,7 +5,7 @@ sidebar:
   order: 61
 ---
 
-`SelectiveBloomEffectDesc`クラスは、選択的なブルームエフェクトを適用する Descriptor です。マスクベースのフィルタリングを使用して、特定のオブジェクトにのみブルームエフェクトを適用できます。
+`SelectiveBloomEffectDesc`クラスは、Selective Bloom エフェクトを適用する Descriptor です。マスクベースのフィルタリングを使用して、特定のオブジェクトにのみ Bloom エフェクトを適用できます。
 
 ## Properties
 
@@ -21,7 +21,7 @@ sidebar:
 
 **Type:** `number | undefined`
 
-**Description:** ブルームエフェクトの強度を指定します。
+**Description:** Bloom エフェクトの強度を指定します。
 
 **Default:** `0.8`
 
@@ -39,7 +39,7 @@ sidebar:
 
 **Type:** `number | undefined`
 
-**Description:** ブルームエフェクトの半径(ぼかしの広がり)を指定します。
+**Description:** Bloom エフェクトの半径(ぼかしの広がり)を指定します。
 
 **Default:** `0.2`
 
@@ -57,7 +57,7 @@ sidebar:
 
 **Type:** `number | undefined`
 
-**Description:** ブルームエフェクトの閾値を指定します。この値より明るいピクセルにのみブルームが適用されます。
+**Description:** Bloom エフェクトの閾値を指定します。この値より明るいピクセルにのみ Bloom が適用されます。
 
 **Default:** `0.0`
 
@@ -91,23 +91,23 @@ sidebar:
 
 ## オブジェクトへのエフェクト適用
 
-選択的ブルームエフェクトを特定のオブジェクトに適用するには、対象オブジェクトの`effectIds`プロパティにブルームエフェクトのIDを指定します。
+Selective Bloom エフェクトを特定のオブジェクトに適用するには、対象オブジェクトの`effectIds`プロパティに Bloom エフェクトのIDを指定します。
 
 ### effectIds
 
-対象オブジェクトに適用するセレクティブエフェクトのIDの配列です。ブルームエフェクトを追加すると一意のIDが割り当てられ、このIDを対象オブジェクトの`effectIds`に指定することでエフェクトが適用されます。
+対象オブジェクトに適用する Selective Effect の ID の配列です。Bloom エフェクトを追加すると一意のIDが割り当てられ、このIDを対象オブジェクトの`effectIds`に指定することでエフェクトが適用されます。
 
 ### emissiveColor（オプション）
 
-ブルームのソースカラーを指定します。設定しない場合、マテリアルの表面色（diffuseColor）が自動的にブルームのソースとして使用されます。つまり、色を明示的に指定しなくても、`effectIds`と`emissiveIntensity`だけでブルームを有効にできます。
+Bloom のソースカラーを指定します。設定しない場合、マテリアルの表面色（diffuseColor）が自動的に Bloom のソースとして使用されます。つまり、色を明示的に指定しなくても、`effectIds`と`emissiveIntensity`だけで Bloom を有効にできます。
 
 ### emissiveIntensity
 
-ブルームソースの強度を制御します。高い値ほど明るいブルームになります。
+Bloom ソースの強度を制御します。高い値ほど明るい Bloom になります。
 
 ## Usage Examples
 
-### 基本的な選択的ブルームの追加
+### 基本的な Selective Bloom の追加
 
 ```typescript
 import ThreeView, { Color } from "@navaramap/three";
@@ -119,7 +119,7 @@ import {
 const view = new ThreeView();
 await view.init();
 
-// 選択的ブルームエフェクトを追加
+// Selective Bloom エフェクトを追加
 const bloomDesc = view.addEffect<SelectiveBloomEffectDesc>({
   selectiveBloom: {
     strength: 0.8,
@@ -128,22 +128,22 @@ const bloomDesc = view.addEffect<SelectiveBloomEffectDesc>({
   },
 });
 
-// オブジェクトにブルームエフェクトを適用
-// emissiveColor を設定しない場合、マテリアルの色がブルームのソースとして使用されます
+// オブジェクトに Bloom エフェクトを適用
+// emissiveColor を設定しない場合、マテリアルの色が Bloom のソースとして使用されます
 const cubeDesc = view.addMesh<BoxMeshDesc>({
   box: {
     width: 100,
     height: 100,
     depth: 100,
     color: new Color().setHex(0xff0000),
-    emissiveIntensity: 1.0, // ブルームの明るさを制御
+    emissiveIntensity: 1.0, // Bloom の明るさを制御
     effectIds: [bloomDesc.id],
   },
   position: { x: 0, y: 0, z: 1000 },
 });
 ```
 
-### 強いブルームエフェクト
+### 強い Bloom エフェクト
 
 ```typescript
 import ThreeView from "@navaramap/three";
@@ -158,7 +158,7 @@ await view.init();
 // デフォルトのフォトリアルオブジェクトを追加
 plugin.addDefaultPhotorealScene();
 
-// 強いブルームエフェクトを追加
+// 強い Bloom エフェクトを追加
 const bloomDesc = view.addEffect<SelectiveBloomEffectDesc>({
   selectiveBloom: {
     strength: 1.5,
@@ -188,7 +188,7 @@ const bloomDesc = view.addEffect<SelectiveBloomEffectDesc>({
 });
 ```
 
-### ブルームエフェクトの動的更新
+### Bloom エフェクトの動的更新
 
 ```typescript
 import ThreeView from "@navaramap/three";
@@ -212,7 +212,7 @@ bloomDesc.update({
 });
 ```
 
-### 3D Tiles へのブルーム適用
+### 3D Tiles への Bloom 適用
 
 ```typescript
 import ThreeView, { Color } from "@navaramap/three";
@@ -228,7 +228,7 @@ const bloomDesc = view.addEffect<SelectiveBloomEffectDesc>({
   },
 });
 
-// 3D Tiles の建物にブルームを適用
+// 3D Tiles の建物に Bloom を適用
 const buildingsSource = view.addSource({
   type: "3d-tiles",
   url: "https://example.com/tileset.json",
@@ -246,7 +246,7 @@ const buildingsLayer = view.addLayer({
 });
 ```
 
-### GeoJSON モデルへのブルーム適用
+### GeoJSON モデルへの Bloom 適用
 
 ```typescript
 import ThreeView from "@navaramap/three";
@@ -261,7 +261,7 @@ const bloomDesc = view.addEffect<SelectiveBloomEffectDesc>({
   },
 });
 
-// GeoJSON レイヤーのモデルにブルームを適用
+// GeoJSON レイヤーのモデルに Bloom を適用
 // emissiveColor はオプション — 省略するとモデル自身の色が使用されます
 const modelSource = view.addSource({
   type: "geojson",
@@ -296,7 +296,7 @@ const cubeDesc = view.addMesh<BoxMeshDesc>({
   position: { x: 0, y: 0, z: 1000 },
 });
 
-// 後からブルームエフェクトを追加
+// 後から Bloom エフェクトを追加
 cubeDesc.update({
   box: {
     effectIds: [bloomDesc.id],
@@ -314,6 +314,6 @@ cubeDesc.update({
 
 ## 備考
 
-- 選択的ブルームエフェクトは、マスクベースのフィルタリングを使用して特定のオブジェクトにのみブルームを適用します。
-- `emissiveColor`が設定されていない場合、マテリアルの表面色（diffuseColor）が自動的にブルームのソースとして使用されます。これには、InstancedMesh のインスタンスごとの色や、テクスチャ付きマテリアルのテクスチャ色が含まれます。
-- ブルームエフェクトを効果的に使用するには、オブジェクトの`emissiveIntensity`を適切に設定することが重要です。
+- Selective Bloom エフェクトは、マスクベースのフィルタリングを使用して特定のオブジェクトにのみ Bloom を適用します。
+- `emissiveColor`が設定されていない場合、マテリアルの表面色（diffuseColor）が自動的に Bloom のソースとして使用されます。これには、InstancedMesh のインスタンスごとの色や、テクスチャ付きマテリアルのテクスチャ色が含まれます。
+- Bloom エフェクトを効果的に使用するには、オブジェクトの`emissiveIntensity`を適切に設定することが重要です。

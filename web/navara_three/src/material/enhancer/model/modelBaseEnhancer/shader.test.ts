@@ -12,13 +12,6 @@ testShaderCompatibility(
       name: "Default props",
       props: {},
     },
-    {
-      name: "With batch texture",
-      props: {
-        useBatchTexture: true,
-        useBatchColorShow: true,
-      },
-    },
   ],
   MODEL_BASE_SHADER_MARKERS,
 );

@@ -1,13 +1,7 @@
 import type { Matrix4, Texture, Vector3 } from "three";
 
 import type { UniformValue } from "../../../types";
-import type { BatchTextureFlags } from "../../batchTexture";
 import type { Mutates } from "../../MaterialEnhancer";
-
-type PolygonBatchTextureFlags = Required<
-  Omit<BatchTextureFlags, "useBatchLineWidth" | "useBatchSize">
->;
-// Note: opacity is bundled with show in useBatchColorShow
 
 /**
  * Props for the polygon core enhancer.
@@ -45,37 +39,34 @@ export type PolygonBaseProps = {
   // Batch texture
   batchDataTexture?: UniformValue<Texture | null>;
 
-  // Batch texture state flags - track when batch attributes are being used
   // When batchColorEnabled is true, material.color is set to white and actual colors come from batch texture
   batchColorEnabled?: boolean;
 
   // RTE (Relative To Eye) support
   useRTE?: boolean;
-} & Partial<PolygonBatchTextureFlags>;
+};
 
 /**
  * Immutable state for the polygon base enhancer.
  * This state is always replaced as a whole (never mutated).
  * Returned directly via states() - refresh after updates.
  */
-export type PolygonBaseState = Readonly<
-  {
-    useRTE: boolean;
-    isTexturized: boolean;
-    clampToGround: boolean;
-    pickable: boolean;
-    emissiveColor: number;
-    emissiveIntensity: number;
-    effectIdsMask: number;
-    minMaxHeight: [number, number] | undefined;
-    addExtrudedHeight: number;
-    addHeight: number;
-    reflectivity: number;
-    roughness: number;
-    // Batch texture state - when true, material.color is white and colors come from batch texture
-    batchColorEnabled: boolean;
-  } & PolygonBatchTextureFlags
->;
+export type PolygonBaseState = Readonly<{
+  useRTE: boolean;
+  isTexturized: boolean;
+  clampToGround: boolean;
+  pickable: boolean;
+  emissiveColor: number;
+  emissiveIntensity: number;
+  effectIdsMask: number;
+  minMaxHeight: [number, number] | undefined;
+  addExtrudedHeight: number;
+  addHeight: number;
+  reflectivity: number;
+  roughness: number;
+  // Batch texture state - when true, material.color is white and colors come from batch texture
+  batchColorEnabled: boolean;
+}>;
 
 /**
  * Mutable references (uniforms) for the polygon base enhancer.

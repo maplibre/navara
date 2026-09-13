@@ -15,6 +15,13 @@ import {
 import invariant from "tiny-invariant";
 
 import {
+  registerBatchedMaterial,
+  TEXT_BATCH_SUPPORT,
+  updateBatchAttribute,
+  type BatchedAttributeName,
+  type BatchTextureSupport,
+} from "../../batchTexture";
+import {
   DECLUTTER_FADE_MS,
   type DeclutterCandidate,
   type DeclutterParticipant,
@@ -27,6 +34,7 @@ import {
   type SdfTextBaseProps,
   type SdfTextBaseState,
 } from "../../material/enhancer/sdfText";
+import { buildBatchIndexMap } from "../batchIndexMap";
 import { GEOMETRY_TYPES } from "../constants";
 import { InstancedMesh, type InstancedMeshOptions } from "../instanced";
 import type { PickableMesh } from "../pickableMesh";
@@ -45,6 +53,7 @@ import { PendingSettlement } from "./pendingSettlement";
 /** Reusable scratch to avoid per-frame / per-write allocations. */
 const _tmpSize = new Vector2();
 const _tmpColor = new Color();
+const _tmpColorArray: [number, number, number] = [0, 0, 0];
 const _visibility = createAnchorVisibilityState();
 
 type PositionsInfoBase = {
@@ -86,6 +95,9 @@ type LabelRecord = {
    * derived from line/polygon vertices via `geometryTypes`. */
   instanceIndex: number;
   batchId: number;
+  /** Feature index — the column in the shared batch data texture holding
+   *  this label's style (color/opacity/size/height). */
+  batchIndex: number;
   /** The text currently laid out into the glyph run. */
   text: string;
   /**
@@ -185,12 +197,22 @@ export class BatchedSdfTextMesh
   /** Sparse anchor slot → label; labels are created on first per-feature touch. */
   private _labelByInstance: (LabelRecord | undefined)[] = [];
   /**
+   * Anchors whose evaluator said `show:false` before any label existed. The
+   * evaluator applies `show` before `text`, so without parking the intent
+   * here a later text setter would create the label visible.
+   */
+  private _hiddenBeforeLabel = new Set<number>();
+  /**
    * Feature (batch) index → this feature's anchor slots. A feature owns
    * multiple anchors for MultiPoint geometry and for labels derived from
    * line/polygon vertices via `geometryTypes`, so per-feature styling must fan
    * out to all of them. `null` means anchors and features are 1:1.
    */
   private _batchIndexToInstances: Map<number, number[]> | null = null;
+  /** Per-anchor feature index; `null` means anchors and features are 1:1. */
+  private _instanceBatchIndex: Float32Array | null = null;
+  /** Feature count — the batch data texture's column count. */
+  private _batchLength = 0;
 
   /** In-flight per-feature text preparations; see {@link whenLabelsSettled}. */
   private _pendingTextPrepares = new PendingSettlement();
@@ -251,6 +273,7 @@ export class BatchedSdfTextMesh
 
     this._positions = this.extractPositions(m);
     this._rebuildBatchIndexMap(m);
+    this._batchLength = m.batch_length;
     this._glyphs = new GlyphBuffers();
     this._labelData = new LabelDataTexture();
 
@@ -318,6 +341,9 @@ export class BatchedSdfTextMesh
         backgroundOutlineWidth: material.borderWidth ?? 0.1,
         depthTest: material.depthTest ?? true,
         transparent: material.transparent ?? true,
+        effectIdsMask: this._computeEffectIdsMask(material),
+        emissiveColor: material.emissiveColor ?? 0,
+        emissiveIntensity: material.emissiveIntensity ?? 0,
         rtcCenter: [this._transform.tx, this._transform.ty, this._transform.tz],
       },
     });
@@ -328,6 +354,16 @@ export class BatchedSdfTextMesh
 
     mat.onBeforeCompile = this._enhancer.transformShader;
     mat.customProgramCacheKey = this._enhancer.programCacheKey;
+
+    // Register for per-feature styling: every label's style (color/opacity/
+    // size/height) is written through to the shared batch data texture, keyed
+    // by the feature index in the label's STATE row.
+    const batchUniform = registerBatchedMaterial(
+      mat,
+      { ...this._getBatchTextureSupport(), batchLength: this._batchLength },
+      this.ctx.viewContext.getRenderer(),
+    );
+    this._enhancer.mutates().setBatchDataTexture(batchUniform);
 
     // One closure for the whole batch, where there used to be one per label.
     const state = this._enhancer.states();
@@ -347,6 +383,14 @@ export class BatchedSdfTextMesh
       // DataTexture so glyph pixel rects always normalize to the right UV.
       mutates.updateAtlasSizes();
     };
+  }
+
+  private _computeEffectIdsMask(material: NavaraTextMaterial): number {
+    return (
+      this.ctx.viewContext.selectiveEffectRegistry?.computeMask(
+        material.effectIds ?? [],
+      ) ?? 0
+    );
   }
 
   /** Re-point the shader at the label texture (it is swapped on grow). */
@@ -391,13 +435,18 @@ export class BatchedSdfTextMesh
       batchId: info.batchIDs
         ? info.batchIDs[instanceIndex * info.batchIDSize]
         : 0,
+      batchIndex: this._instanceBatchIndex
+        ? this._instanceBatchIndex[instanceIndex]
+        : instanceIndex,
       text: "",
       requestedText: "",
       prepareDeferred: false,
       run: null,
       glyphKeys: [],
       retainedKeys: null,
-      requestedShow: material.show ?? true,
+      requestedShow: this._hiddenBeforeLabel.delete(instanceIndex)
+        ? false
+        : (material.show ?? true),
       // No text yet, so nothing is shown regardless of `requestedShow`.
       show: false,
       fontSize: material.size ?? 16.0,
@@ -422,6 +471,8 @@ export class BatchedSdfTextMesh
 
     this._writeAnchor(record);
     this._writeStyle(record);
+    this._writeFontSize(record);
+    this._writeAddHeight(record);
     this._writeBox(record);
     this._writeState(record);
     return record;
@@ -445,20 +496,13 @@ export class BatchedSdfTextMesh
       const lz = low[idx + 2] ?? 0;
       this._labelData.setRow(
         record.slot,
-        LabelRow.POSITION_HIGH_SIZE,
+        LabelRow.POSITION_HIGH,
         hx,
         hy,
         hz,
-        record.fontSize,
+        0,
       );
-      this._labelData.setRow(
-        record.slot,
-        LabelRow.POSITION_LOW_HEIGHT,
-        lx,
-        ly,
-        lz,
-        record.addHeight,
-      );
+      this._labelData.setRow(record.slot, LabelRow.POSITION_LOW, lx, ly, lz, 0);
       anchor[0] = hx + lx;
       anchor[1] = hy + ly;
       anchor[2] = hz + lz;
@@ -470,36 +514,48 @@ export class BatchedSdfTextMesh
       const { tx, ty, tz } = this._transform;
       this._labelData.setRow(
         record.slot,
-        LabelRow.POSITION_HIGH_SIZE,
+        LabelRow.POSITION_HIGH,
         px,
         py,
         pz,
-        record.fontSize,
+        0,
       );
-      this._labelData.setRow(
-        record.slot,
-        LabelRow.POSITION_LOW_HEIGHT,
-        0,
-        0,
-        0,
-        record.addHeight,
-      );
+      this._labelData.setRow(record.slot, LabelRow.POSITION_LOW, 0, 0, 0, 0);
       anchor[0] = px + tx;
       anchor[1] = py + ty;
       anchor[2] = pz + tz;
     }
   }
 
+  // --- Batch data texture writes (per-feature style) ---
+
+  _getBatchTextureSupport(): BatchTextureSupport {
+    return TEXT_BATCH_SUPPORT;
+  }
+
+  /** Write one per-feature style into the shared batch data texture (bounds
+   *  and value validation live in {@link updateBatchAttribute}). */
+  private _updateBatchAttribute(
+    batchIndex: number,
+    attribute: BatchedAttributeName,
+    value: number | number[] | boolean,
+  ): boolean {
+    return updateBatchAttribute(
+      this.material as ShaderMaterial,
+      batchIndex,
+      attribute,
+      value,
+    );
+  }
+
   private _writeStyle(record: LabelRecord): void {
     _tmpColor.setHex(record.colorHex);
-    this._labelData.setRow(
-      record.slot,
-      LabelRow.COLOR_OPACITY,
-      _tmpColor.r,
-      _tmpColor.g,
-      _tmpColor.b,
-      record.opacity,
+    this._updateBatchAttribute(
+      record.batchIndex,
+      "color",
+      _tmpColor.toArray(_tmpColorArray),
     );
+    this._updateBatchAttribute(record.batchIndex, "opacity", record.opacity);
   }
 
   private _writeBox(record: LabelRecord): void {
@@ -520,26 +576,16 @@ export class BatchedSdfTextMesh
       record.declutterHide,
       record.batchId,
       record.show ? 1 : 0,
-      0,
+      record.batchIndex,
     );
   }
 
   private _writeFontSize(record: LabelRecord): void {
-    this._labelData.setComponent(
-      record.slot,
-      LabelRow.POSITION_HIGH_SIZE,
-      3,
-      record.fontSize,
-    );
+    this._updateBatchAttribute(record.batchIndex, "size", record.fontSize);
   }
 
   private _writeAddHeight(record: LabelRecord): void {
-    this._labelData.setComponent(
-      record.slot,
-      LabelRow.POSITION_LOW_HEIGHT,
-      3,
-      record.addHeight,
-    );
+    this._updateBatchAttribute(record.batchIndex, "height", record.addHeight);
   }
 
   private _writeShow(record: LabelRecord): void {
@@ -984,40 +1030,14 @@ export class BatchedSdfTextMesh
     return null;
   }
 
-  /**
-   * Group anchor slots by their feature's batch index from the geometry's
-   * per-anchor `batch_index` buffer. The u32 view is consumed synchronously —
-   * other wasm calls may detach views, so it must not be stored. An identity
-   * mapping (every feature owns exactly one anchor, the common MVT case) skips
-   * the map entirely.
-   */
+  /** See {@link buildBatchIndexMap} (anchor slots play the instance role). */
   private _rebuildBatchIndexMap(m: NavaraTextMesh): void {
     const batchIndexData = m.geometry.batch_index?.data;
-    const batchIndices =
-      batchIndexData !== undefined ? this.ctx.buf.u32(batchIndexData) : null;
-    this._batchIndexToInstances = null;
-    if (!batchIndices) return;
-
-    let identity = true;
-    for (let i = 0; i < batchIndices.length; i++) {
-      if (batchIndices[i] !== i) {
-        identity = false;
-        break;
-      }
-    }
-    if (identity) return;
-
-    const map = new Map<number, number[]>();
-    for (let i = 0; i < batchIndices.length; i++) {
-      const batchIndex = batchIndices[i];
-      let instances = map.get(batchIndex);
-      if (!instances) {
-        instances = [];
-        map.set(batchIndex, instances);
-      }
-      instances.push(i);
-    }
-    this._batchIndexToInstances = map;
+    const built = buildBatchIndexMap(
+      batchIndexData !== undefined ? this.ctx.buf.u32(batchIndexData) : null,
+    );
+    this._instanceBatchIndex = built?.perInstance ?? null;
+    this._batchIndexToInstances = built?.byBatchIndex ?? null;
   }
 
   /** All anchor slots owned by the feature at `batchIndex`. */
@@ -1161,6 +1181,9 @@ export class BatchedSdfTextMesh
         backgroundOutlineWidth: material.borderWidth ?? 0,
         depthTest: material.depthTest ?? true,
         transparent: material.transparent ?? true,
+        effectIdsMask: this._computeEffectIdsMask(material),
+        emissiveColor: material.emissiveColor ?? 0,
+        emissiveIntensity: material.emissiveIntensity ?? 0,
       },
     });
 
@@ -1184,6 +1207,10 @@ export class BatchedSdfTextMesh
       opacity !== clamp01(prevMaterial.opacity ?? 1.0);
     const fontSizeChanged = fontSize !== (prevMaterial.size ?? 16.0);
     const addHeightChanged = addHeight !== (prevMaterial.height ?? 0);
+
+    // A changed material show clobbers evaluator overrides — including hide
+    // intents parked on anchors that never got a label.
+    if (showChanged) this._hiddenBeforeLabel.clear();
 
     for (const record of this._labels) {
       if (styleChanged) {
@@ -1365,7 +1392,10 @@ export class BatchedSdfTextMesh
       const record = rawVisible
         ? this._ensureLabel(instanceIndex)
         : this._labelByInstance[instanceIndex];
-      if (!record) continue;
+      if (!record) {
+        if (!rawVisible) this._hiddenBeforeLabel.add(instanceIndex);
+        continue;
+      }
       record.requestedShow = rawVisible;
       this._recomputeShow(record);
     }
@@ -1401,6 +1431,23 @@ export class BatchedSdfTextMesh
       record.opacity = clamp01(opacity);
       this._writeStyle(record);
     }
+  }
+
+  /** Per-feature emissive (fill only; drives selective bloom). Style-only:
+   *  no label has to exist — the write lands in the batch data texture. */
+  setFeatureEmissiveByBatchIndex(batchIndex: number, emissive: Color) {
+    this._updateBatchAttribute(
+      batchIndex,
+      "emissive",
+      emissive.toArray(_tmpColorArray),
+    );
+  }
+
+  setFeatureEmissiveIntensityByBatchIndex(
+    batchIndex: number,
+    intensity: number,
+  ) {
+    this._updateBatchAttribute(batchIndex, "emissiveIntensity", intensity);
   }
 
   setFeatureDeclutterPriorityByBatchIndex(
@@ -1447,6 +1494,7 @@ export class BatchedSdfTextMesh
     this._labels.length = 0;
     this._labelByInstance.length = 0;
     this._batchIndexToInstances = null;
+    this._instanceBatchIndex = null;
 
     this._labelData.dispose();
     this._glyphs.dispose();

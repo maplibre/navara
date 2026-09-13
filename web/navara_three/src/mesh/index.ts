@@ -6,7 +6,6 @@ export * from "./polygonOutline";
 export * from "./featureMesh";
 export * from "./batchedFeature";
 export * from "./instanced";
-export * from "./batchTexture";
 export * from "./tile";
 export * from "./pickableMesh";
 export * from "./pickableMeshWrapper";

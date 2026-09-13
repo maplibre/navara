@@ -14,8 +14,6 @@ export const DEFAULT_BASE_PROPS: Required<
   pickable: false,
   effectIdsMask: 0,
   batchColorEnabled: false,
-  useBatchTexture: false,
-  useBatchColorShow: false,
 };
 
 /** Default state derived from DEFAULT_BASE_PROPS */
@@ -25,8 +23,6 @@ export const DEFAULT_BASE_STATE: ModelBaseState = {
   emissiveIntensity: DEFAULT_BASE_PROPS.emissiveIntensity,
   effectIdsMask: 0,
   batchColorEnabled: DEFAULT_BASE_PROPS.batchColorEnabled,
-  useBatchTexture: DEFAULT_BASE_PROPS.useBatchTexture,
-  useBatchColorShow: DEFAULT_BASE_PROPS.useBatchColorShow,
 };
 
 /**
@@ -45,8 +41,5 @@ export const updateState = (
   emissiveColor: props.emissiveColor ?? currentState.emissiveColor,
   emissiveIntensity: props.emissiveIntensity ?? currentState.emissiveIntensity,
   effectIdsMask: props.effectIdsMask ?? currentState.effectIdsMask,
-  // Batch flags can only transition from false to true, never back
   batchColorEnabled: props.batchColorEnabled ?? currentState.batchColorEnabled,
-  useBatchTexture: props.useBatchTexture ?? currentState.useBatchTexture,
-  useBatchColorShow: props.useBatchColorShow ?? currentState.useBatchColorShow,
 });

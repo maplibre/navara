@@ -24,6 +24,11 @@ interface Props {
 
 const ROOT_LOCALE = "en";
 
+// Locales the docs site is built in (see astro.config.mjs `locales`). The LP
+// can exist in more locales than the docs; LP-only locales link to the
+// root-locale docs and are offered only by the LP's language switcher.
+const DOCS_LOCALES = new Set(["en", "ja"]);
+
 const localeModules = import.meta.glob<{ default: any }>("../data/lp-locales/*.json", {
   eager: true,
 });
@@ -49,17 +54,23 @@ const logoSvg = (raw: string, className: string): string =>
 const DOCS_BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
 // Prefix docs-internal links with the deploy base and the locale path
-// segment (root locale has none).
+// segment (root and LP-only locales have none).
 function localizeHref(href: string): string {
   if (!href.startsWith("/")) return href;
-  const localeSeg = locale === ROOT_LOCALE ? "" : `/${locale}`;
+  const localeSeg = locale === ROOT_LOCALE || !DOCS_LOCALES.has(locale) ? "" : `/${locale}`;
   return `${DOCS_BASE}${localeSeg}${href}`;
 }
+
+// The docs switcher only offers locales the docs are built in; the LP
+// switcher offers every LP locale.
+const switcherLocales = Object.keys(locales).filter(
+  (code) => variant === "lp" || DOCS_LOCALES.has(code),
+);
 
 // Where the language switcher sends each locale. On the LP that is the
 // locale's landing page (served at the site root — see astro.config.mjs);
 // on docs it is the current page in the target locale (every docs page exists
-// in all locales, ja/ mirrors the root tree).
+// in all docs locales, ja/ mirrors the root tree).
 const pathForLocale = (code: string): string => {
   if (variant === "lp") return code === ROOT_LOCALE ? "/" : `/${code}/`;
   let path = Astro.url.pathname;
@@ -120,9 +131,9 @@ const themeVariants: [string, ThemeVariant][] =
            click anywhere on it opens the native dropdown. -->
       <select aria-label="Language" data-lp-lang>
         {
-          Object.entries(locales).map(([code, strings]: [string, any]) => (
-            <option value={pathForLocale(code)} selected={code === locale} lang={strings.htmlLang}>
-              {strings.short}
+          switcherLocales.map((code) => (
+            <option value={pathForLocale(code)} selected={code === locale} lang={locales[code].htmlLang}>
+              {locales[code].short}
             </option>
           ))
         }

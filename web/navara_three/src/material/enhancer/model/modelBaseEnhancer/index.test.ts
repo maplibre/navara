@@ -34,38 +34,12 @@ describe("modelBaseEnhancer", () => {
   });
 
   describe("programCacheKey", () => {
-    it("should return cache key based on shader-affecting state", () => {
-      enhancer.mount({
-        useBatchTexture: true,
-        useBatchColorShow: false,
-      });
-
-      const cacheKey = enhancer.programCacheKey();
-      const parsed = JSON.parse(cacheKey);
-
-      expect(parsed).toEqual({
-        useBatchTexture: true,
-        useBatchColorShow: false,
-      });
-    });
-
-    it("should return different cache keys for different shader-affecting states", () => {
-      enhancer.mount({ useBatchTexture: false });
+    it("should not vary with enhancer state (batch defines are covered by wrapProgramCacheKey)", () => {
+      enhancer.mount({ pickable: true });
       const cacheKey1 = enhancer.programCacheKey();
 
       const enhancer2 = createModelBaseEnhancer(new MeshStandardMaterial());
-      enhancer2.mount({ useBatchTexture: true });
-      const cacheKey2 = enhancer2.programCacheKey();
-
-      expect(cacheKey1).not.toBe(cacheKey2);
-    });
-
-    it("should return same cache key for same shader-affecting states with different non-affecting states", () => {
-      enhancer.mount({ useBatchTexture: true, pickable: true });
-      const cacheKey1 = enhancer.programCacheKey();
-
-      const enhancer2 = createModelBaseEnhancer(new MeshStandardMaterial());
-      enhancer2.mount({ useBatchTexture: true, pickable: false });
+      enhancer2.mount({ pickable: false, batchColorEnabled: true });
       const cacheKey2 = enhancer2.programCacheKey();
 
       expect(cacheKey1).toBe(cacheKey2);

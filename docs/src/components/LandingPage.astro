@@ -40,6 +40,11 @@ interface Props {
 // The root locale is served at "/" without a path prefix (matches Starlight).
 const ROOT_LOCALE = "en";
 
+// Locales the docs site is built in (see astro.config.mjs `locales`). The LP
+// can exist in more locales than the docs; LP-only locales link to the
+// root-locale docs instead of a /docs/<locale>/ tree that doesn't exist.
+const DOCS_LOCALES = new Set(["en", "ja"]);
+
 const localeModules = import.meta.glob<{ default: any }>("../data/lp-locales/*.json", {
   eager: true,
 });
@@ -57,10 +62,11 @@ if (!t) throw new Error(`LP locale strings not found: ${locale}`);
 const DOCS_BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
 // Prefix docs-internal links with the deploy base and the locale path
-// segment (root locale has none). Site-root links (/examples) are used raw.
+// segment (root and LP-only locales have none). Site-root links (/examples)
+// are used raw.
 function localizeHref(href: string): string {
   if (!href.startsWith("/")) return href;
-  const localeSeg = locale === ROOT_LOCALE ? "" : `/${locale}`;
+  const localeSeg = locale === ROOT_LOCALE || !DOCS_LOCALES.has(locale) ? "" : `/${locale}`;
   return `${DOCS_BASE}${localeSeg}${href}`;
 }
 const imageModules = import.meta.glob<{ default: ImageMetadata }>(

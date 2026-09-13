@@ -5,7 +5,7 @@ sidebar:
   order: 62
 ---
 
-`SelectiveOutlineEffectDesc`クラスは、選択的なアウトラインエフェクトを適用する Descriptor です。マスクベースのフィルタリングを使用して、特定のオブジェクトにのみアウトラインを描画できます。Sobelフィルタを使用したエッジ検出により、オブジェクトの輪郭を強調します。
+`SelectiveOutlineEffectDesc`クラスは、Selective Outline エフェクトを適用する Descriptor です。マスクベースのフィルタリングを使用して、特定のオブジェクトにのみ Outline を描画できます。Sobelフィルタを使用したエッジ検出により、オブジェクトの輪郭を強調します。
 
 ## Properties
 
@@ -21,7 +21,7 @@ sidebar:
 
 **Type:** `Color | undefined`
 
-**Description:** アウトラインの色を`Color`で指定します。
+**Description:** Outline の色を`Color`で指定します。
 
 **Default:** `0xffffff`
 
@@ -41,7 +41,7 @@ import { Color } from "@navaramap/three";
 
 **Type:** `number | undefined`
 
-**Description:** アウトラインの太さを指定します。
+**Description:** Outline の太さを指定します。
 
 **Default:** `1.0`
 
@@ -93,15 +93,15 @@ import { Color } from "@navaramap/three";
 
 ## オブジェクトへのエフェクト適用
 
-選択的アウトラインエフェクトを特定のオブジェクトに適用するには、対象オブジェクトの`effectIds`プロパティにアウトラインエフェクトのIDを指定します。
+Selective Outline エフェクトを特定のオブジェクトに適用するには、対象オブジェクトの`effectIds`プロパティに Outline エフェクトのIDを指定します。
 
 ### effectIds
 
-対象オブジェクトに適用するセレクティブエフェクトのIDの配列です。アウトラインエフェクトを追加すると一意のIDが割り当てられ、このIDを対象オブジェクトの`effectIds`に指定することでエフェクトが適用されます。
+対象オブジェクトに適用する Selective Effect の ID の配列です。Outline エフェクトを追加すると一意のIDが割り当てられ、このIDを対象オブジェクトの`effectIds`に指定することでエフェクトが適用されます。
 
 ## Usage Examples
 
-### 基本的な選択的アウトラインの追加
+### 基本的な Selective Outline の追加
 
 ```typescript
 import ThreeView, { Color } from "@navaramap/three";
@@ -113,7 +113,7 @@ import {
 const view = new ThreeView();
 await view.init();
 
-// 選択的アウトラインエフェクトを追加
+// Selective Outline エフェクトを追加
 const outlineDesc = view.addEffect<SelectiveOutlineEffectDesc>({
   selectiveOutline: {
     color: new Color().setHex(0xffffff),
@@ -122,20 +122,20 @@ const outlineDesc = view.addEffect<SelectiveOutlineEffectDesc>({
   },
 });
 
-// オブジェクトにアウトラインエフェクトを適用
+// オブジェクトに Outline エフェクトを適用
 const cubeDesc = view.addMesh<BoxMeshDesc>({
   box: {
     width: 100,
     height: 100,
     depth: 100,
     color: new Color().setHex(0x0088ff),
-    effectIds: [outlineDesc.id], // アウトラインエフェクトを適用
+    effectIds: [outlineDesc.id], // Outline エフェクトを適用
   },
   position: { x: 0, y: 0, z: 1000 },
 });
 ```
 
-### カラーアウトラインの追加
+### カラー Outline の追加
 
 ```typescript
 import ThreeView, { Color } from "@navaramap/three";
@@ -150,7 +150,7 @@ await view.init();
 // デフォルトのフォトリアルオブジェクトを追加
 plugin.addDefaultPhotorealScene();
 
-// 赤色の太いアウトラインを追加
+// 赤色の太い Outline を追加
 const outlineDesc = view.addEffect<SelectiveOutlineEffectDesc>({
   selectiveOutline: {
     color: new Color().setHex(0xff0000),
@@ -180,7 +180,7 @@ const outlineDesc = view.addEffect<SelectiveOutlineEffectDesc>({
 });
 ```
 
-### アウトラインエフェクトの動的更新
+### Outline エフェクトの動的更新
 
 ```typescript
 import ThreeView, { Color } from "@navaramap/three";
@@ -205,7 +205,7 @@ outlineDesc.update({
 });
 ```
 
-### 3D Tiles へのアウトライン適用
+### 3D Tiles への Outline 適用
 
 ```typescript
 import ThreeView, { Color } from "@navaramap/three";
@@ -221,7 +221,7 @@ const outlineDesc = view.addEffect<SelectiveOutlineEffectDesc>({
   },
 });
 
-// 3D Tiles の建物にアウトラインを適用
+// 3D Tiles の建物に Outline を適用
 const buildingsSource = view.addSource({
   type: "3d-tiles",
   url: "https://example.com/tileset.json",
@@ -238,7 +238,7 @@ const buildingsLayer = view.addLayer({
 });
 ```
 
-### ブルームとアウトラインを組み合わせる
+### Bloom と Outline を組み合わせる
 
 ```typescript
 import ThreeView, { Color } from "@navaramap/three";
@@ -280,5 +280,5 @@ const cubeDesc = view.addMesh<BoxMeshDesc>({
 
 ## 備考
 
-- 選択的アウトラインエフェクトは、Sobel フィルタを使用したエッジ検出により、オブジェクトの輪郭を描画します。
+- Selective Outline エフェクトは、Sobel フィルタを使用したエッジ検出により、オブジェクトの輪郭を描画します。
 - 選択したオブジェクトのハイライト表示やフォーカス表示に適しています。

@@ -275,7 +275,7 @@ import { Color } from "@navaramap/three";
 
 **Type:** `string[]` (optional)
 
-**Description:** このメッシュに適用するセレクティブエフェクトIDの配列を指定します。
+**Description:** このメッシュに適用する Selective Effect ID の配列を指定します。
 
 **Example:**
 

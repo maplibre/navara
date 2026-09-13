@@ -84,6 +84,7 @@ Translate all documentation under src/content/docs/ (excluding /ja/) into [langu
 - Frontmatter `sidebar` configuration — keep as-is
 - Code block syntax (variable names, function calls, type annotations)
 - Technical terms (e.g., `ECEF`, `Vector3`, `LayerHandle`, `Three.js`)
+- API and feature names — never transliterate into katakana (e.g., "Selective Bloom", not 「セレクティブブルーム」)
 - Import paths and package names
 - URLs and links
 - File paths

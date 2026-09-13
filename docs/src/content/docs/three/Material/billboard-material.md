@@ -180,7 +180,7 @@ import { Color } from "@navaramap/three";
 
 **Type:** `number | undefined`
 
-**Description:** Specifies the emissive intensity. The default value is 0.3 when the Bloom effect is enabled.
+**Description:** Specifies the emissive intensity.
 
 **Default:** `undefined`
 

@@ -24,10 +24,6 @@ export const DEFAULT_BASE_PROPS: Required<
   emissiveIntensity: 0,
   useRTE: false,
   batchColorEnabled: false,
-  useBatchTexture: false,
-  useBatchColorShow: false,
-  useBatchHeight: false,
-  useBatchLineWidth: false,
 };
 
 /** Default state derived from DEFAULT_BASE_PROPS */
@@ -44,10 +40,6 @@ export const DEFAULT_BASE_STATE: PolylineBaseState = {
   maxWidth: DEFAULT_BASE_PROPS.maxWidth,
   color: DEFAULT_BASE_PROPS.color,
   batchColorEnabled: DEFAULT_BASE_PROPS.batchColorEnabled,
-  useBatchTexture: DEFAULT_BASE_PROPS.useBatchTexture,
-  useBatchColorShow: DEFAULT_BASE_PROPS.useBatchColorShow,
-  useBatchHeight: DEFAULT_BASE_PROPS.useBatchHeight,
-  useBatchLineWidth: DEFAULT_BASE_PROPS.useBatchLineWidth,
 };
 
 /**
@@ -78,14 +70,8 @@ export const updateState = (
     width: props.width ?? currentState.width,
     maxWidth: props.maxWidth ?? currentState.maxWidth,
     color: props.color ?? currentState.color,
-    // Batch flags can only transition from false to true, never back
+    // batchColorEnabled can only transition from false to true, never back
     batchColorEnabled:
       currentState.batchColorEnabled || !!props.batchColorEnabled,
-    useBatchTexture: currentState.useBatchTexture || !!props.useBatchTexture,
-    useBatchColorShow:
-      currentState.useBatchColorShow || !!props.useBatchColorShow,
-    useBatchHeight: currentState.useBatchHeight || !!props.useBatchHeight,
-    useBatchLineWidth:
-      currentState.useBatchLineWidth || !!props.useBatchLineWidth,
   };
 };

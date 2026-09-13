@@ -34,15 +34,11 @@ describe("modelBaseEnhancer/state", () => {
         props: {
           pickable: true,
           batchColorEnabled: true,
-          useBatchTexture: true,
-          useBatchColorShow: true,
         },
         currentState: DEFAULT_BASE_STATE,
         expected: createExpectedState({
           pickable: true,
           batchColorEnabled: true,
-          useBatchTexture: true,
-          useBatchColorShow: true,
         }),
       },
       {
@@ -53,18 +49,6 @@ describe("modelBaseEnhancer/state", () => {
         currentState: DEFAULT_BASE_STATE,
         expected: createExpectedState({
           pickable: true,
-        }),
-      },
-      {
-        name: "applies batch flags only",
-        props: {
-          useBatchTexture: true,
-          useBatchColorShow: true,
-        },
-        currentState: DEFAULT_BASE_STATE,
-        expected: createExpectedState({
-          useBatchTexture: true,
-          useBatchColorShow: true,
         }),
       },
       {
@@ -92,11 +76,9 @@ describe("modelBaseEnhancer/state", () => {
       const currentState: ModelBaseState = {
         ...DEFAULT_BASE_STATE,
         pickable: true,
-        useBatchTexture: true,
       };
       const result = updateState({ batchColorEnabled: true }, currentState);
       expect(result.pickable).toBe(true);
-      expect(result.useBatchTexture).toBe(true);
       expect(result.batchColorEnabled).toBe(true);
     });
   });

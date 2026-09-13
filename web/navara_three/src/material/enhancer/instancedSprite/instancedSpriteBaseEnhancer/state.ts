@@ -4,7 +4,7 @@ import type {
 } from "./types";
 
 export const DEFAULT_BASE_PROPS: Required<
-  Omit<InstancedSpriteBaseProps, "texture" | "rtcCenter">
+  Omit<InstancedSpriteBaseProps, "texture" | "rtcCenter" | "batchDataTexture">
 > = {
   useRTE: false,
   billboard: false,
@@ -14,6 +14,9 @@ export const DEFAULT_BASE_PROPS: Required<
   offsetDepth: true,
   alphaTest: 0.0,
   pickable: false,
+  color: 0xffffff,
+  opacity: 1.0,
+  addHeight: 0.0,
   effectIdsMask: 0,
   emissiveColor: 0,
   emissiveIntensity: 0,
@@ -34,6 +37,9 @@ export const DEFAULT_BASE_STATE: InstancedSpriteBaseState = {
   offsetDepth: DEFAULT_BASE_PROPS.offsetDepth,
   alphaTest: DEFAULT_BASE_PROPS.alphaTest,
   pickable: DEFAULT_BASE_PROPS.pickable,
+  color: DEFAULT_BASE_PROPS.color,
+  opacity: DEFAULT_BASE_PROPS.opacity,
+  addHeight: DEFAULT_BASE_PROPS.addHeight,
   effectIdsMask: DEFAULT_BASE_PROPS.effectIdsMask,
   emissiveColor: DEFAULT_BASE_PROPS.emissiveColor,
   emissiveIntensity: DEFAULT_BASE_PROPS.emissiveIntensity,
@@ -67,6 +73,9 @@ export const updateState = (
     offsetDepth: props.offsetDepth ?? currentState.offsetDepth,
     alphaTest: props.alphaTest ?? currentState.alphaTest,
     pickable: props.pickable ?? currentState.pickable,
+    color: props.color ?? currentState.color,
+    opacity: props.opacity ?? currentState.opacity,
+    addHeight: props.addHeight ?? currentState.addHeight,
     effectIdsMask: props.effectIdsMask ?? currentState.effectIdsMask,
     emissiveColor: props.emissiveColor ?? currentState.emissiveColor,
     emissiveIntensity:

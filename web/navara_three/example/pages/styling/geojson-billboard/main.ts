@@ -83,7 +83,7 @@ const run = async () => {
       billboard: {
         color: new Color().setStyle("#ffffff"),
         size: params.size,
-        height: 1,
+        height: 0,
         sizeInMeters: false,
         clampToGround: true,
         depthTest: true,

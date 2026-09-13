@@ -8,7 +8,6 @@ import {
   BufferAttribute,
   BufferGeometry,
   Color,
-  DataTexture,
   Group,
   Mesh,
   Points,
@@ -23,6 +22,15 @@ import {
 } from "three";
 import invariant from "tiny-invariant";
 
+import {
+  attachBatchedMaterial,
+  initBatchedMaterial,
+  MODEL_BATCH_SUPPORT,
+  registerBatchedMaterial,
+  updateBatchAttribute,
+  type BatchTextureConfig,
+  type BatchTextureSupport,
+} from "../batchTexture";
 import type { EventContext } from "../event/context";
 import { applyLitOption } from "../material";
 import {
@@ -33,13 +41,6 @@ import type { ModelMaterialProps, PntsProps } from "../material/enhancer/model";
 import type { UniformValue } from "../material/types";
 import type { CustomObject3DEventMap } from "../object3DEvent";
 
-import {
-  getBatchDataTexture,
-  initBatchDataTexture,
-  initBatchedMaterial,
-  updateBatchAttribute,
-  type BatchTextureConfig,
-} from "./batchTexture";
 import { GEOMETRY_TYPES } from "./constants";
 import type { FeatureMesh } from "./featureMesh";
 import type { PickableMesh } from "./pickableMesh";
@@ -48,10 +49,13 @@ import { releaseGeometryArraysAfterUpload } from "./releaseGeometryArrays";
 export type ModelMaterial = MeshStandardMaterial | MeshPhysicalMaterial;
 
 // TODO: Height to adjust the height based on its property.
-export type ModelBatchedAttributeName = "color" | "show" | "opacity";
+export type ModelBatchedAttributeName =
+  "color" | "show" | "opacity" | "emissive" | "emissiveIntensity";
 
+/** @deprecated Use {@link MODEL_BATCH_SUPPORT}; `batchLength` is per-mesh
+ *  state, not part of the mesh type's capability. */
 export const MODEL_BATCH_TEXTURE_CONFIG: BatchTextureConfig = {
-  rows: ["COLOR_SHOW"],
+  ...MODEL_BATCH_SUPPORT,
   batchLength: 0,
 };
 
@@ -193,10 +197,17 @@ export class ModelMesh
     releaseGeometryArraysAfterUpload(geometry);
   }
 
+  _getBatchTextureSupport(): BatchTextureSupport {
+    return MODEL_BATCH_SUPPORT;
+  }
+
   _initBatchedMaterial(
     mesh: Mesh<BufferGeometry<NormalBufferAttributes>, ModelMaterial>,
   ) {
-    initBatchedMaterial(mesh.material, MODEL_BATCH_TEXTURE_CONFIG);
+    initBatchedMaterial(mesh.material, {
+      ...this._getBatchTextureSupport(),
+      batchLength: 0,
+    });
   }
 
   _initBatchDataTexture(
@@ -204,27 +215,12 @@ export class ModelMesh
   ): void {
     invariant(this.batchLength != null);
 
-    const config: BatchTextureConfig = {
-      ...MODEL_BATCH_TEXTURE_CONFIG,
-      batchLength: this.batchLength,
-    };
-
-    initBatchDataTexture(mesh.material, config);
-
-    // Update the enhancer with the new batchDataTexture
-    const texture = this._getBatchDataTexture(mesh);
-    const enhancer = this._enhancers.get(mesh);
-    if (texture && enhancer) {
-      enhancer.update({
-        base: { useBatchTexture: true, batchDataTexture: { value: texture } },
-      });
-    }
-  }
-
-  _getBatchDataTexture(
-    mesh: Mesh<BufferGeometry<NormalBufferAttributes>, ModelMaterial>,
-  ): DataTexture | undefined {
-    return getBatchDataTexture(mesh.material);
+    const uniform = registerBatchedMaterial(
+      mesh.material,
+      { ...this._getBatchTextureSupport(), batchLength: this.batchLength },
+      this.ctx.viewContext.getRenderer(),
+    );
+    this._enhancers.get(mesh)?.update({ base: { batchDataTexture: uniform } });
   }
 
   _updateBatchAttribute(
@@ -233,34 +229,26 @@ export class ModelMesh
     attribute: ModelBatchedAttributeName,
     value: number | number[] | boolean,
   ): void {
+    // Write the texture first: a rejected write must not stamp any define —
+    // the shaders have no safety net for an unwritten receiver.
+    const wrote = updateBatchAttribute(
+      mesh.material,
+      batchId,
+      attribute,
+      value,
+    );
+    if (!wrote) return;
+
     const enhancer = this._enhancers.get(mesh);
-    if (enhancer) {
-      switch (attribute) {
-        case "color": {
-          // When batch color is first used, enable batchColorEnabled and set material.color to white
-          if (!enhancer.states().base.batchColorEnabled) {
-            enhancer.update({
-              base: { batchColorEnabled: true, color: 0xffffff },
-            });
-          }
-          enhancer.update({ base: { useBatchColorShow: true } });
-          break;
-        }
-        case "show": {
-          enhancer.update({ base: { useBatchColorShow: true } });
-          break;
-        }
-        case "opacity": {
-          // Opacity is bundled with show in COLOR_SHOW alpha channel
-          enhancer.update({ base: { useBatchColorShow: true } });
-          break;
-        }
+    if (enhancer && attribute === "color") {
+      // When batch color is first used, set material.color to white
+      // (multiplier identity: white * batch color = batch color).
+      if (!enhancer.states().base.batchColorEnabled) {
+        enhancer.update({
+          base: { batchColorEnabled: true, color: 0xffffff },
+        });
       }
     }
-
-    updateBatchAttribute(mesh.material, batchId, attribute, value, {
-      color: mesh.material.color,
-    });
   }
 
   private _setupMeshNode(
@@ -350,6 +338,17 @@ export class ModelMesh
     mesh.customDepthMaterial = mesh.material.clone();
     mesh.customDepthMaterial.needsUpdate = true;
 
+    const origin = mesh.material;
+    // Attach to the batch texture state so layout allocations bump this
+    // clone's needsUpdate too — its compiled defines come from the origin, so
+    // it must recompile whenever they change.
+    attachBatchedMaterial(origin, mesh.customDepthMaterial);
+    // The clone's compiled defines come from the origin, so key its program on
+    // the origin's key (which includes the per-instance batch layout defines);
+    // the prefix separates it from the origin's own program.
+    mesh.customDepthMaterial.customProgramCacheKey = () =>
+      `nvr-depth:${origin.customProgramCacheKey()}`;
+
     mesh.customDepthMaterial.onBeforeCompile = (shader) => {
       enhancer.transformShader(shader);
 
@@ -368,7 +367,14 @@ export class ModelMesh
     // update each node with the right props without a tile-level flag.
     const updateProps = this.buildUpdateProps(material);
     for (const [mesh, enhancer] of this._enhancers) {
-      enhancer.update(updateProps);
+      // Once per-feature batch colors own the material, `material.color` must
+      // not re-tint the white multiplier identity (mirrors polygon/polyline's
+      // `batchColorEnabled ? undefined : material.color` guard).
+      enhancer.update(
+        enhancer.states().base.batchColorEnabled
+          ? { ...updateProps, base: { ...updateProps.base, color: undefined } }
+          : updateProps,
+      );
       mesh.castShadow = !!material.castShadow;
       mesh.receiveShadow = !!material.receiveShadow;
       applyLitOption(mesh.material, material.lit);
@@ -442,10 +448,6 @@ export class ModelMesh
     this.visible = visible;
   }
 
-  _setFeatureExtrudedHeight(_height: number): void {
-    throw new Unimplemented();
-  }
-
   _setFrustumCulled(culled: boolean): void {
     this.frustumCulled = culled;
   }
@@ -470,17 +472,14 @@ export class ModelMesh
 
   _setFeatureHeight(_height: number) {
     // Height adjustment via batch textures is currently not implemented.
-    // This method is intentionally a no-op to avoid breaking existing callers.
-  }
-
-  _setFeatureWidth(_width: number): void {
-    // Width is not applicable to 3D models.
-    // This method is intentionally a no-op to satisfy the FeatureMesh interface.
   }
 
   _setFeatureOpacity(opacity: number): void {
+    // Only reached on the non-batched evaluator path (no _batchid attribute),
+    // where updateBatchAttribute would reject the write (batchLength 0) —
+    // apply directly to the materials instead, like _setFeatureColor/Show.
     this.traverseMesh((m) => {
-      this._updateBatchAttribute(m, 0, "opacity", opacity);
+      this._enhancers.get(m)?.update({ base: { opacity } });
     });
   }
 

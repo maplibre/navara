@@ -2,17 +2,20 @@
 
 [![Built with Starlight](https://astro.badg.es/v2/built-with-starlight/tiny.svg)](https://starlight.astro.build)
 
-This repository contains the developer documentation for Navara, a 3D globe map engine prototype built on Rust + WebAssembly + Three.js.
+This directory contains the developer documentation site for Navara, a 3D map engine built on Rust + WebAssembly + Three.js. It is published at https://navara.world/docs/.
 
 ## 📚 Documentation Structure
 
-The documentation covers five main sections of the Navara ecosystem:
+The documentation covers six main sections of the Navara ecosystem:
 
 - **engine** - Rust/WASM engine documentation (navara_wasm, navara_wasm_api)
 - **guides** - General information, about us, and community resources
 - **three** - navara_three, the main 3D rendering library based on Three.js
 - **three_default_descs** - Built-in layer documentation (Mesh, Light, Effect descriptors)
 - **three_default_plugin** - Default plugin documentation
+- **three_plugins** - Official plugins (CesiumIonPlugin, OverlayPlugin, PersonViewPlugin, TileJsonPlugin)
+
+In addition to the documentation, this project also serves the marketing landing page (`src/pages/lp.astro`, rendered by `src/components/LandingPage.astro`).
 
 ## 🚀 Project Structure
 
@@ -30,15 +33,18 @@ Inside of this Astro + Starlight project, you'll see the following folders and f
 │   ├── assets/
 │   ├── components/
 │   ├── content/
-│   │   ├── docs/
-│   │   │   ├── engine/
-│   │   │   ├── guides/
-│   │   │   ├── three/
-│   │   │   ├── three_default_descs/
-│   │   │   ├── three_default_plugin/
-│   │   │   └── ja/          # Japanese translations
-│   │   └── content.config.ts
-│   ├── data/
+│   │   └── docs/
+│   │       ├── engine/
+│   │       ├── guides/
+│   │       ├── three/
+│   │       ├── three_default_descs/
+│   │       ├── three_default_plugin/
+│   │       ├── three_plugins/
+│   │       └── ja/          # Japanese translations (mirrors root structure)
+│   ├── content.config.ts
+│   ├── data/                # Sidebar sections, showcase entries, landing page copy
+│   ├── pages/               # Non-Starlight pages (landing page: lp.astro, ja/lp.astro)
+│   ├── styles/
 │   └── utils/
 ├── astro.config.mjs
 ├── package.json
@@ -61,16 +67,17 @@ pnpm -C docs exec playwright install --with-deps chromium
 
 ## 🧞 Commands
 
-All commands are run from the root of the project, from a terminal:
+This project is part of the pnpm workspace at the repository root. All commands are run from the repository root:
 
-| Command                   | Action                                           |
-| :------------------------ | :----------------------------------------------- |
-| `npm install`             | Installs dependencies                            |
-| `npm run dev`             | Starts local dev server at `localhost:4321`      |
-| `npm run build`           | Build your production site to `./dist/`          |
-| `npm run preview`         | Preview your build locally, before deploying     |
-| `npm run astro ...`       | Run CLI commands like `astro add`, `astro check` |
-| `npm run astro -- --help` | Get help using the Astro CLI                     |
+| Command                     | Action                                           |
+| :-------------------------- | :----------------------------------------------- |
+| `pnpm install`              | Installs dependencies for all workspaces         |
+| `pnpm dev:docs`             | Starts local dev server at `localhost:4321`      |
+| `pnpm build:docs`           | Build the production site to `docs/dist/`        |
+| `pnpm preview:docs`         | Preview the build locally, before deploying      |
+| `pnpm -C docs astro ...`    | Run CLI commands like `astro add`, `astro check` |
+
+The same scripts are also available inside `docs/` as `pnpm dev`, `pnpm build`, and `pnpm preview`.
 
 ## Contribution
 

@@ -38,18 +38,15 @@ describe("polylineBaseEnhancer/state", () => {
       expect(state.width).toBe(5);
     });
 
-    it("should update batch flags from props", () => {
-      const props: PolylineBaseProps = {
-        batchColorEnabled: true,
-        useBatchTexture: true,
-        useBatchColorShow: true,
-      };
+    it("should never transition batchColorEnabled back to false", () => {
+      const enabled = updateState(
+        { batchColorEnabled: true },
+        DEFAULT_BASE_STATE,
+      );
+      expect(enabled.batchColorEnabled).toBe(true);
 
-      const state = updateState(props, DEFAULT_BASE_STATE);
-
-      expect(state.batchColorEnabled).toBe(true);
-      expect(state.useBatchTexture).toBe(true);
-      expect(state.useBatchColorShow).toBe(true);
+      const stillEnabled = updateState({ batchColorEnabled: false }, enabled);
+      expect(stillEnabled.batchColorEnabled).toBe(true);
     });
   });
 });

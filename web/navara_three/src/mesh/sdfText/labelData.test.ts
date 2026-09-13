@@ -21,9 +21,9 @@ describe("LabelDataTexture", () => {
 
   it("writes a row at the address the shader reads", () => {
     const store = new LabelDataTexture(8);
-    store.setRow(3, LabelRow.COLOR_OPACITY, 0.25, 0.5, 0.75, 0.5);
+    store.setRow(3, LabelRow.BOX, 0.25, 0.5, 0.75, 0.5);
 
-    const base = texelIndex(3, LabelRow.COLOR_OPACITY) * 4;
+    const base = texelIndex(3, LabelRow.BOX) * 4;
     expect(Array.from(dataOf(store).slice(base, base + 4))).toEqual([
       0.25, 0.5, 0.75, 0.5,
     ]);
@@ -78,15 +78,15 @@ describe("LabelDataTexture", () => {
     });
 
     // The allocation is padded out to whole texture rows, and that padding is
-    // usable space — 16 labels round up to 2 rows, which address 25. Growing
-    // at 17 would mean an allocate + copy + texture recreate (and a full GPU
+    // usable space — 17 labels round up to 2 rows, which address 32. Growing
+    // at 18 would mean an allocate + copy + texture recreate (and a full GPU
     // re-upload) while free slots were still sitting in the buffer.
     it("uses the row padding before growing", () => {
-      const store = new LabelDataTexture(16);
+      const store = new LabelDataTexture(17);
       const before = store.texture;
 
-      expect(store.capacity).toBeGreaterThan(16);
-      expect(store.ensureCapacity(17)).toBe(false);
+      expect(store.capacity).toBeGreaterThan(17);
+      expect(store.ensureCapacity(18)).toBe(false);
       expect(store.ensureCapacity(store.capacity)).toBe(false);
       expect(store.texture).toBe(before);
 

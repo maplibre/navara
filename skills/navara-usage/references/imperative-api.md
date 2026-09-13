@@ -25,6 +25,7 @@ layer.on("featureUpdated", ({ evaluator }) => {
 ```
 
 - Prefer `filters` (or `readFilteredFeatureProperties`) over reading all properties on large datasets.
+- **Return a consistent shape:** once the callback styles an attribute for any feature, style it for every feature. Features you skip fall back to a fixed default, not the material value: `opacity` 1, `color` white, `emissive` off, `height`/`extrudedHeight` 0 (only `size` and `width` fall back to the material). E.g. styling `opacity` (or `show`) for some features renders the unstyled ones fully opaque regardless of the material's `opacity`.
 - `readFeatureProperties(cb)` reads attributes without styling (e.g. build a legend).
 - **Label decluttering:** `text`/`point`/`billboard` materials declutter by default (`declutter: true`) — screen-overlapping labels hide the lower-priority one (with a fade). Set `declutter: false` on the material to draw every label unconditionally. Placement priority: layer-level `declutterPriority` on the material, overridable per feature by returning `declutterPriority` from `evaluate()` — higher wins; among equal priorities currently-shown labels are sticky (hysteresis), then ties resolve deterministically by anchor position. The placement math itself is a Rust kernel (`declutterPlace` in `navara_wasm_api`); the TS `DeclutterManager` only orchestrates. Reference: `example/pages/styling/mvt-text`.
 - To restyle interactively (click-to-highlight), change your evaluation state and call `layer.forceUpdate()`.

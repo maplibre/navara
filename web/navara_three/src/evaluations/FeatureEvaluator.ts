@@ -13,6 +13,7 @@ import type {
 import { BufferGeometry, Mesh, Object3D } from "three";
 import type { NormalBufferAttributes } from "three";
 
+import type { BatchedAttributeName } from "../batchTexture";
 import { Color } from "../Color";
 import type { FeatureHandler } from "../event/context";
 import {
@@ -22,7 +23,6 @@ import {
   type ModelMaterial,
   BatchedFeatureMesh,
   type ModelBatchedAttributeName,
-  type BatchedAttributeName,
   InstancedSpriteMesh,
   BatchedSdfTextMesh,
   type GeometryType,
@@ -62,6 +62,10 @@ export type EvaluatableMaterialProperty = {
   declutterPriority: AvailableMaterialProperty["declutterPriority"];
   /** Image URL for billboards; packed into a shared per-mesh texture atlas. */
   image: string;
+  /** Emissive color expression (for polygons/3D Tiles models/points/billboards/text). */
+  emissive: AvailableMaterialProperty["emissiveColor"];
+  /** Emissive intensity expression (for polygons/3D Tiles models/points/billboards/text). */
+  emissiveIntensity: AvailableMaterialProperty["emissiveIntensity"];
 };
 
 type EvaluatableMaterialPropertyKey = keyof EvaluatableMaterialProperty;
@@ -77,6 +81,8 @@ type EvaluatedMaterialProperty = {
   opacity: number;
   declutterPriority: number;
   image: string | null;
+  emissive: Color;
+  emissiveIntensity: number;
 };
 
 /**
@@ -394,6 +400,12 @@ export class FeatureEvaluator {
    *   packed into the layer's texture atlas. Return `null` to clear a
    *   previous per-feature image and revert to the material's default `url`;
    *   omit the key to leave it unchanged.
+   * - `emissive` - Emissive color (for batched polygons/3D Tiles models/
+   *   points/billboards/text; ignored on models without batch/feature ids).
+   *   Pairs with `emissiveIntensity` and drives selective bloom. On text only
+   *   the glyph fill glows — outline and background stay dark.
+   * - `emissiveIntensity` - Emissive intensity multiplier (for batched
+   *   polygons/3D Tiles models/points/billboards/text)
    *
    * Note: Evaluated styles override the layer's default styles.
    *
@@ -477,6 +489,15 @@ export class FeatureEvaluator {
           evaluated.declutterPriority,
         );
       }
+      if (evaluated.emissive != null) {
+        obj.setFeatureEmissiveByBatchIndex(batchIndex, evaluated.emissive.raw);
+      }
+      if (evaluated.emissiveIntensity != null) {
+        obj.setFeatureEmissiveIntensityByBatchIndex(
+          batchIndex,
+          evaluated.emissiveIntensity,
+        );
+      }
       if ("image" in evaluated) {
         // Async by nature (the image may need fetching); the atlas dedupes
         // loads by URL so evaluating many features costs one fetch per image.
@@ -514,6 +535,18 @@ export class FeatureEvaluator {
           evaluated.declutterPriority,
         );
       }
+      if (evaluated.emissive != null && obj instanceof BatchedSdfTextMesh) {
+        obj.setFeatureEmissiveByBatchIndex(batchIndex, evaluated.emissive.raw);
+      }
+      if (
+        evaluated.emissiveIntensity != null &&
+        obj instanceof BatchedSdfTextMesh
+      ) {
+        obj.setFeatureEmissiveIntensityByBatchIndex(
+          batchIndex,
+          evaluated.emissiveIntensity,
+        );
+      }
       return;
     }
 
@@ -541,7 +574,10 @@ export class FeatureEvaluator {
     const batchIdAttr =
       "geometry" in m ? m.geometry.getAttribute("_batchid") : undefined;
 
-    // Non-batched feature mesh path (e.g. GeoJSON polyline/polygon)
+    // Non-batched feature mesh path (a mesh without a `_batchid` attribute,
+    // e.g. a plain glTF model layer whose meshes carry no feature ids —
+    // GeoJSON polygons/polylines are batched). Only the attributes below are
+    // applicable here; emissive/emissiveIntensity need the batch texture.
     const featureMesh = (() => {
       if (batchIdAttr) return;
       if (parent) return isFeatureMesh(parent) ? parent : undefined;
@@ -558,14 +594,8 @@ export class FeatureEvaluator {
       if (evaluated.show != null) {
         featureMesh._setFeatureShow(evaluated.show);
       }
-      if (evaluated.extrudedHeight != null) {
-        featureMesh._setFeatureExtrudedHeight(evaluated.extrudedHeight);
-      }
       if (evaluated.height != null) {
         featureMesh._setFeatureHeight(evaluated.height);
-      }
-      if (evaluated.width != null) {
-        featureMesh._setFeatureWidth(evaluated.width);
       }
       if (evaluated.opacity != null) {
         featureMesh._setFeatureOpacity(evaluated.opacity);
@@ -621,6 +651,12 @@ export class FeatureEvaluator {
     }
     if (evaluated.opacity != null) {
       updateBatchAttribute("opacity", evaluated.opacity);
+    }
+    if (evaluated.emissive != null) {
+      updateBatchAttribute("emissive", evaluated.emissive.toArray());
+    }
+    if (evaluated.emissiveIntensity != null) {
+      updateBatchAttribute("emissiveIntensity", evaluated.emissiveIntensity);
     }
 
     // size is handled by InstancedSpriteMesh / BatchedSdfTextMesh paths above

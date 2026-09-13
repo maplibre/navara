@@ -25,8 +25,8 @@ navara_threeでは、以下のEffectDescタイプが利用可能です:
 | [FXAAEffectDesc](../fxaa-effect-desc) | FXAA(Fast Approximate Anti-Aliasing)を適用するエフェクト |
 | [LensFlareEffectDesc](../lens-flare-effect-desc) | 太陽や月からのレンズフレアを生成するエフェクト |
 | [RainDropEffectDesc](../rain-drop-effect-desc) | 画面に雨粒の屈折効果を適用するエフェクト |
-| [SelectiveBloomEffectDesc](../selective-bloom-effect-desc) | セレクティブブルームを適用するエフェクト |
-| [SelectiveOutlineEffectDesc](../selective-outline-effect-desc) | セレクティブアウトラインを適用するエフェクト |
+| [SelectiveBloomEffectDesc](../selective-bloom-effect-desc) | Selective Bloom を適用するエフェクト |
+| [SelectiveOutlineEffectDesc](../selective-outline-effect-desc) | Selective Outline を適用するエフェクト |
 | [SMAAEffectDesc](../smaa-effect-desc) | SMAA(Subpixel Morphological Anti-Aliasing)を適用するエフェクト |
 | [SSAOEffectDesc](../ssao-effect-desc) | スクリーンスペースアンビエントオクルージョンを適用するエフェクト |
 | [SSREffectDesc](../ssr-effect-desc) | リアルタイムスクリーンスペース反射を生成するエフェクト |

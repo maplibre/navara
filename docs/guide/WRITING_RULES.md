@@ -34,6 +34,15 @@ Mesh, effect, and light APIs were renamed from `*Layer` to `*Desc`. Use the foll
 - Do not translate "Descriptor" — use the English term as-is in all locales
 - Resource layers retain the term "layer" (or "レイヤー" in Japanese)
 
+### API and feature names stay in English
+
+Write the names of APIs, effects, and features as-is in every locale. Never transliterate them into katakana:
+
+- "Selective Bloom", not 「セレクティブブルーム」
+- `FeatureEvaluator`, `SelectiveBloomEffectDesc`, "Bloom", "Outline" stay as-is
+
+Generic prose around the name is still translated (「Selective Bloom を駆動します」). Surround the English term with half-width spaces when it sits inside Japanese text.
+
 ## Link paths must be lowercase
 
 Astro/Starlight converts directory names to lowercase slugs when generating URLs (e.g., `API/` becomes `api/`, `Resource Layer/` becomes `resource-layer/`). All link paths in markdown must use lowercase to match the generated URLs.

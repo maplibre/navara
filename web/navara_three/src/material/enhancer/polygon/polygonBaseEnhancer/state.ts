@@ -19,10 +19,6 @@ export const DEFAULT_BASE_PROPS: Required<
   emissiveIntensity: 0,
   useRTE: false,
   batchColorEnabled: false,
-  useBatchTexture: false,
-  useBatchColorShow: false,
-  useBatchHeight: false,
-  useBatchExtrudedHeight: false,
 };
 
 /** Default state derived from DEFAULT_BASE_PROPS */
@@ -40,10 +36,6 @@ export const DEFAULT_BASE_STATE: PolygonBaseState = {
   reflectivity: DEFAULT_BASE_PROPS.reflectivity,
   roughness: DEFAULT_BASE_PROPS.roughness,
   batchColorEnabled: DEFAULT_BASE_PROPS.batchColorEnabled,
-  useBatchTexture: DEFAULT_BASE_PROPS.useBatchTexture,
-  useBatchColorShow: DEFAULT_BASE_PROPS.useBatchColorShow,
-  useBatchHeight: DEFAULT_BASE_PROPS.useBatchHeight,
-  useBatchExtrudedHeight: DEFAULT_BASE_PROPS.useBatchExtrudedHeight,
 };
 
 /**
@@ -76,14 +68,7 @@ export const updateState = (
     addHeight: props.addHeight ?? currentState.addHeight,
     reflectivity: props.reflectivity ?? currentState.reflectivity,
     roughness: props.roughness ?? currentState.roughness,
-    // Batch flags can only transition from false to true, never back
     batchColorEnabled:
       props.batchColorEnabled ?? currentState.batchColorEnabled,
-    useBatchTexture: props.useBatchTexture ?? currentState.useBatchTexture,
-    useBatchColorShow:
-      props.useBatchColorShow ?? currentState.useBatchColorShow,
-    useBatchHeight: props.useBatchHeight ?? currentState.useBatchHeight,
-    useBatchExtrudedHeight:
-      props.useBatchExtrudedHeight ?? currentState.useBatchExtrudedHeight,
   };
 };

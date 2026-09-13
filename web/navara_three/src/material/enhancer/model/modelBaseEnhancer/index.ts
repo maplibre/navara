@@ -86,14 +86,7 @@ export function createModelBaseEnhancer(
       return mutates;
     },
 
-    programCacheKey: (): string => {
-      invariant(state, "mount() must be called before programCacheKey");
-      // Return cache key based on state that affects shader defines
-      return JSON.stringify({
-        useBatchTexture: state.useBatchTexture,
-        useBatchColorShow: state.useBatchColorShow,
-      });
-    },
+    programCacheKey: (): string => "model",
   };
 }
 

@@ -58,7 +58,7 @@ Descriptor の種類に応じて、対応する基底クラスを継承して実
 | ------------------------ | ------------------------------------------------- |
 | `ctx.scenes.opaque`      | 不透明オブジェクト用シーン                        |
 | `ctx.scenes.transparent` | 半透明オブジェクト用シーン                        |
-| `ctx.scenes.mrt`         | セレクティブエフェクト（Bloom / Outline）用シーン |
+| `ctx.scenes.mrt`         | Selective Effect（Bloom / Outline）用シーン |
 | `ctx.scenes.skyEnvMap`   | 環境マップ用シーン                                |
 | `ctx.scenes.light`       | ライト用シーン                                    |
 | `ctx.scenes.draped`      | 地形ドレープメッシュ用シーン                      |
@@ -111,7 +111,7 @@ Descriptor の種類に応じて、対応する基底クラスを継承して実
 
 ## G-Buffer（MRT）への出力
 
-Navara は複数のレンダーターゲット（MRT）からなる G-buffer にレンダリングします。深度・法線を利用するエフェクト（SSAO、SSR、アウトライン、大気透視、雲）や選択的エフェクト（Bloom / Outline）はこれらのアタッチメントを読み取るため、メッシュがそれらのエフェクトに参加できるのは、そのマテリアルが G-buffer に書き込む場合だけです。
+Navara は複数のレンダーターゲット（MRT）からなる G-buffer にレンダリングします。深度・法線を利用するエフェクト（SSAO、SSR、Outline、大気透視、雲）や Selective Effect（Bloom / Outline）はこれらのアタッチメントを読み取るため、メッシュがそれらのエフェクトに参加できるのは、そのマテリアルが G-buffer に書き込む場合だけです。
 
 常に存在するのは color と normal だけです。それ以外は必要に応じて確保され、**隙間なく後ろに詰められる**ため、ロケーションは構成によって変わります。シェーダーには各バッファの `layout(location = …)` が define として渡されます。
 
@@ -119,8 +119,8 @@ Navara は複数のレンダーターゲット（MRT）からなる G-buffer に
 | -------------- | ------------ | ------------------------------------------------------------ | ------------------------- |
 | Color          | 0            | `gl_FragColor`                                                | 常時                      |
 | Normal         | 1            | ビュー空間の法線（＋マテリアルプロパティ）                    | 常時                      |
-| Effect ID      | 可変         | 選択的エフェクトのビットマスク                                | `buffers.selectiveEffect` |
-| Emissive       | 可変         | 選択的エフェクトの加算エミッシブ                              | `buffers.emissive`        |
+| Effect ID      | 可変         | Selective Effect のビットマスク                                | `buffers.selectiveEffect` |
+| Emissive       | 可変         | Selective Effect の加算エミッシブ                              | `buffers.emissive`        |
 | Shadow         | 可変         | R = 影の量（0=非影..1=完全な影）、G = albedo 出力フラグ       | `buffers.shadow`          |
 
 オプションのアタッチメント index はハードコードせず、後述の `ViewContext` のアクセサから取得してください。
@@ -150,7 +150,7 @@ setupMaterialForMRT(lineMaterial);
 | `material`       | `ShaderMaterial` | パッチ対象のカスタムマテリアル。`LineMaterial`（`ShaderMaterial` を継承）は自動的に検出・処理されます                                    |
 | `options.normal` | `string`         | フラグメントシェーダー内の**ビュー空間**法線変数名。既定は `"normal"`。`packNormalToVec2` でパックされるため、ビュー空間である必要があります |
 
-これを省略すると、メッシュは法線 / エフェクト ID / エミッシブのアタッチメントに何も書き込まないため、深度・法線ベースのエフェクトや選択的エフェクトがそのメッシュ上で壊れます（法線が不正になり、Bloom やアウトラインが効かなくなります）。
+これを省略すると、メッシュは法線 / エフェクト ID / エミッシブのアタッチメントに何も書き込まないため、深度・法線ベースのエフェクトや Selective Effect がそのメッシュ上で壊れます（法線が不正になり、Bloom や Outline が効かなくなります）。
 
 要件と挙動：
 
@@ -289,7 +289,7 @@ type MyMeshUpdate = MeshUpdate & MyMeshDescription;
 | --------------- | ------------------------------------------- |
 | `"opaque"`      | 不透明レンダリング（デフォルト）            |
 | `"transparent"` | 半透明レンダリング                          |
-| `"mrt"`         | セレクティブエフェクト用（Bloom / Outline） |
+| `"mrt"`         | Selective Effect 用（Bloom / Outline） |
 | `"skyEnvMap"`   | 環境マップ用                                |
 | `"draped"`      | 地形ドレープレンダリング用                  |
 

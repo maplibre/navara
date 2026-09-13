@@ -14,6 +14,7 @@ import {
   cpSync,
   existsSync,
   mkdirSync,
+  readdirSync,
   renameSync,
   rmSync,
   writeFileSync,
@@ -39,10 +40,16 @@ mkdirSync(out, { recursive: true });
 
 cpSync(docsDist, resolve(out, "docs"), { recursive: true });
 
-// Relocate the LP pages from /docs/lp/ to the site root.
+// Relocate the LP pages from /docs/lp/ (root locale) and /docs/<locale>/lp/
+// to the site root. Non-root locales are discovered from the docs build, so a
+// new LP locale (docs/src/pages/<locale>/lp.astro) needs no change here.
+const lpLocales = readdirSync(resolve(out, "docs"), { withFileTypes: true })
+  .filter((e) => e.isDirectory() && existsSync(resolve(out, "docs", e.name, "lp/index.html")))
+  .map((e) => e.name)
+  .sort();
 for (const [from, to] of [
   ["docs/lp/index.html", "index.html"],
-  ["docs/ja/lp/index.html", "ja/index.html"],
+  ...lpLocales.map((locale) => [`docs/${locale}/lp/index.html`, `${locale}/index.html`]),
 ]) {
   const src = resolve(out, from);
   if (!existsSync(src)) throw new Error(`LP page not found in docs build: ${from}`);
@@ -70,8 +77,10 @@ cpSync(examplesDist, resolve(out, "examples"), { recursive: true });
 const redirects = [
   "/lp / 301",
   "/lp/ / 301",
-  "/ja/lp /ja/ 301",
-  "/ja/lp/ /ja/ 301",
+  ...lpLocales.flatMap((locale) => [
+    `/${locale}/lp /${locale}/ 301`,
+    `/${locale}/lp/ /${locale}/ 301`,
+  ]),
 ];
 writeFileSync(resolve(out, "_redirects"), redirects.join("\n") + "\n");
 

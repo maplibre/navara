@@ -11,6 +11,12 @@ uniform float nvr_uPickable;
 #include "chunks/gbuffer_pars_fragment.glsl"
 
 #ifndef USE_SHADOWMAP_DEPTH
+    #ifdef USE_SELECTIVE_EFFECT
+        uniform float uEffectIdsMask;
+        uniform vec3 uEmissiveColor;
+        uniform float uEmissiveIntensity;
+    #endif
+
     vec2 packNormalToVec2(vec3 normal) {
         return normal.xy * 0.5 + 0.5;
     }
@@ -156,7 +162,14 @@ void main() {
         #ifndef USE_SHADOWMAP_DEPTH
             vec3 normal = screenSpaceNormal();
             GBUFFER_WRITE_NORMAL(normal, 0.0, 1.0)
-            GBUFFER_WRITE_EFFECT_ZERO
+            #ifdef USE_SELECTIVE_EFFECT
+                // Per-feature emissive (batch texture) replaces the material
+                // term; the glyph's own coverage scales it so soft edges
+                // don't bloom at full strength.
+                GBUFFER_WRITE_EFFECT(uEffectIdsMask, NVR_BATCH_EMISSIVE_OR((vColor + uEmissiveColor) * uEmissiveIntensity) * c.a)
+            #else
+                GBUFFER_WRITE_EFFECT_ZERO
+            #endif
             GBUFFER_WRITE_SHADOW_ZERO
         #endif
         return;
@@ -296,7 +309,14 @@ void main() {
     #ifndef USE_SHADOWMAP_DEPTH
         vec3 normal = screenSpaceNormal();
         GBUFFER_WRITE_NORMAL(normal, 0.0, 1.0)
-        GBUFFER_WRITE_EFFECT_ZERO
+        #ifdef USE_SELECTIVE_EFFECT
+            // FILL-only emissive: outline pixels (fillAlpha≈0) stay dark, and
+            // the fill's coverage (and the label's fade) scales the term so
+            // AA edges don't halo.
+            GBUFFER_WRITE_EFFECT(uEffectIdsMask, NVR_BATCH_EMISSIVE_OR((vColor + uEmissiveColor) * uEmissiveIntensity) * fillAlpha * opacity)
+        #else
+            GBUFFER_WRITE_EFFECT_ZERO
+        #endif
         GBUFFER_WRITE_SHADOW_ZERO
     #endif
 }

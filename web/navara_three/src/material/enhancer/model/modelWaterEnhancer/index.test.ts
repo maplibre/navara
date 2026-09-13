@@ -26,15 +26,13 @@ describe("modelWaterEnhancer", () => {
   });
 
   describe("programCacheKey", () => {
-    it("should combine base cache key with water-specific state", () => {
+    it("should include water-specific state", () => {
       enhancer.mount({
-        base: { useBatchTexture: true },
         water: { water: true },
       });
 
       const cacheKey = enhancer.programCacheKey();
 
-      expect(cacheKey).toContain('"useBatchTexture":true');
       expect(cacheKey).toContain('"useWater":true');
     });
 

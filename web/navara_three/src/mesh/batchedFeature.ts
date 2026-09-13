@@ -2,7 +2,6 @@ import { Unimplemented } from "@navaramap/core";
 import {
   BufferAttribute,
   BufferGeometry,
-  Color,
   Material,
   Mesh,
   Object3D,
@@ -11,20 +10,15 @@ import {
 } from "three";
 import invariant from "tiny-invariant";
 
-import type { CustomObject3DEventMap } from "../object3DEvent";
-
 import {
   BATCHED_ATTRIBUTE_NAMES,
-  getBatchDataTexture,
-  initBatchDataTexture,
   initBatchedMaterial,
   updateBatchAttribute,
   type BatchedAttributeName,
-  type BatchTextureConfig,
-  type BatchTextureRowKey,
-  type DefaultBatchAttributeValues,
-} from "./batchTexture";
-import type { FeatureMesh } from "./featureMesh";
+  type BatchTextureSupport,
+} from "../batchTexture";
+import type { CustomObject3DEventMap } from "../object3DEvent";
+
 import { PickableMesh } from "./pickableMesh";
 
 export type BatchedFeatureAttributes<
@@ -33,25 +27,6 @@ export type BatchedFeatureAttributes<
   _batchid?: BufferAttribute;
 } & Attr;
 
-/**
- * Batch texture rows per mesh type. A mesh's rows must only contain attributes
- * its shaders declare receiver variables for: `updateBatchAttribute` turns a
- * `USE_BATCH_*` define on whenever the row exists, and the shared
- * `batch_texture_vertex` chunk then assigns to the receiver — an undeclared one
- * (e.g. `addExtrudedHeight` in the polyline shaders) breaks shader compilation.
- */
-export const POLYGON_BATCH_TEXTURE_ROWS: BatchTextureRowKey[] = [
-  "COLOR_SHOW",
-  "HEIGHT",
-  "EXTRUDED_HEIGHT",
-];
-
-export const POLYLINE_BATCH_TEXTURE_ROWS: BatchTextureRowKey[] = [
-  "COLOR_SHOW",
-  "HEIGHT",
-  "LINE_WIDTH",
-];
-
 export class BatchedFeatureMesh<
   Buf extends BufferGeometry<BatchedFeatureAttributes> =
     BufferGeometry<BatchedFeatureAttributes>,
@@ -59,7 +34,7 @@ export class BatchedFeatureMesh<
   E extends CustomObject3DEventMap = CustomObject3DEventMap,
 >
   extends Mesh<Buf, M, E>
-  implements FeatureMesh, PickableMesh
+  implements PickableMesh
 {
   batchLength?: number;
   static _isBatchedAttributeName(v: string): v is BatchedAttributeName {
@@ -81,16 +56,16 @@ export class BatchedFeatureMesh<
   }
 
   /**
-   * Batch texture rows supported by this mesh type's shaders. Attributes
-   * without a row are silently ignored by `updateBatchAttribute`.
+   * This mesh type's batch-texture capability (see the receiver rule on
+   * {@link BatchTextureSupport} in batchTexture/support.ts).
    */
-  _getBatchTextureRows(): BatchTextureRowKey[] {
+  _getBatchTextureSupport(): BatchTextureSupport {
     throw new Unimplemented();
   }
 
   _initBatchedMaterial() {
     initBatchedMaterial(this.material, {
-      rows: this._getBatchTextureRows(),
+      ...this._getBatchTextureSupport(),
       batchLength: 0,
     });
   }
@@ -98,72 +73,31 @@ export class BatchedFeatureMesh<
   _initBatchDataTexture(): void {
     invariant(this.batchLength != null);
 
-    const config: BatchTextureConfig = {
-      rows: this._getBatchTextureRows(),
+    initBatchedMaterial(this.material, {
+      ...this._getBatchTextureSupport(),
       batchLength: this.batchLength,
-    };
-
-    initBatchDataTexture(this.material, config);
+    });
   }
 
-  _getBatchDataTexture() {
-    return getBatchDataTexture(this.material);
-  }
-
+  /** Returns whether the write landed (see {@link updateBatchAttribute}). */
   _updateBatchAttribute(
     batchId: number,
     attribute: BatchedAttributeName,
     value: number | number[] | boolean,
-  ): void {
-    updateBatchAttribute(
+  ): boolean {
+    const wrote = updateBatchAttribute(
       this.material,
       batchId,
       attribute,
       value,
-      this._getDefaultBatchAttributeValues(),
     );
 
-    this.needsUpdate();
+    if (wrote) this.needsUpdate();
+    return wrote;
   }
 
   needsUpdate() {
     this.dispatchEvent({ type: "needsUpdate" } as any); // Events aren't inferred well.
-  }
-
-  _getDefaultBatchAttributeValues(): DefaultBatchAttributeValues {
-    throw new Unimplemented();
-  }
-
-  _setFeatureColor(color: Color): void {
-    this._updateBatchAttribute(0, "color", color.toArray());
-  }
-
-  _getFeatureColor(): Color {
-    throw new Unimplemented();
-  }
-
-  _setFeatureShow(visible: boolean): void {
-    this._updateBatchAttribute(0, "show", visible);
-  }
-
-  _setFeatureExtrudedHeight(height: number): void {
-    this._updateBatchAttribute(0, "extrudedHeight", height);
-  }
-
-  _setFeatureHeight(height: number): void {
-    this._updateBatchAttribute(0, "height", height);
-  }
-
-  _setFeatureWidth(width: number): void {
-    this._updateBatchAttribute(0, "lineWidth", width);
-  }
-
-  _setFeatureOpacity(opacity: number): void {
-    this._updateBatchAttribute(0, "opacity", opacity);
-  }
-
-  _setFrustumCulled(_culled: boolean): void {
-    throw new Unimplemented();
   }
 
   onBeforePicking(_pickingCoord?: Vector2) {
