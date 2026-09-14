@@ -13,6 +13,7 @@ import initApi, {
   screenToWorld,
   worldToScreen,
   geodeticSurfaceNormal as nvGeodeticSurfaceNormal,
+  scaleToGeodeticSurface as nvScaleToGeodeticSurface,
   eastNorthUpToFixedFrame as nvEastNorthUpToFixedFrame,
   northEastDownToFixedFrame as nvNorthEastDownToFixedFrame,
   northUpEastToFixedFrame as nvNorthUpEastToFixedFrame,
@@ -168,6 +169,23 @@ export function geodeticSurfaceNormal(lle: LatLngHeight): Vector3 {
   const pos = nvGeodeticSurfaceNormal(
     new LLE(angleToRadian(lle.lat), angleToRadian(lle.lng), lle.height),
   );
+  const result = new Vector3(pos.x, pos.y, pos.z);
+  pos.free();
+  return result;
+}
+
+/**
+ * Projects a Cartesian position onto the WGS84 ellipsoid surface along the
+ * geodetic normal.
+ * @param xyz - Cartesian Vector3 in Earth-Centered Earth-Fixed (ECEF) coordinates
+ * @returns The surface position in ECEF coordinates, or undefined when the
+ * position is too close to the ellipsoid's center to project
+ */
+export function scaleToGeodeticSurface(xyz: Vector3): Vector3 | undefined {
+  const pos = nvScaleToGeodeticSurface(new Vec3(xyz.x, xyz.y, xyz.z));
+  if (!pos) {
+    return undefined;
+  }
   const result = new Vector3(pos.x, pos.y, pos.z);
   pos.free();
   return result;

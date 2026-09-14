@@ -518,6 +518,35 @@ const normal = geodeticSurfaceNormal(lle);
 console.log(`法線ベクトル: [${normal.x}, ${normal.y}, ${normal.z}]`);
 ```
 
+### scaleToGeodeticSurface(xyz)
+
+直交座標の位置を、測地法線に沿って WGS84 楕円体表面へ投影します。
+
+**Syntax:**
+
+```typescript
+function scaleToGeodeticSurface(xyz: Vector3): Vector3 | undefined;
+```
+
+**Parameters:**
+
+- `xyz`: ECEF 座標（Three.js Vector3）
+
+**Returns:**
+
+ECEF 座標での表面位置（Three.js Vector3）。位置が楕円体の中心に近すぎて投影できない場合は `undefined`
+
+**Example:**
+
+```typescript
+import { scaleToGeodeticSurface } from "@navaramap/three-api";
+
+const surface = scaleToGeodeticSurface(camera.position);
+if (surface) {
+  console.log(`表面位置: [${surface.x}, ${surface.y}, ${surface.z}]`);
+}
+```
+
 ### eastNorthUpToFixedFrame(origin)
 
 East-North-Up 座標系から固定フレームへの変換行列を取得します。

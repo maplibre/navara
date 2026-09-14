@@ -518,6 +518,35 @@ const normal = geodeticSurfaceNormal(lle);
 console.log(`Normal vector: [${normal.x}, ${normal.y}, ${normal.z}]`);
 ```
 
+### scaleToGeodeticSurface(xyz)
+
+Projects a Cartesian position onto the WGS84 ellipsoid surface along the geodetic normal.
+
+**Syntax:**
+
+```typescript
+function scaleToGeodeticSurface(xyz: Vector3): Vector3 | undefined;
+```
+
+**Parameters:**
+
+- `xyz`: ECEF coordinates (Three.js Vector3)
+
+**Returns:**
+
+The surface position in ECEF coordinates (Three.js Vector3), or `undefined` when the position is too close to the ellipsoid's center to project
+
+**Example:**
+
+```typescript
+import { scaleToGeodeticSurface } from "@navaramap/three-api";
+
+const surface = scaleToGeodeticSurface(camera.position);
+if (surface) {
+  console.log(`Surface point: [${surface.x}, ${surface.y}, ${surface.z}]`);
+}
+```
+
 ### eastNorthUpToFixedFrame(origin)
 
 Gets the transformation matrix from the East-North-Up coordinate system to the fixed frame.

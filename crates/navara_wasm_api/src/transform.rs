@@ -70,6 +70,13 @@ pub fn geodetic_surface_normal(lle: LLE) -> Vec3Wasm {
     normal_vec3.into()
 }
 
+#[wasm_bindgen(js_name = scaleToGeodeticSurface)]
+pub fn scale_to_geodetic_surface(vec3: Vec3Wasm) -> Option<Vec3Wasm> {
+    WGS84_64
+        .scale_to_geodetic_surface(vec3.into())
+        .map(Into::into)
+}
+
 #[wasm_bindgen(js_name = eastNorthUpToFixedFrame)]
 pub fn east_north_up_to_fixed_frame(origin: Vec3Wasm) -> Vec<f64> {
     let mat4 = navara_core::east_north_up_to_fixed_frame(origin.into(), WGS84_64);
