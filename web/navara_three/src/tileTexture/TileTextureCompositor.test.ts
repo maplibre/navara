@@ -108,7 +108,12 @@ describe("TileTextureCompositor.renderVectorScenes", () => {
       camera: { left: number; right: number; bottom: number; top: number };
     }[] = [];
     renderer.render.mockImplementation((_scene, camera) => {
-      const { left, right, bottom, top } = camera as { left: number; right: number; bottom: number; top: number };
+      const { left, right, bottom, top } = camera as {
+        left: number;
+        right: number;
+        bottom: number;
+        top: number;
+      };
       calls.push({
         target: renderer.currentTarget,
         camera: { left, right, bottom, top },
