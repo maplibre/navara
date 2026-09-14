@@ -41,9 +41,9 @@ void main() {
     float opacity = 1.0 - smoothstep(
         ATMOSPHERE_CUTOFF_ALTITUDE_LOW, ATMOSPHERE_CUTOFF_ALTITUDE_HIGH, v_cameraAltitude);
     skyColor = max(skyColor + (dither(gl_FragCoord.xy) - 0.5) / 255.0, vec3(0.0));
-    // Premultiplied blending lets the sky fade independently of the solar disc.
-    vec3 color = (skyColor + uSunColor * (0.6 * sunHalo)) * (0.3 * opacity);
-    color += uSunColor * (1.8 * sunDisc);
+    // Premultiplied blending lets the sky fade independently of the sun and its halo.
+    vec3 color = skyColor * (0.3 * opacity);
+    color += uSunColor * (1.8 * sunDisc + 0.18 * sunHalo);
     float coverage = opacity + (1.0 - opacity) * sunDisc;
     gl_FragColor = vec4(color, coverage);
 }

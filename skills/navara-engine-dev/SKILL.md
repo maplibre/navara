@@ -41,8 +41,8 @@ change.
 ## Lightweight skybox
 
 - `SkyBoxMeshDesc` uses premultiplied normal alpha blending. Multiply sky RGB
-  by altitude opacity once; the solar disc stays independent of altitude. Output
-  alpha combines sky opacity and disc coverage to occlude background stars.
+  by altitude opacity once; the solar disc and halo stay independent of altitude.
+  Output alpha combines sky opacity and disc coverage to occlude background stars.
 - Keep skybox additions analytic (no LUTs or scattering loops); the full
   atmosphere path supplies physically based scattering. Solar disc edges use
   chord distance and screen derivatives to preserve precision and antialiasing.
