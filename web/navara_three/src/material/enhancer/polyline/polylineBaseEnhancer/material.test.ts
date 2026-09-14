@@ -10,7 +10,7 @@ describe("polylineBaseEnhancer/material", () => {
       material.transparent = true;
       material.depthWrite = false;
 
-      updateMaterialProps(material, {});
+      updateMaterialProps(material, {}, false);
 
       expect(material.transparent).toBe(true);
       expect(material.depthWrite).toBe(false);
@@ -20,7 +20,17 @@ describe("polylineBaseEnhancer/material", () => {
       const material = new ShaderMaterial();
       material.transparent = false;
 
-      updateMaterialProps(material, { transparent: true });
+      updateMaterialProps(material, { transparent: true }, false);
+      expect(material.transparent).toBe(true);
+    });
+
+    it("forces alpha blending on texturized materials, overriding transparent", () => {
+      // The drape bake's resolve divide assumes premultiplied content, which
+      // only holds when the bake renders alpha-blended (see material.ts).
+      const material = new ShaderMaterial();
+      material.transparent = false;
+
+      updateMaterialProps(material, { transparent: false }, true);
       expect(material.transparent).toBe(true);
     });
 
@@ -28,14 +38,14 @@ describe("polylineBaseEnhancer/material", () => {
       const material = new ShaderMaterial();
       material.depthWrite = true;
 
-      updateMaterialProps(material, { depthWrite: false });
+      updateMaterialProps(material, { depthWrite: false }, false);
       expect(material.depthWrite).toBe(false);
     });
 
     it("should update opacity when provided", () => {
       const material = new ShaderMaterial();
       material.opacity = 1.0;
-      updateMaterialProps(material, { opacity: 0.5 });
+      updateMaterialProps(material, { opacity: 0.5 }, false);
       expect(material.opacity).toBe(0.5);
     });
   });

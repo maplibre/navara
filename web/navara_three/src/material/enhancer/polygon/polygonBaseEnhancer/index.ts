@@ -71,7 +71,7 @@ export function createPolygonBaseEnhancer(
       if (props.batchDataTexture) {
         mutates.setBatchDataTexture(props.batchDataTexture);
       }
-      updateMaterialProps(material, mergedProps);
+      updateMaterialProps(material, mergedProps, state.isTexturized);
     },
 
     update: (props: PolygonBaseProps): void => {
@@ -82,7 +82,7 @@ export function createPolygonBaseEnhancer(
       if (props.batchDataTexture) {
         mutates.setBatchDataTexture(props.batchDataTexture);
       }
-      updateMaterialProps(material, props);
+      updateMaterialProps(material, props, state.isTexturized);
     },
 
     states: (): PolygonBaseState => {

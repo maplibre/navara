@@ -147,7 +147,13 @@ slot:
   - **The resolve copy un-premultiplies.** The MSAA resolve averages covered
     and transparent samples — premultiplying color by coverage — while the
     composite blends slots as straight alpha; copying without dividing
-    coverage back out darkened every draped edge.
+    coverage back out darkened every draped edge. The divide assumes the bake
+    content is uniformly premultiplied, so texturized materials always render
+    alpha-blended: the polygon/polyline enhancers force `transparent: true`
+    when texturized. With blending disabled (three maps
+    `NormalBlending + transparent: false` to no blending), a sub-1
+    per-feature opacity would land STRAIGHT in the target and the divide
+    would brighten it by 1/α.
   - **Pick bakes bypass MSAA** (`antialias: false`, driven by
     `VectorDrapeResolver.setPickBake`): their fragments encode batch ids as
     colors, and averaging them along feature edges decodes to ids that don't
