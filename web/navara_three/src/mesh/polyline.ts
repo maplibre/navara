@@ -9,13 +9,13 @@ import {
   ShaderMaterial,
   Vector2,
 } from "three";
+import invariant from "tiny-invariant";
 
 import {
-  getBatchTextureUniform,
-  setBatchTextureRenderer,
+  registerBatchedMaterial,
+  POLYLINE_BATCH_SUPPORT,
   type BatchedAttributeName,
-  type BatchScalarKey,
-  type DefaultBatchAttributeValues,
+  type BatchTextureSupport,
 } from "../batchTexture";
 import type { EventContext } from "../event/context";
 import { applyLitOption } from "../material";
@@ -23,7 +23,6 @@ import { createPolylineMaterialEnhancer } from "../material/enhancer";
 
 import {
   BatchedFeatureMesh,
-  POLYLINE_BATCH_SCALARS,
   type BatchedFeatureAttributes,
 } from "./batchedFeature";
 import { GEOMETRY_TYPES } from "./constants";
@@ -354,26 +353,20 @@ export class PolylineMesh extends BatchedFeatureMesh<
     this._update(meshMaterial, mesh.active);
   }
 
-  _getBatchTextureScalars(): BatchScalarKey[] {
-    // No extrudedHeight: the polyline shaders declare no receiver for it,
-    // so accepting the attribute would break shader compilation.
-    return POLYLINE_BATCH_SCALARS;
+  _getBatchTextureSupport(): BatchTextureSupport {
+    return POLYLINE_BATCH_SUPPORT;
   }
 
   _initBatchDataTexture(): void {
+    invariant(this.batchLength != null);
     // Register batchLength; the texture itself is created lazily on the
     // first attribute write.
-    super._initBatchDataTexture();
-    // Claim the texture for this view's renderer before any write can
-    // create it (flushing is per-view over module-global queues).
-    setBatchTextureRenderer(this.material, this.ctx.viewContext.getRenderer());
-
-    // Hand the shared uniform ref to the enhancer: texture creation/growth
-    // swaps its `.value`, so no re-wiring is needed afterwards.
-    const uniform = getBatchTextureUniform(this.material);
-    if (uniform) {
-      this.getEnhancer().update({ base: { batchDataTexture: uniform } });
-    }
+    const uniform = registerBatchedMaterial(
+      this.material,
+      { ...this._getBatchTextureSupport(), batchLength: this.batchLength },
+      this.ctx.viewContext.getRenderer(),
+    );
+    this.getEnhancer().update({ base: { batchDataTexture: uniform } });
   }
 
   _updateBatchAttribute(
@@ -381,10 +374,8 @@ export class PolylineMesh extends BatchedFeatureMesh<
     attribute: BatchedAttributeName,
     value: number | number[] | boolean,
   ): boolean {
-    // Write the texture first: it validates the value and captures the
-    // backfill defaults before the enhancer resets material.color to white,
-    // and a rejected write must not stamp any define — the shaders have no
-    // safety net for an unwritten receiver.
+    // Write the texture first: a rejected write must not stamp any define —
+    // the shaders have no safety net for an unwritten receiver.
     if (!super._updateBatchAttribute(batchId, attribute, value)) return false;
 
     if (attribute === "color") {
@@ -521,12 +512,6 @@ export class PolylineMesh extends BatchedFeatureMesh<
     }
     this.needsUpdate();
     enhancer.mutates().setPickingCoord(PICKING_COORD_SENTINEL);
-  }
-
-  _getDefaultBatchAttributeValues(): DefaultBatchAttributeValues {
-    return {
-      color: this.color,
-    };
   }
 
   clone() {

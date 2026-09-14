@@ -8,7 +8,7 @@ import {
   updateBatchAttribute,
 } from "./core";
 import { attachBatchedMaterial, getBatchTextureUniform } from "./material";
-import { WHITE, mockRenderer, setupBatchMaterial } from "./test-utils";
+import { mockRenderer, setupBatchMaterial } from "./test-utils";
 
 describe("initBatchedMaterial", () => {
   test("init stamps no layout defines and creates no texture", () => {
@@ -31,7 +31,7 @@ describe("attachBatchedMaterial", () => {
       getBatchTextureUniform(material),
     );
 
-    updateBatchAttribute(material, 0, "height", 1, WHITE);
+    updateBatchAttribute(material, 0, "height", 1);
 
     const defines = outline.userData.defines;
     expect(defines.BATCHED_TEXTURE_ROW_HEIGHT).toBe("0.0");
@@ -44,7 +44,7 @@ describe("attachBatchedMaterial", () => {
 
   test("attaching after allocations catches up on already-stamped defines", () => {
     const { material } = setupBatchMaterial(10);
-    updateBatchAttribute(material, 0, "height", 1, WHITE);
+    updateBatchAttribute(material, 0, "height", 1);
 
     const outline = new MeshBasicMaterial();
     attachBatchedMaterial(material, outline);
@@ -57,7 +57,7 @@ describe("attachBatchedMaterial", () => {
 describe("material dispose", () => {
   test("detaches the state and disposes the texture when it is the last holder", () => {
     const { material } = setupBatchMaterial(10);
-    updateBatchAttribute(material, 0, "height", 1, WHITE);
+    updateBatchAttribute(material, 0, "height", 1);
     const uniform = getBatchTextureUniform(material);
     invariant(uniform?.value);
 
@@ -73,7 +73,7 @@ describe("material dispose", () => {
   test("drains the flush queues, so a dead texture is never uploaded", () => {
     const { material } = setupBatchMaterial(10);
     const renderer = mockRenderer();
-    updateBatchAttribute(material, 0, "height", 1, WHITE);
+    updateBatchAttribute(material, 0, "height", 1);
     const texture = getBatchDataTexture(material);
     invariant(texture);
 
@@ -89,7 +89,7 @@ describe("material dispose", () => {
     const { material } = setupBatchMaterial(10);
     const outline = new MeshBasicMaterial();
     attachBatchedMaterial(material, outline);
-    updateBatchAttribute(material, 0, "height", 1, WHITE);
+    updateBatchAttribute(material, 0, "height", 1);
     const uniform = getBatchTextureUniform(material);
     invariant(uniform?.value);
 
@@ -111,10 +111,10 @@ describe("program cache key", () => {
     // onBeforeCompile-injected defines in its cache key.
     const a = setupBatchMaterial(10).material;
     const b = setupBatchMaterial(10).material;
-    updateBatchAttribute(a, 0, "color", [1, 0, 0], WHITE);
-    updateBatchAttribute(a, 0, "height", 1, WHITE);
-    updateBatchAttribute(b, 0, "height", 1, WHITE);
-    updateBatchAttribute(b, 0, "color", [1, 0, 0], WHITE);
+    updateBatchAttribute(a, 0, "color", [1, 0, 0]);
+    updateBatchAttribute(a, 0, "height", 1);
+    updateBatchAttribute(b, 0, "height", 1);
+    updateBatchAttribute(b, 0, "color", [1, 0, 0]);
 
     expect(a.customProgramCacheKey()).not.toBe(b.customProgramCacheKey());
   });

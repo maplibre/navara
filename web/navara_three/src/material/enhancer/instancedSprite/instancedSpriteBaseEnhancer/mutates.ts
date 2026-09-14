@@ -1,6 +1,7 @@
 import { encodePosition } from "@navaramap/engine-api";
 import { RTE_ONE_UNIFORM } from "@navaramap/three-api";
 import {
+  Color,
   type Matrix4,
   type Texture,
   Vector2 as ThreeVector2,
@@ -40,6 +41,9 @@ export const createBaseMutates = (
     uEyeRTELow: { value: new ThreeVector3(0, 0, 0) },
     uEyeRTEHigh: { value: new ThreeVector3(0, 0, 0) },
     uScale: { value: 100.0 },
+    uColor: { value: new Color(1, 1, 1) },
+    uOpacity: { value: 1.0 },
+    uAddHeight: { value: 0.0 },
     uCenter: { value: new ThreeVector2(0, 0) },
     uSizeInMeters: { value: true },
     uOffsetDepth: { value: true },
@@ -48,7 +52,7 @@ export const createBaseMutates = (
     uAtlasSize: { value: new ThreeVector2(1, 1) },
     nvr_uPickable: { value: 0.0 },
     uEffectIdsMask: { value: 0 },
-    uEmissiveColor: { value: new ThreeVector3(0, 0, 0) },
+    uEmissiveColor: { value: new Color(0, 0, 0) },
     uEmissiveIntensity: { value: 0 },
     uFovRad: { value: 1.0 },
     uScreenHeightPx: { value: 1080 },
@@ -62,6 +66,14 @@ export const createBaseMutates = (
   return {
     update: (state: InstancedSpriteBaseState) => {
       refs.uScale.value = state.scale;
+      refs.uColor.value.set(state.color);
+      // uOpacity feeds fragment alpha: >1 or NaN breaks the G-buffer
+      // alpha-as-blend-factor invariant (per-feature writes clamp in
+      // packShowOpacity; this covers the material-level path).
+      refs.uOpacity.value = Number.isFinite(state.opacity)
+        ? Math.min(Math.max(state.opacity, 0), 1)
+        : 1.0;
+      refs.uAddHeight.value = state.addHeight;
       refs.uCenter.value.set(state.center[0], state.center[1]);
       refs.uSizeInMeters.value = state.sizeInMeters;
       refs.uOffsetDepth.value = state.offsetDepth;
@@ -69,16 +81,14 @@ export const createBaseMutates = (
       refs.uAtlasSize.value.set(state.atlasSize[0], state.atlasSize[1]);
       refs.nvr_uPickable.value = state.pickable ? 1.0 : 0.0;
       refs.uEffectIdsMask.value = state.effectIdsMask;
-      const c = state.emissiveColor;
-      refs.uEmissiveColor.value.set(
-        ((c >> 16) & 0xff) / 255,
-        ((c >> 8) & 0xff) / 255,
-        (c & 0xff) / 255,
-      );
+      refs.uEmissiveColor.value.set(state.emissiveColor);
       refs.uEmissiveIntensity.value = state.emissiveIntensity;
     },
 
     updateUniforms: (uniforms) => {
+      uniforms.uColor = refs.uColor;
+      uniforms.uOpacity = refs.uOpacity;
+      uniforms.uAddHeight = refs.uAddHeight;
       uniforms.uRTCCenter = refs.uRTCCenter;
       uniforms.uRTCCenterView = refs.uRTCCenterView;
       uniforms.uEyeRTELow = refs.uEyeRTELow;
@@ -100,6 +110,10 @@ export const createBaseMutates = (
 
       if (refs.uTexture) {
         uniforms.uTexture = refs.uTexture;
+      }
+
+      if (refs.batchDataTexture) {
+        uniforms.batchDataTexture = refs.batchDataTexture;
       }
     },
 
@@ -148,6 +162,11 @@ export const createBaseMutates = (
       if (refs.uTexture) {
         refs.uTexture.value = texture.value;
       }
+    },
+
+    setBatchDataTexture: (texture: UniformValue<Texture | null>) => {
+      // Keep the shared ref itself: batch texture growth swaps its `.value`.
+      refs.batchDataTexture = texture;
     },
   };
 };

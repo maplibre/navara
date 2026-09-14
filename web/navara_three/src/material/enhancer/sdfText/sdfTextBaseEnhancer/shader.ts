@@ -12,6 +12,7 @@ import {
   SMALL_TEXT_STEM_DARKEN_FULL_PPEM,
   SMALL_TEXT_STEM_DARKEN_MAX_PX,
 } from "./coverage";
+import type { SupportedMaterial } from "./material";
 import {
   LABEL_ROWS,
   sdfRadiusFor,
@@ -31,6 +32,7 @@ export const transformShader = (
   shader: WebGLProgramParametersWithUniforms,
   state: SdfTextBaseState,
   mutates: SdfTextBaseMutates,
+  material?: SupportedMaterial,
 ): void => {
   // Set shaders — sdfText always uses the same shader pair
   shader.vertexShader = sdfTextVertexShader;
@@ -63,6 +65,13 @@ export const transformShader = (
   }
   if (state.useMsdf) {
     shader.defines.USE_MSDF = 1;
+  }
+
+  shader.defines.USE_SELECTIVE_EFFECT = 1;
+
+  // Batch texture layout defines (BATCHED_TEXTURE_* / USE_BATCH_*)
+  if (material?.userData?.defines) {
+    Object.assign(shader.defines, material.userData.defines);
   }
 
   // Assign uniform refs to shader.uniforms via mutates

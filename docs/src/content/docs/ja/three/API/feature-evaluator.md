@@ -148,6 +148,8 @@ evaluate(
 | `opacity` | `number` | 地物の不透明度、範囲 0.0-1.0（ポリゴン/ポイント/ビルボード/モデル/テキスト用） |
 | `declutterPriority` | `number` | デクラッターの配置優先度。値が大きいほど重なりの競合に勝ちます（[`declutter`](../../../three/material/text-material/#declutter) が有効なポイント/ビルボード/テキスト用）。レイヤーの `declutterPriority` を上書きします |
 | `image` | `string \| null` | 画像の URL（ビルボード地物用）。個別の URL ごとに一度だけ読み込まれ、レイヤーのテクスチャアトラスにパックされます。`null` を返すと以前に設定した地物ごとの画像がクリアされ、ビルボードマテリアルのデフォルト `url` に戻ります（マテリアルに `url` がない場合、その地物は非表示になります） |
+| `emissive` | `Color` | 発光色（バッチ化されたポリゴン/3D Tiles モデル/ポイント/ビルボード/テキスト用。batch/feature id を持たないモデルでは無視されます）。`emissiveIntensity` と組み合わせて Selective Bloom を駆動します。テキストではグリフの塗り部分のみが発光し、アウトラインと背景は発光しません |
+| `emissiveIntensity` | `number` | 発光強度の乗数（バッチ化されたポリゴン/3D Tiles モデル/ポイント/ビルボード/テキスト用） |
 
 :::note
 評価されたスタイルはレイヤーのデフォルトスタイルを上書きします。
@@ -263,6 +265,20 @@ layer.on("featureUpdated", ({ evaluator }) => {
 });
 ```
 
+```typescript
+// Selective Bloom でプロパティに応じて地物を発光させる
+// （レイヤーのマテリアルの `effectIds` に bloom エフェクトを指定しておくこと）
+layer.on("featureUpdated", ({ evaluator }) => {
+  evaluator.evaluate(
+    ({ properties }) => ({
+      emissive: new Color().setStyle("#7fd0ff"),
+      emissiveIntensity: (properties?.["glow"] as number) ?? 0,
+    }),
+    { filters: ["glow"] },
+  );
+});
+```
+
 ## EvaluatedValue Type
 
 `evaluate()` コールバックから返すことができる型の定義：
@@ -285,10 +301,22 @@ type EvaluatedValue = {
   size?: number;
   /** 地物の不透明度、範囲 0.0-1.0（ポリゴン/ポイント/ビルボード/モデル/テキスト用） */
   opacity?: number;
+  /** デクラッターの配置優先度。値が大きいほど重なりの競合に勝ちます
+   * （`declutter` が有効なポイント/ビルボード/テキスト用）。レイヤーの
+   * `declutterPriority` を上書きします */
+  declutterPriority?: number;
   /** 画像の URL（ビルボード地物用）。個別の URL ごとに一度だけ読み込まれ、
    * レイヤーのテクスチャアトラスにパックされます。`null` は以前に設定した
    * 地物ごとの画像をクリアし、ビルボードマテリアルのデフォルト url に戻します */
   image?: string | null;
+  /** 発光色（バッチ化されたポリゴン/3D Tiles モデル/ポイント/ビルボード/
+   * テキスト用。batch/feature id を持たないモデルでは無視されます）。
+   * `emissiveIntensity` と組み合わせて Selective Bloom を駆動します。
+   * テキストではグリフの塗り部分のみが発光します */
+  emissive?: Color;
+  /** 発光強度の乗数（バッチ化されたポリゴン/3D Tiles モデル/ポイント/
+   * ビルボード/テキスト用） */
+  emissiveIntensity?: number;
 };
 ```
 

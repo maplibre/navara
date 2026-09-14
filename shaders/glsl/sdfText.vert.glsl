@@ -2,6 +2,12 @@
 #include "chunks/sprite_height_pars_vertex.glsl"
 #include "chunks/pixelToWorld.glsl"
 
+// Glyph instances have no `_batchid` attribute; the feature index rides in
+// the label data texture's STATE row instead (read into this local before
+// the batch_texture_vertex include).
+#define NVR_BATCH_ID_EXPR nvr_labelBatchIndex
+#include "chunks/batch_texture_pars_vertex.glsl"
+
 // One draw call covers every label in a tile-layer batch. Instances are
 // GLYPHS, not labels, so anything that varies per label is read from
 // uLabelData through the per-instance `labelIndex` rather than being a
@@ -23,11 +29,10 @@ attribute float labelIndex;  // Row block in uLabelData owning this instance
 // left by a freed run. Culled outright.
 #define GLYPH_KIND_EMPTY      3.0
 
-#define LABEL_ROW_POSITION_HIGH_SIZE 0
-#define LABEL_ROW_POSITION_LOW_HEIGHT 1
-#define LABEL_ROW_COLOR_OPACITY 2
-#define LABEL_ROW_BOX 3
-#define LABEL_ROW_STATE 4
+#define LABEL_ROW_POSITION_HIGH 0
+#define LABEL_ROW_POSITION_LOW 1
+#define LABEL_ROW_BOX 2
+#define LABEL_ROW_STATE 3
 
 // Per-label data texture (RGBA32F, unfiltered).
 uniform sampler2D uLabelData;
@@ -106,26 +111,35 @@ void main() {
     }
     vBatchID = state.y;
 
-    vec4 posSize = nvr_readLabel(slot, LABEL_ROW_POSITION_HIGH_SIZE);
-    vec4 posHeight = nvr_readLabel(slot, LABEL_ROW_POSITION_LOW_HEIGHT);
-    vec4 colorOpacity = nvr_readLabel(slot, LABEL_ROW_COLOR_OPACITY);
+    vec4 posHigh = nvr_readLabel(slot, LABEL_ROW_POSITION_HIGH);
+    vec4 posLow = nvr_readLabel(slot, LABEL_ROW_POSITION_LOW);
     vec4 box = nvr_readLabel(slot, LABEL_ROW_BOX);
 
-    float fontSize = posSize.w;
-    float addHeight = posHeight.w;
+    // Per-feature style from the shared batch data texture (see
+    // guide/BATCH_TEXTURE.md), keyed by the feature index in STATE.w. Every
+    // existing label has its style written through, so the defaults below
+    // only cover the pre-first-write program.
+    float nvr_labelBatchIndex = state.w;
+    float addHeight = 0.0;
+    float batchSize = -1.0;
+    float nvr_vShow = 1.0;
+    float nvr_vOpacity = 1.0;
+    vColor = vec3(1.0);
+    #include "chunks/batch_texture_vertex.glsl"
+
+    float fontSize = max(batchSize, 0.0);
     float textWidth = box.x;
     float textHeight = box.y;
     vec2 bgYBounds = box.zw;
 
-    vColor = colorOpacity.rgb;
-    vOpacity = colorOpacity.a * (1.0 - declutterHide);
+    vOpacity = nvr_vOpacity * (1.0 - declutterHide);
 
 #ifdef USE_RTE
-    vec3 positionHigh = posSize.xyz;
-    vec3 positionLow = posHeight.xyz;
+    vec3 positionHigh = posHigh.xyz;
+    vec3 positionLow = posLow.xyz;
     vec3 absTransformed = positionHigh + positionLow;
 #else
-    vec3 rtcPosition = posSize.xyz;
+    vec3 rtcPosition = posHigh.xyz;
     vec3 absTransformed = rtcPosition + uRTCCenter;
 #endif
     #include "chunks/horizon_culling_vertex.glsl"

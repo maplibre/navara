@@ -14,6 +14,7 @@ export const SCALAR_DEFINE_SUFFIX: Record<BatchScalarSlotKey, string> = {
   height: "HEIGHT",
   extrudedHeight: "EXTRUDED_HEIGHT",
   lineWidth: "LINE_WIDTH",
+  size: "SIZE",
   showOpacity: "SHOW_OPACITY",
   emissiveIntensity: "EMISSIVE_INTENSITY",
 };
@@ -190,6 +191,25 @@ export function initBatchedMaterial(
   config: BatchTextureConfig,
 ): void {
   ensureState(material, config);
+}
+
+/**
+ * One-call registration for per-feature styling: {@link initBatchedMaterial}
+ * plus {@link setBatchTextureRenderer} (the claim must precede the first
+ * write — flushing is per-view over module-global queues), returning the
+ * shared texture uniform ref for the mesh's enhancer. Texture creation and
+ * growth swap the ref's `.value` in place, so no re-wiring is needed
+ * afterwards. Must run after the enhancer's customProgramCacheKey
+ * assignment so the batch defines get appended to the final key.
+ */
+export function registerBatchedMaterial(
+  material: Material,
+  config: BatchTextureConfig,
+  renderer: WebGLRenderer,
+): BatchTextureUniform {
+  const state = ensureState(material, config);
+  state.renderer = renderer;
+  return state.uniform;
 }
 
 /**

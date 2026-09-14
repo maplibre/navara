@@ -1,4 +1,4 @@
-import type { Color, DataTexture } from "three";
+import type { DataTexture } from "three";
 
 /** Attributes writable through `updateBatchAttribute`. */
 export const BATCHED_ATTRIBUTE_NAMES = [
@@ -8,6 +8,7 @@ export const BATCHED_ATTRIBUTE_NAMES = [
   "height",
   "extrudedHeight",
   "lineWidth",
+  "size",
   "emissive",
   "emissiveIntensity",
 ] as const;
@@ -24,6 +25,7 @@ export const BATCH_SCALAR_KEYS = [
   "height",
   "extrudedHeight",
   "lineWidth",
+  "size",
 ] as const;
 
 export type BatchScalarKey = (typeof BATCH_SCALAR_KEYS)[number];
@@ -58,10 +60,3 @@ export type BatchSlot = { row: number; comp: number };
 
 /** Shared sampler ref: texture growth swaps `.value`, every holder sees the new texture. */
 export type BatchTextureUniform = { value: DataTexture | null };
-
-export type DefaultBatchAttributeValues = {
-  color: Color;
-  /** Mesh default emissive; only needed by mesh types supporting `emissive`. */
-  emissive?: Color;
-  emissiveIntensity?: number;
-};
