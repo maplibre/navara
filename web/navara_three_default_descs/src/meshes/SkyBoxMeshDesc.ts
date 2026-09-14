@@ -74,6 +74,7 @@ export class SkyBoxMeshDesc extends MeshDesc<
     material.vertexShader = SkyBoxVS;
     material.fragmentShader = SkyBoxFS;
     material.transparent = true;
+    material.premultipliedAlpha = true;
 
     const dayColor = cfg.dayColor.toArray();
     const nightColor = cfg.nightColor.toArray();

@@ -38,6 +38,8 @@ export class Stars extends EventHandler<StarsEvents> {
       new StarsGeometry(data),
       new StarsMaterial({ depthTest: true, depthWrite: false }),
     );
+    // StarsMaterial overrides the constructor option; background stars must not occlude the sky.
+    this.raw.material.depthWrite = false;
     this.raw.frustumCulled = false;
     this.raw.renderOrder = STARS_RENDER_ORDER;
     this.options = { ...DEFAULT_STARS_OPTIONS, ...(options ?? {}) };

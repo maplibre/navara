@@ -336,3 +336,28 @@ class MyEffectDesc extends EffectDesc<...> {
 `ViewContext.findEffect/findLight/findMesh(key)` resolve active descriptors by
 registered key (e.g. inherit the sun's intensity/direction);
 `_getEffects/_getLights/_getMeshes` iterate them all.
+
+## 10. Lightweight skybox
+
+`SkyBoxMeshDesc` renders a single fullscreen triangle at far depth in the
+`opaque` scene with premultiplied normal alpha blending. Its shaders approximate the sky
+without atmosphere LUTs, texture fetches, or ray marching. The configured
+`dayColor`, `nightColor`, and `sunColor` remain the palette controls.
+
+The vertex shader computes geodetic local up in view space, solar elevation,
+and camera altitude. The fragment shader adds a desaturated horizon gradient,
+a sun-facing twilight tint, and a small antialiased solar disc with a compact
+exponential halo. Disc distance uses the chord between normalized view rays
+for precision near the sun; derivative smoothing adapts the edge to resolution.
+The solar disc remains visible at every altitude; globe depth occludes it when
+the planet is in front of it. The atmospheric halo fades with the sky.
+
+Sky opacity stays at 1.0 below 100 km to occlude background stars and smoothly
+reaches zero at 190 km. A fixed 0.3 RGB scale preserves the sky brightness.
+Stars disable depth writes after material construction (the upstream constructor
+overrides that option), allowing the far-depth skybox to cover star pixels.
+The shader premultiplies sky RGB by sky opacity and adds the solar disc
+independently. Output alpha combines sky opacity and disc coverage, hiding stars
+behind the sun even in space while leaving the surrounding star field visible.
+Do not apply another alpha multiplication to the output. Screen-pixel dithering
+reduces gradient banding and fades with the sky.

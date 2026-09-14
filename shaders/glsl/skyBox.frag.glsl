@@ -1,45 +1,49 @@
 const float ATMOSPHERE_CUTOFF_ALTITUDE_LOW = 100000.0; // 100 km
-const float ATMOSPHERE_CUTOFF_ALTITUDE_HIGH = ATMOSPHERE_CUTOFF_ALTITUDE_LOW + 90000.0; // 90 km transition
+const float ATMOSPHERE_CUTOFF_ALTITUDE_HIGH = ATMOSPHERE_CUTOFF_ALTITUDE_LOW + 90000.0;
+const float SUN_RADIUS = 0.00465;
 
 uniform vec3 uDayColor;
 uniform vec3 uNightColor;
 uniform vec3 uSunColor;
 uniform vec3 uSunDirView;
 
-in vec2 v_uv;
 in vec3 v_posView;
-flat in vec3 v_cameraPositionLLA;
-flat in float v_dayNightFactor;
+flat in vec3 v_upView;
+flat in float v_cameraAltitude;
+flat in float v_sunElevation;
 
-// High-frequency pseudo-random noise
-float dither(vec2 uv) {
-    return fract(sin(dot(uv, vec2(12.9898, 78.233))) * 43758.5453);
+float dither(vec2 pixel) {
+    return fract(52.9829189 * fract(dot(pixel, vec2(0.06711056, 0.00583715))));
 }
 
 void main() {
-    float cameraAltitude = v_cameraPositionLLA.z;
-
-    if (cameraAltitude >= ATMOSPHERE_CUTOFF_ALTITUDE_HIGH) {
-        gl_FragColor = vec4(0.0);
-        return;
-    }
-
-    float cameraAltitudeFactor = clamp((cameraAltitude - ATMOSPHERE_CUTOFF_ALTITUDE_LOW) / (ATMOSPHERE_CUTOFF_ALTITUDE_HIGH - ATMOSPHERE_CUTOFF_ALTITUDE_LOW), 0.0, 1.0);
-
     vec3 sunDir = normalize(uSunDirView);
     vec3 pixelDir = normalize(v_posView);
-    vec3 cameraDir = vec3(0.0, 0.0, -1.0);
+    float daylight = smoothstep(-0.2, 0.2, v_sunElevation);
+    float horizon = 1.0 - smoothstep(0.0, 0.65, abs(dot(pixelDir, v_upView)));
 
-    // 0.0: sun out of sight, 1.0: sun in sight 
-    float sunInSightFactor = dot(pixelDir, sunDir) * 0.5 + 0.5;
-    // float sunBlendFactor = dot(cameraDir, sunDir) * 0.5 + 0.5;
+    float dayLuminance = dot(uDayColor, vec3(0.2126, 0.7152, 0.0722));
+    vec3 horizonColor = mix(uDayColor, vec3(dayLuminance), 0.35) * 1.15;
+    vec3 dayColor = mix(uDayColor * 0.8, horizonColor, horizon);
+    vec3 skyColor = mix(uNightColor, dayColor, daylight);
 
-    vec3 sunColor = mix(vec3(0.0), uSunColor, pow(sunInSightFactor, 16.0));
-    vec3 dayColorFinal = sunColor + uDayColor;
+    float sunAlignment = max(dot(pixelDir, sunDir), 0.0);
+    float twilight = 1.0 - smoothstep(0.0, 0.25, abs(v_sunElevation));
+    skyColor += uSunColor * (0.18 * twilight * horizon * pow(sunAlignment, 8.0));
 
-    vec4 color = vec4(mix(uNightColor, dayColorFinal, smoothstep(0.4, 0.6, v_dayNightFactor)), 0.3);
+    // Chord distance retains precision at the small solar disc, unlike acos(dot()).
+    vec3 sunOffset = pixelDir - sunDir;
+    float sunDistance = length(sunOffset);
+    float discEdge = max(fwidth(sunDistance), 0.00001);
+    float sunDisc = 1.0 - smoothstep(SUN_RADIUS - discEdge, SUN_RADIUS + discEdge, sunDistance);
+    float sunHalo = exp2(-dot(sunOffset, sunOffset) / 0.00045);
 
-    vec4 result = mix(color, vec4(0.0), cameraAltitudeFactor);
-    result.rgb += ((dither(v_uv) - 0.5) * (1.0 / 255.0));
-    gl_FragColor = result;
+    float opacity = 1.0 - smoothstep(
+        ATMOSPHERE_CUTOFF_ALTITUDE_LOW, ATMOSPHERE_CUTOFF_ALTITUDE_HIGH, v_cameraAltitude);
+    skyColor = max(skyColor + (dither(gl_FragCoord.xy) - 0.5) / 255.0, vec3(0.0));
+    // Premultiplied blending lets the sky fade independently of the solar disc.
+    vec3 color = (skyColor + uSunColor * (0.6 * sunHalo)) * (0.3 * opacity);
+    color += uSunColor * (1.8 * sunDisc);
+    float coverage = opacity + (1.0 - opacity) * sunDisc;
+    gl_FragColor = vec4(color, coverage);
 }
