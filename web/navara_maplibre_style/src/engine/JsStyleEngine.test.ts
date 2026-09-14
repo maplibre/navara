@@ -28,19 +28,21 @@ describe("JsStyleEngine", () => {
       };
 
       const parsed = await engine.parseStyle(validStyle);
-      expect(parsed).toEqual(validStyle);
+      expect(parsed).toHaveProperty("version", 8);
+      expect(parsed).toHaveProperty("sources");
+      expect(parsed).toHaveProperty("layers");
     });
 
-    it("should throw error for invalid style version", async () => {
-      const invalidStyle = {
-        version: 7, // Invalid version
+    it("should migrate legacy styles (version 7 → 8)", async () => {
+      const legacyStyle = {
+        version: 7,
         sources: {},
         layers: [],
       };
 
-      await expect(engine.parseStyle(invalidStyle)).rejects.toThrow(
-        "Invalid MapLibre Style",
-      );
+      const parsed = await engine.parseStyle(legacyStyle);
+      // migrate() should upgrade version to 8
+      expect(parsed.version).toBe(8);
     });
 
     it("should throw error for missing sources", async () => {
@@ -53,6 +55,21 @@ describe("JsStyleEngine", () => {
       await expect(engine.parseStyle(invalidStyle)).rejects.toThrow(
         "Invalid MapLibre Style",
       );
+    });
+
+    it("should throw error for completely malformed input", async () => {
+      const malformedInput = {
+        notAStyle: "at all",
+        random: { nested: { data: 123 } },
+      };
+
+      // migrate() throws raw error for malformed input (not wrapped)
+      await expect(engine.parseStyle(malformedInput)).rejects.toThrow();
+    });
+
+    it("should throw error for non-object input", async () => {
+      // migrate() throws raw error for non-object input (not wrapped)
+      await expect(engine.parseStyle("not an object")).rejects.toThrow();
     });
   });
 
@@ -248,8 +265,8 @@ describe("JsStyleEngine", () => {
     it("should return undefined for unsupported layer type", () => {
       // Test with an unsupported layer type to verify graceful handling
       const spec = engine.getPaintSpec(
-        "background" as unknown as LayerType,
-        "background-color",
+        "sky" as unknown as LayerType,
+        "sky-color",
       );
 
       expect(spec).toBeUndefined();

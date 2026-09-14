@@ -7,6 +7,7 @@ import {
   createExpression,
   featureFilter,
   validateStyleMin,
+  migrate,
 } from "@maplibre/maplibre-gl-style-spec";
 import type {
   FilterSpecification,
@@ -33,14 +34,18 @@ import type {
 
 export class JsStyleEngine implements StyleEngine {
   async parseStyle(raw: unknown): Promise<ParsedStyle> {
-    const errors = validateStyleMin(raw as StyleSpecification);
+    // Migrate legacy style features (functions, tokens) to modern expressions
+    const migrated = migrate(raw as StyleSpecification);
+
+    // Validate the migrated style
+    const errors = validateStyleMin(migrated);
 
     if (errors && errors.length > 0) {
       const errorMessages = errors.map((e: { message: string }) => e.message);
       throw new Error(`Invalid MapLibre Style: ${errorMessages.join(", ")}`);
     }
 
-    return raw as ParsedStyle;
+    return migrated as ParsedStyle;
   }
 
   createFilter(
@@ -64,10 +69,9 @@ export class JsStyleEngine implements StyleEngine {
         },
       };
 
-      // zoom is required for filter evaluation, but we don't have zoom info in Navara yet,
-      // so we just pass 0 for now. In the future, we can pass actual zoom from camera.
+      // Use tile zoom from context if available, otherwise default to 0 for non-tiled features
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      return filter({ zoom: 0 }, feature as any);
+      return filter({ zoom: ctx.zoom ?? 0 }, feature as any);
     };
   }
 
@@ -82,9 +86,16 @@ export class JsStyleEngine implements StyleEngine {
       const constantValue = expr as T;
       return () => constantValue;
     }
-    if (typeof expr === "string" && spec.type !== "color") {
-      const constantValue = expr as T;
-      return () => constantValue;
+
+    if (typeof expr === "string") {
+      if (spec.type === "color") {
+        // Color strings must be compiled for validation
+        // Fall through to createExpression
+      } else {
+        // Constant string (tokens already converted by migrate)
+        const constantValue = expr as T;
+        return () => constantValue;
+      }
     }
 
     // MapLibre allows literal arrays as property values (e.g., [1, 2, 3], ["/fonts/..."]).
@@ -133,10 +144,12 @@ export class JsStyleEngine implements StyleEngine {
         },
       };
 
-      // zoom is required for expression evaluation, but we don't have zoom info in Navara yet,
-      // so we just pass 0 for now. In the future, we can pass actual zoom from camera.
+      // Use tile zoom from context if available (for tiled features like MVT),
+      // otherwise default to 0 for non-tiled features (GeoJSON)
+      const zoomValue = ctx.zoom ?? 0;
+
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const value = expression.evaluate({ zoom: 0 }, feature as any);
+      const value = expression.evaluate({ zoom: zoomValue }, feature as any);
 
       return value as T;
     };

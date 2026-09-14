@@ -5,7 +5,7 @@
  * providing better performance and type safety through the maplibre-expr crate.
  */
 
-import { validateStyleMin } from "@maplibre/maplibre-gl-style-spec";
+import { validateStyleMin, migrate } from "@maplibre/maplibre-gl-style-spec";
 import type { StyleSpecification } from "@maplibre/maplibre-gl-style-spec";
 import { CompiledExpression, CompiledFilter } from "@navaramap/engine";
 
@@ -29,14 +29,18 @@ import type {
 
 export class RustStyleEngine implements StyleEngine {
   async parseStyle(raw: unknown): Promise<ParsedStyle> {
-    const errors = validateStyleMin(raw as StyleSpecification);
+    // Migrate legacy style features (functions, tokens) to modern expressions
+    const migrated = migrate(raw as StyleSpecification);
+
+    // Validate the migrated style
+    const errors = validateStyleMin(migrated);
 
     if (errors && errors.length > 0) {
       const errorMessages = errors.map((e: { message: string }) => e.message);
       throw new Error(`Invalid MapLibre Style: ${errorMessages.join(", ")}`);
     }
 
-    return raw as ParsedStyle;
+    return migrated as ParsedStyle;
   }
 
   createFilter(
@@ -60,11 +64,12 @@ export class RustStyleEngine implements StyleEngine {
     // Return evaluation function
     return (ctx: FeatureContext) => {
       try {
-        return compiled.test(
+        const result = compiled.test(
           ctx.properties ?? {},
-          0, // TODO: Get actual zoom from camera
+          ctx.zoom ?? 0, // Use tile zoom if available, otherwise 0 for non-tiled features
           featureGeometryType, // Pass geometry type for ["geometry-type"] filters
         );
+        return result;
       } catch (e) {
         console.error("Filter evaluation error:", e);
         return false; // Default to hiding features on error
@@ -77,18 +82,28 @@ export class RustStyleEngine implements StyleEngine {
     spec: PropertySpec,
     featureGeometryType = "Point",
   ): (ctx: EvaluationContext) => T {
+    // Note: migrate() has already converted legacy functions and tokens to modern expressions
+    // in parseStyle(), so we don't need to handle them here.
+
     // Handle constant values directly (optimization).
     // For color strings, still compile via WASM so maplibre-expr can validate/coerce (and preserve alpha).
     if (typeof expr === "number" || typeof expr === "boolean") {
       const constantValue = expr as T;
       return () => constantValue;
     }
-    if (typeof expr === "string" && spec.type !== "color") {
-      const constantValue = expr as T;
-      return () => constantValue;
+
+    if (typeof expr === "string") {
+      if (spec.type === "color") {
+        // Color strings must be compiled for validation
+        // Fall through to compile
+      } else {
+        // Constant string (tokens already converted by migrate)
+        const constantValue = expr as T;
+        return () => constantValue;
+      }
     }
 
-    // MapLibre allows literal arrays as property values (e.g., [1, 2, 3]).
+    // MapLibre allows literal arrays as property values (e.g., [1, 2, 3], ["/fonts/..."]).
     // Only treat as constant if it's empty or doesn't start with a string operator.
     if (
       Array.isArray(expr) &&
@@ -145,7 +160,7 @@ export class RustStyleEngine implements StyleEngine {
 
         const result = compiled.evaluate(
           propsToPass,
-          0, // navara currently doesn't provide zoom info, so we pass 0 for now
+          ctx.zoom ?? 0, // Use tile zoom if available, otherwise 0 for non-tiled features
           featureGeometryType, // Pass geometry type for expressions that need it
         );
 

@@ -265,6 +265,9 @@ importers:
       '@navaramap/engine':
         specifier: workspace:*
         version: link:../wasm/navara_engine
+      '@navaramap/three-plugins':
+        specifier: workspace:*
+        version: link:../navara_three_plugins
       '@types/geojson':
         specifier: 7946.0.16
         version: 7946.0.16

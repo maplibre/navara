@@ -77,8 +77,8 @@ import type { DefaultDescriptions } from "@navaramap/three-default-plugin";
 
 type View = ThreeView<DefaultDescriptions>;
 
-/** Matches a TileJSON version such as "3.0.0" (major.minor.patch). */
-const TILEJSON_VERSION = /^3\.\d+\.\d+$/;
+/** Matches a TileJSON version such as "2.0.0" or "3.0.0" (major.minor.patch). */
+const TILEJSON_VERSION = /^[23]\.\d+\.\d+$/;
 
 /** MapLibre's raster-dem defaults, applied when neither the description nor the document sets them. */
 const DEFAULT_DEM_TILE_SIZE = 512;

@@ -251,7 +251,8 @@ struct MvtFeatureProcessor<'a> {
     rtc_center: Vec3,
 
     /// Tags of the feature currently being processed (committed lazily per kind).
-    pending_tags: Option<Vec<u32>>,
+    /// Stored as a slice reference to avoid cloning until actually needed.
+    pending_tags: Option<&'a [u32]>,
     /// Pre-projected coordinates for the current linestring/ring.
     projected: Vec<FloatType>,
     /// Polygon outer ring.
@@ -297,7 +298,7 @@ impl<'a> MvtFeatureProcessor<'a> {
         }
     }
 
-    fn begin_feature(&mut self, tags: Vec<u32>) {
+    fn begin_feature(&mut self, tags: &'a [u32]) {
         self.pending_tags = Some(tags);
         for group in &mut self.groups {
             group.committed = false;
@@ -318,7 +319,7 @@ impl<'a> MvtFeatureProcessor<'a> {
         };
         // Borrow the pending tags and the target group disjointly (distinct
         // fields) so the tags are appended without an intermediate clone.
-        let pending = self.pending_tags.as_deref().unwrap_or(&[]);
+        let pending = self.pending_tags.unwrap_or(&[]);
         let group = &mut self.groups[idx];
         if !group.committed {
             group.current_batch_index = group.feature_count;
@@ -692,39 +693,53 @@ fn parse_layer(
     let extent = mvt_layer.extent.unwrap_or(4096);
     let converter = PosConverter::new(xyz, extent);
 
-    let Some(config) = configs
+    // Collect all matching configs instead of just the first one
+    let matching_configs: Vec<&LayerParseConfig> = configs
         .iter()
-        .rev()
-        .find(|c| c.matches_sublayer(&mvt_layer.name))
-    else {
+        .filter(|c| c.matches_sublayer(&mvt_layer.name))
+        .collect();
+
+    if matching_configs.is_empty() {
         return;
-    };
+    }
 
     let keys = Arc::new(std::mem::take(&mut mvt_layer.keys));
     let values = Arc::new(std::mem::take(&mut mvt_layer.values));
 
-    let mut processor = MvtFeatureProcessor::new(&converter, config, rtc_center);
-    for feature in &mut mvt_layer.features {
-        let tags = std::mem::take(&mut feature.tags);
-        processor.begin_feature(tags);
-        let _ = process_geom(feature, &mut processor);
+    // Create all processors upfront
+    let mut processors: Vec<_> = matching_configs
+        .iter()
+        .map(|config| MvtFeatureProcessor::new(&converter, config, rtc_center))
+        .collect();
+
+    // Process features in a single pass, routing each to all processors
+    // TODO(performance): Still decodes geometry N times (once per processor).
+    for feature in &mvt_layer.features {
+        for processor in &mut processors {
+            // Pass tags by reference - they're cloned only when committed to a group
+            processor.begin_feature(&feature.tags);
+            let _ = process_geom(feature, processor);
+        }
     }
 
-    for group in processor.groups {
-        let geometry = group.geom.into_parsed();
-        if geometry.item_count() == 0 {
-            continue;
+    // Collect results from all processors
+    for processor in processors {
+        for group in processor.groups {
+            let geometry = group.geom.into_parsed();
+            if geometry.item_count() == 0 {
+                continue;
+            }
+            out.push(ParsedLayerGroup {
+                layer_id: processor.config.layer_id.clone(),
+                kind: group.kind,
+                feature_count: group.feature_count,
+                feature_tags_flat: group.feature_tags_flat,
+                feature_tag_sizes: group.feature_tag_sizes,
+                keys: Arc::clone(&keys),
+                values: Arc::clone(&values),
+                geometry,
+            });
         }
-        out.push(ParsedLayerGroup {
-            layer_id: config.layer_id.clone(),
-            kind: group.kind,
-            feature_count: group.feature_count,
-            feature_tags_flat: group.feature_tags_flat,
-            feature_tag_sizes: group.feature_tag_sizes,
-            keys: Arc::clone(&keys),
-            values: Arc::clone(&values),
-            geometry,
-        });
     }
 }
 
