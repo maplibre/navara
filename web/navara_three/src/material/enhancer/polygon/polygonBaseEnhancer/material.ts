@@ -13,6 +13,7 @@ export type SupportedMaterial = MaterialsFromShaders<typeof AVAILABLE_SHADERS>;
 export const updateMaterialProps = (
   material: SupportedMaterial,
   props: PolygonBaseProps,
+  isTexturized: boolean,
 ): void => {
   if (props.color !== undefined) {
     material.color.set(props.color);
@@ -20,7 +21,14 @@ export const updateMaterialProps = (
   if (props.opacity !== undefined) {
     material.opacity = props.opacity;
   }
-  if (props.transparent !== undefined) {
+  // Texturized (drape-baked) materials must render alpha-blended: with
+  // blending disabled, a sub-1 alpha (per-feature opacity) lands STRAIGHT in
+  // the drape target, while blended content and MSAA coverage land
+  // premultiplied — and the bake's resolve divide assumes premultiplied
+  // everywhere (see TileTextureCompositor's msaaResolveMaterial).
+  if (isTexturized) {
+    material.transparent = true;
+  } else if (props.transparent !== undefined) {
     material.transparent = props.transparent;
   }
   if (props.wireframe !== undefined) {

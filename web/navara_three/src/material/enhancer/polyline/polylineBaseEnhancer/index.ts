@@ -77,7 +77,7 @@ export function createPolylineBaseEnhancer(
         frustumNearFar: props.frustumNearFar,
         frustumRatio: props.frustumRatio,
       });
-      updateMaterialProps(material, mergedProps);
+      updateMaterialProps(material, mergedProps, state.isTexturized);
     },
 
     update: (props: PolylineBaseProps): void => {
@@ -98,7 +98,7 @@ export function createPolylineBaseEnhancer(
         mutates.setBatchDataTexture(props.batchDataTexture);
       }
 
-      updateMaterialProps(material, props);
+      updateMaterialProps(material, props, state.isTexturized);
     },
 
     states: (): PolylineBaseState => {

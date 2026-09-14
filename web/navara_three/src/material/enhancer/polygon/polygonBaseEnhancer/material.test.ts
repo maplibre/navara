@@ -11,9 +11,19 @@ describe("polygonBaseEnhancer/material", () => {
       material.opacity = 0.5;
 
       // Empty props should not change anything
-      updateMaterialProps(material, {});
+      updateMaterialProps(material, {}, false);
       expect(material.color.getHex()).toBe(0xff0000);
       expect(material.opacity).toBe(0.5);
+    });
+
+    it("forces alpha blending on texturized materials, overriding transparent", () => {
+      // The drape bake's resolve divide assumes premultiplied content, which
+      // only holds when the bake renders alpha-blended (see material.ts).
+      const material = new MeshLambertMaterial();
+      material.transparent = false;
+
+      updateMaterialProps(material, { transparent: false }, true);
+      expect(material.transparent).toBe(true);
     });
   });
 });

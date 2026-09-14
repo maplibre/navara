@@ -47,6 +47,12 @@ import type {
 
 const PREV_CLEAR_COLOR = new Color();
 
+/** MSAA sample count for the shared vector-drape bake target. The flat bake
+ * shaders have no analytic edge AA, so geometric edges (fill borders, stroke
+ * rims) are resolved at bake time. 4 samples on RGBA8 is guaranteed by
+ * WebGL2. */
+export const DRAPE_BAKE_SAMPLES = 4;
+
 /**
  * Default atlas factory: a single MRT WebGLRenderTarget (count=3) sized
  * `size × size` with RGBA8 textures. All three attachments share format —
@@ -183,6 +189,38 @@ export class TileTextureCompositor {
     transparent: true,
     blending: NoBlending,
   });
+  // Vector-bake MSAA machinery: ONE shared multisampled target for every
+  // vector drape bake, so the multisample storage is a single fixed
+  // allocation instead of a per-tile cost. A slot's sources accumulate into
+  // it across render() calls — legal on WebGL2, where multisample
+  // renderbuffer contents persist across the per-render resolves — and the
+  // resolved image is then copied into the slot target once.
+  private msaaBakeTarget: WebGLRenderTarget | null = null;
+  // Resolve copy into the slot target: the MSAA resolve averages covered and
+  // transparent samples, i.e. it premultiplies color by coverage — but the
+  // composite blends slots as STRAIGHT alpha, so the copy divides it back
+  // out. NoBlending + no color-space conversion keeps it value-preserving
+  // otherwise (both textures stay NoColorSpace).
+  private readonly msaaResolveMaterial = new ShaderMaterial({
+    uniforms: { map: { value: null as Texture | null } },
+    vertexShader: /* glsl */ `
+      varying vec2 vUv;
+      void main() {
+        vUv = uv;
+        gl_Position = vec4(position.xy, 0.0, 1.0);
+      }`,
+    fragmentShader: /* glsl */ `
+      uniform sampler2D map;
+      varying vec2 vUv;
+      void main() {
+        vec4 t = texture2D(map, vUv);
+        gl_FragColor = vec4(t.a > 0.0 ? t.rgb / t.a : vec3(0.0), t.a);
+      }`,
+    depthTest: false,
+    depthWrite: false,
+    blending: NoBlending,
+  });
+
   // 1×1 no-data underlay for baked heatmap targets, drawn through the same
   // value-preserving bake pipeline as the sources — a texture upload is
   // byte-exact, whereas a clear color would pass through the renderer's color
@@ -258,12 +296,19 @@ export class TileTextureCompositor {
    * for the composite paste's latitude reprojection. `(0,0)/(1,1)` (an exact
    * same-tile drape, WebMercator terrain) maps a single source to the full RT.
    *
-   * The render target is cleared once, then each source is drawn additively
+   * The mosaic target is cleared once, then each source is drawn additively
    * (autoClear off) so the sources mosaic instead of overwriting one another. A
    * source whose scene hasn't reached the cache yet is skipped; its sub-rect stays
    * transparent until it arrives (no flashing — coarser ancestors back the gaps
    * via the Rust scene-ready walk-up). The caller owns the dirty gate and only
    * calls this when the resolved slots or scenes change.
+   *
+   * With `antialias` (the default), the scenes render through the shared MSAA
+   * bake target and the resolved image is copied into the slot's render target
+   * (see `msaaBakeTarget` / `msaaResolveMaterial`). Pick bakes MUST pass
+   * `antialias: false`: their fragments encode batch ids as colors, and the
+   * MSAA resolve averages them along feature edges into ids that don't exist —
+   * they render straight into the slot target instead, keeping hard edges.
    */
   renderVectorScenes(
     slots: {
@@ -275,20 +320,66 @@ export class TileTextureCompositor {
       }[];
     }[],
     renderTargets: WebGLRenderTarget[],
+    { antialias = true }: { antialias?: boolean } = {},
   ): void {
-    this.bakeSlotTargets(slots, renderTargets, (slot) => {
-      for (const source of slot.sources) {
-        const scene = this.texturizedScenes.findSceneByLayerId(
-          source.tileHandle,
-          slot.layerId,
-        );
-        if (!scene || scene.removed || !scene.children.length) continue;
-        this.renderer.render(
-          scene,
-          this.frameBakeCamera(source.uvOffset, source.uvScale),
-        );
-      }
+    this.bakeSlotTargets(
+      slots,
+      renderTargets,
+      (slot) => {
+        const sources: {
+          scene: Scene;
+          uvOffset: [number, number];
+          uvScale: [number, number];
+        }[] = [];
+        for (const source of slot.sources) {
+          const scene = this.texturizedScenes.findSceneByLayerId(
+            source.tileHandle,
+            slot.layerId,
+          );
+          if (!scene || scene.removed || !scene.children.length) continue;
+          sources.push({
+            scene,
+            uvOffset: source.uvOffset,
+            uvScale: source.uvScale,
+          });
+        }
+        if (!sources.length) return null;
+
+        // The framed camera works for both paths: it draws each source into
+        // its sub-rect of whichever target is bound (the MSAA intermediate or
+        // the slot target directly).
+        return () => {
+          for (const s of sources) {
+            this.renderer.render(
+              s.scene,
+              this.frameBakeCamera(s.uvOffset, s.uvScale),
+            );
+          }
+        };
+      },
+      antialias ? () => this.acquireMsaaBakeTarget() : undefined,
+    );
+  }
+
+  /** The shared multisampled vector-bake target, allocated on first use. No
+   * depth/stencil: every bake material draws with depth test/write off. */
+  private acquireMsaaBakeTarget(): WebGLRenderTarget {
+    this.msaaBakeTarget ??= new WebGLRenderTarget(this.size, this.size, {
+      format: RGBAFormat,
+      samples: DRAPE_BAKE_SAMPLES,
+      depthBuffer: false,
+      stencilBuffer: false,
     });
+    return this.msaaBakeTarget;
+  }
+
+  /** GPU bytes of the shared MSAA bake target (multisample renderbuffer +
+   * resolve texture), for the fixed-footprint report — a single allocation
+   * the per-tile drape accounting cannot see. Zero until first use. */
+  fixedGpuBytes(): number {
+    return this.msaaBakeTarget
+      ? this.size * this.size * 4 * (DRAPE_BAKE_SAMPLES + 1)
+      : 0;
   }
 
   /**
@@ -316,7 +407,7 @@ export class TileTextureCompositor {
     slots: (RasterBakeSlot | undefined)[],
     renderTargets: (WebGLRenderTarget | undefined)[],
   ): void {
-    this.bakeSlotTargets(slots, renderTargets, (slot) => {
+    this.bakeSlotTargets(slots, renderTargets, (slot) => () => {
       // Heatmap targets: paint the decoder's no-data color across the whole
       // target first, so regions no source covers decode as "no elevation"
       // (the composite renders them transparent) instead of decoding the
@@ -348,21 +439,31 @@ export class TileTextureCompositor {
 
   /**
    * Shared bake loop over per-layer drape render targets (slot `i` →
-   * `renderTargets[i]`): saves/restores the renderer state, clears each live
-   * target once and lets `drawSlot` accumulate that slot's sources into it —
-   * autoClear stays off so the sources mosaic instead of overwriting one
-   * another.
+   * `renderTargets[i]`): saves/restores the renderer state and owns every
+   * target/clear decision. `prepareSlot` returns the slot's draw closure, or
+   * null when it has nothing to draw. autoClear stays off so a closure's
+   * multiple draws mosaic into one cleared target instead of wiping it.
+   *
+   * Without `via`, the closure draws straight into the slot target (cleared
+   * first). With `via` (the shared MSAA intermediate — a lazy getter so it is
+   * only ever GL-allocated when something actually draws), the closure draws
+   * into the cleared intermediate and the resolved image is copied into the
+   * slot target by the full-frame resolve quad, which overwrites every texel
+   * (NoBlending), so the slot target itself needs no clear. A slot with
+   * nothing to draw is cleared either way — wiping a stale previous bake —
+   * except when its target was never touched: render-targeting it then would
+   * allocate its GL storage for nothing.
    */
   private bakeSlotTargets<S>(
     slots: readonly (S | undefined)[],
     renderTargets: readonly (WebGLRenderTarget | undefined)[],
-    drawSlot: (slot: S) => void,
+    prepareSlot: (slot: S) => (() => void) | null,
+    via?: () => WebGLRenderTarget,
   ): void {
     const prevTarget = this.renderer.getRenderTarget();
     const prevClear = this.renderer.getClearColor(PREV_CLEAR_COLOR);
     const prevClearAlpha = this.renderer.getClearAlpha();
     const prevAutoClear = this.renderer.autoClear;
-    // Accumulate multiple sources into one RT: clear once, never per render.
     this.renderer.autoClear = false;
 
     for (let i = 0; i < renderTargets.length; i++) {
@@ -370,17 +471,24 @@ export class TileTextureCompositor {
       if (!renderTarget) continue;
 
       const slot = slots[i];
-      // An empty slot only needs a clear when the target holds stale content
-      // from a previous bake; a never-touched target has no GL storage yet
-      // and must not be render-targeted (that would allocate it).
-      if (!slot && !this.touchedTargets.has(renderTarget)) continue;
+      const draw = slot ? prepareSlot(slot) : null;
+      if (!draw && !this.touchedTargets.has(renderTarget)) continue;
       this.touchedTargets.add(renderTarget);
 
-      this.renderer.setRenderTarget(renderTarget);
-      this.renderer.setClearColor(0x000, 0);
-      this.renderer.clear();
-
-      if (slot) drawSlot(slot);
+      if (draw && via) {
+        const intermediate = via();
+        this.renderer.setRenderTarget(intermediate);
+        this.renderer.setClearColor(0x000, 0);
+        this.renderer.clear();
+        draw();
+        this.renderer.setRenderTarget(renderTarget);
+        this.drawMsaaResolveQuad(intermediate.texture);
+      } else {
+        this.renderer.setRenderTarget(renderTarget);
+        this.renderer.setClearColor(0x000, 0);
+        this.renderer.clear();
+        draw?.();
+      }
 
       renderTarget.texture.needsUpdate = true;
     }
@@ -388,6 +496,14 @@ export class TileTextureCompositor {
     this.renderer.autoClear = prevAutoClear;
     this.renderer.setRenderTarget(prevTarget);
     this.renderer.setClearColor(prevClear, prevClearAlpha);
+  }
+
+  /** Copy a resolved MSAA image into the current render target, dividing
+   * coverage back out (see `msaaResolveMaterial`). */
+  private drawMsaaResolveQuad(texture: Texture): void {
+    this.msaaResolveMaterial.uniforms.map.value = texture;
+    this.quadMesh.material = this.msaaResolveMaterial;
+    this.renderer.render(this.quadScene, this.quadCamera);
   }
 
   /**
@@ -631,6 +747,9 @@ export class TileTextureCompositor {
     // Also frees the raster-bake quad, which shares this geometry.
     this.quadMesh.geometry.dispose();
     this.rasterBakeMaterial.dispose();
+    this.msaaResolveMaterial.dispose();
+    this.msaaBakeTarget?.dispose();
+    this.msaaBakeTarget = null;
     this.demNoDataTexture?.dispose();
     this.demNoDataTexture = null;
   }
