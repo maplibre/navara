@@ -4,22 +4,30 @@ import { describe, expect, it, vi } from "vitest";
 import { TexturizedSceneByTileCoordinates } from "../scene";
 import { createTestTileHandler } from "../test-utils/engine";
 
-import { TileTextureCompositor } from "./TileTextureCompositor";
+import {
+  DRAPE_BAKE_SAMPLES,
+  TileTextureCompositor,
+} from "./TileTextureCompositor";
 import type { AtlasFactory, CompositeAtlas } from "./types";
 
 // Minimal renderer mock — only the methods the compositor touches need to
-// exist. We track `render` so tests can assert which scenes were drawn.
+// exist. We track `render` so tests can assert which scenes were drawn, and
+// the current render target so they can assert where each draw landed.
 function makeRenderer() {
-  return {
+  const renderer = {
     autoClear: true,
-    getRenderTarget: vi.fn().mockReturnValue(null),
-    setRenderTarget: vi.fn(),
+    currentTarget: null as unknown,
+    getRenderTarget: vi.fn(() => renderer.currentTarget),
+    setRenderTarget: vi.fn((t: unknown) => {
+      renderer.currentTarget = t;
+    }),
     getClearColor: vi.fn().mockImplementation((c) => c),
     getClearAlpha: vi.fn().mockReturnValue(1),
     setClearColor: vi.fn(),
     clear: vi.fn(),
     render: vi.fn(),
   };
+  return renderer;
 }
 
 function makeFakeAtlas(): CompositeAtlas {
@@ -92,10 +100,28 @@ describe("TileTextureCompositor.acquire/release", () => {
 describe("TileTextureCompositor.renderVectorScenes", () => {
   const fakeRT = (): unknown => ({ texture: { needsUpdate: false } });
 
-  it("bakes each layer's resolved source into its render target", () => {
+  /** Snapshot (target, camera window) at render time — the shared bake camera
+   * is reframed per render, so mock.calls references alone are stale. */
+  function recordRenders(renderer: ReturnType<typeof makeRenderer>) {
+    const calls: {
+      target: unknown;
+      camera: { left: number; right: number; bottom: number; top: number };
+    }[] = [];
+    renderer.render.mockImplementation((_scene, camera) => {
+      const { left, right, bottom, top } = camera as never;
+      calls.push({
+        target: renderer.currentTarget,
+        camera: { left, right, bottom, top },
+      });
+    });
+    return calls;
+  }
+
+  it("bakes each layer through the shared MSAA target and resolves into its render target", () => {
     const { compositor, renderer, texturizedScenes } = setup();
     texturizedScenes.add(1n, "layer-a", mesh(), 0);
     texturizedScenes.add(2n, "layer-b", mesh(), 1);
+    const calls = recordRenders(renderer);
 
     const rt0 = fakeRT();
     const rt1 = fakeRT();
@@ -113,9 +139,14 @@ describe("TileTextureCompositor.renderVectorScenes", () => {
       [rt0 as never, rt1 as never],
     );
 
-    // One render per populated slot; every target cleared and flagged.
-    expect(renderer.render).toHaveBeenCalledTimes(2);
+    // Per populated slot: one scene render into the shared MSAA target plus
+    // one resolve copy into the slot target; only the MSAA target is cleared
+    // (the full-frame resolve overwrites the slot target).
+    expect(calls.length).toBe(4);
     expect(renderer.clear).toHaveBeenCalledTimes(2);
+    const msaa = calls[0].target as { samples?: number };
+    expect(msaa.samples).toBe(DRAPE_BAKE_SAMPLES);
+    expect(calls.map((c) => c.target)).toEqual([msaa, rt0, msaa, rt1]);
     expect(
       (rt0 as { texture: { needsUpdate: boolean } }).texture.needsUpdate,
     ).toBe(true);
@@ -124,12 +155,13 @@ describe("TileTextureCompositor.renderVectorScenes", () => {
     ).toBe(true);
   });
 
-  it("accumulates a layer's N:M sources into one render target, clearing once", () => {
+  it("accumulates a layer's N:M sources into the MSAA target, clearing it once", () => {
     const { compositor, renderer, texturizedScenes } = setup();
     // Two WM source tiles overlapping one Geographic terrain tile, both backing
     // the same layer (west half and east half).
     texturizedScenes.add(1n, "layer-a", mesh(), 0);
     texturizedScenes.add(2n, "layer-a", mesh(), 0);
+    const calls = recordRenders(renderer);
 
     compositor.renderVectorScenes(
       [
@@ -144,17 +176,21 @@ describe("TileTextureCompositor.renderVectorScenes", () => {
       [fakeRT() as never],
     );
 
-    // Both sources drawn into the single RT, which was cleared exactly once so
-    // the second source mosaics with the first instead of wiping it. autoClear
-    // is disabled across the draws and restored afterwards.
-    expect(renderer.render).toHaveBeenCalledTimes(2);
+    // Both sources framed into their halves of the MSAA target, which was
+    // cleared exactly once so the second source mosaics with the first
+    // instead of wiping it, then one resolve copy. autoClear restored.
+    expect(calls.length).toBe(3);
     expect(renderer.clear).toHaveBeenCalledTimes(1);
+    expect(calls[0].camera).toEqual({ left: -1, right: 0, bottom: -1, top: 1 });
+    expect(calls[1].camera).toEqual({ left: 0, right: 1, bottom: -1, top: 1 });
+    expect(calls[0].target).toBe(calls[1].target);
     expect(renderer.autoClear).toBe(true);
   });
 
   it("frames the terrain sub-rect when the source resolves to a coarser ancestor", () => {
     const { compositor, renderer, texturizedScenes } = setup();
     texturizedScenes.add(1n, "layer-a", mesh(), 0);
+    const calls = recordRenders(renderer);
 
     // NW quadrant of the ancestor: uvOffset=(0,0.5), uvScale=(0.5,0.5).
     compositor.renderVectorScenes(
@@ -169,39 +205,71 @@ describe("TileTextureCompositor.renderVectorScenes", () => {
       [fakeRT() as never],
     );
 
-    expect(renderer.render).toHaveBeenCalledTimes(1);
-    const cam = renderer.render.mock.calls[0][1] as {
-      left: number;
-      right: number;
-      bottom: number;
-      top: number;
-    };
-    // Matches ortho_camera_transform for the NW sub-tile: [-1,0]×[0,1].
-    expect(cam.left).toBe(-1);
-    expect(cam.right).toBe(0);
-    expect(cam.bottom).toBe(0);
-    expect(cam.top).toBe(1);
+    // Scene render through the camera window [-1,0]×[0,1] (matches
+    // ortho_camera_transform for the NW sub-tile), then the full-frame
+    // resolve copy.
+    expect(calls.length).toBe(2);
+    expect(calls[0].camera).toEqual({ left: -1, right: 0, bottom: 0, top: 1 });
+    expect(calls[1].camera).toEqual({ left: -1, right: 1, bottom: -1, top: 1 });
   });
 
-  it("clears but does not render a source whose scene was removed", () => {
+  it("renders pick bakes (antialias: false) straight into the slot target with the framed camera", () => {
     const { compositor, renderer, texturizedScenes } = setup();
-    const m = mesh();
-    texturizedScenes.add(1n, "layer-a", m, 0);
-    texturizedScenes.removeMesh(1n, "layer-a", m);
+    texturizedScenes.add(1n, "layer-a", mesh(), 0);
+    const calls = recordRenders(renderer);
 
     const rt = fakeRT();
     compositor.renderVectorScenes(
       [
         {
           layerId: "layer-a",
-          sources: [{ tileHandle: 1n, uvOffset: [0, 0], uvScale: [1, 1] }],
+          sources: [
+            { tileHandle: 1n, uvOffset: [0, 0.5], uvScale: [0.5, 0.5] },
+          ],
         },
       ],
       [rt as never],
+      { antialias: false },
     );
 
-    expect(renderer.render).not.toHaveBeenCalled();
+    // No MSAA intermediate and no resolve copy: the MSAA resolve would
+    // average id-encoded colors along feature edges into ids that don't
+    // exist. One direct render, camera-windowed like the pre-MSAA path.
+    expect(calls.length).toBe(1);
+    expect(calls[0].target).toBe(rt);
+    expect(calls[0].camera).toEqual({ left: -1, right: 0, bottom: 0, top: 1 });
     expect(renderer.clear).toHaveBeenCalledTimes(1);
+  });
+
+  it("clears a baked target but does not render once its source scene was removed", () => {
+    const { compositor, renderer, texturizedScenes } = setup();
+    const m = mesh();
+    texturizedScenes.add(1n, "layer-a", m, 0);
+
+    const slots = [
+      {
+        layerId: "layer-a",
+        sources: [
+          {
+            tileHandle: 1n,
+            uvOffset: [0, 0] as [number, number],
+            uvScale: [1, 1] as [number, number],
+          },
+        ],
+      },
+    ];
+    const rt = fakeRT();
+    compositor.renderVectorScenes(slots, [rt as never]);
+    expect(renderer.render).toHaveBeenCalledTimes(2);
+    expect(renderer.clear).toHaveBeenCalledTimes(1);
+
+    // The scene went away: the stale bake is wiped (one more clear, straight
+    // on the slot target — the MSAA intermediate is not touched) and nothing
+    // renders.
+    texturizedScenes.removeMesh(1n, "layer-a", m);
+    compositor.renderVectorScenes(slots, [rt as never]);
+    expect(renderer.render).toHaveBeenCalledTimes(2);
+    expect(renderer.clear).toHaveBeenCalledTimes(2);
   });
 
   it("skips a never-touched render target that has no slot (no GPU allocation)", () => {
@@ -231,20 +299,23 @@ describe("TileTextureCompositor.renderVectorScenes", () => {
       ],
       [rt as never],
     );
+    expect(renderer.render).toHaveBeenCalledTimes(2);
     expect(renderer.clear).toHaveBeenCalledTimes(1);
 
     // The slot disappeared: the stale bake must be wiped so the atlas doesn't
-    // composite outdated content.
+    // composite outdated content (one more clear; no MSAA involvement).
     compositor.renderVectorScenes([], [rt as never]);
-    expect(renderer.render).toHaveBeenCalledTimes(1);
+    expect(renderer.render).toHaveBeenCalledTimes(2);
     expect(renderer.clear).toHaveBeenCalledTimes(2);
   });
 
-  it("clears (does not render) a source whose scene hasn't reached the cache yet", () => {
+  it("leaves a never-touched target alone while its source scene hasn't reached the cache", () => {
     const { compositor, renderer } = setup();
 
-    // The sub-rect stays transparent during the transition window; a coarser
-    // ancestor backs the gap via the Rust scene-ready walk-up.
+    // The layer stays transparent during the transition window (a coarser
+    // ancestor backs the gap via the Rust scene-ready walk-up). A target that
+    // was never baked holds nothing stale, so it isn't even render-targeted —
+    // that would allocate its GL storage.
     const rt = fakeRT();
     compositor.renderVectorScenes(
       [
@@ -257,7 +328,8 @@ describe("TileTextureCompositor.renderVectorScenes", () => {
     );
 
     expect(renderer.render).not.toHaveBeenCalled();
-    expect(renderer.clear).toHaveBeenCalledTimes(1);
+    expect(renderer.clear).not.toHaveBeenCalled();
+    expect(renderer.setRenderTarget).not.toHaveBeenCalledWith(rt);
   });
 });
 

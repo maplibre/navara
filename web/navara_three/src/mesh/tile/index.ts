@@ -117,7 +117,8 @@ export class TileMesh
   // raster one is chosen at construction from the globe tiling scheme —
   // direct 1:1 material slots on WebMercator terrain, baked per-layer render
   // targets (with Mercator latitude reprojection) on Geographic terrain.
-  private readonly vectorDrape: DrapeResolver;
+  // Concrete type: pick baking (setPickBake) is vector-drape-specific.
+  private readonly vectorDrape: VectorDrapeResolver;
   private readonly rasterDrape: DrapeResolver;
 
   // Separate mesh for shadow casting (uses terrain-only geometry without skirt)
@@ -1405,7 +1406,7 @@ ${generateTileCommonInjection(maxTextures)}
     // material (the raster call is a no-op on WebMercator terrain, where every
     // raster slot carries its own fragment and drapes directly).
     this.rasterDrape.syncMaterialSlots(textureFragments);
-    this.vectorDrape.syncMaterialSlots(textureFragments);
+    this.vectorDrape.syncMaterialSlots();
   }
 
   /**
@@ -1441,14 +1442,14 @@ ${generateTileCommonInjection(maxTextures)}
   onBeforePicking(): void {
     this.material.userData.uPickable.value = 1;
 
-    // Force the vector scenes to re-bake for the picking pass.
-    this.vectorDrape.invalidate();
+    // Re-bake the vector scenes with pick-id colors (hard-edged, no MSAA).
+    this.vectorDrape.setPickBake(true);
     this.compositor.markDirty(this.handle, "vector-revision");
   }
 
   onAfterPicking(): void {
     this.material.userData.uPickable.value = 0;
-    this.vectorDrape.invalidate();
+    this.vectorDrape.setPickBake(false);
     this.compositor.markDirty(this.handle, "vector-revision");
   }
 

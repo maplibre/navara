@@ -301,6 +301,7 @@ export class PolylineMesh extends BatchedFeatureMesh<
         width: meshMaterial.width,
         maxWidth: meshMaterial.maxWidth,
         isTexturized,
+        drapeRtSize: this.ctx.tileTextureCompositor.size,
         pickable: false,
         useRTE,
         transparent: meshMaterial.transparent,

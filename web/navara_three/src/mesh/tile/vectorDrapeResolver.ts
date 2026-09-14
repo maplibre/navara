@@ -107,8 +107,18 @@ export class VectorDrapeResolver implements DrapeResolver {
   // `-1` forces a fetch on the first frame.
   private lastRevision = -1;
   private warnedExceededTextures = false;
+  // Whether the next bakes render pick-id colors. Pick bakes bypass the MSAA
+  // path: the resolve averages id-encoded colors along feature edges into
+  // batch ids that don't exist (see renderVectorScenes).
+  private pickBake = false;
 
   constructor(private readonly host: VectorDrapeHost) {}
+
+  /** Toggle pick-id baking; forces a re-bake so the mode change lands. */
+  setPickBake(on: boolean): void {
+    this.pickBake = on;
+    this.prevSignature = "";
+  }
 
   update(): void {
     // Re-fetch the Rust-resolved slots only when the global vector resolution
@@ -129,6 +139,7 @@ export class VectorDrapeResolver implements DrapeResolver {
       this.host.compositor.renderVectorScenes(
         this.vectorSlots,
         this.renderTargets,
+        { antialias: !this.pickBake },
       );
       this.bindSlots();
       this.host.compositor.markDirty(this.host.handle, "vector-revision");
