@@ -360,14 +360,15 @@ impl TransferablePolylineGeometry {
 
     pub fn remove_from_buf(&mut self, buf: &mut BufferStore, batch_table: &mut BatchTable) {
         for id in self.remove_buffers(buf) {
-            batch_table.remove(&id);
+            batch_table.release_global_batch_id(id);
         }
     }
 
     /// Free the geometry's BufferStore entries and return the global batch ids
-    /// found in the batch_ids attribute. The caller must remove the returned
-    /// ids from the `BatchTable`; the split lets component `on_remove` hooks
-    /// free the two resources without borrowing them at the same time.
+    /// found in the batch_ids attribute. The caller must release the returned
+    /// ids via `BatchTable::release_global_batch_id`; the split lets component
+    /// `on_remove` hooks free the two resources without borrowing them at the
+    /// same time.
     pub fn remove_buffers(&mut self, buf: &mut BufferStore) -> Vec<u32> {
         buf.remove(&self.position.data);
         if let Some(position_high) = &self.position_high {
@@ -497,14 +498,15 @@ impl TransferablePolygonGeometry {
 impl TransferablePolygonGeometry {
     pub fn remove_from_buf(&mut self, buf: &mut BufferStore, batch_table: &mut BatchTable) {
         for id in self.remove_buffers(buf) {
-            batch_table.remove(&id);
+            batch_table.release_global_batch_id(id);
         }
     }
 
     /// Free the geometry's BufferStore entries and return the global batch ids
-    /// found in the batch_ids attribute. The caller must remove the returned
-    /// ids from the `BatchTable`; the split lets component `on_remove` hooks
-    /// free the two resources without borrowing them at the same time.
+    /// found in the batch_ids attribute. The caller must release the returned
+    /// ids via `BatchTable::release_global_batch_id`; the split lets component
+    /// `on_remove` hooks free the two resources without borrowing them at the
+    /// same time.
     pub fn remove_buffers(&mut self, buf: &mut BufferStore) -> Vec<u32> {
         if let Some(position) = &self.position {
             buf.remove(&position.data);
@@ -700,7 +702,7 @@ impl TransferablePointGeometry {
 
         if let Some(vec_ids) = buf.remove_f32(&self.batch_ids.data) {
             for i in (0..vec_ids.len()).step_by(self.batch_ids.size as usize) {
-                batch_table.remove(&(vec_ids[i] as u32));
+                batch_table.release_global_batch_id(vec_ids[i] as u32);
             }
         };
 
@@ -773,7 +775,7 @@ impl TransferableModelGeometry {
         };
 
         for i in (0..vec_ids.len()).step_by(ids.size as usize) {
-            batch_table.remove(&vec_ids[i]);
+            batch_table.release_global_batch_id(vec_ids[i]);
         }
 
         buf.remove(&ids.data);

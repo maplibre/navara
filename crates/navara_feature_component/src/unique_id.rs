@@ -24,6 +24,10 @@ pub(super) trait UniqueId {
             None
         }
     }
+    /// Return a dead id to the pool so `get` can hand it out again.
+    fn release(&mut self, key: u32) -> bool {
+        self.hashset().remove(&key)
+    }
 }
 
 /// Global batch id have to be generated in the color range,

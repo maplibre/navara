@@ -191,7 +191,7 @@ pub fn remove_batched_feature(
         }
 
         if let Some(global_batch_ids) = global_batch_ids {
-            buf.remove(&global_batch_ids.handle);
+            global_batch_ids.destroy(&mut buf, &mut batch_table_res);
         }
         if let Some(feature_batch_id) = feature_batch_id {
             batch_table_res.remove(&feature_batch_id.0);

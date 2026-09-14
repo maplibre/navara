@@ -32,10 +32,11 @@ pub struct ConstructPolylineBatchedFeatureResult {
 }
 
 impl FreeResultBuffers for ConstructPolylineBatchedFeatureResult {
-    fn remove_from_buf(&self, buf: &mut BufferStore) -> Vec<u32> {
+    fn remove_from_buf(&self, buf: &mut BufferStore) {
         // `remove_buffers` takes `&mut self` but the geometry holds only
-        // handles, so cloning is cheap.
-        self.geometry.clone().remove_buffers(buf)
+        // handles, so cloning is cheap. The returned batch ids are per-vertex
+        // copies owned by the delegator feature — see `FreeResultBuffers`.
+        self.geometry.clone().remove_buffers(buf);
     }
 }
 

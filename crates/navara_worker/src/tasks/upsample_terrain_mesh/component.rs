@@ -41,13 +41,12 @@ pub struct UpsampleTerrainMeshResult {
 }
 
 impl FreeResultBuffers for UpsampleTerrainMeshResult {
-    fn remove_from_buf(&self, buf: &mut BufferStore) -> Vec<u32> {
+    fn remove_from_buf(&self, buf: &mut BufferStore) {
         self.geometry.remove_from_buf(buf);
         buf.remove(&self.heights);
         if let Some(watermask) = &self.watermask {
             buf.remove(watermask);
         }
-        Vec::new()
     }
 }
 
