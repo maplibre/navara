@@ -70,7 +70,9 @@ impl UniqueFeatureId {
 
 impl UniqueId for UniqueFeatureId {
     fn random(&mut self) -> u32 {
-        rng().random()
+        // 0 is reserved as the no-batch sentinel (`FeatureBatchId(0)`), so a
+        // sentinel-holding model's removal can never touch a live feature's key.
+        rng().random_range(1..=u32::MAX)
     }
 
     fn hashset(&mut self) -> &mut FxHashSet<u32> {
