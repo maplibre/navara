@@ -125,9 +125,10 @@ impl TerrainData for RasterDEMData {
         };
 
         let aabb = Aabb::from_extent_f64(
-            *extent,
+            navara_core::PoleSides::from_extent(&navara_core::TilingScheme::default(), extent)
+                .extended_extent(*extent),
             0.,
-            ctx.max_height, // Use parent max_height
+            ctx.max_height.max(0.), // Use parent max_height
         );
         let tile_center = aabb.center;
 

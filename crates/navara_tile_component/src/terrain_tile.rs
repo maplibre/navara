@@ -2,8 +2,8 @@ use bevy_ecs::prelude::*;
 use navara_buffer_store::BufferStore;
 use navara_component::{Deleted, Order};
 use navara_core::{
-    Aabb, Ellipsoid, Extent, LngLat, Radians, TileRegion, TileXYZ, TilingScheme, WGS84_64,
-    get_ellipsoid_terrain_level_zero_maximum_geometric_error_with_root_tiles,
+    Aabb, Ellipsoid, Extent, LngLat, PoleSides, Radians, TileRegion, TileXYZ, TilingScheme,
+    WGS84_64, get_ellipsoid_terrain_level_zero_maximum_geometric_error_with_root_tiles,
     get_level_maximum_geometric_error,
 };
 use navara_data_requester::{DataRequester, DataRequesterStatus};
@@ -103,12 +103,19 @@ impl TerrainTile {
         tiling_scheme: TilingScheme,
     ) -> Self {
         let extent = tiling_scheme.tile_extent(coords);
+        let sides = PoleSides::from_extent(&tiling_scheme, &extent);
+        let bounds_extent = sides.extended_extent(extent);
+        let (bounds_min, bounds_max) = sides.height_range(min_height, max_height);
+
+        let mut bounding_region = TileBoundingRegion::from_extent_f64(bounds_extent, WGS84_64);
+        bounding_region.minimum_height = bounds_min;
+        bounding_region.maximum_height = bounds_max;
 
         Self {
             coords,
             extent,
-            aabb: Aabb::from_extent_f64(extent, min_height, max_height),
-            bounding_region: Some(TileBoundingRegion::from_extent_f64(extent, WGS84_64)),
+            aabb: Aabb::from_extent_f64(bounds_extent, bounds_min, bounds_max),
+            bounding_region: Some(bounding_region),
             rendered_at: 0,
             visited_at: 0,
             terrain_data: None,
@@ -351,11 +358,9 @@ impl TerrainTile {
             .as_ref()
             .and_then(|t| t.upsample(&region, upsamplable_geometry))?;
 
-        let aabb = Aabb::from_extent_f64(
-            self.extent,
-            upsampled_mesh.min_height,
-            upsampled_mesh.max_height,
-        );
+        let sides = PoleSides::from_extent(&self.tiling_scheme, &self.extent);
+        let (min, max) = sides.height_range(upsampled_mesh.min_height, upsampled_mesh.max_height);
+        let aabb = Aabb::from_extent_f64(sides.extended_extent(self.extent), min, max);
         let tile_center = aabb.center;
 
         // Generate geometry directly in local RTC space
@@ -469,11 +474,14 @@ impl Tile for TerrainTile {
         }
         self.max_height = max_height;
         self.min_height = min_height;
+        let sides = PoleSides::from_extent(&self.tiling_scheme, &self.extent);
+        let (min, max) = sides.height_range(min_height, max_height);
         if let Some(bounding_region) = &mut self.bounding_region {
-            bounding_region.maximum_height = max_height;
-            bounding_region.minimum_height = min_height;
+            bounding_region.maximum_height = max;
+            bounding_region.minimum_height = min;
         }
-        self.aabb.update(self.extent, min_height, max_height);
+        self.aabb
+            .update(sides.extended_extent(self.extent), min, max);
         self.occludee_point_in_scaled_space = None;
     }
 
@@ -1742,5 +1750,73 @@ mod terrain_tile_tests {
             });
             assert!(!rs.is_tile_ready, "Pending must not be marked ready");
         }
+    }
+}
+
+#[cfg(test)]
+mod polar_bounds_tests {
+    use super::*;
+    use navara_core::{Angle, LLE, Meters, xyz_to_vec3};
+
+    #[test]
+    fn bounds_keep_caps_after_dem_height_updates() {
+        for tms in [false, true] {
+            for (y, latitude) in [(0, 90_f64), (7, -90_f64)] {
+                let mut tile = TerrainTile::new_with_scheme(
+                    TileXYZ { x: 3, y, z: 3 },
+                    1000.,
+                    200.,
+                    TilingScheme::WebMercator { tms },
+                );
+                let original_extent = tile.extent;
+                let pole = xyz_to_vec3(
+                    LLE {
+                        lng: Angle::new(0.),
+                        lat: Angle::new(latitude.to_radians()),
+                        height: Meters::new(0.),
+                    }
+                    .to_xyz(WGS84_64),
+                );
+                for (max, min) in [(1000., 200.), (500., 100.), (-100., -500.)] {
+                    tile.update_heights(max, min);
+                    assert!(tile.aabb.distance_to_point(pole) < 1e-8);
+                    let region = tile.bounding_region.as_ref().unwrap();
+                    assert_eq!(region.minimum_height, min.min(0.));
+                    assert_eq!(region.maximum_height, max.max(0.));
+                    let camera_lle = LLE {
+                        lng: (original_extent.west + original_extent.east) * 0.5,
+                        lat: Angle::new((latitude.signum() * 89.9).to_radians()),
+                        height: Meters::new(2000.),
+                    };
+                    let distance = region
+                        .distance_to_camera(xyz_to_vec3(camera_lle.to_xyz(WGS84_64)), camera_lle);
+                    assert!((distance - (2000. - max.max(0.))).abs() < 1e-6);
+                    assert_eq!(tile.extent, original_extent);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn geographic_and_interior_tiles_keep_their_extents() {
+        for scheme in [
+            TilingScheme::Geographic { tms: false },
+            TilingScheme::WebMercator { tms: true },
+        ] {
+            let tile = TerrainTile::new_with_scheme(
+                TileXYZ { x: 1, y: 1, z: 2 },
+                100.,
+                10.,
+                scheme.clone(),
+            );
+            let sides = PoleSides::from_extent(&scheme, &tile.extent);
+            assert_eq!(sides, PoleSides::default());
+            assert_eq!(tile.bounding_region.unwrap().extent, tile.extent);
+        }
+        let e = TilingScheme::Geographic { tms: false }.tile_extent(TileXYZ { x: 0, y: 0, z: 0 });
+        assert_eq!(
+            PoleSides::from_extent(&TilingScheme::Geographic { tms: false }, &e),
+            PoleSides::default()
+        );
     }
 }

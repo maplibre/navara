@@ -13,6 +13,8 @@ export function upsampleQuantizedMeshTerrainMesh(
   upsamplableGeometryLike: UpsamplableTerrainGeometryLike,
   skirt: boolean,
   skirtExaggeration: number,
+  poleNorth: boolean,
+  poleSouth: boolean,
   geographic: boolean,
   tms: boolean,
 ): Promise<ReturnedConstructedTerrainMeshLike> {
@@ -24,6 +26,8 @@ export function upsampleQuantizedMeshTerrainMesh(
       upsamplableGeometryLike,
       skirt,
       skirtExaggeration,
+      poleNorth,
+      poleSouth,
       geographic,
       tms,
     ],

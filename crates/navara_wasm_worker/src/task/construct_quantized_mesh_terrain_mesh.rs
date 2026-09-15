@@ -5,12 +5,15 @@ use navara_wasm_transferable::TransferableTile;
 use navara_wasm_types::ReturnedConstructedTerrainMesh;
 use wasm_bindgen::prelude::wasm_bindgen;
 
+#[allow(clippy::too_many_arguments)]
 #[wasm_bindgen(js_name = constructQuantizedMeshTerrainMesh)]
 pub fn construct_quantized_mesh_terrain_mesh(
     bytes: &[u8],
     tile: TransferableTile,
     skirt: bool,
     skirt_exaggeration: f32,
+    pole_north: bool,
+    pole_south: bool,
     geographic: bool,
     tms: bool,
 ) -> ReturnedConstructedTerrainMesh {
@@ -36,5 +39,15 @@ pub fn construct_quantized_mesh_terrain_mesh(
         navara_geometry::add_skirt_separate(&mut result.geometry, skirt_height, &down_dir_fn);
     }
 
+    navara_geometry::add_pole_extension(
+        &mut result.geometry,
+        WGS84_64,
+        &ctx.extent,
+        result.rtc_translation.unwrap(),
+        navara_core::PoleSides {
+            north: pole_north,
+            south: pole_south,
+        },
+    );
     result.into()
 }

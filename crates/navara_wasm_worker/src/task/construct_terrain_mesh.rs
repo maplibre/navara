@@ -7,6 +7,7 @@ use navara_wasm_transferable::{TransferableMartini, TransferableRasterDEMData, T
 use navara_wasm_types::ReturnedConstructedTerrainMesh;
 use wasm_bindgen::prelude::wasm_bindgen;
 
+#[allow(clippy::too_many_arguments)]
 #[wasm_bindgen(js_name = constructTerrainMesh)]
 pub fn construct_terrain_mesh(
     bytes: &[u8],
@@ -15,6 +16,8 @@ pub fn construct_terrain_mesh(
     martini: TransferableMartini,
     skirt: bool,
     skirt_exaggeration: f32,
+    pole_north: bool,
+    pole_south: bool,
 ) -> ReturnedConstructedTerrainMesh {
     let tile: TerrainTile = tile.into();
     let raster_dem_data: RasterDEMData = raster_dem_data.into();
@@ -35,5 +38,15 @@ pub fn construct_terrain_mesh(
         navara_geometry::add_skirt_separate(&mut result.geometry, skirt_height, &down_dir_fn);
     }
 
+    navara_geometry::add_pole_extension(
+        &mut result.geometry,
+        WGS84_64,
+        &ctx.extent,
+        result.rtc_translation.unwrap(),
+        navara_core::PoleSides {
+            north: pole_north,
+            south: pole_south,
+        },
+    );
     result.into()
 }

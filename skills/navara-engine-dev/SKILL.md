@@ -49,3 +49,17 @@ change.
 - Upstream `StarsMaterial` overrides the `depthWrite` constructor option. Set
   `material.depthWrite = false` after construction so stars cannot depth-occlude
   the far-depth skybox.
+
+## Polar terrain geometry
+
+- WebMercator band-edge tiles append `add_pole_extension` after skirts, even
+  when skirts are disabled. Detect `PoleSides` from the scheme and extent.
+- Keep cap vertices in separate skirt buffers: their pinned edge UVs cannot
+  reconstruct latitude during upsampling. Each child generates its own cap.
+- Terrain bounds (including height updates and horizon occlusion) use the
+  pole-extended extent and include height zero; mesh/texture extents stay in
+  the Mercator band.
+- Rendered tiles can retain task handles after worker failure/cancellation has
+  despawned the task. Consume those handles during cleanup and use
+  `Commands::get_entity` + `try_insert(Deleted)` to tolerate both an already
+  removed task and a despawn queued earlier in the same frame.

@@ -22,6 +22,8 @@ export async function constructTerrainMesh(
   size: number,
   skirt: boolean,
   skirtExaggeration: number,
+  poleNorth: boolean,
+  poleSouth: boolean,
 ): Promise<{
   result: ReturnedConstructedTerrainMeshLike;
 }> {
@@ -37,6 +39,8 @@ export async function constructTerrainMesh(
     martini,
     skirt,
     skirtExaggeration,
+    poleNorth,
+    poleSouth,
   );
   const { result, transfers } = transferReturnedConstructedTerrainMesh(mesh);
   mesh.free();

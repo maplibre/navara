@@ -14,12 +14,23 @@ export function constructTerrainMesh(
   size: number,
   skirt: boolean,
   skirtExaggeration: number,
+  poleNorth: boolean,
+  poleSouth: boolean,
 ): Promise<{
   result: ReturnedConstructedTerrainMeshLike;
 }> {
   return queueTask(
     "constructTerrainMesh",
-    [bytes, tileLike, rasterDEMDataLike, size, skirt, skirtExaggeration],
+    [
+      bytes,
+      tileLike,
+      rasterDEMDataLike,
+      size,
+      skirt,
+      skirtExaggeration,
+      poleNorth,
+      poleSouth,
+    ],
     { transfer: [bytes.buffer] },
   );
 }

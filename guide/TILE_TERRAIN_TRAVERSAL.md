@@ -433,3 +433,27 @@ flowchart LR
 | Material drape (one slot per layer) | `crates/navara_tile/src/tile/system.rs` (`update_mesh_material`) |
 | Hillshade request | `crates/navara_tile/src/texture_fragment/helpers.rs` |
 | Plugin / system order | `crates/navara_tile/src/lib.rs` |
+
+## WebMercator polar geometry
+
+Band-edge WebMercator terrain tiles extend from ±85.05° to the poles through
+`add_pole_extension`. Flat tiles, raster-DEM construction and upsampling, and
+WebMercator quantized-mesh construction and upsampling all append these caps
+after optional skirts. Geographic terrain already reaches ±90°.
+
+The helper shares the main mesh's boundary indices and adds height-zero rows
+at 86°, 87°, 88°, 89°, and 89.6°, followed by one pole vertex per cap. Fixed
+latitudes keep neighboring tiles' meridian edges aligned across zoom levels.
+UVs remain pinned to the tile's north or south texture row, so all draped
+textures stretch their existing edge row without shader changes or extra fetches.
+
+Cap data lives in the separate skirt buffers. It is excluded from shadow depth
+and `CachedMeshHandle`, so upsampling only processes the original terrain mesh;
+each child builds its own extension. Worker task parameters carry the north and
+south flags detected on the main thread.
+
+Terrain AABBs and bounding regions extend to ±90° and include height zero,
+including after DEM height updates. Horizon culling uses this bounding extent,
+and distance/SSE includes the cap. The original tile extent still defines mesh
+UVs and texture selection. Cap surfaces have no DEM elevation; RTC rounding and
+corner-height differences across DEM zoom levels can leave small residual cracks.

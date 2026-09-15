@@ -5,6 +5,7 @@ use navara_wasm_transferable::{TransferableRasterDEMData, TransferableTile};
 use navara_wasm_types::{ReturnedConstructedTerrainMesh, UpsamplableTerrainGeometry};
 use wasm_bindgen::prelude::wasm_bindgen;
 
+#[allow(clippy::too_many_arguments)]
 #[wasm_bindgen(js_name = upsampleTerrainMesh)]
 pub fn upsample_terrain_mesh(
     mut tile: TransferableTile,
@@ -13,6 +14,8 @@ pub fn upsample_terrain_mesh(
     upsamplable_geometry: UpsamplableTerrainGeometry,
     skirt: bool,
     skirt_exaggeration: f32,
+    pole_north: bool,
+    pole_south: bool,
     tms: bool,
 ) -> ReturnedConstructedTerrainMesh {
     let raster_dem_data: RasterDEMData = raster_dem_data.into();
@@ -51,9 +54,20 @@ pub fn upsample_terrain_mesh(
         navara_geometry::add_skirt_separate(&mut result.geometry, skirt_height, &down_dir_fn);
     }
 
+    navara_geometry::add_pole_extension(
+        &mut result.geometry,
+        WGS84_64,
+        &tile.extent,
+        result.rtc_translation.unwrap(),
+        navara_core::PoleSides {
+            north: pole_north,
+            south: pole_south,
+        },
+    );
     result.into()
 }
 
+#[allow(clippy::too_many_arguments)]
 #[wasm_bindgen(js_name = upsampleQuantizedMeshTerrainMesh)]
 pub fn upsample_quantized_mesh_terrain_mesh(
     mut tile: TransferableTile,
@@ -61,6 +75,8 @@ pub fn upsample_quantized_mesh_terrain_mesh(
     upsamplable_geometry: UpsamplableTerrainGeometry,
     skirt: bool,
     skirt_exaggeration: f32,
+    pole_north: bool,
+    pole_south: bool,
     geographic: bool,
     tms: bool,
 ) -> ReturnedConstructedTerrainMesh {
@@ -107,5 +123,15 @@ pub fn upsample_quantized_mesh_terrain_mesh(
         navara_geometry::add_skirt_separate(&mut result.geometry, skirt_height, &down_dir_fn);
     }
 
+    navara_geometry::add_pole_extension(
+        &mut result.geometry,
+        WGS84_64,
+        &tile.extent,
+        result.rtc_translation.unwrap(),
+        navara_core::PoleSides {
+            north: pole_north,
+            south: pole_south,
+        },
+    );
     result.into()
 }

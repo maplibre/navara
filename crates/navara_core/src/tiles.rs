@@ -25,6 +25,47 @@ impl Default for TilingScheme {
     }
 }
 
+/// Polar caps belonging to a WebMercator tile.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct PoleSides {
+    pub north: bool,
+    pub south: bool,
+}
+
+impl PoleSides {
+    pub fn from_extent(scheme: &TilingScheme, extent: &Extent<FloatType, Radians>) -> Self {
+        const WM_MAX_LAT: f64 = 1.484_422_229_745_332_4;
+        const EPSILON: f64 = 1e-12;
+        let mercator = matches!(scheme, TilingScheme::WebMercator { .. });
+        Self {
+            north: mercator && extent.north.val() >= WM_MAX_LAT - EPSILON,
+            south: mercator && extent.south.val() <= -WM_MAX_LAT + EPSILON,
+        }
+    }
+
+    pub fn extended_extent(
+        self,
+        mut extent: Extent<FloatType, Radians>,
+    ) -> Extent<FloatType, Radians> {
+        if self.north {
+            extent.north = crate::Angle::new(std::f64::consts::FRAC_PI_2);
+        }
+        if self.south {
+            extent.south = crate::Angle::new(-std::f64::consts::FRAC_PI_2);
+        }
+        extent
+    }
+
+    /// Bounds include the height-zero cap even when all DEM samples have the same sign.
+    pub fn height_range(self, min_height: f64, max_height: f64) -> (f64, f64) {
+        if self.north || self.south {
+            (min_height.min(0.), max_height.max(0.))
+        } else {
+            (min_height, max_height)
+        }
+    }
+}
+
 impl TilingScheme {
     /// Root tile(s) for this scheme.
     pub fn root_tiles(&self) -> Vec<TileXYZ> {

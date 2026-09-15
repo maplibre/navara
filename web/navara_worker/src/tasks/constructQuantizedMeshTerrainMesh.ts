@@ -15,6 +15,8 @@ export async function constructQuantizedMeshTerrainMesh(
   tile: TransferableTileLike,
   skirt: boolean,
   skirtExaggeration: number,
+  poleNorth: boolean,
+  poleSouth: boolean,
   geographic: boolean,
   tms: boolean,
 ): Promise<{
@@ -27,6 +29,8 @@ export async function constructQuantizedMeshTerrainMesh(
     toTransferableTile(tile),
     skirt,
     skirtExaggeration,
+    poleNorth,
+    poleSouth,
     geographic,
     tms,
   );

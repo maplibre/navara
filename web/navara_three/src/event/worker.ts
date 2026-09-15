@@ -275,6 +275,8 @@ async function processConstructTerrainMesh(
           new TransferableTileLike(tile),
           params.skirt,
           params.skirtExaggeration,
+          params.poleNorth,
+          params.poleSouth,
           params.geographic,
           params.tms,
         );
@@ -292,6 +294,8 @@ async function processConstructTerrainMesh(
           params.tile_size,
           params.skirt,
           params.skirtExaggeration,
+          params.poleNorth,
+          params.poleSouth,
         );
       }
       const settled = await task.settle(promise);
@@ -402,6 +406,8 @@ async function processUpsampleTerrainMesh(
           upsamplableTerrainGeometry,
           params.skirt,
           params.skirtExaggeration,
+          params.poleNorth,
+          params.poleSouth,
           params.geographic,
           params.tms,
         );
@@ -419,6 +425,8 @@ async function processUpsampleTerrainMesh(
           upsamplableTerrainGeometry,
           params.skirt,
           params.skirtExaggeration,
+          params.poleNorth,
+          params.poleSouth,
           params.tms,
         );
       }

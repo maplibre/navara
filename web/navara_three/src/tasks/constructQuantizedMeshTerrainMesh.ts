@@ -11,6 +11,8 @@ export function constructQuantizedMeshTerrainMesh(
   tileLike: TransferableTileLike,
   skirt: boolean,
   skirtExaggeration: number,
+  poleNorth: boolean,
+  poleSouth: boolean,
   geographic: boolean,
   tms: boolean,
 ): Promise<{
@@ -18,7 +20,16 @@ export function constructQuantizedMeshTerrainMesh(
 }> {
   return queueTask(
     "constructQuantizedMeshTerrainMesh",
-    [bytes, tileLike, skirt, skirtExaggeration, geographic, tms],
+    [
+      bytes,
+      tileLike,
+      skirt,
+      skirtExaggeration,
+      poleNorth,
+      poleSouth,
+      geographic,
+      tms,
+    ],
     { transfer: [bytes.buffer] },
   );
 }
