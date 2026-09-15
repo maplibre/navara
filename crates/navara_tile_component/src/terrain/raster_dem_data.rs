@@ -2,7 +2,8 @@ use bevy_ecs::entity::Entity;
 use martini::Martini;
 use navara_buffer_store::{BufferStore, Handle};
 use navara_core::{
-    Aabb, Angle, ElevationDecoder, Ellipsoid, Extent, LLE, Meters, Radians, TileRegion, XYZ,
+    Aabb, Angle, ElevationDecoder, Ellipsoid, Extent, LLE, Meters, PoleSides, Radians, TileRegion,
+    TilingScheme, XYZ,
 };
 use navara_geometry::{
     Geometry, ReturnedConstructedTerrainMesh, UpsamplableTerrainGeometry, UpsampledTerrainGeometry,
@@ -125,8 +126,7 @@ impl TerrainData for RasterDEMData {
         };
 
         let aabb = Aabb::from_extent_f64(
-            navara_core::PoleSides::from_extent(&navara_core::TilingScheme::default(), extent)
-                .extended_extent(*extent),
+            PoleSides::from_extent(&TilingScheme::default(), extent).extended_extent(*extent),
             0.,
             ctx.max_height.max(0.), // Use parent max_height
         );

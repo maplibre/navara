@@ -56,6 +56,11 @@ change.
   when skirts are disabled. Detect `PoleSides` from the scheme and extent.
 - Keep cap vertices in separate skirt buffers: their pinned edge UVs cannot
   reconstruct latitude during upsampling. Each child generates its own cap.
+- Band-edge raster DEM rows past the dataset's coverage arrive as exact 0 m,
+  and the covered row next to them is a blended fraction of the true height.
+  `fill_polar_dem_nodata` rewrites the shared DataManager buffer on load (pole
+  side only) with the last fully covered row so mesh and hillshade agree; do
+  not compensate per consumer, in the mesh, or in the shader.
 - Terrain bounds (including height updates and horizon occlusion) use the
   pole-extended extent and include height zero; mesh/texture extents stay in
   the Mercator band.

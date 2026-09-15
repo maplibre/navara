@@ -5,9 +5,9 @@ pub mod hillshade;
 pub mod raster;
 pub mod texture_fragment;
 
-use bevy_app::{App, Plugin, PreUpdate, Update};
+use bevy_app::{App, Plugin, PostUpdate, PreUpdate, Update};
 use bevy_ecs::schedule::{IntoScheduleConfigs, SystemSet};
-use navara_data_requester::DataManager;
+use navara_data_requester::{DataManager, DataRequesterSet};
 use navara_tile_component::{
     CachedMartini, RasterTileQuadtree, TerrainInformationQuadtree, TerrainTileQuadtree,
 };
@@ -36,6 +36,10 @@ impl Plugin for TilePlugin {
             .init_resource::<raster::RasterResolveRevision>()
             .init_resource::<raster::RasterBakeSnapshot>()
             .add_message::<MeshPreparedEvent>()
+            .add_systems(
+                PostUpdate,
+                terrain::dem_nodata::fill_polar_dem_nodata.after(DataRequesterSet::SendRequests),
+            )
             .add_systems(
                 PreUpdate,
                 (

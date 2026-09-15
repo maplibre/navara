@@ -457,3 +457,12 @@ including after DEM height updates. Horizon culling uses this bounding extent,
 and distance/SSE includes the cap. The original tile extent still defines mesh
 UVs and texture selection. Cap surfaces have no DEM elevation; RTC rounding and
 corner-height differences across DEM zoom levels can leave small residual cracks.
+
+Raster DEMs end their polar coverage inside the Mercator band (Mapterhorn at
+about 85.02°) and encode the rows beyond it as exact 0 m; the covered row next
+to that band is resampled against the fill and holds only a fraction of the
+true height. When such a tile's bytes land, `fill_polar_dem_nodata`
+(`crates/navara_tile/src/terrain/`) rewrites the shared buffer with the last
+fully covered row copied over the zero rows and the blended row, so the terrain
+mesh, height sampling, and the hillshade normal map all meet the cap at the real
+height instead of a cliff or a ridge line.
