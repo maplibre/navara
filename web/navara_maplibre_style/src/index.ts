@@ -6,6 +6,5 @@
  */
 
 export { MapLibreStylePlugin } from "./MapLibreStylePlugin";
-export { JsStyleEngine } from "./engine/JsStyleEngine";
-export { RustStyleEngine } from "./engine/RustStyleEngine";
+export { fetchFontFamilyFromCssForMapLibreStyle } from "./fontHelper";
 export type { StyleSpecification } from "@maplibre/maplibre-gl-style-spec";

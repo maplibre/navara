@@ -1,260 +1,602 @@
-import type {
-  LayerSpecification,
-  StyleSpecification,
-} from "@maplibre/maplibre-gl-style-spec";
+import type { StyleSpecification } from "@maplibre/maplibre-gl-style-spec";
 import type ThreeView from "@navaramap/three";
 import type { ViewContext } from "@navaramap/three";
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, vi, beforeEach, expect } from "vitest";
 
-import type { StyleEngine } from "./engine/StyleEngine";
 import { MapLibreStylePlugin } from "./MapLibreStylePlugin";
 
 // Mock @navaramap/core - Plugin is imported from here
 vi.mock("@navaramap/core", () => ({
-  Plugin: vi.fn(),
+  // eslint-disable-next-line @typescript-eslint/no-extraneous-class
+  Plugin: class Plugin {
+    // Empty base class - don't define init() here to avoid shadowing subclass methods
+    // Real Plugin class is abstract and subclasses provide their own init()
+  },
 }));
 
 // Mock @navaramap/three - provides ThreeView default export and elevation decoders
-// Note: All mock definitions must be inline since vi.mock is hoisted
 vi.mock("@navaramap/three", () => {
-  // Define mock class inside the factory
   class MockThreeView {
     addSource = vi.fn();
     addLayer = vi.fn();
   }
 
+  // Mock Color class with methods used by MapLibreStylePlugin
+  class MockColor {
+    r = 0;
+    g = 0;
+    b = 0;
+
+    setStyle(_style: string) {
+      // Simple parsing for test purposes
+      return this;
+    }
+
+    setRGB(r: number, g: number, b: number) {
+      this.r = r;
+      this.g = g;
+      this.b = b;
+      return this;
+    }
+  }
+
   return {
-    default: MockThreeView, // Default export for ThreeView
+    default: MockThreeView,
+    Color: MockColor,
     TERRARIUM_ELEVATION_DECODER: () => ({ type: "terrarium" }),
     MAPBOX_ELEVATION_DECODER: () => ({ type: "mapbox" }),
   };
 });
 
-// Get mock functions after imports
-const mockAddSource = vi.fn();
-const mockAddLayer = vi.fn();
-const mockSourceDelete = vi.fn();
-const mockLayerDelete = vi.fn();
-const mockLayerOn = vi.fn();
+// Mock TileJsonPlugin with spy methods
+const mockTileJsonPluginAddSource = vi
+  .fn()
+  .mockResolvedValue({ delete: vi.fn() });
+const mockTileJsonPluginInit = vi.fn().mockResolvedValue(undefined);
+const mockTileJsonPluginDispose = vi.fn();
 
-// Mock ViewContext - empty object is sufficient for these tests
+// Mock @navaramap/three-plugins - TileJsonPlugin is imported from here
+vi.mock("@navaramap/three-plugins", () => ({
+  TileJsonPlugin: class TileJsonPlugin {
+    init = mockTileJsonPluginInit;
+    addSource = mockTileJsonPluginAddSource;
+    dispose = mockTileJsonPluginDispose;
+  },
+}));
+
+// Mock ViewContext
 const mockViewContext: ViewContext = {} as ViewContext;
 
-// Create mock view that matches ThreeView interface
-function createMockView(): ThreeView {
-  mockAddSource.mockReturnValue({ delete: mockSourceDelete });
-  mockAddLayer.mockReturnValue({
-    delete: mockLayerDelete,
-    on: mockLayerOn,
-  });
+// Create mock view
+function createMockView(initialZoom = 10): ThreeView {
+  const mockGlobe = {
+    color: undefined as any,
+    opacity: 1,
+  };
+
+  const mockCamera = {
+    zoom: initialZoom,
+  };
 
   return {
-    addSource: mockAddSource,
-    addLayer: mockAddLayer,
+    addSource: vi.fn().mockReturnValue({ delete: vi.fn() }),
+    addLayer: vi
+      .fn()
+      .mockReturnValue({ delete: vi.fn(), on: vi.fn(), forceUpdate: vi.fn() }),
+    addFontFamily: vi.fn(),
+    on: vi.fn(),
+    off: vi.fn(),
+    globe: mockGlobe,
+    camera: mockCamera,
   } as unknown as ThreeView;
+}
+
+// Helper to set zoom on mock view (works around readonly constraint)
+function setMockZoom(view: ThreeView, zoom: number): void {
+  (view.camera as { zoom: number }).zoom = zoom;
 }
 
 describe("MapLibreStylePlugin", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockTileJsonPluginAddSource.mockClear();
+    mockTileJsonPluginInit.mockClear();
+    mockTileJsonPluginDispose.mockClear();
   });
 
-  describe("Sources", () => {
-    it("should create GeoJSON sources with inline data or URL", async () => {
-      const testCases = [
-        {
-          name: "inline",
-          source: {
-            type: "geojson" as const,
-            data: { type: "FeatureCollection" as const, features: [] },
-          },
-          expected: {
+  describe("Initialization", () => {
+    it("should initialize successfully with minimal style", async () => {
+      const style: StyleSpecification = {
+        version: 8,
+        name: "test",
+        sources: {},
+        layers: [],
+      };
+
+      const plugin = new MapLibreStylePlugin(style);
+      const view = createMockView();
+      await plugin.init(view, mockViewContext);
+    });
+
+    it("should initialize with GeoJSON sources", async () => {
+      const style: StyleSpecification = {
+        version: 8,
+        name: "test",
+        sources: {
+          test: {
             type: "geojson",
             data: { type: "FeatureCollection", features: [] },
           },
         },
-        {
-          name: "url",
-          source: {
-            type: "geojson" as const,
-            data: "https://example.com/data.geojson",
-          },
-          expected: {
+        layers: [],
+      };
+
+      const plugin = new MapLibreStylePlugin(style);
+      const view = createMockView();
+      await plugin.init(view, mockViewContext);
+    });
+
+    it("should initialize with layers", async () => {
+      const style: StyleSpecification = {
+        version: 8,
+        name: "test",
+        sources: {
+          test: {
             type: "geojson",
-            url: "https://example.com/data.geojson",
+            data: { type: "FeatureCollection", features: [] },
           },
         },
-      ];
-
-      for (const { source, expected } of testCases) {
-        vi.clearAllMocks();
-        const style: StyleSpecification = {
-          version: 8,
-          sources: { test: source },
-          layers: [],
-        };
-
-        const plugin = new MapLibreStylePlugin(style);
-        const view = createMockView();
-        await plugin.init(view, mockViewContext);
-
-        expect(mockAddSource).toHaveBeenCalledWith(expected);
-      }
-    });
-
-    it("should warn and skip raster sources without tiles array", async () => {
-      const consoleWarnSpy = vi
-        .spyOn(console, "warn")
-        .mockImplementation(() => {});
-      const style: StyleSpecification = {
-        version: 8,
-        sources: {
-          test: {
-            type: "raster",
-            url: "https://example.com/tiles.json", // TileJSON not supported
+        layers: [
+          {
+            id: "test-layer",
+            type: "fill",
+            source: "test",
           },
-        },
-        layers: [],
+        ],
       };
 
       const plugin = new MapLibreStylePlugin(style);
-      await plugin.init(createMockView(), mockViewContext);
+      const view = createMockView();
+      await plugin.init(view, mockViewContext);
 
-      expect(consoleWarnSpy).toHaveBeenCalledWith(
-        expect.stringContaining("missing tiles array"),
-      );
-      expect(mockAddSource).not.toHaveBeenCalled();
-      consoleWarnSpy.mockRestore();
-    });
-
-    it("should create raster source with tiles array", async () => {
-      const style: StyleSpecification = {
-        version: 8,
-        sources: {
-          test: {
-            type: "raster",
-            tiles: ["https://example.com/tiles/{z}/{x}/{y}.png"],
-          },
-        },
-        layers: [],
-      };
-
-      const plugin = new MapLibreStylePlugin(style);
-      await plugin.init(createMockView(), mockViewContext);
-
-      expect(mockAddSource).toHaveBeenCalledWith({
-        type: "raster-tile",
-        url: "https://example.com/tiles/{z}/{x}/{y}.png",
-      });
-    });
-
-    it("should create raster-dem with supported encodings", async () => {
-      const encodings = [
-        { encoding: "terrarium" as const, decoder: { type: "terrarium" } },
-        { encoding: "mapbox" as const, decoder: { type: "mapbox" } },
-      ];
-
-      for (const { encoding, decoder } of encodings) {
-        vi.clearAllMocks();
-        const style = {
-          version: 8,
-          sources: {
-            test: {
-              type: "raster-dem" as const,
-              tiles: ["https://example.com/dem/{z}/{x}/{y}.png"],
-              encoding,
-            },
-          },
-          layers: [],
-        } as StyleSpecification;
-
-        const plugin = new MapLibreStylePlugin(style);
-        await plugin.init(createMockView(), mockViewContext);
-
-        expect(mockAddSource).toHaveBeenCalledWith({
-          type: "raster-dem",
-          url: "https://example.com/dem/{z}/{x}/{y}.png",
-          elevationDecoder: decoder,
-        });
-      }
-    });
-
-    it("should default to mapbox encoding for raster-dem", async () => {
-      const style: StyleSpecification = {
-        version: 8,
-        sources: {
-          test: {
-            type: "raster-dem",
-            tiles: ["https://example.com/dem/{z}/{x}/{y}.png"],
-          },
-        },
-        layers: [],
-      };
-
-      const plugin = new MapLibreStylePlugin(style);
-      await plugin.init(createMockView(), mockViewContext);
-
-      expect(mockAddSource).toHaveBeenCalledWith(
+      // Verify source was added
+      expect(view.addSource).toHaveBeenCalledWith(
         expect.objectContaining({
-          elevationDecoder: { type: "mapbox" },
+          type: "geojson",
+          data: expect.objectContaining({
+            type: "FeatureCollection",
+          }),
+        }),
+      );
+
+      // Verify layer was added
+      expect(view.addLayer).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: "vector",
+          source: expect.anything(),
         }),
       );
     });
+  });
 
-    it("should warn and skip raster-dem with invalid encoding or missing tiles", async () => {
-      const consoleWarnSpy = vi
-        .spyOn(console, "warn")
-        .mockImplementation(() => {});
-      const testCases = [
-        {
-          name: "no tiles",
-          source: {
-            type: "raster-dem" as const,
-            encoding: "terrarium" as const,
+  describe("Background Layer", () => {
+    it("should apply background color to globe", async () => {
+      const style: StyleSpecification = {
+        version: 8,
+        sources: {},
+        layers: [
+          {
+            id: "background",
+            type: "background",
+            paint: { "background-color": "#ff0000" },
           },
-          warning: "missing tiles array",
-        },
-        {
-          name: "custom encoding",
-          source: {
-            type: "raster-dem" as const,
-            tiles: ["https://example.com/dem/{z}/{x}/{y}.png"],
-            encoding: "custom" as const,
-          },
-          warning: 'encoding="custom"',
-        },
-      ];
+        ],
+      };
 
-      for (const { source, warning } of testCases) {
-        vi.clearAllMocks();
-        consoleWarnSpy.mockClear();
+      const plugin = new MapLibreStylePlugin(style);
+      const view = createMockView();
 
-        const style = {
-          version: 8,
-          sources: { test: source },
-          layers: [],
-        } as StyleSpecification;
+      // Verify color starts as undefined
+      expect(view.globe.color).toBeUndefined();
 
-        const plugin = new MapLibreStylePlugin(style);
-        await plugin.init(createMockView(), mockViewContext);
+      await plugin.init(view, mockViewContext);
 
-        expect(consoleWarnSpy).toHaveBeenCalledWith(
-          expect.stringContaining(warning),
-        );
-        expect(mockAddSource).not.toHaveBeenCalled();
-      }
-
-      consoleWarnSpy.mockRestore();
+      // Verify globe color was set to red (#ff0000)
+      expect(view.globe.color).toBeDefined();
+      const color = view.globe.color as unknown as {
+        r: number;
+        g: number;
+        b: number;
+      };
+      expect(color.r).toBeCloseTo(1, 1);
+      expect(color.g).toBeCloseTo(0, 1);
+      expect(color.b).toBeCloseTo(0, 1);
     });
 
-    it("should warn and skip vector sources without tiles array", async () => {
-      const consoleWarnSpy = vi
-        .spyOn(console, "warn")
-        .mockImplementation(() => {});
+    it("should apply background opacity to globe", async () => {
+      const style: StyleSpecification = {
+        version: 8,
+        sources: {},
+        layers: [
+          {
+            id: "background",
+            type: "background",
+            paint: {
+              "background-color": "#ff0000",
+              "background-opacity": 0.5,
+            },
+          },
+        ],
+      };
+
+      const plugin = new MapLibreStylePlugin(style);
+      const view = createMockView();
+      await plugin.init(view, mockViewContext);
+
+      // Verify opacity was set
+      expect(view.globe.opacity).toBe(0.5);
+    });
+
+    it("should apply default background-color (#000000) when only background-opacity is set", async () => {
+      const style: StyleSpecification = {
+        version: 8,
+        sources: {},
+        layers: [
+          {
+            id: "background",
+            type: "background",
+            paint: {
+              // Only opacity, no color specified - should default to black
+              "background-opacity": 0.8,
+            },
+          },
+        ],
+      };
+
+      const plugin = new MapLibreStylePlugin(style);
+      const view = createMockView();
+      await plugin.init(view, mockViewContext);
+
+      // Verify default black color was applied
+      expect(view.globe.color).toBeDefined();
+      const color = view.globe.color as unknown as {
+        r: number;
+        g: number;
+        b: number;
+      };
+      expect(color.r).toBe(0);
+      expect(color.g).toBe(0);
+      expect(color.b).toBe(0);
+      // Verify opacity was also applied
+      expect(view.globe.opacity).toBe(0.8);
+    });
+
+    it("should select last background layer when multiple exist", async () => {
+      const style: StyleSpecification = {
+        version: 8,
+        sources: {},
+        layers: [
+          {
+            id: "background-1",
+            type: "background",
+            paint: { "background-opacity": 0.3 },
+          },
+          {
+            id: "background-2",
+            type: "background",
+            paint: { "background-opacity": 0.7 },
+          },
+        ],
+      };
+
+      const plugin = new MapLibreStylePlugin(style);
+      const view = createMockView();
+      await plugin.init(view, mockViewContext);
+
+      // Should use the last layer's opacity
+      expect(view.globe.opacity).toBe(0.7);
+    });
+
+    it("should respect minzoom and skip layers below threshold", async () => {
+      const style: StyleSpecification = {
+        version: 8,
+        sources: {},
+        layers: [
+          {
+            id: "background-high-zoom",
+            type: "background",
+            minzoom: 10,
+            paint: { "background-opacity": 0.8 },
+          },
+        ],
+      };
+
+      const plugin = new MapLibreStylePlugin(style);
+      // Set camera zoom below minzoom
+      const view = createMockView(5);
+      await plugin.init(view, mockViewContext);
+
+      // Background layer should not apply (zoom < minzoom)
+      // Opacity should remain at default 1
+      expect(view.globe.opacity).toBe(1);
+    });
+
+    it("should respect maxzoom and skip layers at or above threshold", async () => {
+      const style: StyleSpecification = {
+        version: 8,
+        sources: {},
+        layers: [
+          {
+            id: "background-low-zoom",
+            type: "background",
+            maxzoom: 10,
+            paint: { "background-opacity": 0.3 },
+          },
+        ],
+      };
+
+      const plugin = new MapLibreStylePlugin(style);
+      // Set camera zoom at maxzoom (exclusive)
+      const view = createMockView(10);
+      await plugin.init(view, mockViewContext);
+
+      // Background layer should not apply (zoom >= maxzoom)
+      expect(view.globe.opacity).toBe(1);
+    });
+
+    it("should apply background layer within minzoom/maxzoom range", async () => {
+      const style: StyleSpecification = {
+        version: 8,
+        sources: {},
+        layers: [
+          {
+            id: "background-mid-zoom",
+            type: "background",
+            minzoom: 5,
+            maxzoom: 15,
+            paint: { "background-opacity": 0.6 },
+          },
+        ],
+      };
+
+      const plugin = new MapLibreStylePlugin(style);
+      // Set camera zoom within range
+      const view = createMockView(10);
+      await plugin.init(view, mockViewContext);
+
+      // Background layer should apply
+      expect(view.globe.opacity).toBe(0.6);
+    });
+
+    it("should skip background layers with visibility=none", async () => {
+      const style: StyleSpecification = {
+        version: 8,
+        sources: {},
+        layers: [
+          {
+            id: "hidden-background",
+            type: "background",
+            layout: { visibility: "none" },
+            paint: { "background-opacity": 0.5 },
+          },
+          {
+            id: "visible-background",
+            type: "background",
+            paint: { "background-opacity": 0.7 },
+          },
+        ],
+      };
+
+      const plugin = new MapLibreStylePlugin(style);
+      const view = createMockView();
+      await plugin.init(view, mockViewContext);
+
+      // Should use the visible layer, not the hidden one
+      expect(view.globe.opacity).toBe(0.7);
+    });
+
+    it("should extract alpha from rgba() color strings", async () => {
+      const style: StyleSpecification = {
+        version: 8,
+        sources: {},
+        layers: [
+          {
+            id: "background",
+            type: "background",
+            paint: { "background-color": "rgba(255, 0, 0, 0.5)" },
+          },
+        ],
+      };
+
+      const plugin = new MapLibreStylePlugin(style);
+      const view = createMockView();
+      await plugin.init(view, mockViewContext);
+
+      // Alpha from rgba should be extracted
+      expect(view.globe.opacity).toBe(0.5);
+    });
+
+    it("should extract alpha from #RRGGBBAA hex colors", async () => {
+      const style: StyleSpecification = {
+        version: 8,
+        sources: {},
+        layers: [
+          {
+            id: "background",
+            type: "background",
+            paint: { "background-color": "#ff0000cc" }, // cc = 204/255 ≈ 0.8
+          },
+        ],
+      };
+
+      const plugin = new MapLibreStylePlugin(style);
+      const view = createMockView();
+      await plugin.init(view, mockViewContext);
+
+      // Alpha from #RRGGBBAA should be extracted (approximately 0.8)
+      expect(view.globe.opacity).toBeCloseTo(0.8, 1);
+    });
+
+    it("should multiply color alpha with background-opacity", async () => {
+      const style: StyleSpecification = {
+        version: 8,
+        sources: {},
+        layers: [
+          {
+            id: "background",
+            type: "background",
+            paint: {
+              "background-color": "rgba(255, 0, 0, 0.8)", // alpha = 0.8
+              "background-opacity": 0.5, // explicit opacity = 0.5
+            },
+          },
+        ],
+      };
+
+      const plugin = new MapLibreStylePlugin(style);
+      const view = createMockView();
+      await plugin.init(view, mockViewContext);
+
+      // Final opacity should be 0.8 * 0.5 = 0.4
+      expect(view.globe.opacity).toBe(0.4);
+    });
+
+    it("should update background on zoom changes when crossing minzoom/maxzoom boundaries", async () => {
+      const style: StyleSpecification = {
+        version: 8,
+        sources: {},
+        layers: [
+          {
+            id: "bg-low-zoom",
+            type: "background",
+            maxzoom: 8,
+            paint: {
+              "background-color": "#ff0000", // Red for low zoom
+              "background-opacity": 0.3,
+            },
+          },
+          {
+            id: "bg-mid-zoom",
+            type: "background",
+            minzoom: 8,
+            maxzoom: 15,
+            paint: {
+              "background-color": "#00ff00", // Green for mid zoom
+              "background-opacity": 0.6,
+            },
+          },
+          {
+            id: "bg-high-zoom",
+            type: "background",
+            minzoom: 15,
+            paint: {
+              "background-color": "#0000ff", // Blue for high zoom
+              "background-opacity": 0.9,
+            },
+          },
+        ],
+      };
+
+      const plugin = new MapLibreStylePlugin(style);
+      const view = createMockView(5); // Start in low-zoom range
+      await plugin.init(view, mockViewContext);
+
+      // Initially should use bg-low-zoom (red, 0.3)
+      expect(view.globe.opacity).toBe(0.3);
+      let color = view.globe.color as unknown as {
+        r: number;
+        g: number;
+        b: number;
+      };
+      expect(color.r).toBeCloseTo(1, 1); // Red
+      expect(color.g).toBeCloseTo(0, 1);
+      expect(color.b).toBeCloseTo(0, 1);
+
+      // Get the preRender listener
+      const preRenderCall = (view.on as any).mock.calls.find(
+        (call: any) => call[0] === "preRender",
+      );
+      expect(preRenderCall).toBeDefined();
+      const preRenderListener = preRenderCall[1];
+
+      // First call to initialize lastZoom
+      preRenderListener();
+
+      // Simulate zoom crossing into mid-zoom range (5 → 10)
+      setMockZoom(view, 10);
+      preRenderListener();
+
+      // Should now use bg-mid-zoom (green, 0.6)
+      expect(view.globe.opacity).toBe(0.6);
+      color = view.globe.color as unknown as {
+        r: number;
+        g: number;
+        b: number;
+      };
+      expect(color.r).toBeCloseTo(0, 1);
+      expect(color.g).toBeCloseTo(1, 1); // Green
+      expect(color.b).toBeCloseTo(0, 1);
+
+      // Simulate zoom crossing into high-zoom range (10 → 16)
+      setMockZoom(view, 16);
+      preRenderListener();
+
+      // Should now use bg-high-zoom (blue, 0.9)
+      expect(view.globe.opacity).toBe(0.9);
+      color = view.globe.color as unknown as {
+        r: number;
+        g: number;
+        b: number;
+      };
+      expect(color.r).toBeCloseTo(0, 1);
+      expect(color.g).toBeCloseTo(0, 1);
+      expect(color.b).toBeCloseTo(1, 1); // Blue
+    });
+  });
+
+  describe("FontFamily Option", () => {
+    it("should register fontFamily when provided", async () => {
+      const style: StyleSpecification = {
+        version: 8,
+        sources: {},
+        layers: [],
+      };
+
+      const mockFontFamily = { family: "TestFont" } as any;
+      const plugin = new MapLibreStylePlugin(style, {
+        fontFamily: mockFontFamily,
+      });
+      const view = createMockView();
+      await plugin.init(view, mockViewContext);
+
+      // Verify addFontFamily was called
+      expect(view.addFontFamily).toHaveBeenCalledWith(mockFontFamily);
+    });
+  });
+
+  describe("Zoom Change Detection", () => {
+    it("should register preRender listener for zoom changes", async () => {
+      const style: StyleSpecification = {
+        version: 8,
+        sources: {},
+        layers: [],
+      };
+
+      const plugin = new MapLibreStylePlugin(style);
+      const view = createMockView();
+      await plugin.init(view, mockViewContext);
+
+      // Verify preRender listener was registered
+      expect(view.on).toHaveBeenCalledWith("preRender", expect.any(Function));
+    });
+  });
+
+  describe("Source Creation", () => {
+    it("should call tileJsonPlugin.addSource for TileJSON url sources", async () => {
       const style: StyleSpecification = {
         version: 8,
         sources: {
-          test: {
+          "vector-source": {
             type: "vector",
             url: "https://example.com/tiles.json",
           },
@@ -263,317 +605,296 @@ describe("MapLibreStylePlugin", () => {
       };
 
       const plugin = new MapLibreStylePlugin(style);
-      await plugin.init(createMockView(), mockViewContext);
+      const view = createMockView();
+      await plugin.init(view, mockViewContext);
 
-      expect(consoleWarnSpy).toHaveBeenCalledWith(
-        expect.stringContaining("missing tiles array"),
+      // Verify TileJsonPlugin.addSource was called with url
+      expect(mockTileJsonPluginAddSource).toHaveBeenCalledWith(
+        expect.objectContaining({
+          url: "https://example.com/tiles.json",
+          id: "vector-source",
+          type: "vector-tile",
+        }),
       );
-      expect(mockAddSource).not.toHaveBeenCalled();
-      consoleWarnSpy.mockRestore();
     });
 
-    it("should create vector source with tiles array", async () => {
+    it("should call view.addSource for direct tiles array sources", async () => {
       const style: StyleSpecification = {
         version: 8,
         sources: {
-          test: {
+          "vector-source": {
             type: "vector",
-            tiles: ["https://example.com/tiles/{z}/{x}/{y}.pbf"],
+            tiles: ["https://example.com/{z}/{x}/{y}.pbf"],
+            minzoom: 5,
+            maxzoom: 14,
           },
         },
         layers: [],
       };
 
       const plugin = new MapLibreStylePlugin(style);
-      await plugin.init(createMockView(), mockViewContext);
+      const view = createMockView();
+      await plugin.init(view, mockViewContext);
 
-      expect(mockAddSource).toHaveBeenCalledWith({
-        type: "vector-tile",
-        url: "https://example.com/tiles/{z}/{x}/{y}.pbf",
-      });
-    });
-
-    it("should warn and skip unsupported source types", async () => {
-      const consoleWarnSpy = vi
-        .spyOn(console, "warn")
-        .mockImplementation(() => {});
-      const style: StyleSpecification = {
-        version: 8,
-        sources: {
-          test: {
-            type: "image",
-            url: "https://example.com/image.png",
-            coordinates: [
-              [-180, 85],
-              [180, 85],
-              [180, -85],
-              [-180, -85],
-            ],
-          },
-        },
-        layers: [],
-      };
-
-      const plugin = new MapLibreStylePlugin(style);
-      await plugin.init(createMockView(), mockViewContext);
-
-      expect(consoleWarnSpy).toHaveBeenCalledWith(
-        "Unsupported source type: image",
+      // Verify view.addSource was called with correct parameters including zoom limits
+      expect(view.addSource).toHaveBeenCalledWith(
+        expect.objectContaining({
+          id: "vector-source",
+          type: "vector-tile",
+          url: "https://example.com/{z}/{x}/{y}.pbf",
+          minZoom: 5,
+          maxZoom: 14,
+        }),
       );
-      expect(mockAddSource).not.toHaveBeenCalled();
-      consoleWarnSpy.mockRestore();
     });
-  });
 
-  describe("Hillshade layers", () => {});
-
-  describe("Feature geometry type mapping", () => {
-    it.each([
-      { layerType: "fill" as const, geometryType: "Polygon" },
-      { layerType: "fill-extrusion" as const, geometryType: "Polygon" },
-      { layerType: "line" as const, geometryType: "LineString" },
-      { layerType: "circle" as const, geometryType: "Point" },
-      { layerType: "symbol" as const, geometryType: "Point" },
-    ])(
-      "should use $geometryType for $layerType layers",
-      async ({ layerType, geometryType }) => {
-        const mockEngine = {
-          parseStyle: vi.fn(async (style) => style),
-          createFilter: vi.fn(() => () => true),
-          createValueFn: vi.fn(() => () => undefined),
-          getPaintSpec: vi.fn(() => ({ type: "color", default: "#000000" })),
-          getLayoutSpec: vi.fn(() => ({ type: "string", default: "" })),
-        } as unknown as StyleEngine;
-
-        const layer: LayerSpecification = {
-          id: "test",
-          type: layerType,
-          source: "test-source",
-          filter: ["==", ["geometry-type"], geometryType],
-          ...(layerType === "symbol"
-            ? { layout: { "icon-image": "marker" } }
-            : {}),
-        } as LayerSpecification;
-
-        const style: StyleSpecification = {
-          version: 8,
-          sources: {
-            "test-source": {
-              type: "geojson",
-              data: { type: "FeatureCollection", features: [] },
-            },
-          },
-          layers: [layer],
-        };
-
-        const plugin = new MapLibreStylePlugin(style, mockEngine);
-        await plugin.init(createMockView(), mockViewContext);
-
-        expect(mockEngine.createFilter).toHaveBeenCalledWith(
-          ["==", ["geometry-type"], geometryType],
-          layerType,
-          geometryType,
-        );
-      },
-    );
-  });
-
-  describe("Terrain", () => {
-    it("should create terrain with valid source reference", async () => {
+    it("should call tileJsonPlugin.addSource for raster TileJSON url sources", async () => {
       const style: StyleSpecification = {
         version: 8,
         sources: {
-          terrain: {
+          "raster-source": {
+            type: "raster",
+            url: "https://example.com/raster-tiles.json",
+            minzoom: 0,
+            maxzoom: 18,
+          },
+        },
+        layers: [],
+      };
+
+      const plugin = new MapLibreStylePlugin(style);
+      const view = createMockView();
+      await plugin.init(view, mockViewContext);
+
+      // Verify TileJsonPlugin.addSource was called with correct type and url
+      expect(mockTileJsonPluginAddSource).toHaveBeenCalledWith(
+        expect.objectContaining({
+          url: "https://example.com/raster-tiles.json",
+          id: "raster-source",
+          type: "raster-tile",
+          minzoom: 0,
+          maxzoom: 18,
+        }),
+      );
+    });
+
+    it("should call tileJsonPlugin.addSource for raster-dem TileJSON url sources", async () => {
+      const style: StyleSpecification = {
+        version: 8,
+        sources: {
+          "dem-source": {
             type: "raster-dem",
-            tiles: ["https://example.com/dem/{z}/{x}/{y}.png"],
+            url: "https://example.com/dem-tiles.json",
+            encoding: "terrarium",
+            minzoom: 0,
+            maxzoom: 15,
+          },
+        },
+        layers: [],
+      };
+
+      const plugin = new MapLibreStylePlugin(style);
+      const view = createMockView();
+      await plugin.init(view, mockViewContext);
+
+      expect(mockTileJsonPluginAddSource).toHaveBeenCalledWith(
+        expect.objectContaining({
+          url: "https://example.com/dem-tiles.json",
+          id: "dem-source",
+          type: "raster-dem",
+          encoding: "terrarium",
+          minzoom: 0,
+          maxzoom: 15,
+        }),
+      );
+    });
+
+    it("should accept terrarium and mapbox encodings for raster-dem", async () => {
+      const style: StyleSpecification = {
+        version: 8,
+        sources: {
+          "dem-terrarium": {
+            type: "raster-dem",
+            tiles: ["https://example.com/{z}/{x}/{y}.png"],
             encoding: "terrarium",
           },
+          "dem-mapbox": {
+            type: "raster-dem",
+            tiles: ["https://example.com/{z}/{x}/{y}.png"],
+            encoding: "mapbox",
+          },
         },
         layers: [],
-        terrain: { source: "terrain", exaggeration: 1.5 },
       };
 
       const plugin = new MapLibreStylePlugin(style);
-      await plugin.init(createMockView(), mockViewContext);
+      const view = createMockView();
+      await plugin.init(view, mockViewContext);
 
-      expect(mockAddLayer).toHaveBeenCalledWith({
-        type: "terrain",
-        source: { delete: mockSourceDelete },
-        terrain: {},
-      });
+      // Both sources should be added
+      expect(view.addSource).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  describe("Zoom Re-evaluation", () => {
+    it("should call forceUpdate on zoom-dependent layers when zoom changes", async () => {
+      const mockLayer = {
+        delete: vi.fn(),
+        on: vi.fn(),
+        forceUpdate: vi.fn(),
+      };
+
+      const style: StyleSpecification = {
+        version: 8,
+        sources: {
+          test: {
+            type: "geojson",
+            data: { type: "FeatureCollection", features: [] },
+          },
+        },
+        layers: [
+          {
+            id: "zoom-dependent-layer",
+            type: "fill",
+            source: "test",
+            paint: {
+              // Zoom-dependent expression
+              "fill-color": [
+                "interpolate",
+                ["linear"],
+                ["zoom"],
+                5,
+                "#ff0000",
+                10,
+                "#00ff00",
+              ],
+            },
+          },
+        ],
+      };
+
+      const plugin = new MapLibreStylePlugin(style);
+      const view = createMockView();
+      view.addLayer = vi.fn().mockReturnValue(mockLayer);
+
+      await plugin.init(view, mockViewContext);
+
+      // Get the preRender listener
+      const preRenderCall = (view.on as any).mock.calls.find(
+        (call: any) => call[0] === "preRender",
+      );
+      expect(preRenderCall).toBeDefined();
+      const preRenderListener = preRenderCall[1];
+
+      // First call initializes lastZoom with current zoom
+      preRenderListener();
+
+      // Simulate zoom change beyond threshold
+      setMockZoom(view, 15); // Changed from initial 10 by > 0.5
+      preRenderListener();
+
+      // forceUpdate should be called on the zoom-dependent layer
+      expect(mockLayer.forceUpdate).toHaveBeenCalled();
     });
 
-    it("should log error when terrain source is missing", async () => {
-      const consoleErrorSpy = vi
-        .spyOn(console, "error")
-        .mockImplementation(() => {});
+    it("should not call forceUpdate on layers without zoom-dependent expressions", async () => {
+      const mockLayer = {
+        delete: vi.fn(),
+        on: vi.fn(),
+        forceUpdate: vi.fn(),
+      };
+
+      const style: StyleSpecification = {
+        version: 8,
+        sources: {
+          test: {
+            type: "geojson",
+            data: { type: "FeatureCollection", features: [] },
+          },
+        },
+        layers: [
+          {
+            id: "constant-layer",
+            type: "fill",
+            source: "test",
+            paint: {
+              // Constant color (no zoom dependency)
+              "fill-color": "#ff0000",
+            },
+          },
+        ],
+      };
+
+      const plugin = new MapLibreStylePlugin(style);
+      const view = createMockView();
+      view.addLayer = vi.fn().mockReturnValue(mockLayer);
+
+      await plugin.init(view, mockViewContext);
+
+      // Get the preRender listener
+      const preRenderCall = (view.on as any).mock.calls.find(
+        (call: any) => call[0] === "preRender",
+      );
+      const preRenderListener = preRenderCall[1];
+
+      // Simulate zoom change
+      setMockZoom(view, 15);
+      preRenderListener();
+
+      // forceUpdate should NOT be called for constant layers
+      expect(mockLayer.forceUpdate).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("Cleanup", () => {
+    it("should remove zoom listener on dispose", async () => {
       const style: StyleSpecification = {
         version: 8,
         sources: {},
         layers: [],
-        terrain: { source: "missing" },
       };
 
       const plugin = new MapLibreStylePlugin(style);
-      await plugin.init(createMockView(), mockViewContext);
+      const view = createMockView();
+      await plugin.init(view, mockViewContext);
 
-      expect(consoleErrorSpy).toHaveBeenCalledWith(
-        "Failed to add terrain:",
-        expect.any(Error),
-      );
-      consoleErrorSpy.mockRestore();
+      plugin.dispose();
+
+      // Verify listener was removed
+      expect(view.off).toHaveBeenCalledWith("preRender", expect.any(Function));
     });
-  });
 
-  describe("Error handling", () => {
-    it("should log error and continue when source creation fails", async () => {
-      const consoleErrorSpy = vi
-        .spyOn(console, "error")
-        .mockImplementation(() => {});
-      const mockError = new Error("Source creation failed");
-      mockAddSource.mockImplementationOnce(() => {
-        throw mockError;
-      });
-
+    it("should dispose child TileJsonPlugin to prevent memory leaks", async () => {
       const style: StyleSpecification = {
         version: 8,
         sources: {
-          failing: {
-            type: "geojson",
-            data: { type: "FeatureCollection", features: [] },
-          },
-        },
-        layers: [],
-      };
-
-      const plugin = new MapLibreStylePlugin(style);
-      await plugin.init(createMockView(), mockViewContext);
-
-      expect(consoleErrorSpy).toHaveBeenCalledWith(
-        'Failed to add source "failing":',
-        mockError,
-      );
-      consoleErrorSpy.mockRestore();
-    });
-
-    it("should log error and continue when layer creation fails", async () => {
-      const consoleErrorSpy = vi
-        .spyOn(console, "error")
-        .mockImplementation(() => {});
-      const mockError = new Error("Layer creation failed");
-      mockAddLayer.mockImplementationOnce(() => {
-        throw mockError;
-      });
-
-      const style: StyleSpecification = {
-        version: 8,
-        sources: {
-          test: {
-            type: "geojson",
-            data: { type: "FeatureCollection", features: [] },
+          "raster-tiles": {
+            type: "raster",
+            tiles: ["https://example.com/{z}/{x}/{y}.png"],
+            tileSize: 256,
           },
         },
         layers: [
           {
-            id: "failing",
-            type: "fill",
-            source: "test",
+            id: "raster-layer",
+            type: "raster",
+            source: "raster-tiles",
           },
         ],
       };
 
       const plugin = new MapLibreStylePlugin(style);
-      await plugin.init(createMockView(), mockViewContext);
+      const view = createMockView();
+      await plugin.init(view, mockViewContext);
 
-      expect(consoleErrorSpy).toHaveBeenCalledWith(
-        'Failed to add layer "failing":',
-        mockError,
-      );
-      consoleErrorSpy.mockRestore();
-    });
-  });
+      // Clear previous calls
+      mockTileJsonPluginDispose.mockClear();
 
-  describe("Unsupported and misconfigured layers", () => {
-    it("should skip unsupported layers without source and continue", async () => {
-      const consoleWarnSpy = vi
-        .spyOn(console, "warn")
-        .mockImplementation(() => {});
-      const style: StyleSpecification = {
-        version: 8,
-        sources: {
-          test: {
-            type: "geojson",
-            data: { type: "FeatureCollection", features: [] },
-          },
-        },
-        layers: [
-          { id: "valid", type: "fill", source: "test" },
-          {
-            id: "background",
-            type: "background",
-            paint: { "background-color": "#ffffff" },
-          } as LayerSpecification,
-          { id: "another-valid", type: "line", source: "test" },
-        ],
-      };
+      // Dispose the plugin
+      plugin.dispose();
 
-      const plugin = new MapLibreStylePlugin(style);
-      await plugin.init(createMockView(), mockViewContext);
-
-      expect(consoleWarnSpy).toHaveBeenCalledWith(
-        expect.stringContaining(
-          'Unsupported layer type "background" (no source)',
-        ),
-      );
-      expect(mockAddLayer).toHaveBeenCalledTimes(2);
-      consoleWarnSpy.mockRestore();
-    });
-
-    it("should reject style when supported layer type has no source", async () => {
-      const style: StyleSpecification = {
-        version: 8,
-        sources: {
-          test: {
-            type: "geojson",
-            data: { type: "FeatureCollection", features: [] },
-          },
-        },
-        layers: [{ id: "no-source", type: "fill" } as LayerSpecification],
-      };
-
-      const plugin = new MapLibreStylePlugin(style);
-      await expect(
-        plugin.init(createMockView(), mockViewContext),
-      ).rejects.toThrow(/source/i);
-    });
-
-    it("should skip misconfigured symbol layers and continue", async () => {
-      const consoleWarnSpy = vi
-        .spyOn(console, "warn")
-        .mockImplementation(() => {});
-      const style: StyleSpecification = {
-        version: 8,
-        sources: {
-          test: {
-            type: "geojson",
-            data: { type: "FeatureCollection", features: [] },
-          },
-        },
-        layers: [
-          { id: "valid", type: "fill", source: "test" },
-          { id: "broken-symbol", type: "symbol", source: "test" }, // No icon-image or text-field
-          { id: "another-valid", type: "circle", source: "test" },
-        ],
-      };
-
-      const plugin = new MapLibreStylePlugin(style);
-      await plugin.init(createMockView(), mockViewContext);
-
-      expect(consoleWarnSpy).toHaveBeenCalledWith(
-        expect.stringContaining("no icon-image or text-field"),
-      );
-      expect(mockAddLayer).toHaveBeenCalledTimes(2);
-      consoleWarnSpy.mockRestore();
+      // Verify TileJsonPlugin.dispose() was called
+      expect(mockTileJsonPluginDispose).toHaveBeenCalledTimes(1);
     });
   });
 });

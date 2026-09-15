@@ -2,6 +2,7 @@
  * Converts MapLibre Style paint properties to Navara EvaluatedValue.
  */
 
+import { Color as MapLibreColorParser } from "@maplibre/maplibre-gl-style-spec";
 import { Color, type GeometryType } from "@navaramap/three";
 
 import type { StyleEngine } from "../engine/StyleEngine";
@@ -30,18 +31,25 @@ type EvaluatedResult = {
  *
  * Returns object { color, alpha } where:
  * - For MapLibreColor objects: alpha is extracted from the `a` field (or defaults to 1.0)
- * - For CSS color strings: alpha is always 1.0 (alpha from rgba/hsla/#RRGGBBAA is NOT parsed)
+ * - For CSS color strings: alpha is parsed using MapLibre's Color.parse (supports rgba/hsla/#RRGGBBAA)
  */
-function toNavaraColor(
+export function toNavaraColor(
   value: unknown,
 ): { color: Color; alpha: number } | undefined {
   try {
     if (typeof value === "string") {
-      // CSS color string from spec.default fallback (e.g., "#000000", "rgb(255, 0, 0)")
-      const color = new Color().setStyle(value);
-      // Alpha from rgba/hsla/#RRGGBBAA is not extracted (Three.js Color doesn't store alpha)
-      // TODO: Parse alpha from CSS strings like rgba(r,g,b,a) or #RRGGBBAA
-      return { color, alpha: 1.0 };
+      // CSS color string - use MapLibre's parser to extract both color and alpha
+      const maplibreColor = MapLibreColorParser.parse(value);
+      if (!maplibreColor) {
+        return undefined;
+      }
+      const color = new Color().setRGB(
+        maplibreColor.r,
+        maplibreColor.g,
+        maplibreColor.b,
+      );
+      const alpha = maplibreColor.a ?? 1.0;
+      return { color, alpha };
     }
     if (isMapLibreColor(value)) {
       // MapLibre Color object with r, g, b, a values (0-1 range)
@@ -446,21 +454,26 @@ function processSymbolLayer(
   }
 
   // Process text properties for text geometry
-  if (meshGeomType === "text" && hasText) {
-    result.text = textField;
+  if (meshGeomType === "text") {
+    if (hasText) {
+      result.text = textField;
 
-    applyColorAndOpacity(
-      result,
-      paintValues["text-color"],
-      paintValues["text-opacity"],
-    );
+      applyColorAndOpacity(
+        result,
+        paintValues["text-color"],
+        paintValues["text-opacity"],
+      );
 
-    // Handle text-size from layout
-    // Note: createLayoutEvaluators ensures text-size is always present (using spec.default = 16)
-    // The ?? 16 fallback is defensive and should rarely trigger
-    const textSize = layoutValues?.["text-size"] ?? 16;
-    if (typeof textSize === "number" && Number.isFinite(textSize)) {
-      result.size = textSize;
+      // Handle text-size from layout
+      // Note: createLayoutEvaluators ensures text-size is always present (using spec.default = 16)
+      // The ?? 16 fallback is defensive and should rarely trigger
+      const textSize = layoutValues?.["text-size"] ?? 16;
+      if (typeof textSize === "number" && Number.isFinite(textSize)) {
+        result.size = textSize;
+      }
+    } else {
+      // Hide text features with empty text-field (e.g., from zoom-based step expressions)
+      result.show = false;
     }
   }
 }
@@ -510,7 +523,10 @@ export function toEvaluatedValue(
       break;
   }
 
-  result.show = true;
+  // Only set show to true if not already set (e.g., by processSymbolLayer for empty text)
+  if (result.show === undefined) {
+    result.show = true;
+  }
 
   return result;
 }
