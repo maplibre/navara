@@ -461,8 +461,14 @@ corner-height differences across DEM zoom levels can leave small residual cracks
 Raster DEMs end their polar coverage inside the Mercator band (Mapterhorn at
 about 85.02°) and encode the rows beyond it as exact 0 m; the covered row next
 to that band is resampled against the fill and holds only a fraction of the
-true height. When such a tile's bytes land, `fill_polar_dem_nodata`
+true height. Every WebMercator DEM tile whose polar edge lies within the outer
+0.15° of the band (`polar_nodata_sides`, any zoom, not only the band-edge row)
+is corrected when its bytes land: `fill_polar_dem_nodata`
 (`crates/navara_tile/src/terrain/`) rewrites the shared buffer with the last
 fully covered row copied over the zero rows and the blended row, so the terrain
 mesh, height sampling, and the hillshade normal map all meet the cap at the real
 height instead of a cliff or a ridge line.
+A tile that lies entirely past the coverage (deep zoom, last tile row) has no
+row to copy and takes a nearest-neighbour copy of the matching region of its
+nearest ancestor with covered data, so the fix stays in the bytes and survives
+requester re-creation.

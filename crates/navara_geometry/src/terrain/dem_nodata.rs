@@ -1,6 +1,23 @@
-use navara_core::{ElevationDecoder, PoleSides};
+use navara_core::{ElevationDecoder, Extent, PoleSides, Radians, TilingScheme};
+use navara_math::FloatType;
 
 use crate::decode_height_from_dem;
+
+/// Latitude (radians, 84.9°) from which a WebMercator DEM tile is treated as
+/// reaching into the dataset's polar no-data fringe. Coverage ends inside the
+/// band (Mapterhorn at about 85.02°), so the tiles that need correction are
+/// the ones whose polar edge lies within the outer 0.15° of the band, at any
+/// zoom, not only the band-edge tile row.
+pub const POLAR_NODATA_LATITUDE: FloatType = 1.481_768_5;
+
+/// Which sides of a WebMercator tile reach into the polar no-data fringe.
+pub fn polar_nodata_sides(scheme: &TilingScheme, extent: &Extent<FloatType, Radians>) -> PoleSides {
+    let mercator = matches!(scheme, TilingScheme::WebMercator { .. });
+    PoleSides {
+        north: mercator && extent.north.val() >= POLAR_NODATA_LATITUDE,
+        south: mercator && extent.south.val() <= -POLAR_NODATA_LATITUDE,
+    }
+}
 
 /// Raster DEMs end their polar coverage inside the WebMercator band and encode
 /// the rows beyond it as exact 0 m, which meshes as a cliff along the band edge.
@@ -18,6 +35,27 @@ pub fn dem_is_all_zero(bytes: &[u8], decoder: &ElevationDecoder) -> bool {
         .0
         .iter()
         .all(|p| decode_height_from_dem(p[0] as i64, p[1] as i64, p[2] as i64, 0., decoder) == 0.)
+}
+
+/// Nearest-neighbour copy of the sub-tile an ancestor `depth` levels up covers
+/// for a descendant at offset `(sx, sy)` (in descendant tiles, `y == 0` the
+/// northern edge, matching XYZ ordering) into a tile of the ancestor's size.
+pub fn upsample_dem_region(
+    ancestor: &[u8],
+    width: usize,
+    depth: u32,
+    (sx, sy): (usize, usize),
+) -> Vec<u8> {
+    let size = width >> depth;
+    let (ox, oy) = (sx * size, sy * size);
+    let mut out = Vec::with_capacity(ancestor.len());
+    for y in 0..width {
+        for x in 0..width {
+            let src = ((oy + y * size / width) * width + ox + x * size / width) * 4;
+            out.extend_from_slice(&ancestor[src..src + 4]);
+        }
+    }
+    out
 }
 
 pub fn fill_polar_nodata_rows(
@@ -122,6 +160,29 @@ mod tests {
             .collect()
     }
 
+    #[test]
+    fn polar_fringe_covers_inner_rows_at_deep_zoom_only() {
+        use navara_core::TileXYZ;
+        let scheme = TilingScheme::default();
+        let sides = |x, y, z| polar_nodata_sides(&scheme, &scheme.tile_extent(TileXYZ { x, y, z }));
+        assert!(sides(0, 1023, 10).south);
+        // Row 1019 at zoom 10 ends at 84.93°, row 1018 at 84.90°.
+        assert!(sides(0, 1019, 10).south);
+        assert!(!sides(0, 1018, 10).south);
+        // Row 2046 at zoom 11 spans 85.05° to 85.04°: inside the fringe.
+        assert!(sides(0, 2046, 11).south);
+        // Row 253 at zoom 8 ends at 84.80°: outside the fringe.
+        assert!(!sides(1, 253, 8).south);
+        assert!(sides(0, 0, 3).north && !sides(0, 0, 3).south);
+        assert_eq!(
+            polar_nodata_sides(
+                &TilingScheme::Geographic { tms: false },
+                &TilingScheme::Geographic { tms: false }.tile_extent(TileXYZ { x: 0, y: 0, z: 0 })
+            ),
+            PoleSides::default()
+        );
+    }
+
     const SOUTH: PoleSides = PoleSides {
         north: false,
         south: true,
@@ -183,6 +244,23 @@ mod tests {
         assert_eq!(&filled[12..24], &bytes[..12]);
         assert_eq!(&filled[24..36], &bytes[..12]);
         assert_eq!(&filled[..12], &bytes[..12]);
+    }
+
+    #[test]
+    fn upsamples_the_matching_ancestor_region() {
+        let parent = tile(&[10., 20., 30., 40.]);
+        let child = upsample_dem_region(&parent, 4, 1, (1, 1));
+        // Rows 2, 2, 3, 3 of the parent, columns 2, 2, 3, 3.
+        assert_eq!(heights(&child, 4), [32., 32., 42., 42.]);
+        assert_eq!(&child[..4], &parent[(2 * 4 + 2) * 4..][..4]);
+        assert_eq!(&child[3 * 4..4 * 4], &parent[(2 * 4 + 3) * 4..][..4]);
+        // Two levels up: the south-eastern grand-child is parent pixel (3, 3).
+        let grandchild = upsample_dem_region(&parent, 4, 2, (3, 3));
+        assert!(
+            grandchild
+                .chunks(4)
+                .all(|p| p == &parent[(3 * 4 + 3) * 4..][..4])
+        );
     }
 
     #[test]
