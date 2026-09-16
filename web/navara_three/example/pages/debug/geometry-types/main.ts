@@ -237,7 +237,7 @@ const buildMaterials = () => ({
       // default) would hide exactly what this page exists to show.
       declutter: false,
       geometryTypes: geometryTypes(state.point),
-      depthTest: false
+      depthTest: false,
     },
   }),
   ...(state.polyline.enabled && {
