@@ -1220,11 +1220,14 @@ mod test {
                 points,
                 points_sizes,
                 batch_indices,
+                ring_flags,
                 ..
             } => {
                 assert_eq!(points_sizes, &vec![6, 9]); // 2 pts * 3, 3 pts * 3
                 assert_eq!(points.len(), 15);
                 assert_eq!(batch_indices, &vec![0, 1]);
+                // Native linestrings are open: the geometry keeps their caps.
+                assert_eq!(ring_flags, &vec![0, 0]);
             }
             _ => panic!("expected polylines"),
         }
@@ -1336,6 +1339,7 @@ mod test {
                 points,
                 points_sizes,
                 batch_indices,
+                ring_flags,
                 ..
             } => {
                 // 4 ring vertices + closing vertex, 3 components each.
@@ -1343,6 +1347,9 @@ mod test {
                 assert_eq!(batch_indices, &vec![0]);
                 // The derived boundary is closed: first vertex repeats at the end.
                 assert_eq!(points[..3], points[points.len() - 3..]);
+                // Marked a ring, so that repeat is a seam to join rather than
+                // two coincident end caps.
+                assert_eq!(ring_flags, &vec![1]);
             }
             _ => panic!("expected polylines"),
         }
@@ -1504,10 +1511,12 @@ mod test {
             ParsedGeometry::Polylines {
                 points,
                 points_sizes,
+                ring_flags,
                 ..
             } => {
                 assert_eq!(points_sizes, &vec![15]);
                 assert_eq!(points[..3], points[points.len() - 3..]);
+                assert_eq!(ring_flags, &vec![1]);
             }
             _ => panic!("expected polylines"),
         }
