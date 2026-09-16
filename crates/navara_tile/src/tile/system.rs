@@ -596,10 +596,12 @@ pub fn transfer_mesh(
                 .map_or((true, 1.0), |appearance| {
                     (appearance.skirt, appearance.skirt_exaggeration)
                 });
+            // Use terrain tile_size if available, otherwise default to 256.
+            // Computed unconditionally: the polar cap closes its meridian
+            // seams with a curtain of this depth even when grid skirts are
+            // switched off, since those seams are cracks rather than cosmetic.
+            let skirt_height = calculate_skirt_height(&WGS84_64, tile.coords.z, skirt_exaggeration);
             if should_render_terrain && skirt {
-                // Use terrain tile_size if available, otherwise default to 256
-                let skirt_height =
-                    calculate_skirt_height(&WGS84_64, tile.coords.z, skirt_exaggeration);
                 let down_dir_fn = make_wgs84_down_dir_fn(WGS84_64, Some(rtc_translation));
                 add_skirt_separate(&mut triangles, skirt_height, &down_dir_fn);
             }
@@ -609,6 +611,7 @@ pub fn transfer_mesh(
                 &extent,
                 rtc_translation,
                 PoleSides::from_extent(&globe.tiling_scheme, &extent),
+                skirt_height,
             );
             let v_skirt_handle = triangles.skirt_vertices.map(|b| buf.new_f32(b));
             let i_skirt_handle = triangles.skirt_indices.map(|b| buf.new_u32(b));

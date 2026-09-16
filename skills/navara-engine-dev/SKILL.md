@@ -66,7 +66,27 @@ change.
   from the shared cache, and a failed hillshade requester is never "ready".
 - Terrain bounds (including height updates and horizon occlusion) use the
   pole-extended extent and include height zero; mesh/texture extents stay in
-  the Mercator band.
+  the Mercator band. The SSE distance is the exception: it measures against
+  `TerrainTile::sse_bounding_region` (the *unextended* extent) for polar tiles.
+  A cap is identical at every zoom, so subdividing adds no cap detail; letting
+  the pole-reaching bounds drive refinement made a camera near the pole refine
+  the top tile row to max zoom, turning each cap into a ~550 km needle (52.8 m
+  wide at z16 — 10,000:1).
+- Every polar tile builds its own full-length wedge in its own RTC frame, and
+  the pole is ~553 km from any tile origin at z >= 8, where the f32 ulp is
+  6.25 cm. Neighbouring wedges therefore disagree by ~1-2 cm along the shared
+  meridian and at the apex — radial cracks converging on the pole. Exact
+  agreement across different RTC frames is impossible, so `add_pole_extension`
+  hangs a skirt curtain down the wedge's two meridian edges (found by
+  `compute_boundary_edges` on the cap indices, minus edges whose endpoints are
+  both main-grid seam vertices). The apex needs no separate treatment: it is
+  where those two edges meet. Tests that pass a common RTC origin cannot see
+  this class of bug.
+- The cap is textured by the tile's own compositor atlas
+  (`compositor.acquireOutputs(handle)`) plus the per-slot hillshade/water/
+  effect uniform arrays, so it cannot be moved to a standalone pole-centred
+  mesh without reimplementing the whole drape/appearance path. Keep caps
+  per-tile and close their seams geometrically.
 - Rendered tiles can retain task handles after worker failure/cancellation has
   despawned the task. Consume those handles during cleanup and use
   `Commands::get_entity` + `try_insert(Deleted)` to tolerate both an already

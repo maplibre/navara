@@ -4,11 +4,11 @@ use navara_component::{Deleted, Order};
 use navara_core::{
     Aabb, Ellipsoid, Extent, LngLat, PoleSides, Radians, TileRegion, TileXYZ, TilingScheme,
     WGS84_64, get_ellipsoid_terrain_level_zero_maximum_geometric_error_with_root_tiles,
-    get_level_maximum_geometric_error,
+    get_level_maximum_geometric_error, vec3_to_xyz,
 };
 use navara_data_requester::{DataRequester, DataRequesterStatus};
 use navara_geometry::{ReturnedConstructedTerrainMesh, UpsamplableTerrainGeometry};
-use navara_math::Vec3;
+use navara_math::{Transform, Vec3};
 
 use navara_mesh::CachedMeshHandle;
 use navara_quadtree::Coords;
@@ -34,6 +34,16 @@ pub struct TerrainTile {
     pub extent: Extent<FloatType, Radians>,
     pub aabb: Aabb,
     pub bounding_region: Option<TileBoundingRegion<FloatType>>,
+    /// Unextended region used *only* for the screen-space-error distance, and
+    /// only for polar tiles. `bounding_region` is stretched to the pole so the
+    /// height-zero cap is neither frustum- nor horizon-culled, but the cap is
+    /// identical at every zoom: subdividing a polar tile narrows its wedge
+    /// without adding a single cap vertex. Measuring the SSE distance against
+    /// the stretched region therefore made a camera near the pole refine the
+    /// top tile row to max zoom, turning each cap into a ~550 km needle (a
+    /// 52.8 m wedge at z16 — 10,000:1). Refinement must follow the tile's real
+    /// terrain instead.
+    pub sse_bounding_region: Option<TileBoundingRegion<FloatType>>,
     pub children: Vec<TileHandle>,
     pub were_children_rendered: bool,
     pub rendered_at: usize,
@@ -58,6 +68,7 @@ impl Clone for TerrainTile {
             extent: self.extent,
             aabb: self.aabb.clone(),
             bounding_region: self.bounding_region.clone(),
+            sse_bounding_region: self.sse_bounding_region.clone(),
             // Note: `children` needs to be updated dynamically.
             children: vec![],
             were_children_rendered: false,
@@ -111,11 +122,19 @@ impl TerrainTile {
         bounding_region.minimum_height = bounds_min;
         bounding_region.maximum_height = bounds_max;
 
+        let sse_bounding_region = (bounds_extent != extent).then(|| {
+            let mut region = TileBoundingRegion::from_extent_f64(extent, WGS84_64);
+            region.minimum_height = min_height;
+            region.maximum_height = max_height;
+            region
+        });
+
         Self {
             coords,
             extent,
             aabb: Aabb::from_extent_f64(bounds_extent, bounds_min, bounds_max),
             bounding_region: Some(bounding_region),
+            sse_bounding_region,
             rendered_at: 0,
             visited_at: 0,
             terrain_data: None,
@@ -432,6 +451,23 @@ impl Tile for TerrainTile {
         self.bounding_region.as_ref()
     }
 
+    /// Distance driving the screen-space error. Polar tiles measure against
+    /// their unextended extent so the cap cannot pull refinement toward the
+    /// pole; see [`TerrainTile::sse_bounding_region`].
+    fn calc_distance_from_camera(
+        &self,
+        camera: &Transform,
+        ellipsoid: &Ellipsoid<FloatType>,
+    ) -> FloatType {
+        let region = self
+            .sse_bounding_region
+            .as_ref()
+            .or(self.bounding_region.as_ref())
+            .unwrap();
+        let camera_pos = camera.transform_point(Vec3::ZERO);
+        region.distance_to_camera(camera_pos, ellipsoid.xyz_to_lle(vec3_to_xyz(camera_pos)))
+    }
+
     fn coords(&self) -> &TileXYZ {
         &self.coords
     }
@@ -479,6 +515,10 @@ impl Tile for TerrainTile {
         if let Some(bounding_region) = &mut self.bounding_region {
             bounding_region.maximum_height = max;
             bounding_region.minimum_height = min;
+        }
+        if let Some(region) = &mut self.sse_bounding_region {
+            region.maximum_height = max_height;
+            region.minimum_height = min_height;
         }
         self.aabb
             .update(sides.extended_extent(self.extent), min, max);
