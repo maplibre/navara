@@ -130,6 +130,10 @@ pub struct PolylineGeometryAccumulator {
     pub points: Vec<f64>,
     pub points_sizes: Vec<u32>,
     pub batch_indices: Vec<u32>,
+    /// Per polyline, whether it is a polygon ring (1) or an open line (0).
+    /// A ring's repeated first vertex is a seam to join; an open line keeps its
+    /// end caps even when its endpoints coincide.
+    pub ring_flags: Vec<u8>,
     pub crs: CRS,
 }
 
@@ -139,6 +143,7 @@ impl PolylineGeometryAccumulator {
             points: Vec::new(),
             points_sizes: Vec::new(),
             batch_indices: Vec::new(),
+            ring_flags: Vec::new(),
             crs,
         }
     }
@@ -149,6 +154,7 @@ impl PolylineGeometryAccumulator {
             points: buf.new_f64(self.points),
             points_sizes: buf.new_u32(self.points_sizes),
             batch_indices: buf.new_u32(self.batch_indices),
+            ring_flags: buf.new_u8(self.ring_flags),
             crs: self.crs,
         }
     }
@@ -285,6 +291,7 @@ pub struct TakenPolylineGeometry {
     pub points: Vec<f64>,
     pub points_sizes: Vec<u32>,
     pub batch_indices: Vec<u32>,
+    pub ring_flags: Vec<u8>,
 }
 
 /// Pre-accumulated polyline geometry for all features in a batch.
@@ -296,6 +303,7 @@ pub struct BatchedPolylineGeometry {
     points: Handle,
     points_sizes: Handle,
     batch_indices: Handle,
+    ring_flags: Handle,
     pub crs: CRS,
 }
 
@@ -322,6 +330,7 @@ impl BatchedPolylineGeometry {
             points: buf.remove_f64(&self.points).unwrap_or_default(),
             points_sizes: buf.remove_u32(&self.points_sizes).unwrap_or_default(),
             batch_indices: buf.remove_u32(&self.batch_indices).unwrap_or_default(),
+            ring_flags: buf.remove_u8(&self.ring_flags).unwrap_or_default(),
         }
     }
 
@@ -330,6 +339,7 @@ impl BatchedPolylineGeometry {
         buf.remove(&self.points);
         buf.remove(&self.points_sizes);
         buf.remove(&self.batch_indices);
+        buf.remove(&self.ring_flags);
     }
 }
 
@@ -587,7 +597,7 @@ mod tests {
         let mut buf = BufferStore::new();
         let acc = PolylineGeometryAccumulator::new(CRS::Geographic);
         let geom = acc.into_component(&mut buf);
-        assert_eq!(buf.len(), 3);
+        assert_eq!(buf.len(), 4);
         geom.remove_from_buf(&mut buf);
         assert!(buf.is_empty());
     }

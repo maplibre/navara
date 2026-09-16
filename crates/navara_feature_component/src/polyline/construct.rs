@@ -6,11 +6,14 @@ use navara_geometry::{
 use navara_material::PolylineMaterial;
 use navara_math::Vec3;
 
+/// `ring` marks a polygon ring: its repeated first vertex is a seam to join,
+/// where an open line keeps its end caps even with coincident endpoints.
 pub fn construct_polyline_feature(
     material: &PolylineMaterial,
     coords: Vec<f64>,
     crs: &CRS,
     use_rte: bool,
+    ring: bool,
 ) -> Option<(Extent<f64, Radians>, navara_geometry::PolylineGeometry)> {
     let mut latlngs = vec![];
     let mut positions = vec![];
@@ -29,6 +32,7 @@ pub fn construct_polyline_feature(
             positions,
             clamp_to_ground: material.clamp_to_ground,
             use_rte,
+            ring,
             ..Default::default()
         },
     )
@@ -40,6 +44,7 @@ pub fn construct_polyline_feature(
 pub fn construct_flat_polyline_feature(
     coords: Vec<f64>,
     material: &PolylineMaterial,
+    ring: bool,
 ) -> Option<navara_geometry::PolylineGeometry> {
     let mut positions = vec![];
     for i in 0..coords.len() / 3 {
@@ -50,5 +55,6 @@ pub fn construct_flat_polyline_feature(
     create_flat_polyline_geometry(FlatPolylineGeometryOptions {
         positions,
         width: material.width,
+        ring,
     })
 }

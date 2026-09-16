@@ -128,6 +128,9 @@ pub(super) fn generate_geometry_attributes(
     _cartographics_array: Vec<f64>,
     clamp_to_ground: bool,
     use_rte: bool,
+    // Whether the wall closes back on its first vertex, so the segment before
+    // the first one is the last.
+    closed_ring: bool,
 ) -> (PolylineGeometryAttributes, Vec<u32>) {
     let segment_count = bottom_positions_array.len() / 3 - 1;
     let vertex_count = segment_count * 8;
@@ -201,6 +204,24 @@ pub(super) fn generate_geometry_attributes(
     // let mut sum_heights = 0.;
 
     let mut miter_broken = None;
+
+    // A ring's first segment continues from its last one, so it enters the loop
+    // with that segment's state: a seam sharp enough to break the miter must
+    // break it on both sides, or the two ends stop sharing a plane and the
+    // corner opens up again.
+    if closed_ring && segment_count >= 2 {
+        let last = segment_count * 3;
+        let seam_normal = unpack_flatten_vec3(&normals_array, last);
+        miter_broken = break_miter(
+            seam_normal,
+            unpack_flatten_vec3(&bottom_positions_array, last - 3),
+            unpack_flatten_vec3(&bottom_positions_array, last),
+            unpack_flatten_vec3(&top_positions_array, last),
+        );
+        if let Some(broken) = miter_broken {
+            end_geometry_normal = broken;
+        }
+    }
 
     let reference_indices_length = REFERENCE_INDICES.len();
 

@@ -324,6 +324,11 @@ impl ReturnedTransferablePolylineBatchedFeature {
         self.transferable.transfer_points_sizes()
     }
 
+    #[wasm_bindgen(js_name = "transferRingFlags")]
+    pub fn transfer_ring_flags(&mut self) -> js_sys::Uint8Array {
+        self.transferable.transfer_ring_flags()
+    }
+
     pub fn crs(&self) -> CRS {
         self.transferable.crs.clone()
     }
