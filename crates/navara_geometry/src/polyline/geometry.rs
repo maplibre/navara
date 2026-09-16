@@ -3,6 +3,7 @@ use navara_math::Vec3;
 use radians::Radians;
 
 use crate::helpers::vec::{append_flatten_vec3, get_position, unique_with_delta_e};
+use crate::ring::ring_endpoints_coincide;
 
 use super::{
     attributes::{PolylineGeometryAttributes, generate_geometry_attributes},
@@ -24,6 +25,13 @@ pub struct PolylineGeometryOptions {
     pub crs: CRS,
     pub clamp_to_ground: bool,
     pub use_rte: bool,
+    /// Whether these positions are a polygon ring. A ring that repeats its
+    /// first vertex is joined at that seam instead of capped twice; an open
+    /// polyline keeps its end caps even when its endpoints happen to coincide,
+    /// which is what a source line's `line-cap` styling means. Ring geometry
+    /// that is not actually closed (a boundary run split at a tile clip edge)
+    /// still gets caps.
+    pub ring: bool,
 }
 
 impl Default for PolylineGeometryOptions {
@@ -34,6 +42,7 @@ impl Default for PolylineGeometryOptions {
             granularity: DEFAULT_POLYLINE_GRANULARITY_METERS,
             clamp_to_ground: false,
             use_rte: false,
+            ring: false,
         }
     }
 }
@@ -54,10 +63,10 @@ pub fn create_polyline_geometry(
         CRS::ESPG { code: _code } => unimplemented!(),
     };
 
-    // `unique_with_delta_e` filters duplicates globally, so it also strips the
-    // closing duplicate of a closed ring (e.g. a derived polygon boundary),
-    // which would leave a gap on the closing edge. Detect closure first and
-    // re-close the ring after filtering.
+    // `unique_with_delta_e` filters duplicates globally, so it also strips a
+    // repeated first vertex, which would drop a real segment. Detect the repeat
+    // first and restore it after filtering — this is about not losing data, so
+    // it applies to every polyline, ring or not.
     let is_closed_ring = cartographics.len() > 3
         && cartographics
             .first()
@@ -68,9 +77,14 @@ pub fn create_polyline_geometry(
                     && (first.height.val() - last.height.val()).abs() <= 1e-9
             });
     let mut cartographics = unique_with_delta_e(cartographics, 9);
-    if is_closed_ring && cartographics.len() >= 3 {
+    let restored_closing_vertex = is_closed_ring && cartographics.len() >= 3;
+    if restored_closing_vertex {
         cartographics.push(cartographics[0]);
     }
+    // Only a polygon ring joins at its repeated vertex. An open polyline that
+    // happens to return to its start keeps both caps, and a ring left open by
+    // tile clipping has no repeated vertex to join.
+    let closed_ring = options.ring && restored_closing_vertex;
     let cartographics_length = cartographics.len();
 
     if cartographics_length < 2 {
@@ -97,12 +111,27 @@ pub fn create_polyline_geometry(
     let mut vertex_bottom = get_position(ellipsoid, &start_cartographic, WALL_INITIAL_MIN_HEIGHT);
     let mut vertex_top = get_position(ellipsoid, &start_cartographic, WALL_INITIAL_MAX_HEIGHT);
 
-    let mut vertex_normal = compute_right_normal(
-        &start_cartographic,
-        &next_cartographic,
-        WALL_INITIAL_MAX_HEIGHT,
-        ellipsoid,
-    );
+    // A ring's first and last vertex are the same position, so both ends of the
+    // seam take the miter between the closing and the opening segment. End caps
+    // there would leave the corner open — the two wall ends would meet at an
+    // angle with nothing filling the wedge between them.
+    let seam_normal = closed_ring.then(|| {
+        let previous_bottom = get_position(
+            ellipsoid,
+            &cartographics[cartographics_length - 2],
+            WALL_INITIAL_MIN_HEIGHT,
+        );
+        compute_vertex_miter_normal(previous_bottom, vertex_bottom, vertex_top, next_bottom)
+    });
+
+    let mut vertex_normal = seam_normal.unwrap_or_else(|| {
+        compute_right_normal(
+            &start_cartographic,
+            &next_cartographic,
+            WALL_INITIAL_MAX_HEIGHT,
+            ellipsoid,
+        )
+    });
 
     append_flatten_vec3(&mut normals_array, &vertex_normal);
     append_flatten_vec3(&mut bottom_positions_array, &vertex_bottom);
@@ -171,12 +200,14 @@ pub fn create_polyline_geometry(
     vertex_bottom = get_position(ellipsoid, &end_cartographic, WALL_INITIAL_MIN_HEIGHT);
     vertex_top = get_position(ellipsoid, &end_cartographic, WALL_INITIAL_MAX_HEIGHT);
 
-    vertex_normal = compute_right_normal(
-        &pre_end_cartographic,
-        &end_cartographic,
-        WALL_INITIAL_MAX_HEIGHT,
-        ellipsoid,
-    );
+    vertex_normal = seam_normal.unwrap_or_else(|| {
+        compute_right_normal(
+            &pre_end_cartographic,
+            &end_cartographic,
+            WALL_INITIAL_MAX_HEIGHT,
+            ellipsoid,
+        )
+    });
 
     append_flatten_vec3(&mut normals_array, &vertex_normal);
     append_flatten_vec3(&mut bottom_positions_array, &vertex_bottom);
@@ -193,6 +224,7 @@ pub fn create_polyline_geometry(
         cartographics_array,
         options.clamp_to_ground,
         options.use_rte,
+        closed_ring,
     );
 
     Some(PolylineGeometry {
@@ -237,9 +269,13 @@ const MITER_LIMIT: f32 = 2.0;
 ///
 /// # Algorithm
 ///
-/// * **Endpoints** (first / last): The miter normal is simply the 90-degree
-///   rotation of the adjacent segment direction and the length is 1.0 (no
-///   angular correction needed).
+/// * **Endpoints** (first / last) of an open polyline: The miter normal is
+///   simply the 90-degree rotation of the adjacent segment direction and the
+///   length is 1.0 (no angular correction needed).
+///
+/// * **Ring seam** (`closed`): the first and last point are the same position,
+///   so both take the miter between the last and the first segment — end caps
+///   there would leave the seam corner open.
 ///
 /// * **Interior points**: The tangent bisector is computed by summing the
 ///   incoming and outgoing unit directions and normalising.  The miter normal
@@ -255,30 +291,35 @@ fn compute_flat_miter(
     seg_dirs: &[(f32, f32)],
     point_index: usize,
     point_count: usize,
+    closed: bool,
 ) -> MiterJoint {
     let seg_count = point_count - 1;
+    let cap = |dir: (f32, f32)| MiterJoint {
+        normal: perp(dir),
+        length: 1.0,
+        clamped: false,
+    };
 
-    if point_index == 0 {
-        let (dx, dy) = seg_dirs[0];
-        return MiterJoint {
-            normal: (-dy, dx),
-            length: 1.0,
-            clamped: false,
-        };
-    }
+    // Which segments meet at this point. A ring's two ends meet at the seam, so
+    // both bisect the closing and the opening segment and land on the same
+    // joint; an open polyline's ends get a plain cap.
+    let (incoming, outgoing) = if point_index == 0 {
+        if !closed {
+            return cap(seg_dirs[0]);
+        }
+        (seg_count - 1, 0)
+    } else if point_index == point_count - 1 {
+        if !closed {
+            return cap(seg_dirs[seg_count - 1]);
+        }
+        (seg_count - 1, 0)
+    } else {
+        (point_index - 1, point_index)
+    };
 
-    if point_index == point_count - 1 {
-        let (dx, dy) = seg_dirs[seg_count - 1];
-        return MiterJoint {
-            normal: (-dy, dx),
-            length: 1.0,
-            clamped: false,
-        };
-    }
-
-    // Interior point: bisect the angle between adjacent segments
-    let (dx0, dy0) = seg_dirs[point_index - 1]; // incoming segment direction
-    let (dx1, dy1) = seg_dirs[point_index]; // outgoing segment direction
+    // Bisect the angle between the two segments
+    let (dx0, dy0) = seg_dirs[incoming]; // incoming segment direction
+    let (dx1, dy1) = seg_dirs[outgoing]; // outgoing segment direction
 
     // Sum of the two unit directions gives the (unnormalised) angular bisector
     let tx = dx0 + dx1;
@@ -324,6 +365,7 @@ fn compute_flat_miter(
 ///
 /// The `incoming_*` pair is used by the segment arriving at this point;
 /// the `outgoing_*` pair is used by the segment departing from it.
+#[derive(Clone, Copy)]
 struct PointJoin {
     incoming_left: u32,
     incoming_right: u32,
@@ -344,6 +386,9 @@ pub struct FlatPolylineGeometryOptions {
     pub positions: Vec<navara_math::Vec3>,
     /// Line width
     pub width: f32,
+    /// Whether these positions are a polygon ring; see
+    /// [`PolylineGeometryOptions::ring`].
+    pub ring: bool,
 }
 
 impl Default for FlatPolylineGeometryOptions {
@@ -351,6 +396,7 @@ impl Default for FlatPolylineGeometryOptions {
         Self {
             positions: vec![],
             width: 1.0,
+            ring: false,
         }
     }
 }
@@ -368,6 +414,17 @@ pub fn create_flat_polyline_geometry(
     }
 
     let n = positions.len();
+
+    // A polygon ring repeats its first position at the end; that seam takes a
+    // miter joint instead of two end caps. Open polylines keep their caps even
+    // when the endpoints coincide, and a ring split at a tile clip edge has no
+    // repeated vertex to join.
+    let closed = options.ring
+        && n > 3
+        && ring_endpoints_coincide(
+            (positions[0].x, positions[0].y),
+            (positions[n - 1].x, positions[n - 1].y),
+        );
 
     let mut flat_positions = vec![];
     let mut right_normal_and_tex_y = vec![];
@@ -411,8 +468,9 @@ pub fn create_flat_polyline_geometry(
 
     // ── Per-point vertex emission ──
     //
-    // For each polyline point we emit either 2 or 3 vertices, depending on
-    // whether the miter was clamped:
+    // Each polyline point emits either 2 or 3 vertices, depending on whether
+    // the miter was clamped — except a ring's repeated last point, which
+    // reuses the seam joint the first point built:
     //
     //   Unclamped (normal case):
     //     2 vertices — one left (+miter_len) and one right (−miter_len).
@@ -431,25 +489,40 @@ pub fn create_flat_polyline_geometry(
     let mut joins: Vec<PointJoin> = Vec::with_capacity(n);
     let mut bevel_indices: Vec<(u32, u32, u32)> = vec![];
 
-    for i in 0..n {
-        let p = positions[i];
+    for (i, p) in positions.iter().enumerate() {
+        // A ring's repeated last point is the seam corner the loop already
+        // passed at i == 0. Reusing that joint keeps the corner a single set of
+        // vertices, so a clamped seam gets its bevel exactly once.
+        if closed && i == n - 1 {
+            joins.push(joins[0]);
+            continue;
+        }
+
         let px = p.x as f32;
         let py = p.y as f32;
-        let miter = compute_flat_miter(&seg_dirs, i, n);
+        let miter = compute_flat_miter(&seg_dirs, i, n, closed);
 
-        if miter.clamped && i > 0 && i < n - 1 {
+        if miter.clamped {
+            // Which segments meet here — the seam joins the closing segment to
+            // the opening one. Open endpoints take a cap, which never clamps.
+            let (incoming, outgoing) = if i == 0 {
+                (seg_count - 1, 0)
+            } else {
+                (i - 1, i)
+            };
+
             // Sharp corner — emit 3 vertices with a bevel triangle.
             //
             // Determine the turn direction via cross product of adjacent
             // segment directions:
             //   cross > 0  →  left turn  →  outside is on the right
             //   cross < 0  →  right turn →  outside is on the left
-            let (dx0, dy0) = seg_dirs[i - 1];
-            let (dx1, dy1) = seg_dirs[i];
+            let (dx0, dy0) = seg_dirs[incoming];
+            let (dx1, dy1) = seg_dirs[outgoing];
             let cross = dx0 * dy1 - dy0 * dx1;
 
-            let in_perp = perp(seg_dirs[i - 1]);
-            let out_perp = perp(seg_dirs[i]);
+            let in_perp = perp(seg_dirs[incoming]);
+            let out_perp = perp(seg_dirs[outgoing]);
 
             if cross < 0.0 {
                 // Right turn: outside is on the left (+length) side.
@@ -620,7 +693,7 @@ mod test {
 
     use super::{
         FlatPolylineGeometryOptions, PolylineGeometryOptions, create_flat_polyline_geometry,
-        create_polyline_geometry,
+        create_polyline_geometry, perp,
     };
 
     #[test]
@@ -772,6 +845,7 @@ mod test {
         let geometry = create_flat_polyline_geometry(FlatPolylineGeometryOptions {
             positions: vec![Vec3::new(0.0, 0.0, 0.0), Vec3::new(1.0, 0.0, 0.0)],
             width: 1.0,
+            ring: false,
         })
         .unwrap();
 
@@ -786,6 +860,7 @@ mod test {
                 Vec3::new(2.0, 1.0, 0.0),
             ],
             width: 1.0,
+            ring: false,
         })
         .unwrap();
 
@@ -805,6 +880,7 @@ mod test {
                 Vec3::new(2.0, 0.0, 0.0),
             ],
             width: 1.0,
+            ring: false,
         })
         .unwrap();
 
@@ -832,6 +908,7 @@ mod test {
                 Vec3::new(1.0, 1.0, 0.0),
             ],
             width: 1.0,
+            ring: false,
         })
         .unwrap();
 
@@ -849,6 +926,207 @@ mod test {
     }
 
     #[test]
+    fn closed_ring_miters_its_seam() {
+        // A ring whose seam corner turns by `seam_deg`; `close` repeats the
+        // first vertex at the end.
+        let ring = |seam_deg: f64, close: bool| {
+            let r = 0.005;
+            let a: f64 = seam_deg.to_radians();
+            let mut positions = vec![
+                LLE::<f64, Degrees>::from_float(0.01, 0.01, 0.).rad(),
+                LLE::<f64, Degrees>::from_float(0.01 + r, 0.01, 0.).rad(),
+                LLE::<f64, Degrees>::from_float(0.01 + r, 0.01 + r, 0.).rad(),
+                LLE::<f64, Degrees>::from_float(0.01 + r * a.cos(), 0.01 + r * a.sin(), 0.).rad(),
+            ];
+            if close {
+                positions.push(LLE::<f64, Degrees>::from_float(0.01, 0.01, 0.).rad());
+            }
+            create_polyline_geometry(
+                WGS84_64,
+                PolylineGeometryOptions {
+                    positions,
+                    granularity: 0.0,
+                    ring: true,
+                    ..Default::default()
+                },
+            )
+            .unwrap()
+        };
+
+        // The wall's first start plane and its last end plane both sit at the
+        // ring's repeated vertex. A joined seam puts them on one plane, so the
+        // two normals are collinear — they face opposite ways at a plain miter
+        // and the same way once the miter is broken, which is exactly how every
+        // interior joint pairs up.
+        let seam_planes_cross = |geometry: &super::PolylineGeometry| {
+            let starts = &geometry.attributes.start_normals.as_ref().unwrap().data;
+            let ends = &geometry
+                .attributes
+                .end_normal_and_texture_coordinate_normalization_x
+                .as_ref()
+                .unwrap()
+                .data;
+            let last = geometry.attributes.position.data.len() / 3 - 1;
+            let s = [starts[0], starts[1], starts[2]];
+            let e = [ends[last * 4], ends[last * 4 + 1], ends[last * 4 + 2]];
+            [
+                s[1] * e[2] - s[2] * e[1],
+                s[2] * e[0] - s[0] * e[2],
+                s[0] * e[1] - s[1] * e[0],
+            ]
+            .iter()
+            .fold(0.0_f32, |m, c| m.max(c.abs()))
+        };
+
+        // A right-angled seam takes a plain miter; a sharp one breaks it. Both
+        // have to keep the two ends on one plane.
+        for seam_deg in [90., 40.] {
+            let cross = seam_planes_cross(&ring(seam_deg, true));
+            assert!(
+                cross < 1e-5,
+                "seam planes are not collinear at {seam_deg} degrees: cross {cross}"
+            );
+        }
+
+        // An open polyline whose endpoints coincide keeps its caps: closure is
+        // the source geometry's type, not a property of the coordinates.
+        let coincident_but_open = create_polyline_geometry(
+            WGS84_64,
+            PolylineGeometryOptions {
+                positions: vec![
+                    LLE::<f64, Degrees>::from_float(0.01, 0.01, 0.).rad(),
+                    LLE::<f64, Degrees>::from_float(0.015, 0.01, 0.).rad(),
+                    LLE::<f64, Degrees>::from_float(0.015, 0.015, 0.).rad(),
+                    LLE::<f64, Degrees>::from_float(0.0126, 0.0132, 0.).rad(),
+                    LLE::<f64, Degrees>::from_float(0.01, 0.01, 0.).rad(),
+                ],
+                granularity: 0.0,
+                ring: false,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        let cross = seam_planes_cross(&coincident_but_open);
+        assert!(
+            cross > 1e-3,
+            "a non-ring polyline must keep its caps: cross {cross}"
+        );
+
+        // The same vertices left open keep their per-segment end caps, which
+        // sit on different planes: the assertion above is about closure, not
+        // about the shape itself. (A 90-degree seam is a poor control here —
+        // that ring's first and last segment run antiparallel, so their caps
+        // land on one plane by coincidence.)
+        let open_cross = seam_planes_cross(&ring(40., false));
+        assert!(
+            open_cross > 1e-3,
+            "open polyline unexpectedly shares its end plane: cross {open_cross}"
+        );
+    }
+
+    #[test]
+    fn flat_closed_ring_miters_its_seam() {
+        use navara_math::Vec3;
+
+        // A square ring: the repeated first position closes it, so the seam
+        // must be mitered like any other corner instead of capped twice.
+        let ring = |close: bool| {
+            let mut positions = vec![
+                Vec3::new(0.0, 0.0, 0.0),
+                Vec3::new(1.0, 0.0, 0.0),
+                Vec3::new(1.0, 1.0, 0.0),
+                Vec3::new(0.0, 1.0, 0.0),
+            ];
+            if close {
+                positions.push(Vec3::new(0.0, 0.0, 0.0));
+            }
+            create_flat_polyline_geometry(FlatPolylineGeometryOptions {
+                positions,
+                width: 1.0,
+                ring: true,
+            })
+            .unwrap()
+        };
+
+        let closed = ring(true);
+        // The seam is one joint, so the repeated last point adds no vertices:
+        // the square's four corners leave 8.
+        assert_eq!(closed.attributes.position.data.len() / 3, 8);
+
+        let closed_rnty = &closed
+            .attributes
+            .right_normal_and_texture_coordinate_normalization_y
+            .data;
+        let expected_len = std::f32::consts::SQRT_2;
+        assert!(
+            (closed_rnty[3] - expected_len).abs() < 1e-4,
+            "seam kept an end cap (miter_len {}), expected ~{expected_len}",
+            closed_rnty[3]
+        );
+
+        // The same vertices left open keep their caps, so the assertion above
+        // is about closure and not about right angles in general.
+        let open = ring(false);
+        let open_rnty = &open
+            .attributes
+            .right_normal_and_texture_coordinate_normalization_y
+            .data;
+        assert!(
+            (open_rnty[3] - 1.0).abs() < 1e-6,
+            "open start must stay capped"
+        );
+    }
+
+    #[test]
+    fn flat_closed_ring_bevels_a_sharp_seam() {
+        use navara_math::Vec3;
+
+        // A sliver ring whose sharp corner is the seam: the miter clamps there
+        // just as it would at an interior corner, so the seam needs the same
+        // bevel instead of a pinched, narrowed join.
+        let geometry = create_flat_polyline_geometry(FlatPolylineGeometryOptions {
+            positions: vec![
+                Vec3::new(0.0, 0.0, 0.0),
+                Vec3::new(1.0, 0.0, 0.0),
+                Vec3::new(0.5, 0.05, 0.0),
+                Vec3::new(0.0, 0.0, 0.0),
+            ],
+            width: 1.0,
+            ring: true,
+        })
+        .unwrap();
+
+        // Seam and the corner at (1,0) clamp and emit 3 vertices each, the
+        // shallow corner at (0.5,0.05) emits 2, the repeated point none.
+        assert_eq!(geometry.attributes.position.data.len() / 3, 8);
+        // 3 segment quads (18) + 2 bevel triangles (6)
+        assert_eq!(geometry.indices.len(), 24);
+
+        // The seam's outside pair carries the closing and the opening segment
+        // perpendicular at full half-width; a bevel triangle spans them.
+        let rnty = &geometry
+            .attributes
+            .right_normal_and_texture_coordinate_normalization_y
+            .data;
+        let closing_len = (0.5f32 * 0.5 + 0.05 * 0.05).sqrt();
+        let incoming = perp((-0.5 / closing_len, -0.05 / closing_len));
+        assert!(
+            (rnty[4] - incoming.0).abs() < 1e-3 && (rnty[5] - incoming.1).abs() < 1e-3,
+            "seam incoming normal {:?} is not the closing segment perpendicular {incoming:?}",
+            (rnty[4], rnty[5])
+        );
+        assert!(
+            rnty[8].abs() < 1e-6 && (rnty[9] - 1.0).abs() < 1e-6,
+            "seam outgoing normal {:?} is not the opening segment perpendicular",
+            (rnty[8], rnty[9])
+        );
+        assert!(
+            (rnty[7] + 1.0).abs() < 1e-6 && (rnty[11] + 1.0).abs() < 1e-6,
+            "seam outside vertices must sit at full half-width"
+        );
+    }
+
+    #[test]
     fn flat_polyline_bevel_at_sharp_angle() {
         use navara_math::Vec3;
 
@@ -861,6 +1139,7 @@ mod test {
                 Vec3::new(0.9, -0.1, 0.0),
             ],
             width: 1.0,
+            ring: false,
         })
         .unwrap();
 

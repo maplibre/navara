@@ -377,7 +377,7 @@ pub fn remove_batched_feature(
 
         // Always clean up BatchTable, GlobalBatchIds, and despawn the BatchedFeature entity
         batch_table_res.remove(&feature_batch_id.0);
-        buf.remove(&global_batch_ids.handle);
+        global_batch_ids.destroy(&mut buf, &mut batch_table_res);
         commands.entity(feature_id).despawn();
     }
 }

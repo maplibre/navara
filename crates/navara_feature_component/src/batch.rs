@@ -53,6 +53,23 @@ pub struct GlobalBatchIds {
     pub instance_feature_indices: Option<Handle>,
 }
 
+impl GlobalBatchIds {
+    /// Free the id buffers and return every contained picking id to the
+    /// generator. Idempotent across clones sharing the same handles, so both
+    /// the `FeatureBatchIdMap` entry and the feature's own component can be
+    /// destroyed through this without double effects.
+    pub fn destroy(&self, buf: &mut BufferStore, batch_table: &mut BatchTable) {
+        if let Some(global_ids) = buf.remove_u32(&self.handle) {
+            for id in global_ids {
+                batch_table.release_global_batch_id(id);
+            }
+        }
+        if let Some(feature_indices) = self.instance_feature_indices {
+            buf.remove(&feature_indices);
+        }
+    }
+}
+
 // Search b3dm feature by global batch id
 #[derive(Resource, Default, Debug)]
 pub struct FeatureBatchIdMap {
@@ -79,18 +96,7 @@ impl FeatureBatchIdMap {
         batch_table: &mut BatchTable,
     ) -> bool {
         if let Some(ids) = self.get(key) {
-            if let Some(global_ids) = buf.get_u32(&ids.handle) {
-                // remove global batch ids from batch table
-                for id in global_ids {
-                    batch_table.remove(id);
-                }
-            }
-
-            // remove global batch ids from buffer store
-            buf.remove(&ids.handle);
-            if let Some(feature_indices) = ids.instance_feature_indices {
-                buf.remove(&feature_indices);
-            }
+            ids.destroy(buf, batch_table);
             self.map.remove(key);
             return true;
         }
@@ -338,6 +344,15 @@ impl BatchTable {
         Some(key)
     }
 
+    /// Return a destroyed feature's global batch id to the generator. The
+    /// 24-bit picking id space is shared by the whole session, so ids must be
+    /// recycled when their geometry is destroyed or long sessions exhaust it.
+    /// Idempotent, so destroy paths that see the same id twice (e.g. via the
+    /// `FeatureBatchIdMap` and the geometry's own attribute) are safe.
+    pub fn release_global_batch_id(&mut self, id: u32) -> bool {
+        self.unique_global_batch_id.release(id)
+    }
+
     pub fn add_values(&mut self, key: u32, props: serde_json::Value) {
         let Some(Some(table_value)) = self.map.get_mut(&key) else {
             return;
@@ -372,6 +387,7 @@ impl BatchTable {
             }
         }
         self.map.remove(key);
+        self.unique_feature_batch_id.release(*key);
     }
 }
 
@@ -468,5 +484,40 @@ mod accounting_tests {
         assert!(t.total_bytes() >= 4096 + 8192);
         t.remove(&id);
         assert_eq!(t.total_bytes(), 0);
+    }
+}
+
+#[cfg(test)]
+mod global_batch_id_tests {
+    use super::*;
+
+    /// Destroying a feature's ids must return them to the generator — the
+    /// 24-bit picking space is session-global, so unreleased ids would leak
+    /// until the tab dies — and free both id buffers.
+    #[test]
+    fn destroy_releases_picking_ids_and_buffers() {
+        let mut t = BatchTable::new();
+        let mut buf = BufferStore::default();
+        let a = t.gen_global_batch_id().unwrap();
+        let b = t.gen_global_batch_id().unwrap();
+        // MultiPoint-style: two instances of feature `a`, one of `b`.
+        let ids = GlobalBatchIds {
+            handle: buf.new_u32(vec![a, a, b]),
+            batch_length: 3,
+            instance_feature_indices: Some(buf.new_u32(vec![0, 0, 1])),
+        };
+        ids.destroy(&mut buf, &mut t);
+
+        // Already released, so a second release reports the id as absent.
+        assert!(!t.release_global_batch_id(a));
+        assert!(!t.release_global_batch_id(b));
+        assert!(buf.get_u32(&ids.handle).is_none());
+        assert!(
+            buf.get_u32(&ids.instance_feature_indices.unwrap())
+                .is_none()
+        );
+
+        // A shared clone destroyed through another path stays a no-op.
+        ids.destroy(&mut buf, &mut t);
     }
 }

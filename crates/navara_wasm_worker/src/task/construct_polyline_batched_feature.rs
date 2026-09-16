@@ -36,11 +36,11 @@ fn construct_polyline(
     let mut combined_extent: Option<Extent<f64, Radians>> = None;
 
     for idx in 0..features.length {
-        let (geometry, batch_index, batch_id) = features.to_transferable_by_index(idx);
+        let (geometry, batch_index, batch_id, ring) = features.to_transferable_by_index(idx);
 
         // TODO: Support RTC for MVT without clamp_to_ground.
         let Some((extent, mut constructed_geometry)) =
-            construct_polyline_feature(&material, geometry, &crs, true)
+            construct_polyline_feature(&material, geometry, &crs, true, ring)
         else {
             continue;
         };
@@ -183,9 +183,10 @@ fn construct_flat_polyline(
     let mut index_offset = 0;
 
     for idx in 0..features.length {
-        let (geometry, batch_index, batch_id) = features.to_transferable_by_index(idx);
+        let (geometry, batch_index, batch_id, ring) = features.to_transferable_by_index(idx);
 
-        let Some(mut constructed_geometry) = construct_flat_polyline_feature(geometry, &material)
+        let Some(mut constructed_geometry) =
+            construct_flat_polyline_feature(geometry, &material, ring)
         else {
             continue;
         };

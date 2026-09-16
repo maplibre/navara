@@ -7,7 +7,6 @@ use bevy_ecs::{
 use navara_buffer_store::BufferStore;
 use navara_component::Deleted;
 use navara_event_store::EventStore;
-use navara_feature_component::batch::BatchTable;
 
 use crate::{
     DelegatedWorkerTask, DelegatedWorkerTaskMarker, DelegatedWorkerTasksResult,
@@ -33,7 +32,6 @@ pub fn handle_completed_event(
     mut commands: Commands,
     mut loaded_ev: MessageReader<WorkerTaskCompletedEvent>,
     mut buf: ResMut<BufferStore>,
-    mut batch_table: ResMut<BatchTable>,
     constructors: Query<
         Entity,
         (
@@ -56,9 +54,7 @@ pub fn handle_completed_event(
                         .entity(*$delegator_id)
                         .insert(($value.clone(), WorkerTaskCompleted));
                 } else {
-                    for batch_id in $value.remove_from_buf(&mut buf) {
-                        batch_table.remove(&batch_id);
-                    }
+                    $value.remove_from_buf(&mut buf);
                     continue;
                 }
             };

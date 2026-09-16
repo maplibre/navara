@@ -216,6 +216,8 @@ impl GeometryGroups {
     }
 
     /// Accumulate polyline geometry without spawning a child entity.
+    /// `ring` marks a polygon ring, whose repeated first vertex is a seam to
+    /// join rather than two ends to cap.
     /// Returns `(batch_index, commit_batch_id)`.
     pub fn track_polyline(
         &mut self,
@@ -223,6 +225,7 @@ impl GeometryGroups {
         points: Vec<f64>,
         crs: CRS,
         global_batch_id: u32,
+        ring: bool,
     ) -> (u32, Option<u32>) {
         let group = self.groups.iter_mut().find(|g| g.kind == kind).unwrap();
 
@@ -252,6 +255,7 @@ impl GeometryGroups {
         acc.points_sizes.push(points.len() as u32);
         acc.points.extend(points);
         acc.batch_indices.push(batch_index);
+        acc.ring_flags.push(ring as u8);
 
         (batch_index, commit_batch_id)
     }
@@ -725,14 +729,24 @@ mod test {
 
         groups.begin_feature();
         let line1 = vec![0., 0., 0., 1., 1., 0.]; // 2 points * 3 coords
-        let (idx0, _) =
-            groups.track_polyline(GeometryAppearanceKind::Polyline, line1, CRS::Geographic, 50);
+        let (idx0, _) = groups.track_polyline(
+            GeometryAppearanceKind::Polyline,
+            line1,
+            CRS::Geographic,
+            50,
+            false,
+        );
         assert_eq!(idx0, 0);
 
         groups.begin_feature();
         let line2 = vec![2., 2., 0., 3., 3., 0., 4., 4., 0.]; // 3 points
-        let (idx1, _) =
-            groups.track_polyline(GeometryAppearanceKind::Polyline, line2, CRS::Geographic, 51);
+        let (idx1, _) = groups.track_polyline(
+            GeometryAppearanceKind::Polyline,
+            line2,
+            CRS::Geographic,
+            51,
+            true,
+        );
         assert_eq!(idx1, 1);
 
         match &groups.groups[0].accumulated {
@@ -740,6 +754,8 @@ mod test {
                 assert_eq!(acc.points.len(), 15); // 6 + 9
                 assert_eq!(acc.points_sizes, vec![6, 9]);
                 assert_eq!(acc.batch_indices, vec![0, 1]);
+                // The ring intent rides along per polyline.
+                assert_eq!(acc.ring_flags, vec![0, 1]);
             }
             _ => panic!("expected Polylines"),
         }

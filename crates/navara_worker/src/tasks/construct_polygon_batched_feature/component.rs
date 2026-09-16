@@ -38,14 +38,14 @@ pub struct ConstructPolygonBatchedFeatureResult {
 }
 
 impl FreeResultBuffers for ConstructPolygonBatchedFeatureResult {
-    fn remove_from_buf(&self, buf: &mut BufferStore) -> Vec<u32> {
+    fn remove_from_buf(&self, buf: &mut BufferStore) {
         // `remove_buffers` takes `&mut self` but the geometry holds only
-        // handles, so cloning is cheap.
-        let batch_ids = self.geometry.clone().remove_buffers(buf);
+        // handles, so cloning is cheap. The returned batch ids are per-vertex
+        // copies owned by the delegator feature — see `FreeResultBuffers`.
+        self.geometry.clone().remove_buffers(buf);
         if let Some(mut outline) = self.outline_geometry.clone() {
             outline.remove_from_buf(buf);
         }
-        batch_ids
     }
 }
 

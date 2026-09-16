@@ -147,8 +147,9 @@ pub fn construct_geometry_multi_layer(
 
     let mut result = Vec::new();
     for group in parsed {
-        // The parse core selects the last matching layer per sublayer, so recover
-        // that layer's appearances the same way (last matching id wins).
+        // Each group carries the target layer it was emitted for; recover that
+        // layer's appearances by id, resolving a duplicated id the way the parse
+        // core does (last matching id wins).
         let Some(appearances) = matched_layers
             .iter()
             .rev()
@@ -262,10 +263,12 @@ pub(crate) fn build_accumulated_geometry(
             points,
             points_sizes,
             batch_indices,
+            ring_flags,
         } => AccumulatedGeometry::Polylines(PolylineGeometryAccumulator {
             points,
             points_sizes,
             batch_indices,
+            ring_flags,
             crs: CRS::Geographic,
         }),
         ParsedGeometry::Polygons {
@@ -354,6 +357,7 @@ mod test {
         polyline::PolylineMarker,
         text::TextMarker,
     };
+    use navara_layer::LayerId;
     use navara_material::{
         BillboardMaterial, PointMaterial, PolygonMaterial, PolylineMaterial, TextMaterial,
     };
@@ -649,6 +653,152 @@ mod test {
         let config = layer_parse_config(&matched);
         assert!(!config.flat);
         assert!(config.polyline_from_polygons);
+    }
+
+    #[derive(Resource)]
+    struct MvtMultiLayerInput {
+        mvt_bin: Vec<u8>,
+        /// `(layer id, appearances, sublayer filter)` per target layer.
+        layers: Vec<(String, Vec<Appearance>, Option<Vec<String>>)>,
+    }
+
+    fn test_construct_multi_layer_system(
+        mut commands: Commands,
+        mut batch_table: ResMut<BatchTable>,
+        mut buf: ResMut<BufferStore>,
+        input: bevy_ecs::system::Res<MvtMultiLayerInput>,
+        mut out: ResMut<MvtTestOutput>,
+    ) {
+        let matched_layers: Vec<MatchedLayerInfo> = input
+            .layers
+            .iter()
+            .map(|(layer_id, appearances, limit_layers)| MatchedLayerInfo {
+                layer_id,
+                appearances,
+                limit_layers,
+            })
+            .collect();
+        out.0 = construct_geometry_multi_layer(
+            &mut commands,
+            &mut batch_table,
+            &mut buf,
+            input.mvt_bin.clone(),
+            TileXYZ { x: 0, y: 0, z: 0 },
+            &matched_layers,
+            None,
+            &OrderByDistance {
+                sse: 0.0,
+                distance: 0.0,
+            },
+        );
+    }
+
+    fn run_mvt_construct_multi_layer(
+        mvt_bin: Vec<u8>,
+        layers: Vec<(String, Vec<Appearance>, Option<Vec<String>>)>,
+    ) -> App {
+        let mut app = App::new();
+        app.init_resource::<BufferStore>();
+        app.init_resource::<BatchTable>();
+        app.init_resource::<MvtTestOutput>();
+        app.insert_resource(MvtMultiLayerInput { mvt_bin, layers });
+        app.add_systems(Update, test_construct_multi_layer_system);
+        app.update();
+        app
+    }
+
+    /// Two layers pointing at the same source both spawn features. The source is
+    /// parsed once, so the two layers' point geometry is identical.
+    #[test]
+    fn two_layers_on_one_source_both_spawn_features() {
+        let layer = make_layer(
+            "points",
+            vec![
+                point_feature(2048, 2048, vec![]),
+                point_feature(1024, 1024, vec![]),
+            ],
+            vec![],
+            vec![],
+        );
+        let mvt_bin = encode_tile(vec![layer]);
+
+        let mut app = run_mvt_construct_multi_layer(
+            mvt_bin,
+            vec![
+                (
+                    "first".to_string(),
+                    vec![Appearance::Point(PointMaterial::default())],
+                    None,
+                ),
+                (
+                    "second".to_string(),
+                    vec![Appearance::Point(PointMaterial::default())],
+                    None,
+                ),
+            ],
+        );
+
+        let mut query = app
+            .world_mut()
+            .query_filtered::<(&LayerId, &BatchedPointGeometry), With<PointMarker>>();
+        let mut results: Vec<_> = query
+            .iter(app.world())
+            .map(|(layer_id, geom)| (layer_id.0.clone(), geom.coords.clone()))
+            .collect();
+        results.sort_by(|a, b| a.0.cmp(&b.0));
+
+        assert_eq!(results.len(), 2);
+        assert_eq!(results[0].0, "first");
+        assert_eq!(results[1].0, "second");
+        assert_eq!(results[0].1.len(), 2);
+        assert_eq!(results[0].1, results[1].1);
+    }
+
+    /// Layers on one source keep their own appearance kinds: a polygon layer and
+    /// a polyline layer reading the same features each get their own geometry.
+    #[test]
+    fn layers_on_one_source_keep_independent_appearances() {
+        let layer = make_layer(
+            "shapes",
+            vec![polygon_feature(
+                &[(0, 0), (1000, 0), (1000, 1000), (0, 1000)],
+                vec![],
+            )],
+            vec![],
+            vec![],
+        );
+        let mvt_bin = encode_tile(vec![layer]);
+
+        let mut app = run_mvt_construct_multi_layer(
+            mvt_bin,
+            vec![
+                (
+                    "fill".to_string(),
+                    vec![Appearance::Polygon(PolygonMaterial::default())],
+                    None,
+                ),
+                (
+                    "outline".to_string(),
+                    vec![Appearance::Polyline(PolylineMaterial {
+                        geometry_types: vec![SourceGeometryType::Polygon],
+                        ..Default::default()
+                    })],
+                    None,
+                ),
+            ],
+        );
+
+        let mut polygons = app
+            .world_mut()
+            .query_filtered::<&LayerId, With<PolygonMarker>>();
+        let polygon_layers: Vec<_> = polygons.iter(app.world()).map(|l| l.0.clone()).collect();
+        assert_eq!(polygon_layers, vec!["fill".to_string()]);
+
+        let mut polylines = app
+            .world_mut()
+            .query_filtered::<&LayerId, With<PolylineMarker>>();
+        let polyline_layers: Vec<_> = polylines.iter(app.world()).map(|l| l.0.clone()).collect();
+        assert_eq!(polyline_layers, vec!["outline".to_string()]);
     }
 
     #[test]

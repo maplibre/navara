@@ -1,7 +1,10 @@
 use navara_feature_component::batch::{BatchId, BatchIndex};
 use wasm_bindgen::prelude::*;
 
-use crate::{CRS, copy_f64_array, copy_u32_array, transfer_f64_array, transfer_u32_array};
+use crate::{
+    CRS, copy_f64_array, copy_u8_array, copy_u32_array, transfer_f64_array, transfer_u8_array,
+    transfer_u32_array,
+};
 
 /// To transfer the batched feature efficiently, the all feature's properties are managed as one-dimensional array.
 #[wasm_bindgen]
@@ -11,6 +14,10 @@ pub struct TransferablePolylineBatchedFeature {
     points_sizes: Vec<u32>,
     batch_ids: Vec<u32>,
     batch_indices: Vec<u32>,
+    /// Per polyline, whether it is a polygon ring (1) or an open line (0). A
+    /// ring's repeated first vertex is a seam the geometry joins; an open line
+    /// keeps its end caps even when its endpoints coincide.
+    ring_flags: Vec<u8>,
 
     #[wasm_bindgen(getter_with_clone)]
     pub crs: CRS,
@@ -32,6 +39,7 @@ impl TransferablePolylineBatchedFeature {
             points_sizes: vec![],
             batch_ids: vec![],
             batch_indices: vec![],
+            ring_flags: vec![],
             crs,
             length,
             cur_idx: 0,
@@ -55,6 +63,10 @@ impl TransferablePolylineBatchedFeature {
     pub fn set_points_sizes(&mut self, byte_length: usize, f: &js_sys::Function) {
         self.points_sizes = transfer_u32_array(byte_length, f)
     }
+    #[wasm_bindgen(js_name = "setRingFlags")]
+    pub fn set_ring_flags(&mut self, byte_length: usize, f: &js_sys::Function) {
+        self.ring_flags = transfer_u8_array(byte_length, f)
+    }
 
     #[wasm_bindgen(js_name = "transferBatchIds")]
     pub fn transfer_batch_ids(&mut self) -> js_sys::Uint32Array {
@@ -75,6 +87,11 @@ impl TransferablePolylineBatchedFeature {
     pub fn transfer_points_sizes(&mut self) -> js_sys::Uint32Array {
         copy_u32_array(&self.points_sizes)
     }
+
+    #[wasm_bindgen(js_name = "transferRingFlags")]
+    pub fn transfer_ring_flags(&mut self) -> js_sys::Uint8Array {
+        copy_u8_array(&self.ring_flags)
+    }
 }
 
 impl TransferablePolylineBatchedFeature {
@@ -84,6 +101,8 @@ impl TransferablePolylineBatchedFeature {
         let mut batch_ids = Vec::with_capacity(length);
         let mut batch_indices = Vec::with_capacity(length);
 
+        let mut ring_flags = Vec::with_capacity(length);
+
         for (i, (batch_id, mut ps)) in geometries.into_iter().enumerate() {
             points_sizes.push(ps.len() as u32);
             points.append(&mut ps);
@@ -91,6 +110,7 @@ impl TransferablePolylineBatchedFeature {
             batch_ids.push(batch_id);
 
             batch_indices.push(i as u32);
+            ring_flags.push(0);
         }
 
         TransferablePolylineBatchedFeature {
@@ -98,6 +118,7 @@ impl TransferablePolylineBatchedFeature {
             points_sizes,
             batch_ids,
             batch_indices,
+            ring_flags,
             crs: CRS::default(),
             length,
             ..Default::default()
@@ -129,14 +150,16 @@ impl TransferablePolylineBatchedFeature {
             points: geom.points,
             points_sizes: geom.points_sizes,
             batch_indices: geom.batch_indices,
+            ring_flags: geom.ring_flags,
             length,
             ..Default::default()
         }
     }
 
-    pub fn add(&mut self, points: &mut Vec<f64>, batch_index: BatchIndex) {
+    pub fn add(&mut self, points: &mut Vec<f64>, batch_index: BatchIndex, ring: bool) {
         self.points_sizes.push(points.len() as u32);
         self.points.append(points);
+        self.ring_flags.push(ring as u8);
 
         self.batch_indices.push(batch_index.0);
     }
@@ -145,7 +168,10 @@ impl TransferablePolylineBatchedFeature {
         self.batch_ids.append(batch_id);
     }
 
-    pub fn to_transferable_by_index(&mut self, idx: usize) -> (Vec<f64>, BatchIndex, BatchId) {
+    pub fn to_transferable_by_index(
+        &mut self,
+        idx: usize,
+    ) -> (Vec<f64>, BatchIndex, BatchId, bool) {
         let size = self.points_sizes[idx] as usize;
         let start = self.points_offset;
         let end = start + size;
@@ -156,12 +182,15 @@ impl TransferablePolylineBatchedFeature {
 
         let batch_id = BatchId(self.batch_ids[idx] as f32);
 
-        (points, BatchIndex(batch_index as u32), batch_id)
+        // An older producer may not carry the flags; treat those as open lines.
+        let ring = self.ring_flags.get(idx).is_some_and(|&f| f != 0);
+
+        (points, BatchIndex(batch_index as u32), batch_id, ring)
     }
 }
 
 impl Iterator for TransferablePolylineBatchedFeature {
-    type Item = (Vec<f64>, BatchIndex, BatchId);
+    type Item = (Vec<f64>, BatchIndex, BatchId, bool);
     fn next(&mut self) -> Option<Self::Item> {
         if self.cur_idx == self.length {
             return None;
@@ -184,13 +213,16 @@ mod test {
     fn multi_instance_items_keep_their_own_pick_id() {
         let mut t = TransferablePolylineBatchedFeature::empty(3);
         // Feature 0 owns the first two polylines; feature 1 the third.
-        t.add(&mut vec![0., 0., 0., 1., 1., 1.], BatchIndex(0));
-        t.add(&mut vec![2., 2., 2., 3., 3., 3.], BatchIndex(0));
-        t.add(&mut vec![4., 4., 4., 5., 5., 5.], BatchIndex(1));
+        t.add(&mut vec![0., 0., 0., 1., 1., 1.], BatchIndex(0), false);
+        t.add(&mut vec![2., 2., 2., 3., 3., 3.], BatchIndex(0), true);
+        t.add(&mut vec![4., 4., 4., 5., 5., 5.], BatchIndex(1), false);
         t.add_batch_id(&mut vec![100, 101, 102]);
 
-        let items: Vec<_> = t.map(|(_, idx, id)| (idx.0, id.0)).collect();
-        assert_eq!(items, vec![(0, 100.0), (0, 101.0), (1, 102.0)]);
+        let items: Vec<_> = t.map(|(_, idx, id, ring)| (idx.0, id.0, ring)).collect();
+        assert_eq!(
+            items,
+            vec![(0, 100.0, false), (0, 101.0, true), (1, 102.0, false)]
+        );
     }
 
     #[test]
@@ -231,10 +263,12 @@ mod test {
         let mut features: Vec<Vec<f64>> = vec![];
         let mut batch_ids = vec![];
         let mut batch_idxs = vec![];
-        for (feature, batch_index, batch_id) in transferable_features {
+        for (feature, batch_index, batch_id, ring) in transferable_features {
             features.push(feature);
             batch_ids.push(batch_id.0);
             batch_idxs.push(batch_index.0);
+            // `new` has no ring information, so every item is an open line.
+            assert!(!ring);
         }
 
         assert_eq!(features, points);

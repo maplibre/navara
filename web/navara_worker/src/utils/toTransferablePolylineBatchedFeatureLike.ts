@@ -17,5 +17,8 @@ export function toTransferablePolylineBatchedFeatureLike(
   t.setBatchIndices(like.batch_indices.length, (b: Uint32Array) => {
     b.set(like.batch_indices);
   });
+  t.setRingFlags(like.ring_flags.length, (b: Uint8Array) => {
+    b.set(like.ring_flags);
+  });
   return t;
 }

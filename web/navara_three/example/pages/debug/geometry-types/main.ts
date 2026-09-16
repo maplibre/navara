@@ -20,10 +20,17 @@
  * representation of that feature (fill, boundary polylines, derived points)
  * highlights, which verifies that picking a derived instance resolves to the
  * right feature.
+ *
+ * The `stack` check adds a second vector layer on the *same* source, drawn
+ * before the main one with a wider point/line so it reads as an outline. Both
+ * layers match every sublayer of the source, which is the case a single-layer
+ * parse would collapse: the source must be decoded once and still emit
+ * features for each layer, with its own batch ids and evaluator.
  */
 import ThreeView, {
   Color,
   type FeatureInfo,
+  type Layer,
   type LayerDescription,
 } from "@navaramap/three";
 import {
@@ -194,6 +201,16 @@ const state = {
     clampToGround: true,
     color: "#2d6a4f",
   },
+  // A second layer on the same source, drawn underneath with a wider
+  // point/line so the main layer reads as an outlined symbol. The color is
+  // deliberately unlike the main materials and the globe, so a missing
+  // underlay is obvious rather than blending into the dark background.
+  stack: {
+    enabled: false,
+    sizeDelta: 10,
+    widthDelta: 4,
+    color: "#00d2ff",
+  },
   // Per-feature coloring via FeatureEvaluator; overrides the material colors.
   evaluate: false,
 };
@@ -215,7 +232,12 @@ const buildMaterials = () => ({
       size: state.point.size,
       sizeInMeters: false,
       clampToGround: true,
+      // Derived vertex points are dense by design, and a stacked layer puts a
+      // second sprite at every position. Screen-space decluttering (on by
+      // default) would hide exactly what this page exists to show.
+      declutter: false,
       geometryTypes: geometryTypes(state.point),
+      depthTest: false,
     },
   }),
   ...(state.polyline.enabled && {
@@ -235,10 +257,41 @@ const buildMaterials = () => ({
   }),
 });
 
+// The stacked layer mirrors the main layer's derivation config so both consume
+// the identical source geometry, and only widens the symbols. It carries no
+// polygon material: the fill would hide the layer above it.
+const buildUnderlayMaterials = () => ({
+  ...(state.point.enabled && {
+    point: {
+      color: new Color().setStyle(state.stack.color),
+      size: state.point.size + state.stack.sizeDelta,
+      sizeInMeters: false,
+      clampToGround: true,
+      declutter: false,
+      geometryTypes: geometryTypes(state.point),
+    },
+  }),
+  ...(state.polyline.enabled && {
+    polyline: {
+      color: new Color().setStyle(state.stack.color),
+      width: state.polyline.width + state.stack.widthDelta,
+      maxWidth: 100_000,
+      clampToGround: state.polyline.clampToGround,
+      geometryTypes: geometryTypes(state.polyline),
+    },
+  }),
+});
+
 const buildLayer = (source: typeof geojsonSource): LayerDescription => ({
   type: "vector",
   source,
   ...buildMaterials(),
+});
+
+const buildUnderlay = (source: typeof geojsonSource): LayerDescription => ({
+  type: "vector",
+  source,
+  ...buildUnderlayMaterials(),
 });
 
 // ── Feature evaluation ──────────────────────────────────────────────────────
@@ -286,8 +339,7 @@ view.on("featureClick", (info) => {
   picked.label = info
     ? `${key ?? "(no key)"} batchId=${info.batchId}`
     : "(none)";
-  geojsonLayer.forceUpdate();
-  mvtLayer.forceUpdate();
+  for (const layer of layers) layer.forceUpdate();
 });
 
 const PICK_HIGHLIGHT = "#ff00ff";
@@ -301,57 +353,71 @@ const materialColorFor = (meshGeomType: string | undefined): string => {
   return state.polygon.color;
 };
 
-const attachEvaluators = () => {
-  geojsonLayer.on("featureUpdated", ({ evaluator }) => {
+const attachEvaluator = (
+  layer: Layer,
+  paletteColor: (info: FeatureInfo) => string,
+  filters: string[],
+) => {
+  layer.on("featureUpdated", ({ evaluator }) => {
     evaluator.evaluate(
-      (info) => {
-        if (isPickedFeature(info)) {
-          return { color: new Color().setStyle(PICK_HIGHLIGHT) };
-        }
-        return {
-          color: new Color().setStyle(
-            state.evaluate
-              ? (GEOJSON_FEATURE_COLORS[
-                  (info.properties?.["name"] as string) ?? ""
-                ] ?? "#ffffff")
-              : materialColorFor(info.meshGeomType),
-          ),
-        };
-      },
-      { filters: ["name"] },
-    );
-  });
-  mvtLayer.on("featureUpdated", ({ evaluator }) => {
-    evaluator.evaluate(
-      (info) => {
-        if (isPickedFeature(info)) {
-          return { color: new Color().setStyle(PICK_HIGHLIGHT) };
-        }
-        return {
-          color: new Color().setStyle(
-            state.evaluate
-              ? (MVT_FEATURE_COLORS[
-                  (info.properties?.["urf_function"] as string) ?? ""
-                ] ?? "#95a5a6")
-              : materialColorFor(info.meshGeomType),
-          ),
-        };
-      },
-      { filters: ["urf_function", "gml_id"] },
+      (info) => ({
+        color: new Color().setStyle(
+          isPickedFeature(info) ? PICK_HIGHLIGHT : paletteColor(info),
+        ),
+      }),
+      { filters },
     );
   });
 };
 
-let geojsonLayer = view.addLayer(buildLayer(geojsonSource));
-let mvtLayer = view.addLayer(buildLayer(mvtSource));
-attachEvaluators();
+const geojsonColor = (info: FeatureInfo): string =>
+  state.evaluate
+    ? (GEOJSON_FEATURE_COLORS[(info.properties?.["name"] as string) ?? ""] ??
+      "#ffffff")
+    : materialColorFor(info.meshGeomType);
+
+const mvtColor = (info: FeatureInfo): string =>
+  state.evaluate
+    ? (MVT_FEATURE_COLORS[
+        (info.properties?.["urf_function"] as string) ?? ""
+      ] ?? "#95a5a6")
+    : materialColorFor(info.meshGeomType);
+
+const SOURCES = [
+  { source: geojsonSource, color: geojsonColor, filters: ["name"] },
+  {
+    source: mvtSource,
+    color: mvtColor,
+    filters: ["urf_function", "gml_id"],
+  },
+];
+
+// Every live layer, in add order. Render order follows it, so each source's
+// stacked underlay is added before its main layer.
+let layers: Layer[] = [];
+
+const addLayers = () => {
+  for (const { source, color, filters } of SOURCES) {
+    if (state.stack.enabled) {
+      const underlay = view.addLayer(buildUnderlay(source));
+      // The underlay keeps its own flat color so the outline stays readable
+      // under the palette, but still highlights the picked feature — which is
+      // what shows that picking resolves across layers sharing a source.
+      attachEvaluator(underlay, () => state.stack.color, filters);
+      layers.push(underlay);
+    }
+    const layer = view.addLayer(buildLayer(source));
+    attachEvaluator(layer, color, filters);
+    layers.push(layer);
+  }
+};
+
+addLayers();
 
 const rebuild = () => {
-  geojsonLayer.delete();
-  mvtLayer.delete();
-  geojsonLayer = view.addLayer(buildLayer(geojsonSource));
-  mvtLayer = view.addLayer(buildLayer(mvtSource));
-  attachEvaluators();
+  for (const layer of layers) layer.delete();
+  layers = [];
+  addLayers();
 };
 
 // ── Pane ────────────────────────────────────────────────────────────────────
@@ -382,6 +448,12 @@ const polygonFolder = pane.addFolder({ title: "polygon" });
 polygonFolder.addBinding(state.polygon, "enabled");
 polygonFolder.addBinding(state.polygon, "clampToGround");
 polygonFolder.addBinding(state.polygon, "color");
+
+const stackFolder = pane.addFolder({ title: "stack (2 layers, 1 source)" });
+stackFolder.addBinding(state.stack, "enabled");
+stackFolder.addBinding(state.stack, "sizeDelta", { min: 0, max: 30, step: 1 });
+stackFolder.addBinding(state.stack, "widthDelta", { min: 0, max: 20, step: 1 });
+stackFolder.addBinding(state.stack, "color");
 
 const evaluationFolder = pane.addFolder({ title: "feature evaluation" });
 evaluationFolder.addBinding(state, "evaluate");
