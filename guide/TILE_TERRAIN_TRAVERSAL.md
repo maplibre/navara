@@ -453,9 +453,13 @@ each child builds its own extension. Worker task parameters carry the north and
 south flags detected on the main thread.
 
 Terrain AABBs and bounding regions extend to ±90° and include height zero,
-including after DEM height updates. Horizon culling uses this bounding extent,
-and distance/SSE includes the cap. The original tile extent still defines mesh
-UVs and texture selection. Cap surfaces have no DEM elevation; RTC rounding and
+including after DEM height updates. Horizon culling uses this bounding extent.
+The screen-space error is the exception: `TerrainTile::calc_distance_from_camera`
+measures against `sse_bounding_region`, the *unextended* extent, for polar tiles.
+A cap is identical at every zoom, so subdividing adds no cap detail; letting the
+pole-reaching bounds drive refinement made a camera near the pole refine the top
+tile row to max zoom. The original tile extent still defines mesh UVs and
+texture selection. Cap surfaces have no DEM elevation; RTC rounding and
 corner-height differences across DEM zoom levels can leave small residual cracks.
 
 Raster DEMs end their polar coverage inside the Mercator band (Mapterhorn at

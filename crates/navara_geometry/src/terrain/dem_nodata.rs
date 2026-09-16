@@ -46,12 +46,15 @@ pub fn upsample_dem_region(
     depth: u32,
     (sx, sy): (usize, usize),
 ) -> Vec<u8> {
-    let size = width >> depth;
-    let (ox, oy) = (sx * size, sy * size);
+    // Mapped through the ancestor's own pixel grid: a per-descendant tile span
+    // (`width >> depth`) truncates to zero once the ancestor is more than
+    // log2(width) levels up, collapsing every pixel onto its top-left corner.
+    let scale = 1usize << depth;
     let mut out = Vec::with_capacity(ancestor.len());
     for y in 0..width {
+        let row = (sy * width + y) / scale;
         for x in 0..width {
-            let src = ((oy + y * size / width) * width + ox + x * size / width) * 4;
+            let src = (row * width + (sx * width + x) / scale) * 4;
             out.extend_from_slice(&ancestor[src..src + 4]);
         }
     }
@@ -261,6 +264,11 @@ mod tests {
                 .chunks(4)
                 .all(|p| p == &parent[(3 * 4 + 3) * 4..][..4])
         );
+        // Deeper than log2(width): still the matching corner pixel, not (0, 0).
+        let deep = upsample_dem_region(&parent, 4, 3, (7, 7));
+        assert!(deep.chunks(4).all(|p| p == &parent[(3 * 4 + 3) * 4..][..4]));
+        let deep = upsample_dem_region(&parent, 4, 3, (0, 0));
+        assert!(deep.chunks(4).all(|p| p == &parent[..4]));
     }
 
     #[test]

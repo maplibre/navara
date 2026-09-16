@@ -74,6 +74,10 @@ pub fn fill_polar_dem_nodata(
             continue;
         };
         let width = ((bytes.len() / 4) as f64).sqrt() as usize;
+        let slot = tile
+            .hillshade_entity_ids
+            .as_ref()
+            .and_then(|ids| ids.iter().position(|id| *id == Some(event.id)));
         let filled = if dem_is_all_zero(bytes, &decoder) {
             let coords = tile.coords;
             (1..=coords.z as u32).find_map(|depth| {
@@ -81,19 +85,18 @@ pub fn fill_polar_dem_nodata(
                     .qt
                     .ancestor((coords.x, coords.y, coords.z), coords.z - depth as usize)
                     .and_then(|leaf| qt.qt.get(leaf.handle()))?;
-                let entity = ancestor
-                    .terrain_data
-                    .as_ref()
-                    .and_then(|t| t.data_requester_entity_id())
-                    .or_else(|| {
-                        ancestor
-                            .hillshade_entity_ids
-                            .as_ref()?
-                            .iter()
-                            .flatten()
-                            .next()
-                            .copied()
-                    })?;
+                // Same source as the buffer being filled: the terrain DEM, or
+                // the ancestor's requester in this layer's hillshade slot.
+                // `hillshade_entity_ids` is aligned by layer index on every
+                // tile, so the slot is what ties the two together.
+                let entity = if is_terrain {
+                    ancestor
+                        .terrain_data
+                        .as_ref()
+                        .and_then(|t| t.data_requester_entity_id())?
+                } else {
+                    (*ancestor.hillshade_entity_ids.as_ref()?.get(slot?)?)?
+                };
                 let (request, ..) = requesters.get(entity).ok()?;
                 let ancestor_bytes = buf.get_u8(&request.handle)?;
                 if ancestor_bytes.len() != bytes.len() || dem_is_all_zero(ancestor_bytes, &decoder)
@@ -297,7 +300,7 @@ mod tests {
         });
         app.update();
         // Parent (corrected) rows are 100,100,100,100,90,90,90; the southern
-        // half of a 7-row tile starts at row 3 (nearest-neighbour mapping).
+        // half of this 7-row tile maps onto parent rows 3,4,4,5,5,6,6.
         assert_eq!(
             heights(
                 app.world()
@@ -306,7 +309,7 @@ mod tests {
                     .unwrap(),
                 rows.len()
             ),
-            [100., 100., 100., 90., 90., 90., 90.]
+            [100., 90., 90., 90., 90., 90., 90.]
         );
     }
 }

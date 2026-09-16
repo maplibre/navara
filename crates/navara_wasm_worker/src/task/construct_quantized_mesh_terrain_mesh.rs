@@ -42,16 +42,20 @@ pub fn construct_quantized_mesh_terrain_mesh(
         navara_geometry::add_skirt_separate(&mut result.geometry, skirt_height, &down_dir_fn);
     }
 
-    navara_geometry::add_pole_extension(
-        &mut result.geometry,
-        WGS84_64,
-        &ctx.extent,
-        result.rtc_translation.unwrap(),
-        navara_core::PoleSides {
-            north: pole_north,
-            south: pole_south,
-        },
-        skirt_height,
-    );
+    // A payload that fails to decode yields an empty result with no RTC
+    // translation, which has no boundary to extend.
+    if let Some(rtc_translation) = result.rtc_translation {
+        navara_geometry::add_pole_extension(
+            &mut result.geometry,
+            WGS84_64,
+            &ctx.extent,
+            rtc_translation,
+            navara_core::PoleSides {
+                north: pole_north,
+                south: pole_south,
+            },
+            skirt_height,
+        );
+    }
     result.into()
 }
