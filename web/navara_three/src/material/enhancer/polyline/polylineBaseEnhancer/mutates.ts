@@ -10,6 +10,7 @@ import {
 
 import type { UniformValue } from "../../../types";
 
+import { DEFAULT_BASE_PROPS } from "./state";
 import type {
   PolylineBaseMutates,
   PolylineBaseRefs,
@@ -30,6 +31,7 @@ const DEFAULT_BASE_REFS: PolylineBaseRefs = {
   uEmissiveColor: { value: new ThreeVector3(0, 0, 0) },
   uEmissiveIntensity: { value: 0 },
   nvr_uPickingCoord: { value: new ThreeVector2(-1, -1) },
+  uDrapeRtSize: { value: DEFAULT_BASE_PROPS.drapeRtSize },
 };
 
 /**
@@ -73,6 +75,7 @@ export const createBaseMutates = (useRTE: boolean): PolylineBaseMutates => {
         (c & 0xff) / 255,
       );
       refs.uEmissiveIntensity.value = state.emissiveIntensity;
+      refs.uDrapeRtSize.value = state.drapeRtSize;
 
       // Update color uniform using Color.setHex()
       refs.color.value.setHex(state.color);
@@ -91,6 +94,7 @@ export const createBaseMutates = (useRTE: boolean): PolylineBaseMutates => {
       uniforms.uEmissiveColor = refs.uEmissiveColor;
       uniforms.uEmissiveIntensity = refs.uEmissiveIntensity;
       uniforms.nvr_uPickingCoord = refs.nvr_uPickingCoord;
+      uniforms.uDrapeRtSize = refs.uDrapeRtSize;
 
       // RTE uniforms
       if (

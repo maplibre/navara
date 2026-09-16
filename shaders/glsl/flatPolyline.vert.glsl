@@ -13,6 +13,8 @@ in vec4 right_normal_and_texture_coordinate_normalization_y;
 #include chunks/height_pars_vertex;
 
 uniform vec3 minMaxHeightAndWidth;
+// Drape render-target side length in texels (TileTextureCompositor.size).
+uniform float uDrapeRtSize;
 
 flat out float nvr_vBatchId;
 
@@ -39,9 +41,9 @@ void main() {
     #else
         float baseWidth = minMaxHeightAndWidth.z;
     #endif
-    // Positions span [-1, 1] (2.0 units) across the 512-texel render target,
-    // so one texel of width is 2.0 / 512.0 in normalized coordinates.
-    float lineWidth = baseWidth * (2.0 / 512.0);
+    // Positions span [-1, 1] (2.0 units) across the drape render target,
+    // so one texel of width is 2.0 / uDrapeRtSize in normalized coordinates.
+    float lineWidth = baseWidth * (2.0 / uDrapeRtSize);
 
     // Compensate for parent tile zoom-in: when a parent tile's mesh is rendered
     // for a child tile, the ortho camera narrows its bounds, magnifying the geometry.

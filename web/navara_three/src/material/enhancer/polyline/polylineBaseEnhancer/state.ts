@@ -18,6 +18,7 @@ export const DEFAULT_BASE_PROPS: Required<
   width: 1,
   maxWidth: 1000,
   isTexturized: false,
+  drapeRtSize: 512,
   pickable: false,
   effectIdsMask: 0,
   emissiveColor: 0,
@@ -30,6 +31,7 @@ export const DEFAULT_BASE_PROPS: Required<
 export const DEFAULT_BASE_STATE: PolylineBaseState = {
   useRTE: DEFAULT_BASE_PROPS.useRTE,
   isTexturized: DEFAULT_BASE_PROPS.isTexturized,
+  drapeRtSize: DEFAULT_BASE_PROPS.drapeRtSize,
   pickable: DEFAULT_BASE_PROPS.pickable,
   effectIdsMask: DEFAULT_BASE_PROPS.effectIdsMask,
   emissiveColor: DEFAULT_BASE_PROPS.emissiveColor,
@@ -60,6 +62,7 @@ export const updateState = (
     // RTE cannot change after mount - always preserve current value
     useRTE: currentState.useRTE,
     isTexturized,
+    drapeRtSize: props.drapeRtSize ?? currentState.drapeRtSize,
     pickable: props.pickable ?? currentState.pickable,
     effectIdsMask: props.effectIdsMask ?? currentState.effectIdsMask,
     emissiveColor: props.emissiveColor ?? currentState.emissiveColor,

@@ -133,8 +133,40 @@ slot:
   region begins at `texturizedSceneIndexFrom = maxTextures − numTexturizedVector`.
 - One `WebGLRenderTarget` (512×512) per vector slot, kept in the
   `VectorDrapeResolver`'s render-target pool (lazily sized to the draped-layer
-  count). `userData.textures[texturizedSceneIndexFrom + i]` is bound to the
-  RT's `.texture`, or to a shared 1×1 empty texture while the slot has no RT —
+  count). The bake accumulates each slot's sources into the compositor's ONE
+  shared multisampled target (`DRAPE_BAKE_SAMPLES`× MSAA, no depth/stencil —
+  the flat bake shaders have no analytic edge AA, so geometric edges are
+  resolved at bake time; multisample contents persist across the per-source
+  `render()` calls on WebGL2) and copies the resolved image into the slot's
+  plain RT. Setting `samples` on the per-tile targets instead quintupled
+  every drape target's GPU footprint, starving the tile memory budget and
+  stalling terrain refinement (the drape then stayed coarse however far the
+  camera zoomed); the shared target is a single fixed allocation, reported to
+  the ledger via `TileTextureCompositor.fixedGpuBytes()`. Two invariants
+  shape the bake:
+  - **The resolve copy un-premultiplies.** The MSAA resolve averages covered
+    and transparent samples — premultiplying color by coverage — while the
+    composite blends slots as straight alpha; copying without dividing
+    coverage back out darkened every draped edge. The divide assumes the bake
+    content is uniformly premultiplied, so texturized materials always render
+    alpha-blended: the polygon/polyline enhancers force `transparent: true`
+    when texturized. With blending disabled (three maps
+    `NormalBlending + transparent: false` to no blending), a sub-1
+    per-feature opacity would land STRAIGHT in the target and the divide
+    would brighten it by 1/α.
+  - **Pick bakes bypass MSAA** (`antialias: false`, driven by
+    `VectorDrapeResolver.setPickBake`): their fragments encode batch ids as
+    colors, and averaging them along feature edges decodes to ids that don't
+    exist. They render straight into the slot RT, hard-edged.
+
+  Do NOT batch a slot's sources into a single `render()` by reparenting their
+  scenes under one wrapper: `TileScene`s live as children of their
+  `SceneGroup`, so reparenting corrupts the scene cache, and moving the
+  camera window into a model transform breaks `flatPolyline`'s
+  `projectionMatrix[0][0]` line-width compensation.
+
+  `userData.textures[texturizedSceneIndexFrom + i]` is bound to the RT's
+  `.texture`, or to a shared 1×1 empty texture while the slot has no RT —
   GLSL requires every declared sampler-array entry to be valid.
 
 `TexturizedSceneByTileCoordinates` (`scene.ts`) holds a `SceneGroup` of per-layer

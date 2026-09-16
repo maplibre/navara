@@ -43,6 +43,7 @@ describe("polylineBaseEnhancer/mutates", () => {
         pickable: true,
         minMaxHeight: [10, 100],
         width: 3,
+        drapeRtSize: 1024,
       };
       const mutates = createBaseMutates(false);
       mutates.update(state);
@@ -52,6 +53,7 @@ describe("polylineBaseEnhancer/mutates", () => {
 
       expect(uniforms.minMaxHeightAndWidth?.value).toEqual([10, 100, 3]);
       expect(uniforms.nvr_uPickable?.value).toBe(1);
+      expect(uniforms.uDrapeRtSize?.value).toBe(1024);
     });
   });
 

@@ -22,6 +22,10 @@ export type PolylineBaseProps = {
 
   isTexturized?: boolean;
 
+  /** Drape render-target side length in texels; scales the texturized shader's
+   * pixel-denominated line width (TileTextureCompositor.size). */
+  drapeRtSize?: number;
+
   // Picking
   pickable?: boolean;
 
@@ -58,6 +62,7 @@ export type PolylineBaseProps = {
 export type PolylineBaseState = Readonly<{
   useRTE: boolean;
   isTexturized: boolean;
+  drapeRtSize: number;
   pickable: boolean;
   effectIdsMask: number;
   emissiveColor: number;
@@ -89,6 +94,7 @@ export type PolylineBaseRefs = {
   uEmissiveColor: UniformValue<Vector3>;
   uEmissiveIntensity: UniformValue<number>;
   nvr_uPickingCoord: UniformValue<Vector2>;
+  uDrapeRtSize: UniformValue<number>;
 
   // Optional uniforms
   batchDataTexture?: UniformValue<Texture | null>;

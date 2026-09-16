@@ -67,14 +67,12 @@ impl ParseMvtTileResult {
 
 impl FreeResultBuffers for ParseMvtTileResult {
     /// Free the stream buffers without reading them (leak-prevention path for
-    /// results whose delegator disappeared before finalization). The packed
-    /// streams carry no batch ids, so nothing is returned for purging.
-    fn remove_from_buf(&self, buf: &mut BufferStore) -> Vec<u32> {
+    /// results whose delegator disappeared before finalization).
+    fn remove_from_buf(&self, buf: &mut BufferStore) {
         buf.remove(&self.f64_handle);
         buf.remove(&self.f32_handle);
         buf.remove(&self.u32_handle);
         buf.remove(&self.u8_handle);
-        Vec::new()
     }
 }
 
