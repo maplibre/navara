@@ -210,9 +210,6 @@ const state = {
     sizeDelta: 10,
     widthDelta: 4,
     color: "#00d2ff",
-    // Non-clamped point/line of both layers would otherwise sit at the same
-    // height and z-fight; the main layer is lifted by this many meters.
-    liftMeters: 2,
   },
   // Per-feature coloring via FeatureEvaluator; overrides the material colors.
   evaluate: false,
@@ -228,10 +225,6 @@ const geometryTypes = (m: {
   ...(m.fromPolygon ? (["polygon"] as const) : []),
 ];
 
-// Height of the main layer's point/line. Only the non-clamped case can
-// z-fight with the stacked underlay, so the lift applies there.
-const mainHeight = () => (state.stack.enabled ? state.stack.liftMeters : 0);
-
 const buildMaterials = () => ({
   ...(state.point.enabled && {
     point: {
@@ -239,12 +232,12 @@ const buildMaterials = () => ({
       size: state.point.size,
       sizeInMeters: false,
       clampToGround: true,
-      height: mainHeight(),
       // Derived vertex points are dense by design, and a stacked layer puts a
       // second sprite at every position. Screen-space decluttering (on by
       // default) would hide exactly what this page exists to show.
       declutter: false,
       geometryTypes: geometryTypes(state.point),
+      depthTest: false
     },
   }),
   ...(state.polyline.enabled && {
@@ -253,7 +246,6 @@ const buildMaterials = () => ({
       width: state.polyline.width,
       maxWidth: 100_000,
       clampToGround: state.polyline.clampToGround,
-      height: mainHeight(),
       geometryTypes: geometryTypes(state.polyline),
     },
   }),
@@ -462,11 +454,6 @@ stackFolder.addBinding(state.stack, "enabled");
 stackFolder.addBinding(state.stack, "sizeDelta", { min: 0, max: 30, step: 1 });
 stackFolder.addBinding(state.stack, "widthDelta", { min: 0, max: 20, step: 1 });
 stackFolder.addBinding(state.stack, "color");
-stackFolder.addBinding(state.stack, "liftMeters", {
-  min: 0,
-  max: 20,
-  step: 0.5,
-});
 
 const evaluationFolder = pane.addFolder({ title: "feature evaluation" });
 evaluationFolder.addBinding(state, "evaluate");
