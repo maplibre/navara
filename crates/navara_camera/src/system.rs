@@ -372,7 +372,10 @@ fn process_camera_event(
                         }
                     }
                     StartFlyResult::Instant => {
-                        // duration <= 0: jump straight to the end pose.
+                        // duration <= 0: jump straight to the end pose. Report
+                        // it as `Change`, exactly like `setCamera`, so an
+                        // instant flight raises the same events as any other
+                        // instantaneous camera change.
                         apply_camera_change(
                             window,
                             frustum,
@@ -383,7 +386,7 @@ fn process_camera_event(
                             None,
                         );
                         inertia.stop_all(controller);
-                        cam_st.status.push(CameraStatusType::MoveEnd);
+                        cam_st.status.push(CameraStatusType::Change);
 
                         orbit.fixed_rotation_axis = None;
                         orbit.fixed_rotation_pivot = None;

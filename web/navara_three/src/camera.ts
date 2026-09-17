@@ -43,28 +43,64 @@ export class ThreeViewCamera extends EventHandler<CameraEvent> {
     this._core = core;
   }
 
+  /**
+   * Translates the engine's per-frame `CameraStatus` list into `movestart` /
+   * `move` / `moveend`.
+   *
+   * The engine can report several statuses for one frame (an instantaneous
+   * change that also terminates an in-flight gesture, or spin + zoom + translate
+   * inertia all expiring together), so the statuses are first folded into flags
+   * and each public event is emitted at most once per frame.
+   *
+   * Instantaneous programmatic changes -- `setCamera` (`Change`), `lookAt` and
+   * `rotateAroundAxis` -- complete the whole movement within a single frame, so
+   * they emit both `move` and `moveend`. Without the `move`, listeners that only
+   * track continuous motion would never see a programmatic jump.
+   *
+   * `movestart` stays driven solely by the engine's `MoveStart`: an
+   * instantaneous change has no movement to open, and synthesising one here
+   * would fire a second `movestart` in the middle of an active drag.
+   */
   updateStatus() {
     this._status = this._core?.getCameraStatus();
     if (!this._status) {
       return;
     }
 
+    let movestart = false;
+    let move = false;
+    let moveend = false;
+
     for (const val of this._status.status) {
       switch (val) {
         case CameraStatusType.MoveStart:
-          this.emit("movestart");
+          movestart = true;
           break;
         case CameraStatusType.Moving:
-          this.emit("move");
+          move = true;
           break;
         case CameraStatusType.MoveEnd:
+          moveend = true;
+          break;
+        case CameraStatusType.Change:
         case CameraStatusType.LookAt:
         case CameraStatusType.Rotate:
-          this.emit("moveend");
+          move = true;
+          moveend = true;
           break;
         default:
           break;
       }
+    }
+
+    if (movestart) {
+      this.emit("movestart");
+    }
+    if (move) {
+      this.emit("move");
+    }
+    if (moveend) {
+      this.emit("moveend");
     }
   }
 
