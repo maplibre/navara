@@ -1,4 +1,5 @@
 #include chunks/pick;
+#include chunks/planeDistance;
 
 #include <common>
 #include <packing>
@@ -12,6 +13,10 @@ uniform vec3 color;
 uniform float nvr_uPickable;
 
 flat in float nvr_vBatchId;
+flat in vec4 v_startPlaneNormalEcAndHalfWidth;
+flat in vec3 v_endPlaneNormalEc;
+flat in float v_startPlaneOffsetEc;
+flat in float v_endPlaneOffsetEc;
 in vec3 vNormal;
 
 #include chunks/show_pars_fragment;
@@ -26,7 +31,16 @@ in vec3 vNormal;
 
 void main() {
     #include chunks/show_fragment;
-    
+
+    // The vertex shader pushes each segment past both ends to cover joint
+    // gaps; clip it back to the start/end planes (both face into the segment)
+    // so adjacent segments meet on their shared miter plane.
+    vec3 positionEc = -vViewPosition;
+    if (nvr_planeDistance(v_startPlaneNormalEcAndHalfWidth.xyz, v_startPlaneOffsetEc, positionEc) < 0.0
+        || nvr_planeDistance(v_endPlaneNormalEc, v_endPlaneOffsetEc, positionEc) < 0.0) {
+        discard;
+    }
+
     vec4 diffuseColor = vec4(color, 1.);
     #include <clipping_planes_fragment>
 
