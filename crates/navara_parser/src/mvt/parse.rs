@@ -40,6 +40,10 @@ pub enum ParsedGeometry {
         points: Vec<f64>,
         points_sizes: Vec<u32>,
         batch_indices: Vec<u32>,
+        /// Per polyline, whether it is a polygon ring (1) or an open line (0).
+        /// A ring's repeated first vertex is a seam the renderer joins; an open
+        /// line keeps its end caps even when its endpoints coincide.
+        ring_flags: Vec<u8>,
     },
     Polygons {
         outer_rings: Vec<f64>,
@@ -129,6 +133,7 @@ enum GeomBuf {
         points: Vec<f64>,
         points_sizes: Vec<u32>,
         batch_indices: Vec<u32>,
+        ring_flags: Vec<u8>,
     },
     Polygons {
         outer_rings: Vec<f64>,
@@ -156,6 +161,7 @@ impl GeomBuf {
                 points: Vec::new(),
                 points_sizes: Vec::new(),
                 batch_indices: Vec::new(),
+                ring_flags: Vec::new(),
             },
             LayerParseKind::Polygon => GeomBuf::Polygons {
                 outer_rings: Vec::new(),
@@ -185,10 +191,12 @@ impl GeomBuf {
                 points,
                 points_sizes,
                 batch_indices,
+                ring_flags,
             } => ParsedGeometry::Polylines {
                 points,
                 points_sizes,
                 batch_indices,
+                ring_flags,
             },
             GeomBuf::Polygons {
                 outer_rings,
@@ -548,8 +556,10 @@ impl<'a> MvtFeatureProcessor<'a> {
         self.raw_ring.clear();
     }
 
-    /// Push one polyline into layer `index`'s polyline group.
-    fn push_polyline(&mut self, index: usize, points: Vec<f64>) {
+    /// Push one polyline into layer `index`'s polyline group. `ring` marks a
+    /// polygon boundary, whose repeated first vertex is a seam to join rather
+    /// than two ends to cap.
+    fn push_polyline(&mut self, index: usize, points: Vec<f64>, ring: bool) {
         if points.is_empty() {
             return;
         }
@@ -558,11 +568,13 @@ impl<'a> MvtFeatureProcessor<'a> {
             points: p,
             points_sizes,
             batch_indices,
+            ring_flags,
         } = &mut self.layers[index].groups[group_index].geom
         {
             points_sizes.push(points.len() as u32);
             p.extend(points);
             batch_indices.push(batch_index);
+            ring_flags.push(ring as u8);
         }
     }
 
@@ -579,7 +591,7 @@ impl<'a> MvtFeatureProcessor<'a> {
                 } else {
                     self.rings[projection].projected.clone()
                 };
-                self.push_polyline(index, points);
+                self.push_polyline(index, points, false);
             }
         }
     }
@@ -621,7 +633,7 @@ impl<'a> MvtFeatureProcessor<'a> {
                 for &i in run {
                     points.extend_from_slice(&self.rings[projection].projected[i * 3..i * 3 + 3]);
                 }
-                self.push_polyline(index, points);
+                self.push_polyline(index, points, true);
             }
             return;
         }
@@ -635,6 +647,7 @@ impl<'a> MvtFeatureProcessor<'a> {
             points,
             points_sizes,
             batch_indices,
+            ring_flags,
         } = &mut layers[index].groups[group_index].geom
         {
             let projected = &rings[projection].projected;
@@ -645,6 +658,7 @@ impl<'a> MvtFeatureProcessor<'a> {
                 points.extend_from_slice(&projected[..3]);
             }
             batch_indices.push(batch_index);
+            ring_flags.push(1);
         }
     }
 
@@ -1206,10 +1220,14 @@ mod test {
                 points,
                 points_sizes,
                 batch_indices,
+                ring_flags,
+                ..
             } => {
                 assert_eq!(points_sizes, &vec![6, 9]); // 2 pts * 3, 3 pts * 3
                 assert_eq!(points.len(), 15);
                 assert_eq!(batch_indices, &vec![0, 1]);
+                // Native linestrings are open: the geometry keeps their caps.
+                assert_eq!(ring_flags, &vec![0, 0]);
             }
             _ => panic!("expected polylines"),
         }
@@ -1321,12 +1339,17 @@ mod test {
                 points,
                 points_sizes,
                 batch_indices,
+                ring_flags,
+                ..
             } => {
                 // 4 ring vertices + closing vertex, 3 components each.
                 assert_eq!(points_sizes, &vec![15]);
                 assert_eq!(batch_indices, &vec![0]);
                 // The derived boundary is closed: first vertex repeats at the end.
                 assert_eq!(points[..3], points[points.len() - 3..]);
+                // Marked a ring, so that repeat is a seam to join rather than
+                // two coincident end caps.
+                assert_eq!(ring_flags, &vec![1]);
             }
             _ => panic!("expected polylines"),
         }
@@ -1488,10 +1511,12 @@ mod test {
             ParsedGeometry::Polylines {
                 points,
                 points_sizes,
+                ring_flags,
                 ..
             } => {
                 assert_eq!(points_sizes, &vec![15]);
                 assert_eq!(points[..3], points[points.len() - 3..]);
+                assert_eq!(ring_flags, &vec![1]);
             }
             _ => panic!("expected polylines"),
         }

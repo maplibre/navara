@@ -16,7 +16,7 @@
 //!   (`points_sizes` for polylines; `outer_ring_sizes`, `holes_total_sizes`,
 //!   `holes_sizes`, `holes_boundaries` for polygons), then
 //!   `feature_tags_flat`, `feature_tag_sizes`
-//! - `u8_stream`: `expected_winding_orders`
+//! - `u8_stream`: `expected_winding_orders`, `ring_flags`
 
 use std::sync::Arc;
 
@@ -34,9 +34,10 @@ pub struct ParsedMvtSegmentLens {
     // Point-like (f64/f32 streams).
     pub coords: u32,
     pub encoded_coords: u32,
-    // Polyline (f64/u32 streams).
+    // Polyline (f64/u32/u8 streams).
     pub points: u32,
     pub points_sizes: u32,
+    pub ring_flags: u32,
     // Polygon (f64/u32/u8 streams).
     pub outer_rings: u32,
     pub outer_ring_sizes: u32,
@@ -112,9 +113,11 @@ pub fn pack_parsed_mvt_groups(groups: Vec<ParsedLayerGroup>) -> PackedMvtParseRe
                 points,
                 points_sizes,
                 batch_indices,
+                ring_flags,
             } => {
                 f64_cap += points.len();
                 u32_cap += points_sizes.len() + batch_indices.len();
+                u8_cap += ring_flags.len();
             }
             ParsedGeometry::Polygons {
                 outer_rings,
@@ -201,13 +204,16 @@ pub fn pack_parsed_mvt_groups(groups: Vec<ParsedLayerGroup>) -> PackedMvtParseRe
                 mut points,
                 mut points_sizes,
                 mut batch_indices,
+                mut ring_flags,
             } => {
                 lens.batch_indices = batch_indices.len() as u32;
                 lens.points = points.len() as u32;
                 lens.points_sizes = points_sizes.len() as u32;
+                lens.ring_flags = ring_flags.len() as u32;
                 result.u32_stream.append(&mut batch_indices);
                 result.u32_stream.append(&mut points_sizes);
                 result.f64_stream.append(&mut points);
+                result.u8_stream.append(&mut ring_flags);
             }
             ParsedGeometry::Polygons {
                 mut outer_rings,
@@ -396,10 +402,12 @@ impl PackedMvtStreamsCursor {
             LayerParseKind::Polyline => {
                 let points_sizes = self.take_u32(lens.points_sizes)?;
                 let points = self.take_f64(lens.points)?;
+                let ring_flags = self.take_u8(lens.ring_flags)?;
                 ParsedGeometry::Polylines {
                     points,
                     points_sizes,
                     batch_indices,
+                    ring_flags,
                 }
             }
             LayerParseKind::Polygon => {
@@ -476,6 +484,7 @@ mod test {
                 points: vec![10.0, 11.0, 0.0, 12.0, 13.0, 0.0, 14.0, 15.0, 0.0],
                 points_sizes: vec![9],
                 batch_indices: vec![0],
+                ring_flags: vec![1],
             },
         }
     }
@@ -545,10 +554,12 @@ mod test {
                     points,
                     points_sizes,
                     batch_indices,
+                    ring_flags,
                 } => ParsedGeometry::Polylines {
                     points: points.clone(),
                     points_sizes: points_sizes.clone(),
                     batch_indices: batch_indices.clone(),
+                    ring_flags: ring_flags.clone(),
                 },
                 ParsedGeometry::Polygons {
                     outer_rings,

@@ -263,10 +263,12 @@ pub(crate) fn build_accumulated_geometry(
             points,
             points_sizes,
             batch_indices,
+            ring_flags,
         } => AccumulatedGeometry::Polylines(PolylineGeometryAccumulator {
             points,
             points_sizes,
             batch_indices,
+            ring_flags,
             crs: CRS::Geographic,
         }),
         ParsedGeometry::Polygons {

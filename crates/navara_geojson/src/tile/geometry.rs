@@ -24,7 +24,7 @@ fn add_boundary_runs(builder: &mut GeometryBuilder, converter: &PosConverter, ri
     for run in runs {
         let projected = converter.project_points(run.iter().map(|&i| ring[i]));
         if !projected.is_empty() {
-            builder.add_polyline(projected, CRS::Geographic);
+            builder.add_polyline(projected, CRS::Geographic, true);
         }
     }
 }
@@ -151,11 +151,11 @@ pub(crate) fn construct_geojson_tile_geometry(
                             // closed polylines; the bake clips the tile-buffer
                             // zone, so clip edges never show.
                             close_flat_ring(&mut outer_ring);
-                            builder.add_polyline(outer_ring, CRS::Geographic);
+                            builder.add_polyline(outer_ring, CRS::Geographic, true);
                             for hole in holes {
                                 let mut ring = hole.outer_ring;
                                 close_flat_ring(&mut ring);
-                                builder.add_polyline(ring, CRS::Geographic);
+                                builder.add_polyline(ring, CRS::Geographic, true);
                             }
                         } else {
                             // Non-draped boundaries render as real geometry,
@@ -180,7 +180,7 @@ pub(crate) fn construct_geojson_tile_geometry(
                     if projected.is_empty() {
                         continue;
                     }
-                    builder.add_polyline(projected, CRS::Geographic);
+                    builder.add_polyline(projected, CRS::Geographic, false);
                 }
             }
             _ => {}

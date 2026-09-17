@@ -21,6 +21,7 @@ export function constructPolylineBatchedFeature(
         transferableBatchedFeatureLike.points_sizes.buffer,
         transferableBatchedFeatureLike.batch_ids.buffer,
         transferableBatchedFeatureLike.batch_indices.buffer,
+        transferableBatchedFeatureLike.ring_flags.buffer,
       ],
     },
   );

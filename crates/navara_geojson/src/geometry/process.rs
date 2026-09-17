@@ -228,20 +228,20 @@ fn accumulate_polyline(
         GeometryValue::LineString { coordinates: f }
             if geometry_types.contains(&SourceGeometryType::Line) =>
         {
-            builder.add_polyline(multi_flat_coords(f), CRS::Geographic);
+            builder.add_polyline(multi_flat_coords(f), CRS::Geographic, false);
         }
         GeometryValue::MultiLineString { coordinates: fs }
             if geometry_types.contains(&SourceGeometryType::Line) =>
         {
             for f in fs {
-                builder.add_polyline(multi_flat_coords(f), CRS::Geographic);
+                builder.add_polyline(multi_flat_coords(f), CRS::Geographic, false);
             }
         }
         GeometryValue::Polygon { coordinates: rings }
             if geometry_types.contains(&SourceGeometryType::Polygon) =>
         {
             for ring in rings {
-                builder.add_polyline(closed_ring_coords(ring), CRS::Geographic);
+                builder.add_polyline(closed_ring_coords(ring), CRS::Geographic, true);
             }
         }
         GeometryValue::MultiPolygon { coordinates: fs }
@@ -249,7 +249,7 @@ fn accumulate_polyline(
         {
             for rings in fs {
                 for ring in rings {
-                    builder.add_polyline(closed_ring_coords(ring), CRS::Geographic);
+                    builder.add_polyline(closed_ring_coords(ring), CRS::Geographic, true);
                 }
             }
         }

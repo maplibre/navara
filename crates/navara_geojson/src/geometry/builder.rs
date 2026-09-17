@@ -87,14 +87,16 @@ impl<'a> GeometryBuilder<'a> {
         batch_index
     }
 
-    /// Accumulate polyline geometry without spawning a child entity.
-    pub(crate) fn add_polyline(&mut self, points: Vec<f64>, crs: CRS) -> u32 {
+    /// Accumulate polyline geometry without spawning a child entity. `ring`
+    /// marks a polygon boundary, whose repeated first vertex is a seam to join
+    /// rather than two ends to cap.
+    pub(crate) fn add_polyline(&mut self, points: Vec<f64>, crs: CRS, ring: bool) -> u32 {
         let kind = GeometryAppearanceKind::Polyline;
         self.ensure_kind(kind);
         let global_batch_id = self.batch_table.gen_global_batch_id().unwrap_or(0);
         let (batch_index, commit_batch_id) =
             self.groups
-                .track_polyline(kind, points, crs, global_batch_id);
+                .track_polyline(kind, points, crs, global_batch_id, ring);
         self.maybe_commit_props(commit_batch_id);
         batch_index
     }
