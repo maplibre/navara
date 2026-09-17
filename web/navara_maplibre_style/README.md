@@ -34,7 +34,7 @@ Only the properties listed below are actually implemented and functional. Other 
 - **Layout:** `icon-image`, `icon-size`, `text-field`, `text-size`, `text-font`
 - **Note:**
   - Font configuration is done via plugin options (see Font Configuration section below), not through `text-font` property
-  - `text-halo-color` and `text-halo-width` map to Navara's `outlineColor` and `outlineWidth` (text stroke)
+  - `text-halo-color` and `text-halo-width` map to Navara's `outlineColor` and `outlineWidth` for constant values; expressions are currently evaluated once at layer construction (no feature-driven or zoom-reactive halo yet)
   - `text-anchor`, `icon-anchor`, `text-offset`, `icon-offset` are parsed but not applied
   - Text rendering uses SDF (signed distance field)
   - Automatic label deduplication via Navara's declutter system

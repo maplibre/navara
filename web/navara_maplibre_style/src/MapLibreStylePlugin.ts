@@ -65,7 +65,7 @@ export class MapLibreStylePlugin extends Plugin<ThreeView, ViewContext> {
    * Minimum zoom change to trigger feature re-evaluation.
    * Features are re-evaluated when zoom changes by more than this threshold.
    */
-  private static readonly ZOOM_CHANGE_THRESHOLD = 0.5;
+  private static readonly ZOOM_CHANGE_THRESHOLD = 0.1;
   /**
    * Zoom change listener function reference for cleanup in destroy.
    */
@@ -505,7 +505,6 @@ export class MapLibreStylePlugin extends Plugin<ThreeView, ViewContext> {
       if (zoomDelta > MapLibreStylePlugin.ZOOM_CHANGE_THRESHOLD) {
         this.lastZoom = currentZoom;
 
-        // Re-evaluate background color if it has zoom-dependent expressions
         if (this.hasZoomDependentBackground) {
           this.applyBackgroundColor(view, currentZoom);
         }

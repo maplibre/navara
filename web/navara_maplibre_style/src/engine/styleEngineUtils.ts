@@ -42,7 +42,7 @@ export function getLayoutSpec(
  * Get default value for a property type.
  * Used as fallback when spec.default is undefined or evaluation fails.
  *
- * For unknown types, logs an error and returns an empty string as a safe fallback.
+ * For unknown types, returns an empty string as a safe fallback.
  * This allows graceful degradation in production if MapLibre introduces new types.
  */
 export function getTypeDefault(type: PropertySpec["type"]): StyleValue {
