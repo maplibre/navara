@@ -222,7 +222,7 @@ When fonts are configured, all symbol layers will use the provided font family, 
 
 ### Expressions
 
-- **Zoom support**: The `zoom` expression uses the current camera zoom. Features are automatically re-evaluated when zoom changes significantly (> 0.5), with smooth fade transitions for show/hide
+- **Zoom support**: The `zoom` expression uses the current camera zoom. Features are automatically re-evaluated when zoom changes significantly (> 0.1), with smooth fade transitions for show/hide
 - **Camera expressions not supported**: `pitch`, `distance-from-center`, etc. are not available
 
 ### Symbol Layers
