@@ -223,7 +223,9 @@ view.camera.options = {
 
 `ThreeViewCamera` は `EventHandler` を継承し、以下のイベントを発行します。`on()` でサブスクライブし、`off()` でアンサブスクライブします。
 
-カメラの変更は、ユーザー操作によるものでも API 呼び出しによるものでも、必ずイベントを発行します。瞬時に完了する API 呼び出し（`setCamera()`、`lookAt()`、`rotateAroundAxis()`、`duration: 0` の `flyTo()`）は 1 フレーム内で完了するため、`move` と `moveend` をまとめて発行し、`movestart` は発行しません。各イベントは 1 フレームにつき最大 1 回発行されます。
+ユーザー操作とカメラ移動メソッドは、いずれもイベントを発行します。瞬時に完了する呼び出し（`setCamera()`、`lookAt()`、`rotateAroundAxis()`、`duration: 0` の `flyTo()`）は 1 フレーム内で完了するため、`move` と `moveend` をまとめて発行し、`movestart` は発行しません。各イベントは 1 フレームにつき最大 1 回発行されます。
+
+ただし follow モードは例外です。`cameraFollow()` または `cameraFreeLook()` が有効な間、カメラは毎フレーム再配置されますが、これらのイベントは発行されません。追従中のカメラを追跡するには、`positionGeographic` / `orientation` をポーリングしてください（view の `preRender` などで）。
 
 ### movestart
 

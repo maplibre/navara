@@ -223,7 +223,9 @@ view.camera.options = {
 
 `ThreeViewCamera` inherits from `EventHandler` and emits the following events. Subscribe with `on()` and unsubscribe with `off()`.
 
-Every camera change raises events, whether it comes from user interaction or from an API call. Instantaneous API calls — `setCamera()`, `lookAt()`, `rotateAroundAxis()` and a `flyTo()` with `duration: 0` — complete within a single frame, so they emit `move` and `moveend` together and never emit `movestart`. Each event fires at most once per frame.
+User interaction and the camera movement methods all raise events. Instantaneous calls — `setCamera()`, `lookAt()`, `rotateAroundAxis()` and a `flyTo()` with `duration: 0` — complete within a single frame, so they emit `move` and `moveend` together and never emit `movestart`. Each event fires at most once per frame.
+
+Follow mode is the exception: while `cameraFollow()` or `cameraFreeLook()` is active, the camera is repositioned every frame without emitting any of these events. Poll `positionGeographic` / `orientation` (for example on the view's `preRender`) to track the camera while following.
 
 ### movestart
 

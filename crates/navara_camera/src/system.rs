@@ -1343,4 +1343,135 @@ mod test {
             );
         }
     }
+    /// Runs one `CameraEvent` through `process_camera_event` against a camera
+    /// resting over Tokyo and returns the statuses it reported.
+    ///
+    /// These statuses are the engine's half of the public `move` / `moveend`
+    /// contract -- the TypeScript side only translates them -- so the mapping
+    /// from each camera operation to its status needs covering here, not just
+    /// in the TS tests that inject statuses directly.
+    fn statuses_for(ce: &CameraEvent, is_cam_moving: bool) -> Vec<CameraStatusType> {
+        let window = Window {
+            width: 1600.,
+            height: 900.,
+            pixel_ratio: 1.,
+        };
+        let frustum_transform = Transform::default();
+        let frustum = CameraFrustum::new(
+            &frustum_transform,
+            1.,
+            1e6,
+            Angle::new(50.).rad().val(),
+            16. / 9.,
+        );
+
+        let mut transform = Transform::default();
+        let mut orbit = Orbit::default();
+        let mut inertia = CameraInertia::default();
+        let mut flight = CameraFlight::default();
+        let mut cam_st = CameraStatus::default();
+        let mut controller = CameraController::default();
+
+        // Put the camera somewhere real first; a flight extracts its start pose
+        // from the transform, and the origin is degenerate.
+        apply_camera_change(
+            &window,
+            &frustum,
+            &mut transform,
+            &mut orbit,
+            &Some(Vec3::new(139.7671, 35.6812, 1000.0)),
+            &Some(CameraOrientation::default()),
+            None,
+        );
+
+        process_camera_event(
+            &window,
+            ce,
+            &mut transform,
+            &mut orbit,
+            &mut inertia,
+            &frustum,
+            &mut flight,
+            &mut cam_st,
+            &mut controller,
+            is_cam_moving,
+        );
+
+        cam_st.status
+    }
+
+    fn fly_to(duration: Option<FloatType>) -> CameraEvent {
+        CameraEvent::FlyTo {
+            position: Some(Vec3::new(135.5023, 34.6937, 2000.0)),
+            orientation: Some(CameraOrientation::default()),
+            duration,
+            max_height: None,
+            distance: None,
+            easing: None,
+            id: 1,
+        }
+    }
+
+    #[test]
+    fn set_camera_reports_change() {
+        assert_eq!(
+            statuses_for(
+                &CameraEvent::Change {
+                    position: Some(Vec3::new(135.5023, 34.6937, 2000.0)),
+                    orientation: Some(CameraOrientation::default()),
+                    distance: None,
+                },
+                false,
+            ),
+            vec![CameraStatusType::Change],
+        );
+    }
+
+    /// A zero-duration flight jumps straight to the end pose, so it must report
+    /// `Change` exactly like `setCamera` -- reporting `MoveEnd` instead would
+    /// silently drop the `move` event for `flyTo({ duration: 0 })`.
+    #[test]
+    fn zero_duration_flight_reports_change_like_set_camera() {
+        assert_eq!(
+            statuses_for(&fly_to(Some(0.)), false),
+            vec![CameraStatusType::Change],
+        );
+    }
+
+    #[test]
+    fn animated_flight_opens_a_movement() {
+        assert_eq!(
+            statuses_for(&fly_to(Some(1500.)), false),
+            vec![CameraStatusType::MoveStart],
+        );
+        // Already moving: the movement is continuing, not opening.
+        assert_eq!(
+            statuses_for(&fly_to(Some(1500.)), true),
+            vec![CameraStatusType::Moving],
+        );
+    }
+
+    #[test]
+    fn look_at_and_rotate_report_their_own_status() {
+        assert_eq!(
+            statuses_for(
+                &CameraEvent::LookAt {
+                    target: Vec3::new(139.7454, 35.6586, 0.0),
+                    offset: Vec3::new(0.0, -2000.0, 1500.0),
+                },
+                false,
+            ),
+            vec![CameraStatusType::LookAt],
+        );
+        assert_eq!(
+            statuses_for(
+                &CameraEvent::RotateAroundAxis {
+                    axis: None,
+                    angle: 0.1,
+                },
+                false,
+            ),
+            vec![CameraStatusType::Rotate],
+        );
+    }
 }
