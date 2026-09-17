@@ -38,7 +38,7 @@ impl Plugin for TilePlugin {
             .add_message::<MeshPreparedEvent>()
             .add_systems(
                 PostUpdate,
-                terrain::dem_nodata::fill_polar_dem_nodata.after(DataRequesterSet::SendRequests),
+                terrain::nodata_system::fill_polar_dem_nodata.after(DataRequesterSet::SendRequests),
             )
             .add_systems(
                 PreUpdate,

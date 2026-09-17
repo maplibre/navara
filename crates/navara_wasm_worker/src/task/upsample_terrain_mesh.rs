@@ -61,7 +61,9 @@ pub fn upsample_terrain_mesh(
         &mut result.geometry,
         WGS84_64,
         &tile.extent,
-        result.rtc_translation.unwrap(),
+        result
+            .rtc_translation
+            .expect("upsampling always sets an RTC translation"),
         navara_core::PoleSides {
             north: pole_north,
             south: pole_south,
@@ -134,7 +136,9 @@ pub fn upsample_quantized_mesh_terrain_mesh(
         &mut result.geometry,
         WGS84_64,
         &tile.extent,
-        result.rtc_translation.unwrap(),
+        result
+            .rtc_translation
+            .expect("upsampling always sets an RTC translation"),
         navara_core::PoleSides {
             north: pole_north,
             south: pole_south,

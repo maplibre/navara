@@ -451,6 +451,28 @@ Cap data lives in the separate skirt buffers. It is excluded from shadow depth
 and `CachedMeshHandle`, so upsampling only processes the original terrain mesh;
 each child builds its own extension. Worker task parameters carry the north and
 south flags detected on the main thread.
+Rendered tiles can retain task handles after a worker failure or cancellation
+has despawned the task, so cleanup consumes them through `Commands::get_entity`
+plus `try_insert(Deleted)`, which tolerates both an already-removed task and a
+despawn queued earlier in the same frame.
+
+Each polar tile builds its full-length wedge in its own RTC frame, and the pole
+sits about 553 km from any tile origin at z >= 8, where the f32 ulp is 6.25 cm.
+Neighbouring wedges therefore disagree by one to two centimetres along the
+shared meridian and at the apex — radial cracks converging on the pole that no
+choice of origin removes. `add_pole_extension` closes them geometrically: it
+hangs a skirt curtain down the wedge's two meridian edges, found by
+`compute_boundary_edges` on the cap indices minus the edges whose endpoints are
+both main-grid seam vertices. The apex is where those two edges meet and needs
+no separate treatment. The RTC origin itself is derived from the *unextended*
+extent, so the terrain grid keeps its precision and only the cap pays the
+distance.
+
+The cap is textured by the tile's own compositor atlas
+(`compositor.acquireOutputs(handle)`) plus the per-slot hillshade, water, and
+effect uniform arrays, so it cannot be moved to a standalone pole-centred mesh
+without reimplementing the whole drape and appearance path. Caps stay per-tile
+and close their seams geometrically.
 
 Terrain AABBs and bounding regions extend to ±90° and include height zero,
 including after DEM height updates. Horizon culling uses this bounding extent.
@@ -468,11 +490,13 @@ to that band is resampled against the fill and holds only a fraction of the
 true height. Every WebMercator DEM tile whose polar edge lies within the outer
 0.15° of the band (`polar_nodata_sides`, any zoom, not only the band-edge row)
 is corrected when its bytes land: `fill_polar_dem_nodata`
-(`crates/navara_tile/src/terrain/`) rewrites the shared buffer with the last
+(`crates/navara_tile/src/terrain/nodata_system.rs`) rewrites the shared buffer with the last
 fully covered row copied over the zero rows and the blended row, so the terrain
 mesh, height sampling, and the hillshade normal map all meet the cap at the real
 height instead of a cliff or a ridge line.
 A tile that lies entirely past the coverage (deep zoom, last tile row) has no
 row to copy and takes a nearest-neighbour copy of the matching region of its
 nearest ancestor with covered data, so the fix stays in the bytes and survives
-requester re-creation.
+requester re-creation. The correction never touches requester status: failed
+requesters are re-created as Success from the shared cache, and a failed
+hillshade requester is never "ready".

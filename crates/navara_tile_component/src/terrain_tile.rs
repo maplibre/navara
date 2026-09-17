@@ -377,9 +377,14 @@ impl TerrainTile {
             .as_ref()
             .and_then(|t| t.upsample(&region, upsamplable_geometry))?;
 
-        let sides = PoleSides::from_extent(&self.tiling_scheme, &self.extent);
-        let (min, max) = sides.height_range(upsampled_mesh.min_height, upsampled_mesh.max_height);
-        let aabb = Aabb::from_extent_f64(sides.extended_extent(self.extent), min, max);
+        // RTC origin only: the pole extension is excluded so the origin stays on
+        // the terrain grid it makes precise. Cap vertices are placed from
+        // absolute coordinates, and culling uses `TerrainTile::aabb` instead.
+        let aabb = Aabb::from_extent_f64(
+            self.extent,
+            upsampled_mesh.min_height,
+            upsampled_mesh.max_height,
+        );
         let tile_center = aabb.center;
 
         // Generate geometry directly in local RTC space

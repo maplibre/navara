@@ -2,8 +2,7 @@ use bevy_ecs::entity::Entity;
 use martini::Martini;
 use navara_buffer_store::{BufferStore, Handle};
 use navara_core::{
-    Aabb, Angle, ElevationDecoder, Ellipsoid, Extent, LLE, Meters, PoleSides, Radians, TileRegion,
-    TilingScheme, XYZ,
+    Aabb, Angle, ElevationDecoder, Ellipsoid, Extent, LLE, Meters, Radians, TileRegion, XYZ,
 };
 use navara_geometry::{
     Geometry, ReturnedConstructedTerrainMesh, UpsamplableTerrainGeometry, UpsampledTerrainGeometry,
@@ -125,10 +124,13 @@ impl TerrainData for RasterDEMData {
             decode_height_from_dem(r, g, b, geoid_height, &self.decoder)
         };
 
+        // RTC origin only: the pole extension is excluded so the origin stays on
+        // the terrain grid it makes precise. Cap vertices are placed from
+        // absolute coordinates, and culling uses `TerrainTile::aabb` instead.
         let aabb = Aabb::from_extent_f64(
-            PoleSides::from_extent(&TilingScheme::default(), extent).extended_extent(*extent),
+            *extent,
             0.,
-            ctx.max_height.max(0.), // Use parent max_height
+            ctx.max_height, // Use parent max_height
         );
         let tile_center = aabb.center;
 

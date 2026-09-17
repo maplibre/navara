@@ -45,7 +45,9 @@ pub fn construct_terrain_mesh(
         &mut result.geometry,
         WGS84_64,
         &ctx.extent,
-        result.rtc_translation.unwrap(),
+        result
+            .rtc_translation
+            .expect("raster DEM construction always sets an RTC translation"),
         navara_core::PoleSides {
             north: pole_north,
             south: pole_south,
