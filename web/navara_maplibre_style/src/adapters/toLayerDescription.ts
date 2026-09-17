@@ -2,10 +2,12 @@
  * Converts MapLibre Style layer to Navara layer description.
  */
 
-import { Color, type LayerDescription, type Source } from "@navaramap/three";
+import { type LayerDescription, type Source } from "@navaramap/three";
 
 import type { StyleEngine } from "../engine/StyleEngine";
-import { isMapLibreColor, type StyleLayer } from "../engine/types";
+import { type StyleLayer } from "../engine/types";
+
+import { toNavaraColor } from "./toEvaluatedValue";
 
 /**
  * Helper to extract sourceLayers from MapLibre's source-layer property.
@@ -237,13 +239,16 @@ function createSymbolLayer(
       declutter: true, // Enable declutter to hide duplicate/overlapping labels
     };
 
-    // Apply text-halo properties (outlineColor/outlineWidth)
+    // Apply text-halo properties (outlineColor/outlineWidth/outlineOpacity)
     // TODO: Text halo is currently a layer-level property, evaluated once at construction time
     // with properties=undefined and zoom=defaultZoom. This means text-halo expressions cannot
     // use feature properties or respond to zoom changes. To fix this, Navara's EvaluatedValue
     // should support outlineColor/outlineWidth fields so they can be evaluated per-feature.
     if (engine && styleLayer.type === "symbol") {
       const defaultZoom = 10; // Use middle zoom for evaluation
+
+      // Track color alpha separately to combine with explicit opacity at the end
+      let haloColorAlpha = 1.0;
 
       // Evaluate text-halo-color
       const haloColor = styleLayer.paint?.["text-halo-color"];
@@ -260,15 +265,11 @@ function createSymbolLayer(
               zoom: defaultZoom,
             });
 
-            // Convert to Navara Color
-            if (typeof colorValue === "string") {
-              layerDesc.text.outlineColor = new Color().setStyle(colorValue);
-            } else if (isMapLibreColor(colorValue)) {
-              layerDesc.text.outlineColor = new Color().setRGB(
-                colorValue.r,
-                colorValue.g,
-                colorValue.b,
-              );
+            // Convert to Navara Color and extract alpha (don't set opacity yet)
+            const colorResult = toNavaraColor(colorValue);
+            if (colorResult) {
+              layerDesc.text.outlineColor = colorResult.color;
+              haloColorAlpha = colorResult.alpha;
             }
           }
         } catch (err) {
@@ -305,6 +306,29 @@ function createSymbolLayer(
           console.warn(
             `Failed to evaluate text-halo-width for layer "${styleLayer.id}":`,
             err,
+          );
+        }
+      }
+
+      // Combine color alpha with explicit opacity (if text-halo-opacity is evaluated in future)
+      // Only set opacity if a halo color was configured (avoid forcing default when no halo)
+      if (layerDesc.text.outlineColor !== undefined) {
+        const explicitOpacity = layerDesc.text.outlineOpacity;
+        // Only set opacity if there's an explicit value or the color has alpha < 1
+        // This preserves undefined behavior when haloColorAlpha === 1.0 (engine default)
+        if (explicitOpacity !== undefined || haloColorAlpha !== 1.0) {
+          const finalOpacity =
+            explicitOpacity !== undefined
+              ? haloColorAlpha * explicitOpacity
+              : haloColorAlpha;
+          // Validate finalOpacity is finite, fall back to 1.0 if NaN/Infinity
+          const validOpacity = Number.isFinite(finalOpacity)
+            ? finalOpacity
+            : 1.0;
+          // Clamp to [0, 1] to handle invalid input or multiplication overflow
+          layerDesc.text.outlineOpacity = Math.max(
+            0,
+            Math.min(1, validOpacity),
           );
         }
       }

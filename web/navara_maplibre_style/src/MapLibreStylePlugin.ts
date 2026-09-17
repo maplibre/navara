@@ -7,6 +7,7 @@
 import type { StyleSpecification } from "@maplibre/maplibre-gl-style-spec";
 import { Plugin } from "@navaramap/core";
 import ThreeView, {
+  Color,
   type ViewContext,
   type Layer,
   type Source,
@@ -36,6 +37,10 @@ export class MapLibreStylePlugin extends Plugin<ThreeView, ViewContext> {
    * Track layers that have already warned about invalid geometry types to avoid spamming the console.
    */
   private warnedLayers: Set<string> = new Set<string>();
+  /**
+   * Track sources that have already warned about issues (e.g., multiple tile URLs) to avoid spamming the console.
+   */
+  private warnedSources: Set<string> = new Set<string>();
   /**
    * TileJSON plugin instance for fetching and parsing TileJSON sources.
    */
@@ -315,7 +320,17 @@ export class MapLibreStylePlugin extends Plugin<ThreeView, ViewContext> {
       sourceSpec.tiles.length > 0 &&
       typeof sourceSpec.tiles[0] === "string"
     ) {
-      // Direct tiles array
+      // Warn if multiple tile URLs are provided (Navara only supports one)
+      // Use warnedSources to deduplicate warnings on re-init or reload
+      if (sourceSpec.tiles.length > 1 && !this.warnedSources.has(sourceId)) {
+        console.warn(
+          `${sourceTypeName} source "${sourceId}" has ${sourceSpec.tiles.length} tile URLs. ` +
+            `Only the first URL will be used. Navara currently supports single tile URL per source. ` +
+            `Multiple URLs are typically used for load spreading, which is not yet supported.`,
+        );
+        this.warnedSources.add(sourceId);
+      }
+      // Direct tiles array - use first URL
       return view.addSource({
         ...directTilesDesc,
         id: sourceId,
@@ -390,7 +405,17 @@ export class MapLibreStylePlugin extends Plugin<ThreeView, ViewContext> {
       break;
     }
 
-    if (!backgroundLayer) return;
+    // If no background layer applies, reset to default values
+    if (!backgroundLayer) {
+      if (!view.globe.color) {
+        view.globe.color = new Color().setRGB(1, 1, 1);
+      } else {
+        view.globe.color.setRGB(1, 1, 1);
+      }
+      view.globe.opacity = 1.0;
+      view.globe.transparent = false;
+      return;
+    }
 
     // Type guard: ensure this is actually a background layer with background paint
     if (backgroundLayer.type !== "background") return;
@@ -445,7 +470,11 @@ export class MapLibreStylePlugin extends Plugin<ThreeView, ViewContext> {
     // Combine color alpha with explicit opacity and clamp to [0, 1]
     const finalOpacity =
       explicitOpacity !== undefined ? colorAlpha * explicitOpacity : colorAlpha;
-    view.globe.opacity = Math.max(0, Math.min(1, finalOpacity));
+    // Validate finalOpacity is finite, fall back to 1.0 if NaN/Infinity
+    const validOpacity = Number.isFinite(finalOpacity) ? finalOpacity : 1.0;
+    const clampedOpacity = Math.max(0, Math.min(1, validOpacity));
+    view.globe.transparent = clampedOpacity < 1;
+    view.globe.opacity = clampedOpacity;
   }
 
   /**
@@ -464,6 +493,9 @@ export class MapLibreStylePlugin extends Plugin<ThreeView, ViewContext> {
       // Initialize lastZoom on first valid zoom value
       if (this.lastZoom === undefined) {
         this.lastZoom = currentZoom;
+        if (this.hasZoomDependentBackground) {
+          this.applyBackgroundColor(view, currentZoom);
+        }
         return;
       }
 
@@ -858,6 +890,7 @@ export class MapLibreStylePlugin extends Plugin<ThreeView, ViewContext> {
 
     // Clear other state
     this.warnedLayers.clear();
+    this.warnedSources.clear();
     this.zoomDependentLayers.clear();
     this.hasZoomDependentBackground = false;
     this.parsedStyle = null;
