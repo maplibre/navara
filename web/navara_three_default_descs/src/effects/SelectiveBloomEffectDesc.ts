@@ -9,7 +9,7 @@ import {
   type ViewContext,
 } from "@navaramap/three";
 import SelectiveEffectMaskChunk from "@shaders/glsl/chunks/selective_effect_mask.glsl?raw";
-import { Pass as PostProcessingPass } from "postprocessing";
+import { MipmapBlurPass, Pass as PostProcessingPass } from "postprocessing";
 import {
   HalfFloatType,
   Mesh,
@@ -23,13 +23,13 @@ import {
   RGBAFormat,
 } from "three";
 
-import { UnrealBloomPassRGBA } from "./UnrealBloomPassRGBA";
-
 // Selective Bloom configuration
 export type SelectiveBloomConfig = {
   strength?: number;
   radius?: number;
   threshold?: number;
+  smoothing?: number;
+  levels?: number;
   resolutionScale?: number;
 };
 
@@ -42,15 +42,17 @@ export type SelectiveBloomEffectUpdate = {
 } & EffectUpdate;
 
 const DEFAULT_STRENGTH = 0.8;
-const DEFAULT_RADIUS = 0.2;
+const DEFAULT_RADIUS = 0.85;
 const DEFAULT_THRESHOLD = 0.0;
+const DEFAULT_SMOOTHING = 0.1;
+const DEFAULT_LEVELS = 8;
 const DEFAULT_BLOOM_RESOLUTION_SCALE = 0.5;
 
 /**
  * Selective Bloom Effect Descriptor
  *
  * Uses EmissiveBuffer + EffectIds Buffer to apply bloom to selected objects.
- * Extract → Blur (UnrealBloomPassRGBA) → Composite with base scene.
+ * Extract (threshold + mask) → Blur (MipmapBlurPass) → Composite with base scene.
  */
 export class SelectiveBloomEffectDesc extends SelectiveEffectDesc<
   SelectiveBloomEffectConfig,
@@ -80,6 +82,15 @@ export class SelectiveBloomEffectDesc extends SelectiveEffectDesc<
     return this.bloom.threshold ?? DEFAULT_THRESHOLD;
   }
 
+  get bloomSmoothing(): number {
+    return this.bloom.smoothing ?? DEFAULT_SMOOTHING;
+  }
+
+  get bloomLevels(): number {
+    // MipmapBlurPass needs a positive integer level count; 0 leaves it with no targets to sample.
+    return Math.max(1, Math.round(this.bloom.levels ?? DEFAULT_LEVELS));
+  }
+
   constructor(view: ThreeView, ctx: ViewContext, config: EffectConfig) {
     const c =
       (config as Partial<SelectiveBloomEffectConfig>).selectiveBloom ?? {};
@@ -91,6 +102,8 @@ export class SelectiveBloomEffectDesc extends SelectiveEffectDesc<
         strength: c.strength ?? DEFAULT_STRENGTH,
         radius: c.radius ?? DEFAULT_RADIUS,
         threshold: c.threshold ?? DEFAULT_THRESHOLD,
+        smoothing: c.smoothing ?? DEFAULT_SMOOTHING,
+        levels: c.levels ?? DEFAULT_LEVELS,
         resolutionScale: c.resolutionScale ?? DEFAULT_BLOOM_RESOLUTION_SCALE,
       },
     };
@@ -124,6 +137,10 @@ export class SelectiveBloomEffectDesc extends SelectiveEffectDesc<
       this.config.selectiveBloom.threshold = bloomUpdates.threshold;
       changed = true;
     }
+    if (bloomUpdates.smoothing !== undefined) {
+      this.config.selectiveBloom.smoothing = bloomUpdates.smoothing;
+      changed = true;
+    }
     if (bloomUpdates.resolutionScale !== undefined) {
       this.config.selectiveBloom.resolutionScale = bloomUpdates.resolutionScale;
     }
@@ -133,7 +150,12 @@ export class SelectiveBloomEffectDesc extends SelectiveEffectDesc<
         this.bloomStrength,
         this.bloomRadius,
         this.bloomThreshold,
+        this.bloomSmoothing,
       );
+    }
+    if (bloomUpdates.levels !== undefined) {
+      this.config.selectiveBloom.levels = bloomUpdates.levels;
+      this.bloomPass?.setLevels(this.bloomLevels);
     }
   }
 }
@@ -141,12 +163,12 @@ export class SelectiveBloomEffectDesc extends SelectiveEffectDesc<
 /**
  * Buffer-based Selective Bloom Pass.
  *
- * Pipeline: Extract bloom source → UnrealBloomPassRGBA blur → Composite with base.
+ * Pipeline: Extract bloom source (threshold + mask) → Blur (MipmapBlurPass) → Composite with base.
  * Reads from EmissiveBuffer + EffectIds Buffer in the GBuffer MRT.
  */
 class SelectiveBloomPass extends PostProcessingPass {
   private desc: SelectiveBloomEffectDesc;
-  private bloom: UnrealBloomPassRGBA;
+  private bloom: MipmapBlurPass;
 
   private bloomSourceRT: WebGLRenderTarget;
 
@@ -177,12 +199,15 @@ class SelectiveBloomPass extends PostProcessingPass {
     this.fullscreenCamera = fullscreenQuad.camera;
     this.fullscreenGeometry = fullscreenQuad.geometry;
 
-    // Extract material: reads EmissiveBuffer + EffectIds Buffer → bloom source
+    // Extract material: reads EmissiveBuffer + EffectIds Buffer → bloom source.
+    // Threshold is applied here: MipmapBlurPass only blurs.
     this.extractMaterial = new ShaderMaterial({
       uniforms: {
         tEmissive: { value: null },
         tEffectIds: { value: null },
         slotBit: { value: 0 },
+        threshold: { value: DEFAULT_THRESHOLD },
+        smoothing: { value: DEFAULT_SMOOTHING },
       },
       vertexShader: `
         varying vec2 vUv;
@@ -195,6 +220,8 @@ class SelectiveBloomPass extends PostProcessingPass {
         uniform sampler2D tEmissive;
         uniform sampler2D tEffectIds;
         uniform int slotBit;
+        uniform float threshold;
+        uniform float smoothing;
 
         varying vec2 vUv;
 
@@ -206,7 +233,12 @@ class SelectiveBloomPass extends PostProcessingPass {
 
           if (bitValue > 0.5) {
             vec3 emissive = texture2D(tEmissive, vUv).rgb;
-            gl_FragColor = vec4(emissive, 1.0);
+            float luma = dot(emissive, vec3(0.299, 0.587, 0.114));
+            // smoothstep is undefined for equal edges, so smoothing 0 falls back to a hard cutoff.
+            float pass = smoothing > 0.0
+              ? smoothstep(threshold, threshold + smoothing, luma)
+              : step(threshold, luma);
+            gl_FragColor = vec4(emissive * pass, 1.0);
           } else {
             gl_FragColor = vec4(0.0, 0.0, 0.0, 0.0);
           }
@@ -221,11 +253,14 @@ class SelectiveBloomPass extends PostProcessingPass {
       new Mesh(this.fullscreenGeometry, this.extractMaterial),
     );
 
-    // Composite material: base + bloom additive blend
+    // Composite material: base + (source + blur) * strength.
+    // The unblurred source makes the object itself read as self-lit, not only its halo.
     this.compositeMaterial = new ShaderMaterial({
       uniforms: {
         tBase: { value: null },
+        tSource: { value: null },
         tBloom: { value: null },
+        strength: { value: DEFAULT_STRENGTH },
       },
       vertexShader: `
         varying vec2 vUv;
@@ -236,14 +271,16 @@ class SelectiveBloomPass extends PostProcessingPass {
       `,
       fragmentShader: `
         uniform sampler2D tBase;
+        uniform sampler2D tSource;
         uniform sampler2D tBloom;
+        uniform float strength;
 
         varying vec2 vUv;
 
         void main() {
           vec4 baseColor = texture2D(tBase, vUv);
-          vec3 bloom = texture2D(tBloom, vUv).rgb;
-          gl_FragColor = vec4(baseColor.rgb + bloom, baseColor.a);
+          vec3 bloom = texture2D(tSource, vUv).rgb + texture2D(tBloom, vUv).rgb;
+          gl_FragColor = vec4(baseColor.rgb + bloom * strength, baseColor.a);
         }
       `,
       depthTest: false,
@@ -265,22 +302,35 @@ class SelectiveBloomPass extends PostProcessingPass {
     });
     this.bloomSourceRT.texture.name = `SelectiveBloom_Source_${desc.id}`;
 
-    this.bloom = new UnrealBloomPassRGBA(
-      new Vector2(initialWidth, initialHeight),
-      desc.bloomStrength,
-      desc.bloomRadius,
-      desc.bloomThreshold,
-    );
-    this.bloom.renderToScreen = false;
+    this.bloom = new MipmapBlurPass();
+    this.bloom.levels = desc.bloomLevels;
+    this.bloom.radius = desc.bloomRadius;
+    this.bloom.setSize(initialWidth, initialHeight);
 
     this.size.set(initialWidth, initialHeight);
     this.needsSwap = true;
   }
 
-  setParameters(strength: number, radius: number, threshold: number): void {
-    this.bloom.strength = strength;
+  initialize(renderer: WebGLRenderer, alpha: boolean): void {
+    // HalfFloatType so emissive values above 1.0 survive the mip chain.
+    this.bloom.initialize(renderer, alpha, HalfFloatType);
+  }
+
+  setParameters(
+    strength: number,
+    radius: number,
+    threshold: number,
+    smoothing: number,
+  ): void {
     this.bloom.radius = radius;
-    this.bloom.threshold = threshold;
+    this.extractMaterial.uniforms.threshold.value = threshold;
+    this.extractMaterial.uniforms.smoothing.value = smoothing;
+    this.compositeMaterial.uniforms.strength.value = strength;
+  }
+
+  setLevels(levels: number): void {
+    if (this.bloom.levels === levels) return;
+    this.bloom.levels = levels;
   }
 
   private updateSizes(width: number, height: number): void {
@@ -310,7 +360,9 @@ class SelectiveBloomPass extends PostProcessingPass {
       this.desc.bloomStrength,
       this.desc.bloomRadius,
       this.desc.bloomThreshold,
+      this.desc.bloomSmoothing,
     );
+    this.setLevels(this.desc.bloomLevels);
 
     // Get buffer textures
     const emissiveBuffer = this.desc.getEmissiveBuffer();
@@ -319,14 +371,17 @@ class SelectiveBloomPass extends PostProcessingPass {
 
     // Passthrough if buffers not available — render base without bloom
     if (!emissiveBuffer || !effectIdsBuffer || slot < 0) {
+      this.compositeMaterial.uniforms.strength.value = 0;
       renderer.setRenderTarget(this.renderToScreen ? null : outputBuffer);
       this.compositeMaterial.uniforms.tBase.value = inputBuffer.texture;
+      this.compositeMaterial.uniforms.tSource.value =
+        this.bloomSourceRT.texture;
       this.compositeMaterial.uniforms.tBloom.value = this.bloomSourceRT.texture;
       renderer.render(this.compositeScene, this.fullscreenCamera);
       return;
     }
 
-    // Step 1: Extract bloom source from buffers
+    // Step 1: Extract bloom source from buffers (threshold applied here)
     this.extractMaterial.uniforms.tEmissive.value = emissiveBuffer;
     this.extractMaterial.uniforms.tEffectIds.value = effectIdsBuffer;
     this.extractMaterial.uniforms.slotBit.value = slot;
@@ -334,22 +389,13 @@ class SelectiveBloomPass extends PostProcessingPass {
     renderer.setRenderTarget(this.bloomSourceRT);
     renderer.render(this.extractScene, this.fullscreenCamera);
 
-    // Step 2: Apply bloom blur
-    // UnrealBloomPassRGBA reads from readBuffer (2nd arg)
-    this.bloom.render(
-      renderer,
-      this.bloomSourceRT, // writeBuffer (ignored)
-      this.bloomSourceRT, // readBuffer (actual input)
-      deltaTime ?? 0,
-    );
-
-    // Get bloom output from internal RT
-    const bloomOutput = this.bloom.renderTargetsHorizontal[0];
+    // Step 2: Apply bloom blur. MipmapBlurPass ignores outputBuffer and exposes the result via `texture`.
+    this.bloom.render(renderer, this.bloomSourceRT, null, deltaTime);
 
     // Step 3: Composite bloom with base scene
     this.compositeMaterial.uniforms.tBase.value = inputBuffer.texture;
-    this.compositeMaterial.uniforms.tBloom.value =
-      bloomOutput?.texture ?? this.bloomSourceRT.texture;
+    this.compositeMaterial.uniforms.tSource.value = this.bloomSourceRT.texture;
+    this.compositeMaterial.uniforms.tBloom.value = this.bloom.texture;
 
     renderer.setRenderTarget(this.renderToScreen ? null : outputBuffer);
     renderer.render(this.compositeScene, this.fullscreenCamera);

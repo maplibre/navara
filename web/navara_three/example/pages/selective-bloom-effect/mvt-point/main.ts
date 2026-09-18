@@ -47,7 +47,7 @@ const run = async () => {
   // Selective bloom effect
   const bloomEffect = view.addEffect({
     selectiveBloom: {
-      strength: 1.0,
+      strength: 4.0,
       radius: 0.5,
       threshold: 0.0,
     },
@@ -107,6 +107,12 @@ const run = async () => {
     },
   });
 
+  view.addLayer({
+    type: "raster",
+    source: terrainDem,
+    hillshade: {},
+  });
+
   const openstreetmap = view.addSource({
     type: "raster-tile",
     url: TILE_DATASETS.openstreetmap.url,
@@ -115,12 +121,6 @@ const run = async () => {
   view.addLayer({
     type: "raster",
     source: openstreetmap,
-  });
-
-  view.addLayer({
-    type: "raster",
-    source: terrainDem,
-    hillshade: {},
   });
 
   attribution?.add([

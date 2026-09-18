@@ -38,16 +38,7 @@ const run = async () => {
     roll: 0,
   });
 
-  // Base tiles layer
-  const openstreetmap = view.addSource({
-    type: "raster-tile",
-    url: TILE_DATASETS.openstreetmap.url,
-    maxZoom: 19,
-  });
-  view.addLayer({
-    type: "raster",
-    source: openstreetmap,
-  });
+  // Base layers
   const terrainDem = view.addSource({
     type: "raster-dem",
     url: TERRAIN_DATASETS.gsi.url,
@@ -58,16 +49,22 @@ const run = async () => {
   view.addLayer({
     type: "terrain",
     source: terrainDem,
-    terrain: {
-      castShadow: true,
-      receiveShadow: true,
-    },
   });
 
   view.addLayer({
     type: "raster",
     source: terrainDem,
     hillshade: {},
+  });
+
+  const openstreetmap = view.addSource({
+    type: "raster-tile",
+    url: TILE_DATASETS.openstreetmap.url,
+    maxZoom: 19,
+  });
+  view.addLayer({
+    type: "raster",
+    source: openstreetmap,
   });
 
   // Selective bloom effect
@@ -81,8 +78,6 @@ const run = async () => {
 
   // Track updated features to prevent duplicate evaluations
   let updatedFeatures = new Set<bigint>();
-
-  const params = { width: 10 };
 
   // GeoJSON polyline layer with feature evaluator
   const addGeoJsonLayer = () => {
@@ -99,7 +94,9 @@ const run = async () => {
         show: true,
         color: new Color().setStyle("#ff0000"),
         emissiveIntensity: 0.5,
-        width: params.width,
+        width: 10,
+        // The default maxWidth (1000 m) clamps a 10 px line to sub-pixel from 1,500 km up.
+        maxWidth: 100_000,
         effectIds: [bloomEffect.id],
       },
     });
