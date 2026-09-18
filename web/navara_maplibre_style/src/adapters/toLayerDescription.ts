@@ -195,9 +195,9 @@ function createSymbolLayer(
   // Warn if text is configured but no font provided
   if (hasTextField && !fontFamily) {
     console.warn(
-      `Symbol layer "${styleLayer.id}" has text-field but no font was provided to MapLibreStylePlugin. ` +
+      `Symbol layer "${styleLayer.id}" has text-field but no font was provided. ` +
         `Text rendering will be skipped. ` +
-        `Provide fontFamily option: new MapLibreStylePlugin(style, { fontFamily: await fetchFontFamilyFromCssForMapLibreStyle('FontName', 'https://...') })`,
+        `Provide fonts via style overrides: new MapLibreStylePlugin(style, { overrides: await fetchFontStyleOverrides('Open Sans', 'https://fonts.googleapis.com/...') })`,
     );
     // If there's no icon either, this layer can't render anything - skip it
     if (!hasIconImage) {

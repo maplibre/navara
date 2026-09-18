@@ -225,7 +225,7 @@ const plugin = new MapLibreStylePlugin(style, {
 You can also provide a custom `TileJsonPlugin` instance:
 
 ```typescript
-import { TileJsonPlugin } from "@navaramap/three_plugins";
+import { TileJsonPlugin } from "@navaramap/three-plugins";
 
 const plugin = new MapLibreStylePlugin(style, {
   overrides: fontOverrides,

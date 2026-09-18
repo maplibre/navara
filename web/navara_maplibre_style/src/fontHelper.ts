@@ -311,7 +311,7 @@ export function fontFamilyToStyleOverrides(
  *   "Open Sans",
  *   "https://fonts.googleapis.com/css2?family=Open+Sans:wght@600&display=swap"
  * );
- * const plugin = new MapLibreStylePlugin(style, overrides);
+ * const plugin = new MapLibreStylePlugin(style, { overrides });
  * ```
  */
 export async function fetchFontStyleOverrides(

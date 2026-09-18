@@ -349,7 +349,7 @@ export class MapLibreStylePlugin extends Plugin<ThreeView, ViewContext> {
             (hasFontFaces
               ? `Text will use fonts from font-faces instead.`
               : "Please provide font configuration via style overrides to enable text rendering. " +
-                "Example: new MapLibreStylePlugin(style, await fetchFontStyleOverrides('Open Sans', 'https://fonts.googleapis.com/...'))"),
+                "Example: new MapLibreStylePlugin(style, { overrides: await fetchFontStyleOverrides('Open Sans', 'https://fonts.googleapis.com/...') })"),
         );
       }
     } catch (err) {
