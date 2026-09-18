@@ -7,6 +7,7 @@
 import type { StyleSpecification } from "@maplibre/maplibre-gl-style-spec";
 import { Plugin } from "@navaramap/core";
 import ThreeView, {
+  Color,
   type ViewContext,
   type Layer,
   type Source,
@@ -15,16 +16,26 @@ import ThreeView, {
   TERRARIUM_ELEVATION_DECODER,
   MAPBOX_ELEVATION_DECODER,
 } from "@navaramap/three";
+import { TileJsonPlugin } from "@navaramap/three-plugins";
 
 import {
   createLayoutEvaluators,
   createPaintEvaluators,
   toEvaluatedValue,
+  toNavaraColor,
 } from "./adapters/toEvaluatedValue";
 import { toLayerDescription } from "./adapters/toLayerDescription";
-import { RustStyleEngine } from "./engine/RustStyleEngine";
-import type { StyleEngine } from "./engine/StyleEngine";
+import { JsStyleEngine } from "./engine/JsStyleEngine";
 import type { ParsedStyle, StyleLayer } from "./engine/types";
+import { convertFontFacesToFontFamilies } from "./fontHelper";
+
+/**
+ * Options for MapLibreStylePlugin constructor.
+ */
+type MapLibreStylePluginOptions = {
+  overrides?: Partial<StyleSpecification>;
+  tileJsonPlugin?: TileJsonPlugin;
+};
 
 export class MapLibreStylePlugin extends Plugin<ThreeView, ViewContext> {
   private sources: Map<string, Source> = new Map<string, Source>();
@@ -34,21 +45,262 @@ export class MapLibreStylePlugin extends Plugin<ThreeView, ViewContext> {
    * Track layers that have already warned about invalid geometry types to avoid spamming the console.
    */
   private warnedLayers: Set<string> = new Set<string>();
+  /**
+   * Track sources that have already warned about issues (e.g., multiple tile URLs) to avoid spamming the console.
+   */
+  private warnedSources: Set<string> = new Set<string>();
+  /**
+   * TileJSON plugin instance for fetching and parsing TileJSON sources.
+   * Initialized in constructor.
+   */
+  private tileJsonPlugin: TileJsonPlugin;
+  /**
+   * Whether the TileJsonPlugin was created internally (should be disposed).
+   */
+  private ownsTileJsonPlugin: boolean;
+  private view?: ThreeView;
+  /**
+   * Style overrides to merge with the base style.
+   * Can be used to inject font configuration via font-faces.
+   */
+  private readonly overrides?: Partial<StyleSpecification>;
+  /**
+   * Style engine for evaluating MapLibre expressions.
+   * Uses JsStyleEngine internally.
+   */
+  private readonly engine = new JsStyleEngine();
+  /**
+   * Last camera zoom level. Used to detect zoom changes that require feature re-evaluation.
+   * undefined when not yet initialized.
+   */
+  private lastZoom: number | undefined = undefined;
+  /**
+   * Minimum zoom change to trigger feature re-evaluation.
+   * Features are re-evaluated when zoom changes by more than this threshold.
+   */
+  private static readonly ZOOM_CHANGE_THRESHOLD = 0.1;
+  /**
+   * Zoom change listener function reference for cleanup in destroy.
+   */
+  private zoomChangeListener?: () => void;
+  /**
+   * Layers that have zoom-dependent expressions (filter, paint, or layout).
+   * Only these layers need to be updated when zoom changes.
+   */
+  private zoomDependentLayers = new Set<Layer>();
+  /**
+   * Whether any background layer has zoom-dependent expressions.
+   * If false, we can skip re-evaluating background color on zoom changes.
+   */
+  private hasZoomDependentBackground = false;
 
   /**
    * Create a new MapLibre Style plugin.
    *
-   * @param style - MapLibre Style JSON specification
-   * @param engine - Style engine implementation (defaults to RustStyleEngine)
+   * @param style - MapLibre Style JSON specification or URL
+   * @param options - Plugin options
+   * @param options.overrides - Optional partial style overrides to merge with the base style.
+   *                            Use fontFamilyToStyleOverrides() or fetchFontStyleOverrides() to inject font configuration.
+   * @param options.tileJsonPlugin - Optional TileJsonPlugin instance. If not provided, a new one will be created internally and disposed when this plugin is disposed.
+   *
+   * @example
+   * ```ts
+   * // With font configuration
+   * const plugin = new MapLibreStylePlugin(style, {
+   *   overrides: await fetchFontStyleOverrides("Open Sans", "https://fonts.googleapis.com/css2?family=Open+Sans"),
+   * });
+   * ```
+   *
+   * @example
+   * ```ts
+   * // With custom TileJsonPlugin
+   * const plugin = new MapLibreStylePlugin(style, {
+   *   overrides: fontOverrides,
+   *   tileJsonPlugin: new TileJsonPlugin(),
+   * });
+   * ```
    */
   constructor(
     private readonly style: string | StyleSpecification,
-    private readonly engine: StyleEngine = new RustStyleEngine(),
+    options?: MapLibreStylePluginOptions,
   ) {
     super();
+    this.overrides = options?.overrides;
+    this.tileJsonPlugin = options?.tileJsonPlugin ?? new TileJsonPlugin();
+    this.ownsTileJsonPlugin = !options?.tileJsonPlugin;
   }
 
-  async init(view: ThreeView, _ctx: ViewContext): Promise<void> {
+  /**
+   * Merge style overrides into base style.
+   * Returns a new merged style object without mutating the input.
+   * Currently supports font-faces; can be extended for other properties in the future.
+   *
+   * @param baseStyle - A validated style object (not a string or primitive)
+   * @param overrides - Partial style specification to merge in
+   */
+  private mergeStyleOverrides(
+    baseStyle: StyleSpecification,
+    overrides: Partial<StyleSpecification>,
+  ): StyleSpecification {
+    // Create a shallow copy of the base style
+    const mergedStyle = { ...baseStyle };
+
+    // Merge font-faces into a new object
+    if (overrides["font-faces"]) {
+      mergedStyle["font-faces"] = {
+        ...baseStyle["font-faces"],
+        ...overrides["font-faces"],
+      };
+    }
+
+    // TODO: Add support for other override properties here
+    // if (overrides.sources) { mergedStyle.sources = { ...baseStyle.sources, ...overrides.sources }; }
+    // if (overrides.layers) { mergedStyle.layers = [...baseStyle.layers, ...overrides.layers]; }
+
+    return mergedStyle;
+  }
+
+  /**
+   * Get font family name for a layer.
+   * Reads from layer's text-font property if it's a symbol layer, otherwise returns first available font.
+   */
+  private getFontFamilyForLayer(styleLayer: StyleLayer): string | undefined {
+    const fontFaces = this.parsedStyle?.["font-faces"];
+    if (!fontFaces) {
+      return undefined;
+    }
+
+    // For symbol layers, try to use text-font property
+    if (styleLayer.type === "symbol" && styleLayer.layout?.["text-font"]) {
+      const textFont = styleLayer.layout["text-font"];
+
+      // text-font can be a string (constant), array (for fallback), or expression
+      if (typeof textFont === "string") {
+        // Single font name - use it if available
+        if (fontFaces[textFont]) {
+          return textFont;
+        }
+      } else if (
+        Array.isArray(textFont) &&
+        textFont.every((v) => typeof v === "string") &&
+        textFont.some((v) => fontFaces[v])
+      ) {
+        // Array of font names with at least one matching an available font.
+        // This distinguishes fallback lists from expression arrays (e.g., ["case", ...])
+        // where operator names could coincide with font keys.
+        for (const fontName of textFont) {
+          if (fontFaces[fontName]) {
+            return fontName;
+          }
+        }
+      }
+      // Note: text-font can also be an expression (e.g., ["case", ...]),
+      // but we don't evaluate it here since font selection is done at layer
+      // construction time, not per-feature. Fall back to first configured font.
+    }
+
+    // Fall back to first available font
+    return Object.keys(fontFaces)[0];
+  }
+
+  /**
+   * Register fonts from style font-faces with the view.
+   * Converts MapLibre font-face format to Navara FontFamily format.
+   */
+  private registerFontsFromStyle(view: ThreeView): void {
+    const fontFaces = this.parsedStyle?.["font-faces"];
+    if (!fontFaces) {
+      return;
+    }
+
+    const fontFamilies = convertFontFacesToFontFamilies(fontFaces);
+    for (const fontFamily of fontFamilies) {
+      view.addFontFamily(fontFamily);
+    }
+  }
+
+  /**
+   * Check if an expression uses the zoom operator.
+   * Recursively searches for ["zoom"] in the expression tree.
+   * Also detects legacy function objects with stops (zoom-dependent).
+   */
+  private static expressionUsesZoom(expr: unknown): boolean {
+    // Check for legacy function objects with stops: { stops: [[zoom, value], ...] }
+    // These are zoom-dependent and will be converted to zoom expressions by the engine
+    if (expr && typeof expr === "object" && !Array.isArray(expr)) {
+      // Use safe property access with type guard
+      const obj = expr as Record<string, unknown>;
+      if ("stops" in obj && Array.isArray(obj.stops)) {
+        return true;
+      }
+      // Check nested objects recursively
+      for (const value of Object.values(obj)) {
+        if (this.expressionUsesZoom(value)) {
+          return true;
+        }
+      }
+      return false;
+    }
+
+    if (!Array.isArray(expr)) {
+      return false;
+    }
+
+    // Check if this is a zoom expression
+    if (expr[0] === "zoom") {
+      return true;
+    }
+
+    // Recursively check nested expressions
+    for (const item of expr) {
+      if (this.expressionUsesZoom(item)) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  /**
+   * Check if a layer has any zoom-dependent expressions in filter, paint, or layout.
+   */
+  private static layerUsesZoom(layer: StyleLayer): boolean {
+    // Check filter
+    if (
+      "filter" in layer &&
+      layer.filter &&
+      this.expressionUsesZoom(layer.filter)
+    ) {
+      return true;
+    }
+
+    // Check paint properties
+    if ("paint" in layer && layer.paint) {
+      for (const value of Object.values(layer.paint)) {
+        if (this.expressionUsesZoom(value)) {
+          return true;
+        }
+      }
+    }
+
+    // Check layout properties
+    if ("layout" in layer && layer.layout) {
+      for (const value of Object.values(layer.layout)) {
+        if (this.expressionUsesZoom(value)) {
+          return true;
+        }
+      }
+    }
+
+    return false;
+  }
+
+  async init(view: ThreeView, ctx: ViewContext): Promise<void> {
+    // Save view reference for camera zoom access
+    this.view = view;
+
+    // Step 0: Fetch and parse style FIRST, before initializing any resources
+    // This way, if style parsing fails, we don't leak listeners or child plugin state
     let styleData: unknown;
     if (typeof this.style === "string") {
       // Fetch style from URL
@@ -68,27 +320,88 @@ export class MapLibreStylePlugin extends Plugin<ThreeView, ViewContext> {
       styleData = this.style;
     }
 
+    // Validate that styleData is a plain object before merging
+    if (
+      typeof styleData !== "object" ||
+      styleData === null ||
+      Array.isArray(styleData)
+    ) {
+      throw new Error(`Invalid style data: expected a style object`);
+    }
+
+    // Merge overrides into style before parsing
+    if (this.overrides) {
+      styleData = this.mergeStyleOverrides(
+        styleData as StyleSpecification,
+        this.overrides,
+      );
+    }
+
     try {
-      // Parse and validate the style
+      // Parse and validate the merged style
       this.parsedStyle = await this.engine.parseStyle(styleData);
+
+      // Check if style uses glyphs (not supported)
+      const hasFontFaces = this.parsedStyle["font-faces"];
+      if (this.parsedStyle.glyphs) {
+        console.warn(
+          "MapLibre Style uses 'glyphs' for font rendering, which is not supported by Navara. " +
+            (hasFontFaces
+              ? `Text will use fonts from font-faces instead.`
+              : "Please provide font configuration via style overrides to enable text rendering. " +
+                "Example: new MapLibreStylePlugin(style, { overrides: await fetchFontStyleOverrides('Open Sans', 'https://fonts.googleapis.com/...') })"),
+        );
+      }
     } catch (err) {
       console.error("Failed to parse MapLibre style:", err);
       throw err;
     }
 
-    // Step 1: Add all sources first
+    // Now that style parsing succeeded, initialize resources that need cleanup
+    // Initialize TileJsonPlugin for TileJSON source support
+    await this.tileJsonPlugin.init(view, ctx);
+
+    // Register fonts from style font-faces
+    this.registerFontsFromStyle(view);
+
+    // Set up zoom change detection for re-evaluating features
+    this.setupZoomChangeDetection(view);
+
+    // Step 1: Check for zoom-dependent background layers
+    // Background is zoom-dependent if:
+    // - Any background layer uses zoom expressions, OR
+    // - Any background layer has minzoom/maxzoom (changes which layer applies at different zooms), OR
+    // - Multiple background layers exist (last applicable layer may change with zoom)
+    const backgroundLayers = this.parsedStyle.layers.filter(
+      (layer) => layer.type === "background",
+    );
+    this.hasZoomDependentBackground =
+      backgroundLayers.length > 1 ||
+      backgroundLayers.some(
+        (layer) =>
+          MapLibreStylePlugin.layerUsesZoom(layer) ||
+          "minzoom" in layer ||
+          "maxzoom" in layer,
+      );
+
+    // Step 2: Handle background layer (set globe color)
+    // Use current camera zoom, or default to 0 if not yet available
+    const initialZoom = view.camera.zoom ?? 0;
+    this.applyBackgroundColor(view, initialZoom);
+
+    // Step 3: Add all sources first
     for (const [sourceId, sourceSpec] of Object.entries(
       this.parsedStyle.sources,
     )) {
       try {
-        this.addStyleSource(view, sourceId, sourceSpec);
+        await this.addStyleSource(view, sourceId, sourceSpec);
       } catch (err) {
         console.error(`Failed to add source "${sourceId}":`, err);
         // Continue loading other sources
       }
     }
 
-    // Step 2: Add layers that reference the sources
+    // Step 4: Add layers that reference the sources
     for (const styleLayer of this.parsedStyle.layers) {
       try {
         this.addStyleLayer(view, styleLayer);
@@ -98,7 +411,7 @@ export class MapLibreStylePlugin extends Plugin<ThreeView, ViewContext> {
       }
     }
 
-    // Step 3: Add terrain if specified
+    // Step 5: Add terrain if specified
     if (this.parsedStyle.terrain) {
       try {
         this.addStyleTerrain(view, this.parsedStyle.terrain);
@@ -110,31 +423,64 @@ export class MapLibreStylePlugin extends Plugin<ThreeView, ViewContext> {
   }
 
   /**
-   * Extract tile URL template from source spec.
-   *
-   * In MapLibre Style Spec:
-   * - `tiles`: Array of tile URL templates (e.g., "https://example.com/{z}/{x}/{y}.png")
-   *
-   * This method ONLY returns direct tile URL templates from the `tiles` array.
-   * Sources with only `url` (TileJSON) are not supported and will return undefined,
-   * requiring the caller to skip the source with an appropriate warning.
-   *
-   * Returns the first tile URL template, or undefined if tiles array is missing/empty.
+   * Helper to add a tile source with TileJSON or direct tiles URL support.
+   * Handles both `url` (TileJSON) and `tiles` (direct URL array) fields.
    */
-  private getSourceUrl(sourceSpec: {
-    url?: unknown;
-    tiles?: unknown;
-  }): string | undefined {
-    // Only accept direct tile URL templates from tiles array
-    if (
+  private async addTileSource(
+    view: ThreeView,
+    sourceId: string,
+    sourceSpec: {
+      url?: unknown;
+      tiles?: unknown;
+      minzoom?: number;
+      maxzoom?: number;
+    },
+    tileJsonDesc: Partial<Parameters<TileJsonPlugin["addSource"]>[0]> & {
+      type: "raster-tile" | "vector-tile" | "raster-dem";
+    },
+    directTilesDesc: Partial<Parameters<typeof view.addSource>[0]> & {
+      type: "raster-tile" | "vector-tile" | "raster-dem";
+    },
+    sourceTypeName: string,
+  ): Promise<Source | null> {
+    if (typeof sourceSpec.url === "string") {
+      return await this.tileJsonPlugin.addSource({
+        ...tileJsonDesc,
+        url: sourceSpec.url,
+        id: sourceId,
+        minzoom: sourceSpec.minzoom,
+        maxzoom: sourceSpec.maxzoom,
+      });
+    } else if (
       Array.isArray(sourceSpec.tiles) &&
       sourceSpec.tiles.length > 0 &&
       typeof sourceSpec.tiles[0] === "string"
     ) {
-      return sourceSpec.tiles[0];
+      // Warn if multiple tile URLs are provided (Navara only supports one)
+      // Use warnedSources to deduplicate warnings on re-init or reload
+      if (sourceSpec.tiles.length > 1 && !this.warnedSources.has(sourceId)) {
+        console.warn(
+          `${sourceTypeName} source "${sourceId}" has ${sourceSpec.tiles.length} tile URLs. ` +
+            `Only the first URL will be used. Navara currently supports single tile URL per source. ` +
+            `Multiple URLs are typically used for load spreading, which is not yet supported.`,
+        );
+        this.warnedSources.add(sourceId);
+      }
+      // Direct tiles array - use first URL
+      return view.addSource({
+        ...directTilesDesc,
+        id: sourceId,
+        url: sourceSpec.tiles[0],
+        minZoom: sourceSpec.minzoom,
+        maxZoom: sourceSpec.maxzoom,
+      });
+    } else {
+      console.warn(
+        `${sourceTypeName} source "${sourceId}" missing both "tiles" array and "url" field. ` +
+          `Add "tiles": ["https://.../{z}/{x}/{y}..."] or "url": "https://.../tiles.json".`,
+      );
+      return null;
     }
-
-    return undefined;
   }
 
   /**
@@ -164,13 +510,160 @@ export class MapLibreStylePlugin extends Plugin<ThreeView, ViewContext> {
   }
 
   /**
+   * Apply background layer color/opacity to the globe.
+   * Finds the last applicable background layer (respecting minzoom/maxzoom)
+   * and evaluates its properties at the given zoom level.
+   * Supports background-color, background-opacity, and visibility properties.
+   *
+   * @param view - ThreeView to apply background to
+   * @param zoom - Current camera zoom level for evaluating zoom-dependent expressions
+   */
+  private applyBackgroundColor(view: ThreeView, zoom: number): void {
+    if (!this.parsedStyle) return;
+
+    // Find the LAST applicable background layer (later layers override earlier ones)
+    // Scan from end to beginning and find the first one that matches zoom constraints
+    let backgroundLayer: StyleLayer | undefined;
+    for (let i = this.parsedStyle.layers.length - 1; i >= 0; i--) {
+      const layer = this.parsedStyle.layers[i];
+      if (layer.type !== "background") continue;
+
+      // Check visibility (from layout property)
+      const visibility = layer.layout?.visibility;
+      if (visibility === "none") continue;
+
+      // Check zoom constraints (minzoom/maxzoom)
+      if (layer.minzoom !== undefined && zoom < layer.minzoom) continue;
+      if (layer.maxzoom !== undefined && zoom >= layer.maxzoom) continue;
+
+      // Found the last applicable background layer
+      backgroundLayer = layer;
+      break;
+    }
+
+    // If no background layer applies, reset to MapLibre's default background (#000000)
+    if (!backgroundLayer) {
+      if (!view.globe.color) {
+        view.globe.color = new Color().setRGB(0, 0, 0);
+      } else {
+        view.globe.color.setRGB(0, 0, 0);
+      }
+      view.globe.opacity = 1.0;
+      view.globe.transparent = false;
+      return;
+    }
+
+    // Type guard: ensure this is actually a background layer with background paint
+    if (backgroundLayer.type !== "background") return;
+
+    // Evaluate background-color (always apply spec default if property is missing)
+    // This ensures predictable behavior when background-opacity is set without background-color
+    let colorAlpha = 1.0;
+    try {
+      // Get the official spec for background-color to access its default value
+      const bgColorSpec = this.engine.getPaintSpec(
+        "background",
+        "background-color",
+      );
+      // Cast to string since background-color default is always a color string in the spec
+      const specDefault =
+        (bgColorSpec?.default as string | undefined) ?? "#000000";
+
+      const bgColor = this.engine.createValueFn(
+        backgroundLayer.paint?.["background-color"] ?? specDefault,
+        bgColorSpec ?? { type: "color", default: specDefault },
+      );
+      // Evaluate with current zoom level for zoom-dependent expressions
+      const colorValue = bgColor({ properties: undefined, zoom });
+
+      // Convert to Navara Color and extract alpha using helper
+      const colorResult = toNavaraColor(colorValue);
+      if (colorResult) {
+        view.globe.color = colorResult.color;
+        colorAlpha = colorResult.alpha;
+      }
+    } catch (err) {
+      console.warn("Failed to apply background-color:", err);
+    }
+
+    // Evaluate background-opacity and combine with color alpha
+    let explicitOpacity: number | undefined;
+    if (backgroundLayer.paint?.["background-opacity"] !== undefined) {
+      try {
+        const bgOpacity = this.engine.createValueFn(
+          backgroundLayer.paint["background-opacity"],
+          { type: "number", default: 1 },
+        );
+        const opacityValue = bgOpacity({ properties: undefined, zoom });
+        if (typeof opacityValue === "number" && Number.isFinite(opacityValue)) {
+          explicitOpacity = opacityValue;
+        }
+      } catch (err) {
+        console.warn("Failed to apply background-opacity:", err);
+      }
+    }
+
+    // Combine color alpha with explicit opacity and clamp to [0, 1]
+    const finalOpacity =
+      explicitOpacity !== undefined ? colorAlpha * explicitOpacity : colorAlpha;
+    // Validate finalOpacity is finite, fall back to 1.0 if NaN/Infinity
+    const validOpacity = Number.isFinite(finalOpacity) ? finalOpacity : 1.0;
+    const clampedOpacity = Math.max(0, Math.min(1, validOpacity));
+    view.globe.transparent = clampedOpacity < 1;
+    view.globe.opacity = clampedOpacity;
+  }
+
+  /**
+   * Set up zoom change detection to trigger feature re-evaluation.
+   * When zoom changes significantly (> ZOOM_CHANGE_THRESHOLD), all layers are updated
+   * to re-evaluate zoom-dependent expressions with the new zoom value.
+   */
+  private setupZoomChangeDetection(view: ThreeView): void {
+    // Create and store listener function for later removal in destroy()
+    this.zoomChangeListener = () => {
+      const currentZoom = view.camera.zoom;
+
+      // Skip if zoom is not available yet (camera not fully initialized)
+      if (currentZoom === undefined) return;
+
+      // Initialize lastZoom on first valid zoom value
+      if (this.lastZoom === undefined) {
+        this.lastZoom = currentZoom;
+        if (this.hasZoomDependentBackground) {
+          this.applyBackgroundColor(view, currentZoom);
+        }
+        return;
+      }
+
+      const zoomDelta = Math.abs(currentZoom - this.lastZoom);
+
+      // If zoom changed significantly, trigger feature re-evaluation
+      if (zoomDelta > MapLibreStylePlugin.ZOOM_CHANGE_THRESHOLD) {
+        this.lastZoom = currentZoom;
+
+        if (this.hasZoomDependentBackground) {
+          this.applyBackgroundColor(view, currentZoom);
+        }
+
+        // Trigger re-evaluation only on layers with zoom-dependent expressions
+        for (const layer of this.zoomDependentLayers) {
+          layer.forceUpdate();
+        }
+      }
+    };
+
+    // Register the listener
+    view.on("preRender", this.zoomChangeListener);
+  }
+
+  /**
    * Add a MapLibre Style source to the Navara view.
    */
-  private addStyleSource(
+  private async addStyleSource(
     view: ThreeView,
     sourceId: string,
     sourceSpec: ParsedStyle["sources"][string],
-  ): void {
+  ): Promise<void> {
     if (sourceSpec.type === "geojson") {
       // Handle both inline GeoJSON data and URL-based sources
       const source =
@@ -180,72 +673,59 @@ export class MapLibreStylePlugin extends Plugin<ThreeView, ViewContext> {
       this.sources.set(sourceId, source);
     } else if (sourceSpec.type === "raster") {
       // Raster tile source (e.g., satellite imagery, basemaps)
-      const sourceUrl = this.getSourceUrl(sourceSpec);
-
-      if (sourceUrl) {
-        const source = view.addSource({
-          type: "raster-tile",
-          url: sourceUrl,
-        });
-        this.sources.set(sourceId, source);
-      } else {
-        console.warn(
-          `Raster source "${sourceId}" missing tiles array (TileJSON "url" field not supported). ` +
-            `Add "tiles": ["https://.../{z}/{x}/{y}.png"] to use this source.`,
-        );
-      }
+      const source = await this.addTileSource(
+        view,
+        sourceId,
+        sourceSpec,
+        { type: "raster-tile" },
+        { type: "raster-tile" },
+        "Raster",
+      );
+      if (!source) return;
+      this.sources.set(sourceId, source);
     } else if (sourceSpec.type === "raster-dem") {
       // Raster DEM source (for terrain/hillshade)
-      const sourceUrl = this.getSourceUrl(sourceSpec);
+      const encodingRaw = sourceSpec.encoding || "mapbox";
 
-      if (sourceUrl) {
-        // Select elevation decoder based on encoding field
-        // Supports: terrarium, mapbox
-        const encoding = sourceSpec.encoding || "mapbox";
-        let elevationDecoder;
-
-        if (encoding === "terrarium") {
-          elevationDecoder = TERRARIUM_ELEVATION_DECODER();
-        } else if (encoding === "mapbox") {
-          elevationDecoder = MAPBOX_ELEVATION_DECODER();
-        } else {
-          // Unknown or unsupported encoding - warn and skip
-          console.warn(
-            `Raster-DEM source ${sourceId} has encoding="${encoding}" which is not supported. ` +
-              `Supported values: "terrarium", "mapbox". Skipping source.`,
-          );
-          return;
-        }
-
-        const source = view.addSource({
-          type: "raster-dem",
-          url: sourceUrl,
-          elevationDecoder,
-          tileSize: sourceSpec.tileSize,
-        });
-        this.sources.set(sourceId, source);
-      } else {
+      // Validate encoding and narrow type
+      if (encodingRaw !== "terrarium" && encodingRaw !== "mapbox") {
         console.warn(
-          `Raster-DEM source "${sourceId}" missing tiles array (TileJSON "url" field not supported). ` +
-            `Add "tiles": ["https://.../{z}/{x}/{y}.png"] to use this source.`,
+          `Raster-DEM source ${sourceId} has encoding="${encodingRaw}" which is not supported. ` +
+            `Supported values: "terrarium", "mapbox". Skipping source.`,
         );
+        return;
       }
+
+      // Type is now narrowed to "terrarium" | "mapbox" by the validation above
+      const encoding: "terrarium" | "mapbox" = encodingRaw;
+
+      const elevationDecoder =
+        encoding === "terrarium"
+          ? TERRARIUM_ELEVATION_DECODER()
+          : MAPBOX_ELEVATION_DECODER();
+
+      const source = await this.addTileSource(
+        view,
+        sourceId,
+        sourceSpec,
+        { type: "raster-dem", tileSize: sourceSpec.tileSize, encoding },
+        { type: "raster-dem", elevationDecoder, tileSize: sourceSpec.tileSize },
+        "Raster-DEM",
+      );
+      if (!source) return;
+      this.sources.set(sourceId, source);
     } else if (sourceSpec.type === "vector") {
       // Vector tile source (MVT)
-      const sourceUrl = this.getSourceUrl(sourceSpec);
-
-      if (sourceUrl) {
-        const source = view.addSource({
-          type: "vector-tile",
-          url: sourceUrl,
-        });
-        this.sources.set(sourceId, source);
-      } else {
-        console.warn(
-          `Vector source "${sourceId}" missing tiles array (TileJSON "url" field not supported). ` +
-            `Add "tiles": ["https://.../{z}/{x}/{y}.pbf"] to use this source.`,
-        );
-      }
+      const source = await this.addTileSource(
+        view,
+        sourceId,
+        sourceSpec,
+        { type: "vector-tile" },
+        { type: "vector-tile" },
+        "Vector",
+      );
+      if (!source) return;
+      this.sources.set(sourceId, source);
     } else {
       console.warn(
         `Unsupported source type: ${(sourceSpec as { type: string }).type}`,
@@ -264,6 +744,7 @@ export class MapLibreStylePlugin extends Plugin<ThreeView, ViewContext> {
     "symbol",
     "raster",
     "hillshade",
+    "background",
   ]);
 
   /**
@@ -275,14 +756,19 @@ export class MapLibreStylePlugin extends Plugin<ThreeView, ViewContext> {
     }
 
     // Check if layer has a source
-    if (!styleLayer.source) {
-      // Supported layer types require a source - this is a configuration error
+    if (!("source" in styleLayer) || !styleLayer.source) {
+      // Background layers don't have sources - they're handled via applyBackgroundColor
+      if (styleLayer.type === "background") {
+        // Background is already applied in init() (via applyBackgroundColor), skip layer processing
+        return;
+      }
+      // Other supported layer types require a source - this is a configuration error
       if (MapLibreStylePlugin.SUPPORTED_LAYER_TYPES.has(styleLayer.type)) {
         throw new Error(
           `Layer "${styleLayer.id}": Layer type "${styleLayer.type}" requires a source`,
         );
       }
-      // Unsupported layer types without source (background, sky, fog) - warn and skip
+      // Unsupported layer types without source (sky, fog, etc.) - warn and skip
       console.warn(
         `Layer "${styleLayer.id}": Unsupported layer type "${styleLayer.type}" (no source). Skipping layer.`,
       );
@@ -306,7 +792,14 @@ export class MapLibreStylePlugin extends Plugin<ThreeView, ViewContext> {
     }
 
     // Create layer description
-    const layerDesc = toLayerDescription(source, styleLayer);
+    // Get font family name from layer's text-font or fall back to first available font
+    const fontFamily = this.getFontFamilyForLayer(styleLayer);
+    const layerDesc = toLayerDescription(
+      source,
+      styleLayer,
+      fontFamily,
+      this.engine,
+    );
 
     // Skip unsupported layers (toLayerDescription returns null for unsupported types)
     if (!layerDesc) {
@@ -332,14 +825,17 @@ export class MapLibreStylePlugin extends Plugin<ThreeView, ViewContext> {
   /**
    * Set up feature evaluation callbacks for a layer.
    * This is where we bridge MapLibre expressions to Navara's evaluator API.
-   *
-   * TODO: Add zoom support - need to:
-   * 1. Listen to camera movement events
-   * 2. Detect zoom level changes
-   * 3. Call layer.forceUpdate() to trigger re-evaluation
-   * 4. Use current view zoom (not tile zoom) in evaluation context
    */
   private setupFeatureEvaluation(layer: Layer, styleLayer: StyleLayer): void {
+    // Track if this layer has zoom-dependent expressions OR minzoom/maxzoom
+    const hasMinMaxZoom =
+      ("minzoom" in styleLayer && styleLayer.minzoom !== undefined) ||
+      ("maxzoom" in styleLayer && styleLayer.maxzoom !== undefined);
+
+    if (MapLibreStylePlugin.layerUsesZoom(styleLayer) || hasMinMaxZoom) {
+      this.zoomDependentLayers.add(layer);
+    }
+
     // Determine MapLibre feature geometry type for expression evaluation
     // This is the GeoJSON geometry type used in MapLibre expressions (e.g., ["geometry-type"])
     const featureGeometryType =
@@ -349,14 +845,35 @@ export class MapLibreStylePlugin extends Plugin<ThreeView, ViewContext> {
           ? "LineString"
           : "Point";
 
-    // Create filter function
-    const filterFn = styleLayer.filter
-      ? this.engine.createFilter(
-          styleLayer.filter,
-          styleLayer.type,
-          featureGeometryType,
-        )
-      : () => true;
+    // Create base filter function from styleLayer.filter expression
+    const baseFilterFn =
+      "filter" in styleLayer && styleLayer.filter
+        ? this.engine.createFilter(
+            styleLayer.filter,
+            styleLayer.type,
+            featureGeometryType,
+          )
+        : () => true;
+
+    // Wrap filter with zoom range check if minzoom/maxzoom are specified
+    // This controls layer visibility based on zoom level
+    const filterFn = (ctx: {
+      properties: Record<string, unknown> | undefined;
+      zoom?: number;
+    }) => {
+      const zoom = ctx.zoom ?? 0;
+
+      // Check layer minzoom/maxzoom (controls entire layer visibility)
+      if ("minzoom" in styleLayer && styleLayer.minzoom !== undefined) {
+        if (zoom < styleLayer.minzoom) return false;
+      }
+      if ("maxzoom" in styleLayer && styleLayer.maxzoom !== undefined) {
+        if (zoom >= styleLayer.maxzoom) return false;
+      }
+
+      // Then apply the style filter expression
+      return baseFilterFn(ctx);
+    };
 
     // Create paint property evaluators
     const paintEvaluators = createPaintEvaluators(
@@ -434,9 +951,13 @@ export class MapLibreStylePlugin extends Plugin<ThreeView, ViewContext> {
     }: {
       evaluator: FeatureEvaluator;
     }) => {
+      // Get camera zoom once before evaluate to avoid recursive WASM borrowing
+      const cameraZoom = this.view?.camera.zoom ?? 0;
+
       evaluator.evaluate(
         ({ properties, meshGeomType: meshGeometryType }: FeatureInfo) => {
-          const ctx = { properties };
+          // Use camera zoom for all features (simpler than per-tile zoom)
+          const ctx = { properties, zoom: cameraZoom };
 
           // Check filter first
           if (!filterFn(ctx)) {
@@ -471,31 +992,46 @@ export class MapLibreStylePlugin extends Plugin<ThreeView, ViewContext> {
     };
 
     // Register for both featureCreated and featureUpdated events
-    // featureCreated: handles newly created features as they load
-    // featureUpdated: handles updates to existing features (e.g., property changes)
     layer.on("featureCreated", evaluateFeature);
     layer.on("featureUpdated", evaluateFeature);
   }
 
   /**
-   * Clean up resources.
+   * Clean up all resources when the plugin is disposed.
+   * Removes event listeners, deletes layers/sources, and disposes child plugins.
+   * Call this method when removing the plugin to prevent memory leaks.
    */
   dispose(): void {
-    // Delete all layers first (layers reference sources)
+    // Clean up zoom change listener
+    if (this.view && this.zoomChangeListener) {
+      this.view.off("preRender", this.zoomChangeListener);
+      this.zoomChangeListener = undefined;
+    }
+
+    // Delete all layers (layers reference sources)
     for (const layer of this.layers) {
       layer.delete();
     }
     this.layers = [];
 
-    // Then delete all sources
+    // Delete all sources
     for (const source of this.sources.values()) {
       source.delete();
     }
     this.sources.clear();
 
-    // Clear warned layers to prevent memory leaks
-    this.warnedLayers.clear();
+    // Dispose TileJsonPlugin only if it was created internally
+    if (this.ownsTileJsonPlugin) {
+      this.tileJsonPlugin.dispose();
+    }
 
+    // Clear other state
+    this.warnedLayers.clear();
+    this.warnedSources.clear();
+    this.zoomDependentLayers.clear();
+    this.hasZoomDependentBackground = false;
     this.parsedStyle = null;
+    this.view = undefined;
+    this.lastZoom = undefined;
   }
 }

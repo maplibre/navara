@@ -5,6 +5,24 @@ import type { StyleLayer } from "../engine/types";
 
 import { toLayerDescription } from "./toLayerDescription";
 
+// Mock @navaramap/three to avoid loading navara_worker
+vi.mock("@navaramap/three", () => ({
+  Color: class Color {
+    r = 0;
+    g = 0;
+    b = 0;
+    setRGB(r: number, g: number, b: number) {
+      this.r = r;
+      this.g = g;
+      this.b = b;
+      return this;
+    }
+    setStyle(_style: string) {
+      return this;
+    }
+  },
+}));
+
 describe("toLayerDescription", () => {
   // Mock source object
   const mockSource = {} as Source;
@@ -198,6 +216,84 @@ describe("toLayerDescription", () => {
       );
       expect(consoleWarnSpy).toHaveBeenCalledWith(
         expect.stringContaining("no icon-image or text-field"),
+      );
+
+      consoleWarnSpy.mockRestore();
+    });
+
+    it("should return null for text-only symbol layer without fontFamily", () => {
+      const consoleWarnSpy = vi
+        .spyOn(console, "warn")
+        .mockImplementation(() => {});
+
+      const layer: StyleLayer = {
+        id: "text-only-symbol",
+        type: "symbol",
+        source: "test",
+        layout: {
+          "text-field": "{name}",
+          "text-size": 16,
+        },
+      };
+
+      // No fontFamily provided
+      const result = toLayerDescription(mockSource, layer);
+
+      // Should return null - a text-only layer without font can't render anything
+      expect(result).toBeNull();
+
+      // Should log a warning about missing font
+      expect(consoleWarnSpy).toHaveBeenCalledWith(
+        expect.stringContaining('Symbol layer "text-only-symbol"'),
+      );
+      expect(consoleWarnSpy).toHaveBeenCalledWith(
+        expect.stringContaining("no font was provided"),
+      );
+
+      consoleWarnSpy.mockRestore();
+    });
+
+    it("should create billboard-only layer when icon present but no fontFamily for text", () => {
+      const consoleWarnSpy = vi
+        .spyOn(console, "warn")
+        .mockImplementation(() => {});
+
+      const layer: StyleLayer = {
+        id: "icon-and-text-symbol",
+        type: "symbol",
+        source: "test",
+        layout: {
+          "icon-image": "marker-icon",
+          "text-field": "{name}",
+        },
+      };
+
+      // No fontFamily provided
+      const result = toLayerDescription(mockSource, layer);
+
+      // Should create layer with billboard (icon) but no text
+      expect(result).not.toBeNull();
+      expect(result?.type).toBe("vector");
+
+      // Verify billboard properties exist
+      expect(result).toHaveProperty("billboard");
+      // Type guard: after verifying billboard exists, assert type for safe access
+      const hasBillboard = result && "billboard" in result;
+      expect(hasBillboard).toBe(true);
+      // Now safe to access billboard with type assertion
+      const layerWithBillboard = result as typeof result & {
+        billboard: unknown;
+      };
+      expect(layerWithBillboard.billboard).toMatchObject({
+        url: "marker-icon",
+        clampToGround: true,
+      });
+
+      expect(result).not.toHaveProperty("text");
+
+      // Should warn about missing font (text skipped)
+      expect(consoleWarnSpy).toHaveBeenCalledWith(
+        expect.stringContaining("no font was provided"),
       );
 
       consoleWarnSpy.mockRestore();
