@@ -124,6 +124,9 @@ impl TerrainData for RasterDEMData {
             decode_height_from_dem(r, g, b, geoid_height, &self.decoder)
         };
 
+        // RTC origin only: the pole extension is excluded so the origin stays on
+        // the terrain grid it makes precise. Cap vertices are placed from
+        // absolute coordinates, and culling uses `TerrainTile::aabb` instead.
         let aabb = Aabb::from_extent_f64(
             *extent,
             0.,

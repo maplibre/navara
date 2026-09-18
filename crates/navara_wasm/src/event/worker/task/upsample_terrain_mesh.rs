@@ -14,6 +14,10 @@ pub struct UpsampleTerrainMeshParameters {
     pub tile_handle: TileHandle,
     /// Whether to render skirts along tile boundaries.
     pub skirt: bool,
+    #[wasm_bindgen(js_name = poleNorth)]
+    pub pole_north: bool,
+    #[wasm_bindgen(js_name = poleSouth)]
+    pub pole_south: bool,
     /// Multiplier for the automatically calculated skirt height.
     #[wasm_bindgen(js_name = skirtExaggeration)]
     pub skirt_exaggeration: f32,
@@ -30,6 +34,8 @@ impl UpsampleTerrainMeshParameters {
         Self {
             tile_handle,
             skirt,
+            pole_north: false,
+            pole_south: false,
             skirt_exaggeration,
             is_quantized_mesh: false,
             geographic: false,
@@ -47,6 +53,8 @@ impl<'a> From<&'a navara_worker::upsample_terrain_mesh::UpsampleTerrainMeshParam
         UpsampleTerrainMeshParameters {
             tile_handle: val.tile_handle,
             skirt: val.skirt,
+            pole_north: val.pole_sides.0,
+            pole_south: val.pole_sides.1,
             skirt_exaggeration: val.skirt_exaggeration,
             is_quantized_mesh: val.is_quantized_mesh,
             geographic: val.geographic,

@@ -5,6 +5,7 @@ use navara_wasm_transferable::{TransferableRasterDEMData, TransferableTile};
 use navara_wasm_types::{ReturnedConstructedTerrainMesh, UpsamplableTerrainGeometry};
 use wasm_bindgen::prelude::wasm_bindgen;
 
+#[allow(clippy::too_many_arguments)]
 #[wasm_bindgen(js_name = upsampleTerrainMesh)]
 pub fn upsample_terrain_mesh(
     mut tile: TransferableTile,
@@ -13,6 +14,8 @@ pub fn upsample_terrain_mesh(
     upsamplable_geometry: UpsamplableTerrainGeometry,
     skirt: bool,
     skirt_exaggeration: f32,
+    pole_north: bool,
+    pole_south: bool,
     tms: bool,
 ) -> ReturnedConstructedTerrainMesh {
     let raster_dem_data: RasterDEMData = raster_dem_data.into();
@@ -45,15 +48,32 @@ pub fn upsample_terrain_mesh(
         .upsample(WGS84_64, &parent_tile, upsamplable_geometry)
         .unwrap();
 
+    // Computed unconditionally: the polar cap closes its meridian seams with a
+    // curtain of this depth even when grid skirts are switched off, since those
+    // seams are cracks rather than cosmetic.
+    let skirt_height = calculate_skirt_height(&WGS84_64, tile.coords.z, skirt_exaggeration);
     if skirt {
-        let skirt_height = calculate_skirt_height(&WGS84_64, tile.coords.z, skirt_exaggeration);
         let down_dir_fn = navara_geometry::make_wgs84_down_dir_fn(WGS84_64, result.rtc_translation);
         navara_geometry::add_skirt_separate(&mut result.geometry, skirt_height, &down_dir_fn);
     }
 
+    navara_geometry::add_pole_extension(
+        &mut result.geometry,
+        WGS84_64,
+        &tile.extent,
+        result
+            .rtc_translation
+            .expect("upsampling always sets an RTC translation"),
+        navara_core::PoleSides {
+            north: pole_north,
+            south: pole_south,
+        },
+        skirt_height,
+    );
     result.into()
 }
 
+#[allow(clippy::too_many_arguments)]
 #[wasm_bindgen(js_name = upsampleQuantizedMeshTerrainMesh)]
 pub fn upsample_quantized_mesh_terrain_mesh(
     mut tile: TransferableTile,
@@ -61,6 +81,8 @@ pub fn upsample_quantized_mesh_terrain_mesh(
     upsamplable_geometry: UpsamplableTerrainGeometry,
     skirt: bool,
     skirt_exaggeration: f32,
+    pole_north: bool,
+    pole_south: bool,
     geographic: bool,
     tms: bool,
 ) -> ReturnedConstructedTerrainMesh {
@@ -101,11 +123,27 @@ pub fn upsample_quantized_mesh_terrain_mesh(
         .upsample(WGS84_64, &parent_tile, upsamplable_geometry)
         .unwrap();
 
+    // Computed unconditionally: the polar cap closes its meridian seams with a
+    // curtain of this depth even when grid skirts are switched off, since those
+    // seams are cracks rather than cosmetic.
+    let skirt_height = calculate_skirt_height(&WGS84_64, tile.coords.z, skirt_exaggeration);
     if skirt {
-        let skirt_height = calculate_skirt_height(&WGS84_64, tile.coords.z, skirt_exaggeration);
         let down_dir_fn = navara_geometry::make_wgs84_down_dir_fn(WGS84_64, result.rtc_translation);
         navara_geometry::add_skirt_separate(&mut result.geometry, skirt_height, &down_dir_fn);
     }
 
+    navara_geometry::add_pole_extension(
+        &mut result.geometry,
+        WGS84_64,
+        &tile.extent,
+        result
+            .rtc_translation
+            .expect("upsampling always sets an RTC translation"),
+        navara_core::PoleSides {
+            north: pole_north,
+            south: pole_south,
+        },
+        skirt_height,
+    );
     result.into()
 }

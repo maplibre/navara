@@ -41,9 +41,14 @@ pub trait Tile {
             return;
         }
 
-        let extent = self.extent();
+        let extent = self
+            .bounding_region()
+            .map_or_else(|| self.extent(), |r| &r.extent);
         let center = self.aabb().center;
-        let max_height = Meters::new(self.max_height());
+        let max_height = Meters::new(self.bounding_region().map_or_else(
+            || self.max_height(),
+            |r| self.max_height().max(r.maximum_height),
+        ));
 
         let positions = vec![
             xyz_to_vec3(ellipsoid.lle_to_xyz(LLE {

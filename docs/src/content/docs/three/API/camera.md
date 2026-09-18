@@ -223,9 +223,13 @@ view.camera.options = {
 
 `ThreeViewCamera` inherits from `EventHandler` and emits the following events. Subscribe with `on()` and unsubscribe with `off()`.
 
+User interaction and the camera movement methods all raise events. Instantaneous calls — `setCamera()`, `lookAt()`, `rotateAroundAxis()` and a `flyTo()` with `duration: 0` — complete within a single frame, so they emit `move` and `moveend` together and never emit `movestart`. Each event fires at most once per frame.
+
+Follow mode is the exception: while `cameraFollow()` or `cameraFreeLook()` is active, the camera is repositioned every frame without emitting any of these events. Poll `positionGeographic` / `orientation` (for example on the view's `preRender`) to track the camera while following.
+
 ### movestart
 
-Fired once when the camera begins moving (user interaction or programmatic animation).
+Fired once when the camera begins a continuous movement: a user gesture, the inertia that follows it, or an animated `flyTo()`. Instantaneous changes do not fire it, because they have no movement to open.
 
 **Handler type:** `() => void`
 
@@ -241,7 +245,7 @@ view.camera.on("movestart", () => {
 
 ### move
 
-Fired every frame while the camera is in motion.
+Fired every frame while the camera is in motion, and once for each instantaneous change. Listen to this event to keep a read-out of the camera's position in sync with every change.
 
 **Handler type:** `() => void`
 
@@ -258,7 +262,7 @@ view.camera.on("move", () => {
 
 ### moveend
 
-Fired once when the camera stops moving.
+Fired once when the camera stops moving, and once for each instantaneous change.
 
 **Handler type:** `() => void`
 

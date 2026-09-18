@@ -5,12 +5,15 @@ use navara_wasm_transferable::TransferableTile;
 use navara_wasm_types::ReturnedConstructedTerrainMesh;
 use wasm_bindgen::prelude::wasm_bindgen;
 
+#[allow(clippy::too_many_arguments)]
 #[wasm_bindgen(js_name = constructQuantizedMeshTerrainMesh)]
 pub fn construct_quantized_mesh_terrain_mesh(
     bytes: &[u8],
     tile: TransferableTile,
     skirt: bool,
     skirt_exaggeration: f32,
+    pole_north: bool,
+    pole_south: bool,
     geographic: bool,
     tms: bool,
 ) -> ReturnedConstructedTerrainMesh {
@@ -30,11 +33,29 @@ pub fn construct_quantized_mesh_terrain_mesh(
     let terrain_data = QuantizedMeshData::new_with_tiling_scheme(tiling_scheme);
     let mut result = terrain_data.construct_terrain_mesh(WGS84_64, &ctx, bytes, 0., None);
 
+    // Computed unconditionally: the polar cap closes its meridian seams with a
+    // curtain of this depth even when grid skirts are switched off, since those
+    // seams are cracks rather than cosmetic.
+    let skirt_height = calculate_skirt_height(&WGS84_64, tile.coords.z, skirt_exaggeration);
     if skirt {
-        let skirt_height = calculate_skirt_height(&WGS84_64, tile.coords.z, skirt_exaggeration);
         let down_dir_fn = navara_geometry::make_wgs84_down_dir_fn(WGS84_64, result.rtc_translation);
         navara_geometry::add_skirt_separate(&mut result.geometry, skirt_height, &down_dir_fn);
     }
 
+    // A payload that fails to decode yields an empty result with no RTC
+    // translation, which has no boundary to extend.
+    if let Some(rtc_translation) = result.rtc_translation {
+        navara_geometry::add_pole_extension(
+            &mut result.geometry,
+            WGS84_64,
+            &ctx.extent,
+            rtc_translation,
+            navara_core::PoleSides {
+                north: pole_north,
+                south: pole_south,
+            },
+            skirt_height,
+        );
+    }
     result.into()
 }

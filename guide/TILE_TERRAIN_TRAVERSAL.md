@@ -433,3 +433,70 @@ flowchart LR
 | Material drape (one slot per layer) | `crates/navara_tile/src/tile/system.rs` (`update_mesh_material`) |
 | Hillshade request | `crates/navara_tile/src/texture_fragment/helpers.rs` |
 | Plugin / system order | `crates/navara_tile/src/lib.rs` |
+
+## WebMercator polar geometry
+
+Band-edge WebMercator terrain tiles extend from ±85.05° to the poles through
+`add_pole_extension`. Flat tiles, raster-DEM construction and upsampling, and
+WebMercator quantized-mesh construction and upsampling all append these caps
+after optional skirts. Geographic terrain already reaches ±90°.
+
+The helper shares the main mesh's boundary indices and adds height-zero rows
+at 86°, 87°, 88°, 89°, and 89.6°, followed by one pole vertex per cap. Fixed
+latitudes keep neighboring tiles' meridian edges aligned across zoom levels.
+UVs remain pinned to the tile's north or south texture row, so all draped
+textures stretch their existing edge row without shader changes or extra fetches.
+
+Cap data lives in the separate skirt buffers. It is excluded from shadow depth
+and `CachedMeshHandle`, so upsampling only processes the original terrain mesh;
+each child builds its own extension. Worker task parameters carry the north and
+south flags detected on the main thread.
+Rendered tiles can retain task handles after a worker failure or cancellation
+has despawned the task, so cleanup consumes them through `Commands::get_entity`
+plus `try_insert(Deleted)`, which tolerates both an already-removed task and a
+despawn queued earlier in the same frame.
+
+Each polar tile builds its full-length wedge in its own RTC frame, and the pole
+sits about 553 km from any tile origin at z >= 8, where the f32 ulp is 6.25 cm.
+Neighbouring wedges therefore disagree by one to two centimetres along the
+shared meridian and at the apex — radial cracks converging on the pole that no
+choice of origin removes. `add_pole_extension` closes them geometrically: it
+hangs a skirt curtain down the wedge's two meridian edges, found by
+`compute_boundary_edges` on the cap indices minus the edges whose endpoints are
+both main-grid seam vertices. The apex is where those two edges meet and needs
+no separate treatment. The RTC origin itself is derived from the *unextended*
+extent, so the terrain grid keeps its precision and only the cap pays the
+distance.
+
+The cap is textured by the tile's own compositor atlas
+(`compositor.acquireOutputs(handle)`) plus the per-slot hillshade, water, and
+effect uniform arrays, so it cannot be moved to a standalone pole-centred mesh
+without reimplementing the whole drape and appearance path. Caps stay per-tile
+and close their seams geometrically.
+
+Terrain AABBs and bounding regions extend to ±90° and include height zero,
+including after DEM height updates. Horizon culling uses this bounding extent.
+The screen-space error is the exception: `TerrainTile::calc_distance_from_camera`
+measures against `sse_bounding_region`, the *unextended* extent, for polar tiles.
+A cap is identical at every zoom, so subdividing adds no cap detail; letting the
+pole-reaching bounds drive refinement made a camera near the pole refine the top
+tile row to max zoom. The original tile extent still defines mesh UVs and
+texture selection. Cap surfaces have no DEM elevation; RTC rounding and
+corner-height differences across DEM zoom levels can leave small residual cracks.
+
+Raster DEMs end their polar coverage inside the Mercator band (Mapterhorn at
+about 85.02°) and encode the rows beyond it as exact 0 m; the covered row next
+to that band is resampled against the fill and holds only a fraction of the
+true height. Every WebMercator DEM tile whose polar edge lies within the outer
+0.15° of the band (`polar_nodata_sides`, any zoom, not only the band-edge row)
+is corrected when its bytes land: `fill_polar_dem_nodata`
+(`crates/navara_tile/src/terrain/nodata_system.rs`) rewrites the shared buffer with the last
+fully covered row copied over the zero rows and the blended row, so the terrain
+mesh, height sampling, and the hillshade normal map all meet the cap at the real
+height instead of a cliff or a ridge line.
+A tile that lies entirely past the coverage (deep zoom, last tile row) has no
+row to copy and takes a nearest-neighbour copy of the matching region of its
+nearest ancestor with covered data, so the fix stays in the bytes and survives
+requester re-creation. The correction never touches requester status: failed
+requesters are re-created as Success from the shared cache, and a failed
+hillshade requester is never "ready".

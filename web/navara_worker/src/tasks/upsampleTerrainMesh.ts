@@ -20,6 +20,8 @@ export async function upsampleTerrainMesh(
   upsamplableGeometry: UpsamplableTerrainGeometryLike,
   skirt: boolean,
   skirtExaggeration: number,
+  poleNorth: boolean,
+  poleSouth: boolean,
   tms: boolean,
 ): Promise<ReturnedConstructedTerrainMeshLike> {
   await waitWasm();
@@ -31,6 +33,8 @@ export async function upsampleTerrainMesh(
     toUpsamplableTerrainGeometry(upsamplableGeometry),
     skirt,
     skirtExaggeration,
+    poleNorth,
+    poleSouth,
     tms,
   );
   const { result, transfers } = transferReturnedConstructedTerrainMesh(mesh);

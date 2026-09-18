@@ -2,13 +2,13 @@ use bevy_ecs::prelude::*;
 use bevy_ecs::system::SystemParam;
 use navara_buffer_store::BufferStore;
 use navara_component::{Deleted, Order, OrderByDistance, Priority, Rendered};
-use navara_core::{Aabb, TileXYZ, TilingScheme, WGS84_64, vec3_to_xyz};
+use navara_core::{Aabb, PoleSides, TileXYZ, TilingScheme, WGS84_64, vec3_to_xyz};
 use navara_data_requester::{DataManager, DataRequester, DataRequesterStatus};
 use navara_fog::{DynamicSse, Fog};
 use navara_frame::FrameManager;
 use navara_geometry::{
-    TileUvTransform, add_skirt_separate, calculate_skirt_height, make_wgs84_down_dir_fn,
-    tile_triangles_flat, uv_transform,
+    TileUvTransform, add_pole_extension, add_skirt_separate, calculate_skirt_height,
+    make_wgs84_down_dir_fn, tile_triangles_flat, uv_transform,
 };
 use navara_material::RasterTileInternalMaterial;
 use navara_math::{FloatType, Transform};
@@ -596,13 +596,23 @@ pub fn transfer_mesh(
                 .map_or((true, 1.0), |appearance| {
                     (appearance.skirt, appearance.skirt_exaggeration)
                 });
+            // Use terrain tile_size if available, otherwise default to 256.
+            // Computed unconditionally: the polar cap closes its meridian
+            // seams with a curtain of this depth even when grid skirts are
+            // switched off, since those seams are cracks rather than cosmetic.
+            let skirt_height = calculate_skirt_height(&WGS84_64, tile.coords.z, skirt_exaggeration);
             if should_render_terrain && skirt {
-                // Use terrain tile_size if available, otherwise default to 256
-                let skirt_height =
-                    calculate_skirt_height(&WGS84_64, tile.coords.z, skirt_exaggeration);
                 let down_dir_fn = make_wgs84_down_dir_fn(WGS84_64, Some(rtc_translation));
                 add_skirt_separate(&mut triangles, skirt_height, &down_dir_fn);
             }
+            add_pole_extension(
+                &mut triangles,
+                WGS84_64,
+                &extent,
+                rtc_translation,
+                PoleSides::from_extent(&globe.tiling_scheme, &extent),
+                skirt_height,
+            );
             let v_skirt_handle = triangles.skirt_vertices.map(|b| buf.new_f32(b));
             let i_skirt_handle = triangles.skirt_indices.map(|b| buf.new_u32(b));
             let u_skirt_handle = triangles.skirt_uvs.map(|b| buf.new_f32(b));
@@ -691,6 +701,8 @@ pub fn transfer_mesh(
                 (appearance.skirt, appearance.skirt_exaggeration)
             });
 
+        let sides = PoleSides::from_extent(&tile.tiling_scheme, &tile.extent);
+        let pole_sides = (sides.north, sides.south);
         if should_upsample_terrain {
             let terrain_mesh_upsampler_id = match rendered_tile.terrain_mesh_upsampler {
                 Some(e) => e,
@@ -702,6 +714,7 @@ pub fn transfer_mesh(
                                 UpsampleTerrainMeshParameters {
                                     tile_handle: rendered_tile.tile_handle,
                                     skirt,
+                                    pole_sides,
                                     skirt_exaggeration,
                                     is_quantized_mesh,
                                     geographic: qm_geographic,
@@ -810,6 +823,7 @@ pub fn transfer_mesh(
                                 bytes_handle: terrain_req.handle,
                                 tile_handle: rendered_tile.tile_handle,
                                 skirt,
+                                pole_sides,
                                 skirt_exaggeration,
                                 is_quantized_mesh,
                                 geographic: qm_geographic,

@@ -17,6 +17,8 @@ export async function upsampleQuantizedMeshTerrainMesh(
   upsamplableGeometry: UpsamplableTerrainGeometryLike,
   skirt: boolean,
   skirtExaggeration: number,
+  poleNorth: boolean,
+  poleSouth: boolean,
   geographic: boolean,
   tms: boolean,
 ): Promise<ReturnedConstructedTerrainMeshLike> {
@@ -28,6 +30,8 @@ export async function upsampleQuantizedMeshTerrainMesh(
     toUpsamplableTerrainGeometry(upsamplableGeometry),
     skirt,
     skirtExaggeration,
+    poleNorth,
+    poleSouth,
     geographic,
     tms,
   );

@@ -17,6 +17,7 @@ pub struct ConstructTerrainMeshParameters {
     pub tile_handle: TileHandle,
     /// Whether to render skirts along tile boundaries.
     pub skirt: bool,
+    pub pole_sides: (bool, bool),
     /// Multiplier for the automatically calculated skirt height.
     pub skirt_exaggeration: f32,
     pub is_quantized_mesh: bool,
