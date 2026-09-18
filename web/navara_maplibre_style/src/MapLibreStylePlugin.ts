@@ -541,12 +541,12 @@ export class MapLibreStylePlugin extends Plugin<ThreeView, ViewContext> {
       break;
     }
 
-    // If no background layer applies, reset to default values
+    // If no background layer applies, reset to MapLibre's default background (#000000)
     if (!backgroundLayer) {
       if (!view.globe.color) {
-        view.globe.color = new Color().setRGB(1, 1, 1);
+        view.globe.color = new Color().setRGB(0, 0, 0);
       } else {
-        view.globe.color.setRGB(1, 1, 1);
+        view.globe.color.setRGB(0, 0, 0);
       }
       view.globe.opacity = 1.0;
       view.globe.transparent = false;

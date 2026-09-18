@@ -1,6 +1,9 @@
 import { describe, it, expect, vi } from "vitest";
 
-import { fontFamilyToStyleOverrides } from "./fontHelper";
+import {
+  fontFamilyToStyleOverrides,
+  convertFontFacesToFontFamilies,
+} from "./fontHelper";
 
 // Mock @navaramap/three to avoid loading navara_worker
 vi.mock("@navaramap/three", () => ({
@@ -283,6 +286,116 @@ describe("fontHelper", () => {
           TestFont: "https://example.com/test.woff2",
         },
       });
+    });
+  });
+
+  describe("convertFontFacesToFontFamilies", () => {
+    it("should convert string URL format", () => {
+      const result = convertFontFacesToFontFamilies({
+        TestFont: "font.woff2",
+      });
+
+      expect(result).toEqual([
+        {
+          family: "TestFont",
+          faces: [{ url: "font.woff2", unicodeRanges: [] }],
+        },
+      ]);
+    });
+
+    it("should convert object format with unicode-range", () => {
+      const result = convertFontFacesToFontFamilies({
+        TestFont: {
+          url: "font.woff2",
+          "unicode-range": ["U+0-FF"],
+        },
+      });
+
+      expect(result[0].faces[0].unicodeRanges).toEqual([{ from: 0, to: 255 }]);
+    });
+
+    it("should convert array format with multiple faces", () => {
+      const result = convertFontFacesToFontFamilies({
+        TestFont: [
+          { url: "latin.woff2", "unicode-range": ["U+0-7F"] },
+          { url: "cyrillic.woff2", "unicode-range": ["U+400-4FF"] },
+        ] as any,
+      });
+
+      expect(result[0].faces).toEqual([
+        { url: "latin.woff2", unicodeRanges: [{ from: 0, to: 127 }] },
+        { url: "cyrillic.woff2", unicodeRanges: [{ from: 0x400, to: 0x4ff }] },
+      ]);
+    });
+
+    it("should parse single codepoint and comma-separated ranges", () => {
+      const result = convertFontFacesToFontFamilies({
+        TestFont: {
+          url: "font.woff2",
+          "unicode-range": ["U+26, U+0-7F, U+100-17F"],
+        },
+      });
+
+      expect(result[0].faces[0].unicodeRanges).toEqual([
+        { from: 0x26, to: 0x26 },
+        { from: 0, to: 127 },
+        { from: 256, to: 383 },
+      ]);
+    });
+
+    it("should skip invalid entries and warn", () => {
+      const consoleWarnSpy = vi
+        .spyOn(console, "warn")
+        .mockImplementation(() => {});
+
+      const result = convertFontFacesToFontFamilies({
+        Valid: "valid.woff2",
+        InvalidType: 123 as any,
+        MissingUrl: { "unicode-range": "U+0-FF" } as any,
+      });
+
+      expect(result).toHaveLength(1);
+      expect(result[0].family).toBe("Valid");
+      expect(consoleWarnSpy).toHaveBeenCalledTimes(2);
+
+      consoleWarnSpy.mockRestore();
+    });
+
+    it("should skip invalid unicode-range formats", () => {
+      const consoleWarnSpy = vi
+        .spyOn(console, "warn")
+        .mockImplementation(() => {});
+
+      const result = convertFontFacesToFontFamilies({
+        TestFont: {
+          url: "font.woff2",
+          "unicode-range": ["U+0-FF", "invalid", 123] as any,
+        },
+      });
+
+      expect(result[0].faces[0].unicodeRanges).toEqual([{ from: 0, to: 255 }]);
+      expect(consoleWarnSpy).toHaveBeenCalled();
+
+      consoleWarnSpy.mockRestore();
+    });
+
+    it("should roundtrip: FontFamily -> font-faces -> FontFamily", () => {
+      const original = {
+        family: "TestFont",
+        faces: [
+          { url: "latin.woff2", unicodeRanges: [{ from: 0, to: 127 }] },
+          { url: "fallback.woff2", unicodeRanges: [] },
+        ],
+      };
+
+      const styleOverrides = fontFamilyToStyleOverrides(original);
+      expect(styleOverrides["font-faces"]).toBeDefined();
+
+      const result = convertFontFacesToFontFamilies(
+        styleOverrides["font-faces"] ?? {},
+      );
+
+      expect(result).toEqual([original]);
     });
   });
 });
