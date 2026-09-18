@@ -13,7 +13,6 @@ import ThreeView, {
   type Source,
   type FeatureEvaluator,
   type FeatureInfo,
-  type FontFamily,
   TERRARIUM_ELEVATION_DECODER,
   MAPBOX_ELEVATION_DECODER,
 } from "@navaramap/three";
@@ -28,6 +27,15 @@ import {
 import { toLayerDescription } from "./adapters/toLayerDescription";
 import { JsStyleEngine } from "./engine/JsStyleEngine";
 import type { ParsedStyle, StyleLayer } from "./engine/types";
+import { convertFontFacesToFontFamilies } from "./fontHelper";
+
+/**
+ * Options for MapLibreStylePlugin constructor.
+ */
+type MapLibreStylePluginOptions = {
+  overrides?: Partial<StyleSpecification>;
+  tileJsonPlugin?: TileJsonPlugin;
+};
 
 export class MapLibreStylePlugin extends Plugin<ThreeView, ViewContext> {
   private sources: Map<string, Source> = new Map<string, Source>();
@@ -43,14 +51,19 @@ export class MapLibreStylePlugin extends Plugin<ThreeView, ViewContext> {
   private warnedSources: Set<string> = new Set<string>();
   /**
    * TileJSON plugin instance for fetching and parsing TileJSON sources.
+   * Initialized in constructor.
    */
-  private tileJsonPlugin: TileJsonPlugin = new TileJsonPlugin();
+  private tileJsonPlugin: TileJsonPlugin;
   /**
-   * Font faces to register for text rendering.
-   * Created via fetchFontFamilyFromCssForMapLibreStyle.
+   * Whether the TileJsonPlugin was created internally (should be disposed).
    */
-  private readonly fontFamily?: FontFamily;
+  private ownsTileJsonPlugin: boolean;
   private view?: ThreeView;
+  /**
+   * Style overrides to merge with the base style.
+   * Can be used to inject font configuration via font-faces.
+   */
+  private readonly overrides?: Partial<StyleSpecification>;
   /**
    * Style engine for evaluating MapLibre expressions.
    * Uses JsStyleEngine internally.
@@ -85,18 +98,125 @@ export class MapLibreStylePlugin extends Plugin<ThreeView, ViewContext> {
    * Create a new MapLibre Style plugin.
    *
    * @param style - MapLibre Style JSON specification or URL
-   * @param options - Optional configuration
-   * @param options.fontFamily - Font faces for text rendering (created via fetchFontFamilyFromCssForMapLibreStyle)
-   *                            When provided, text-font and glyphs settings from the style are ignored.
+   * @param options - Plugin options
+   * @param options.overrides - Optional partial style overrides to merge with the base style.
+   *                            Use fontFamilyToStyleOverrides() or fetchFontStyleOverrides() to inject font configuration.
+   * @param options.tileJsonPlugin - Optional TileJsonPlugin instance. If not provided, a new one will be created internally and disposed when this plugin is disposed.
+   *
+   * @example
+   * ```ts
+   * // With font configuration
+   * const plugin = new MapLibreStylePlugin(style, {
+   *   overrides: await fetchFontStyleOverrides("Open Sans", "https://fonts.googleapis.com/css2?family=Open+Sans"),
+   * });
+   * ```
+   *
+   * @example
+   * ```ts
+   * // With custom TileJsonPlugin
+   * const plugin = new MapLibreStylePlugin(style, {
+   *   overrides: fontOverrides,
+   *   tileJsonPlugin: new TileJsonPlugin(),
+   * });
+   * ```
    */
   constructor(
     private readonly style: string | StyleSpecification,
-    options?: {
-      fontFamily?: FontFamily;
-    },
+    options?: MapLibreStylePluginOptions,
   ) {
     super();
-    this.fontFamily = options?.fontFamily;
+    this.overrides = options?.overrides;
+    this.tileJsonPlugin = options?.tileJsonPlugin ?? new TileJsonPlugin();
+    this.ownsTileJsonPlugin = !options?.tileJsonPlugin;
+  }
+
+  /**
+   * Merge style overrides into base style.
+   * Returns a new merged style object without mutating the input.
+   * Currently supports font-faces; can be extended for other properties in the future.
+   *
+   * @param baseStyle - A validated style object (not a string or primitive)
+   * @param overrides - Partial style specification to merge in
+   */
+  private mergeStyleOverrides(
+    baseStyle: StyleSpecification,
+    overrides: Partial<StyleSpecification>,
+  ): StyleSpecification {
+    // Create a shallow copy of the base style
+    const mergedStyle = { ...baseStyle };
+
+    // Merge font-faces into a new object
+    if (overrides["font-faces"]) {
+      mergedStyle["font-faces"] = {
+        ...baseStyle["font-faces"],
+        ...overrides["font-faces"],
+      };
+    }
+
+    // TODO: Add support for other override properties here
+    // if (overrides.sources) { mergedStyle.sources = { ...baseStyle.sources, ...overrides.sources }; }
+    // if (overrides.layers) { mergedStyle.layers = [...baseStyle.layers, ...overrides.layers]; }
+
+    return mergedStyle;
+  }
+
+  /**
+   * Get font family name for a layer.
+   * Reads from layer's text-font property if it's a symbol layer, otherwise returns first available font.
+   */
+  private getFontFamilyForLayer(styleLayer: StyleLayer): string | undefined {
+    const fontFaces = this.parsedStyle?.["font-faces"];
+    if (!fontFaces) {
+      return undefined;
+    }
+
+    // For symbol layers, try to use text-font property
+    if (styleLayer.type === "symbol" && styleLayer.layout?.["text-font"]) {
+      const textFont = styleLayer.layout["text-font"];
+
+      // text-font can be a string (constant), array (for fallback), or expression
+      if (typeof textFont === "string") {
+        // Single font name - use it if available
+        if (fontFaces[textFont]) {
+          return textFont;
+        }
+      } else if (
+        Array.isArray(textFont) &&
+        textFont.every((v) => typeof v === "string") &&
+        textFont.some((v) => fontFaces[v])
+      ) {
+        // Array of font names with at least one matching an available font.
+        // This distinguishes fallback lists from expression arrays (e.g., ["case", ...])
+        // where operator names could coincide with font keys.
+        for (const fontName of textFont) {
+          if (fontFaces[fontName]) {
+            return fontName;
+          }
+        }
+      }
+      // Note: text-font can also be an expression (e.g., ["case", ...]),
+      // but we don't evaluate it here since font selection is done at layer
+      // construction time, not per-feature. Fall back to first configured font.
+    }
+
+    // Fall back to first available font
+    return Object.keys(fontFaces)[0];
+  }
+
+  /**
+   * Register fonts from style font-faces with the view.
+   * Converts MapLibre font-face format to Navara FontFamily format.
+   */
+  private registerFontsFromStyle(view: ThreeView): void {
+    const fontFaces = this.parsedStyle?.["font-faces"];
+    if (!fontFaces) {
+      return;
+    }
+
+    const fontFamilies = convertFontFacesToFontFamilies(fontFaces);
+    for (const fontFamily of fontFamilies) {
+      view.addFontFamily(fontFamily);
+    }
   }
 
   /**
@@ -200,18 +320,36 @@ export class MapLibreStylePlugin extends Plugin<ThreeView, ViewContext> {
       styleData = this.style;
     }
 
+    // Validate that styleData is a plain object before merging
+    if (
+      typeof styleData !== "object" ||
+      styleData === null ||
+      Array.isArray(styleData)
+    ) {
+      throw new Error(`Invalid style data: expected a style object`);
+    }
+
+    // Merge overrides into style before parsing
+    if (this.overrides) {
+      styleData = this.mergeStyleOverrides(
+        styleData as StyleSpecification,
+        this.overrides,
+      );
+    }
+
     try {
-      // Parse and validate the style
+      // Parse and validate the merged style
       this.parsedStyle = await this.engine.parseStyle(styleData);
 
       // Check if style uses glyphs (not supported)
+      const hasFontFaces = this.parsedStyle["font-faces"];
       if (this.parsedStyle.glyphs) {
         console.warn(
           "MapLibre Style uses 'glyphs' for font rendering, which is not supported by Navara. " +
-            (this.fontFamily
-              ? `Text will use the provided font family instead.`
-              : "Please provide fontFamily option to enable text rendering. " +
-                "Example: new MapLibreStylePlugin(style, { fontFamily: await fetchFontFamilyFromCssForMapLibreStyle('Open Sans', 'https://fonts.googleapis.com/...') })"),
+            (hasFontFaces
+              ? `Text will use fonts from font-faces instead.`
+              : "Please provide font configuration via style overrides to enable text rendering. " +
+                "Example: new MapLibreStylePlugin(style, await fetchFontStyleOverrides('Open Sans', 'https://fonts.googleapis.com/...'))"),
         );
       }
     } catch (err) {
@@ -223,10 +361,8 @@ export class MapLibreStylePlugin extends Plugin<ThreeView, ViewContext> {
     // Initialize TileJsonPlugin for TileJSON source support
     await this.tileJsonPlugin.init(view, ctx);
 
-    // Register font faces if provided
-    if (this.fontFamily) {
-      view.addFontFamily(this.fontFamily);
-    }
+    // Register fonts from style font-faces
+    this.registerFontsFromStyle(view);
 
     // Set up zoom change detection for re-evaluating features
     this.setupZoomChangeDetection(view);
@@ -656,8 +792,8 @@ export class MapLibreStylePlugin extends Plugin<ThreeView, ViewContext> {
     }
 
     // Create layer description
-    // Use fixed font family name if fontFamily was provided
-    const fontFamily = this.fontFamily ? this.fontFamily.family : undefined;
+    // Get font family name from layer's text-font or fall back to first available font
+    const fontFamily = this.getFontFamilyForLayer(styleLayer);
     const layerDesc = toLayerDescription(
       source,
       styleLayer,
@@ -884,8 +1020,10 @@ export class MapLibreStylePlugin extends Plugin<ThreeView, ViewContext> {
     }
     this.sources.clear();
 
-    // Dispose TileJsonPlugin (clears attribution credits and events)
-    this.tileJsonPlugin.dispose();
+    // Dispose TileJsonPlugin only if it was created internally
+    if (this.ownsTileJsonPlugin) {
+      this.tileJsonPlugin.dispose();
+    }
 
     // Clear other state
     this.warnedLayers.clear();

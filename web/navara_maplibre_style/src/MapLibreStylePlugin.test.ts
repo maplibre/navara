@@ -554,26 +554,6 @@ describe("MapLibreStylePlugin", () => {
     });
   });
 
-  describe("FontFamily Option", () => {
-    it("should register fontFamily when provided", async () => {
-      const style: StyleSpecification = {
-        version: 8,
-        sources: {},
-        layers: [],
-      };
-
-      const mockFontFamily = { family: "TestFont" } as any;
-      const plugin = new MapLibreStylePlugin(style, {
-        fontFamily: mockFontFamily,
-      });
-      const view = createMockView();
-      await plugin.init(view, mockViewContext);
-
-      // Verify addFontFamily was called
-      expect(view.addFontFamily).toHaveBeenCalledWith(mockFontFamily);
-    });
-  });
-
   describe("Zoom Change Detection", () => {
     it("should register preRender listener for zoom changes", async () => {
       const style: StyleSpecification = {

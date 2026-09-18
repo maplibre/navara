@@ -13,6 +13,7 @@ import type {
   FilterSpecification,
   StyleSpecification,
   StylePropertySpecification,
+  Feature,
 } from "@maplibre/maplibre-gl-style-spec";
 
 import type { StyleEngine } from "./StyleEngine";
@@ -58,20 +59,16 @@ export class JsStyleEngine implements StyleEngine {
     const { filter } = featureFilter(expr as FilterSpecification, "filter");
 
     return (ctx: FeatureContext) => {
-      // Construct a valid GeoJSON Feature for MapLibre's filter evaluator.
-      // This ensures filters like ["geometry-type"] work correctly.
-      const feature = {
-        type: "Feature" as const,
+      // Construct a MapLibre Feature for the filter evaluator.
+      // Note: MapLibre uses its own Feature format (not GeoJSON), where type is the geometry type.
+      const feature: Feature = {
+        type: featureGeometryType as Feature["type"],
         properties: ctx.properties ?? {},
-        geometry: {
-          type: featureGeometryType, // e.g., "Point", "Polygon", "LineString"
-          coordinates: [], // Empty coordinates - most filters only check properties/type
-        },
+        geometry: [],
       };
 
       // Use tile zoom from context if available, otherwise default to 0 for non-tiled features
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      return filter({ zoom: ctx.zoom ?? 0 }, feature as any);
+      return filter({ zoom: ctx.zoom ?? 0 }, feature);
     };
   }
 
@@ -134,22 +131,19 @@ export class JsStyleEngine implements StyleEngine {
     const expression = result.value;
 
     return (ctx: EvaluationContext) => {
-      // Construct a valid GeoJSON Feature for MapLibre's expression evaluator.
-      const feature = {
-        type: "Feature" as const,
+      // Construct a MapLibre Feature for the expression evaluator.
+      // Note: MapLibre uses its own Feature format (not GeoJSON), where type is the geometry type.
+      const feature: Feature = {
+        type: featureGeometryType as Feature["type"], // e.g., "Point", "Polygon", "LineString"
         properties: ctx.properties ?? {},
-        geometry: {
-          type: featureGeometryType, // e.g., "Point", "Polygon", "LineString"
-          coordinates: [], // Empty coordinates - most expressions only access properties
-        },
+        geometry: [], // Empty geometry - most expressions only access properties
       };
 
       // Use tile zoom from context if available (for tiled features like MVT),
       // otherwise default to 0 for non-tiled features (GeoJSON)
       const zoomValue = ctx.zoom ?? 0;
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const value = expression.evaluate({ zoom: zoomValue }, feature as any);
+      const value = expression.evaluate({ zoom: zoomValue }, feature);
 
       return value as T;
     };

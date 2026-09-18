@@ -1,6 +1,6 @@
 import {
   MapLibreStylePlugin,
-  fetchFontFamilyFromCssForMapLibreStyle,
+  fetchFontStyleOverrides,
 } from "@navaramap/maplibre-style";
 import ThreeView from "@navaramap/three";
 import { type DefaultDescriptions } from "@navaramap/three-default-plugin";
@@ -22,15 +22,15 @@ export type CustomDescriptions = DefaultDescriptions;
 export async function run() {
   const view = new ThreeView<CustomDescriptions>({});
 
-  // Add the MapLibre Style plugin
+  // Add the MapLibre Style plugin with font overrides
+  const fontOverrides = await fetchFontStyleOverrides(
+    "Open Sans",
+    "https://fonts.googleapis.com/css2?family=Open+Sans:wght@600&display=swap",
+  );
   const maplibrePlugin = new MapLibreStylePlugin(
     "https://demotiles.maplibre.org/globe.json",
     {
-      fontFamily: await fetchFontFamilyFromCssForMapLibreStyle(
-        "Open Sans",
-        "https://fonts.googleapis.com/css2?family=Open+Sans:wght@600&display=swap",
-      ),
-      // Overriding light and other properties should be supported in the future.
+      overrides: fontOverrides,
     },
   );
   view.addPlugin(maplibrePlugin);

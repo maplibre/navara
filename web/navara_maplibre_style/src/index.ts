@@ -6,5 +6,9 @@
  */
 
 export { MapLibreStylePlugin } from "./MapLibreStylePlugin";
-export { fetchFontFamilyFromCssForMapLibreStyle } from "./fontHelper";
+export {
+  fetchFontStyleOverrides,
+  fontFamilyToStyleOverrides,
+  convertFontFacesToFontFamilies,
+} from "./fontHelper";
 export type { StyleSpecification } from "@maplibre/maplibre-gl-style-spec";

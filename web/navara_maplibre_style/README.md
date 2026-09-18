@@ -33,8 +33,9 @@ Only the properties listed below are actually implemented and functional. Other 
 - **Paint:** `icon-color`, `icon-opacity`, `text-color`, `text-opacity`, `text-halo-color`, `text-halo-width`
 - **Layout:** `icon-image`, `icon-size`, `text-field`, `text-size`, `text-font`
 - **Note:**
-  - Font configuration is done via plugin options (see Font Configuration section below), not through `text-font` property
-  - `text-halo-color` and `text-halo-width` map to Navara's `outlineColor` and `outlineWidth` for constant values; expressions are currently evaluated once at layer construction (no feature-driven or zoom-reactive halo yet)
+  - Fonts are configured via style overrides (see Font Configuration section below)
+  - `text-font` is used to select which font to use from the configured `font-faces` (supports string or array for fallback)
+  - `text-halo-color` and `text-halo-width` map to Navara's `outlineColor` and `outlineWidth`; expressions are evaluated once at layer construction (no per-feature or zoom-reactive halo)
   - `text-anchor`, `icon-anchor`, `text-offset`, `icon-offset` are parsed but not applied
   - Text rendering uses SDF (signed distance field)
   - Automatic label deduplication via Navara's declutter system
@@ -189,21 +190,80 @@ view.attribution?.add([
 
 ### Font Configuration
 
-To render text labels from symbol layers, pre-load fonts and pass them to the plugin:
+To render text labels from symbol layers, pre-load fonts and pass them as style overrides:
 
 ```typescript
-import { fetchFontFamilyFromCssForMapLibreStyle } from "@navaramap/maplibre-style";
+import { fetchFontStyleOverrides } from "@navaramap/maplibre-style";
 
-const fontFamily = await fetchFontFamilyFromCssForMapLibreStyle(
+const fontOverrides = await fetchFontStyleOverrides(
   "Open Sans",
   "https://fonts.googleapis.com/css2?family=Open+Sans:wght@600&display=swap",
 );
 
-const plugin = new MapLibreStylePlugin(style, { fontFamily });
+const plugin = new MapLibreStylePlugin(style, {
+  overrides: fontOverrides,
+});
 view.addPlugin(plugin);
 ```
 
-When fonts are configured, all symbol layers will use the provided font family, and the style's `text-font` and `glyphs` properties are ignored.
+Alternatively, you can manually construct font overrides:
+
+```typescript
+import { fetchFontFamilyFromCss } from "@navaramap/three";
+import { fontFamilyToStyleOverrides } from "@navaramap/maplibre-style";
+
+const fontFamily = await fetchFontFamilyFromCss(
+  "Open Sans",
+  "https://fonts.googleapis.com/css2?family=Open+Sans:wght@600&display=swap",
+);
+
+const plugin = new MapLibreStylePlugin(style, {
+  overrides: fontFamilyToStyleOverrides(fontFamily),
+});
+```
+
+You can also provide a custom `TileJsonPlugin` instance:
+
+```typescript
+import { TileJsonPlugin } from "@navaramap/three_plugins";
+
+const plugin = new MapLibreStylePlugin(style, {
+  overrides: fontOverrides,
+  tileJsonPlugin: new TileJsonPlugin(),
+});
+```
+
+For advanced use cases, you can manually convert and register fonts:
+
+```typescript
+import { convertFontFacesToFontFamilies } from "@navaramap/maplibre-style";
+
+// Extract fonts from an existing MapLibre style
+const fontFamilies = convertFontFacesToFontFamilies(style["font-faces"]);
+for (const family of fontFamilies) {
+  view.addFontFamily(family);
+}
+```
+
+**Font Selection:**
+
+- Each symbol layer's `layout["text-font"]` property is used to select which font from `font-faces` to use
+- `text-font` must be an array (MapLibre Style Spec requirement)
+- For simple font references, use a single-element array: `["FontName"]`
+- For fallback support, use multiple fonts: `["PreferredFont", "FallbackFont"]` - the first available font is used
+- Font selection distinguishes between fallback lists and expressions by checking if at least one element matches an available font
+- If `text-font` is an expression (e.g., `["case", ...]`) or no fonts match, falls back to the first available font in `font-faces`
+- If no `text-font` is specified, uses the first available font
+- The style's `glyphs` property is not supported (use `font-faces` via overrides instead)
+
+**Unicode Range Support:**
+
+- Supports multiple `unicode-range` formats:
+  - Single codepoint: `"U+26"` (ampersand character)
+  - Range: `"U+0-7F"` (Basic Latin)
+  - Comma-separated: `"U+0-7F, U+100-17F"` (Basic Latin + Latin Extended-A)
+- Whitespace is automatically trimmed
+- Unparseable ranges are logged as warnings and skipped
 
 ## Known Limitations
 
@@ -231,6 +291,10 @@ When fonts are configured, all symbol layers will use the provided font family, 
 - **Label deduplication**: Automatic deduplication of overlapping labels via Navara's declutter system with 300ms fade animations
 - **Text rotation**: Limited support for rotated text
 - **No symbol sorting**: z-order not controlled by `symbol-sort-key`
+- **Text halo limitations**: `text-halo-color` and `text-halo-width` are evaluated once at layer construction time, not per-feature. This means:
+  - Text halo expressions cannot access feature properties (e.g., `["get", "property"]` will be `undefined`)
+  - Text halo cannot respond to zoom changes (evaluated at a default zoom level)
+  - To support dynamic text halos, Navara's `EvaluatedValue` system needs to add `outlineColor`/`outlineWidth` fields
 
 ### Performance
 

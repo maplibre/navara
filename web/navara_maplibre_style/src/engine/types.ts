@@ -10,6 +10,7 @@ import type {
   RasterSourceSpecification,
   RasterDEMSourceSpecification,
   TerrainSpecification,
+  FontFacesSpecification,
 } from "@maplibre/maplibre-gl-style-spec";
 
 /**
@@ -21,7 +22,9 @@ export type ParsedStyle = {
   sources: Record<string, StyleSource>;
   layers: StyleLayer[];
   terrain?: TerrainSpecification;
-  glyphs?: string; // URL template for font glyphs (not supported, use fontFamily option instead)
+  glyphs?: string; // URL template for font glyphs (not supported, use font-faces instead)
+  "font-faces"?: FontFacesSpecification; // Font face definitions
+  metadata?: Record<string, unknown>; // Custom metadata
 };
 
 /**
