@@ -41,7 +41,7 @@ const featuresFor = (kind: Kind) => {
   }));
 };
 
-const view = new ThreeView();
+const view = new ThreeView({ debug: true });
 await view.init();
 
 view.setCamera({
@@ -118,7 +118,7 @@ const layers = KINDS.map((kind) => {
             color: new Color().setStyle("#ffffff"),
             outlineColor: new Color().setStyle("#000000"),
             outlineWidth: 3,
-            size: 110,
+            size: 210,
             center: { x: 0.5, y: 0.5 },
           },
         }
