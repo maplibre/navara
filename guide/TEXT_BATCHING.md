@@ -233,12 +233,13 @@ Two consequences worth knowing:
   directly above, and mirrored when viewed from behind. That is inherent to a
   fixed-orientation quad, not a defect. Its face points south, so the default
   north-looking camera reads it.
-- **The batch material is `DoubleSide`.** Backface culling would delete a
-  world-locked label outright as soon as the camera crossed to its far side,
-  which is the one case where a mirrored label is the wanted result. The
-  camera-following modes never present a back face, so they pay nothing for
-  it, and `screenSpaceNormal()` in the fragment shader already flips a
-  away-facing normal before it reaches the G-buffer.
+- **The batch material is `DoubleSide`**, as is `InstancedSpriteMesh`'s.
+  Backface culling would delete a world-locked quad outright as soon as the
+  camera crossed to its far side, which is the one case where a mirrored quad
+  is the wanted result. The camera-following modes never present a back face,
+  so they pay nothing for it, and `screenSpaceNormal()` in both fragment
+  shaders already flips an away-facing normal before it reaches the
+  G-buffer.
 - **Declutter still measures a screen-aligned box.** The Rust kernel projects
   the anchor and scales the label's em box by pixels-per-meter
   (`crates/navara_wasm_api/src/declutter.rs`), which ignores the foreshortening

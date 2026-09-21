@@ -12,6 +12,7 @@ import {
   BufferAttribute,
   type BufferGeometry,
   Color,
+  DoubleSide,
   type Material,
   MathUtils,
   PerspectiveCamera,
@@ -566,7 +567,13 @@ export class InstancedSpriteMesh
     m: NavaraPointMesh | NavaraBillboardMesh,
   ) {
     const isBillboard = m instanceof NavaraBillboardMesh;
-    const material = new ShaderMaterial();
+    const material = new ShaderMaterial({
+      // A world-locked quad (`rotateWithCamera: false`) can legitimately be
+      // viewed from behind, where backface culling would drop it entirely
+      // rather than show it mirrored. The camera-following modes are always
+      // front-facing by construction, so this costs them nothing.
+      side: DoubleSide,
+    });
 
     // Create enhancer
     const enhancer = createInstancedSpriteMaterialEnhancer(material);
