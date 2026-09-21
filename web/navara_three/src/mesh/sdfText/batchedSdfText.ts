@@ -8,6 +8,7 @@ import { degreeToRadian } from "@navaramap/three-api";
 import {
   Color,
   type PerspectiveCamera,
+  DoubleSide,
   Object3D,
   ShaderMaterial,
   Vector2,
@@ -285,6 +286,11 @@ export class BatchedSdfTextMesh
       // so a neighbouring glyph's fill occludes this glyph's outline at overlaps
       // — without depth writes that outline-seam fix becomes a no-op.
       depthWrite: true,
+      // A world-locked quad (`rotateWithCamera: false`) can legitimately be
+      // viewed from behind, where backface culling would drop it entirely
+      // rather than show it mirrored. The camera-following modes are always
+      // front-facing by construction, so this costs them nothing.
+      side: DoubleSide,
     });
     this._enhancer = createSdfTextMaterialEnhancer(mat);
     this._setupMaterial(mat, material);
@@ -330,6 +336,9 @@ export class BatchedSdfTextMesh
         center: material.center
           ? [material.center.x, material.center.y]
           : undefined,
+        flatFacing: material.textFacing === "flat",
+        rotateWithCamera: material.rotateWithCamera ?? true,
+        rotation: material.rotation ?? 0,
         sizeInMeters: material.sizeInMeters ?? true,
         offsetDepth: material.offsetDepth ?? true,
         outlineWidth: material.outlineWidth ?? 0,
@@ -1170,6 +1179,9 @@ export class BatchedSdfTextMesh
         center: material.center
           ? [material.center.x, material.center.y]
           : [0.5, 0.0],
+        flatFacing: material.textFacing === "flat",
+        rotateWithCamera: material.rotateWithCamera ?? true,
+        rotation: material.rotation ?? 0,
         sizeInMeters: material.sizeInMeters ?? true,
         offsetDepth: material.offsetDepth ?? true,
         outlineWidth: material.outlineWidth ?? 0,

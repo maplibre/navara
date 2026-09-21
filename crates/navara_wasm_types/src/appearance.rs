@@ -34,6 +34,21 @@ fn parse_geometry_types(
 fn geometry_type_names(value: &[navara_material::SourceGeometryType]) -> Vec<String> {
     value.iter().map(|t| t.as_str().to_string()).collect()
 }
+
+/// Parse the JS-facing `textFacing` name, warning on an unknown value so the
+/// caller falls back to the material's current value rather than failing.
+fn parse_text_facing(value: &Option<String>) -> Option<navara_material::TextFacing> {
+    let name = value.as_ref()?;
+    match navara_material::TextFacing::parse(name) {
+        Some(f) => Some(f),
+        None => {
+            bevy_log::warn!(
+                "textFacing: unknown value {name:?} (expected \"upright\" or \"flat\")"
+            );
+            None
+        }
+    }
+}
 #[wasm_bindgen]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PointMaterial {
@@ -325,6 +340,27 @@ pub struct TextMaterial {
     pub size: Option<f32>,
     pub color: Option<u32>,
     pub center: Option<Vec2>,
+    /// Whether the label stands up (`"upright"`, the default) or lies in the
+    /// globe's tangent plane at the anchor (`"flat"`), reading as painted on
+    /// the surface. Pair with `rotateWithCamera`.
+    #[wasm_bindgen(getter_with_clone, js_name = textFacing)]
+    #[serde(rename = "textFacing")]
+    pub text_facing: Option<String>,
+    /// Rotation of the label within its own plane, about its anchor point, in
+    /// degrees, clockwise seen from the front. Applied on top of whatever
+    /// orientation `textFacing` and `rotateWithCamera` resolve to: it spins a
+    /// billboard on screen and turns a surface label like a compass bearing.
+    /// `center` decides where inside the text the pivot sits. Defaults to
+    /// `0.0`.
+    pub rotation: Option<f32>,
+    /// Whether the label turns to follow the camera. `true` (the default)
+    /// keeps it facing the viewer. `false` freezes it in the anchor's local
+    /// east-north-up frame, so moving the camera never reorients it: with
+    /// `textFacing: "upright"` it becomes a signboard standing on the
+    /// surface, with `"flat"` a north-up label painted on it.
+    #[wasm_bindgen(js_name = rotateWithCamera)]
+    #[serde(rename = "rotateWithCamera")]
+    pub rotate_with_camera: Option<bool>,
     pub height: Option<f32>,
     /// Whether the size is specified in meters. If false, the size is in pixels. Default is true.
     #[wasm_bindgen(js_name = sizeInMeters)]
@@ -464,6 +500,9 @@ impl From<TextMaterial> for navara_material::TextMaterial {
             size: val.size.unwrap_or(default.size),
             color: val.color.unwrap_or(default.color),
             center: val.center.unwrap_or(default.center.into()).into(),
+            text_facing: parse_text_facing(&val.text_facing).unwrap_or(default.text_facing),
+            rotate_with_camera: val.rotate_with_camera.unwrap_or(default.rotate_with_camera),
+            rotation: val.rotation.unwrap_or(default.rotation),
             height: val.height.unwrap_or(default.height),
             size_in_meters: val.size_in_meters.unwrap_or(default.size_in_meters),
             clamp_to_ground: val.clamp_to_ground.unwrap_or(default.clamp_to_ground),
@@ -511,6 +550,9 @@ impl<'a> From<&'a navara_material::TextMaterial> for TextMaterial {
             size: Some(value.size),
             color: Some(value.color),
             center: Some(value.center.into()),
+            text_facing: Some(value.text_facing.as_str().to_string()),
+            rotate_with_camera: Some(value.rotate_with_camera),
+            rotation: Some(value.rotation),
             height: Some(value.height),
             size_in_meters: Some(value.size_in_meters),
             clamp_to_ground: Some(value.clamp_to_ground),
@@ -555,6 +597,9 @@ impl TextMaterial {
             size: self.size.unwrap_or(other.size),
             color: self.color.unwrap_or(other.color),
             center: self.center.unwrap_or(other.center.into()).into(),
+            text_facing: parse_text_facing(&self.text_facing).unwrap_or(other.text_facing),
+            rotate_with_camera: self.rotate_with_camera.unwrap_or(other.rotate_with_camera),
+            rotation: self.rotation.unwrap_or(other.rotation),
             height: self.height.unwrap_or(other.height),
             size_in_meters: self.size_in_meters.unwrap_or(other.size_in_meters),
             clamp_to_ground: self.clamp_to_ground.unwrap_or(other.clamp_to_ground),
@@ -1878,8 +1923,8 @@ pub struct HillshadeMaterial {
 
 #[cfg(test)]
 mod test {
-    use super::parse_geometry_types;
-    use navara_material::SourceGeometryType;
+    use super::{TextMaterial, parse_geometry_types, parse_text_facing};
+    use navara_material::{SourceGeometryType, TextFacing};
 
     #[test]
     fn parse_geometry_types_keeps_valid_names() {
@@ -1911,5 +1956,37 @@ mod test {
             parse_geometry_types(&Some(vec!["Line".to_string(), "polyline".to_string()])),
             Some(vec![])
         );
+    }
+
+    #[test]
+    fn parse_text_facing_reads_the_js_names() {
+        assert_eq!(
+            parse_text_facing(&Some("upright".to_string())),
+            Some(TextFacing::Upright)
+        );
+        assert_eq!(
+            parse_text_facing(&Some("flat".to_string())),
+            Some(TextFacing::Flat)
+        );
+    }
+
+    /// An absent field and an unrecognized one both read as "unspecified", so
+    /// the caller keeps whatever facing the material already had.
+    #[test]
+    fn parse_text_facing_falls_back_on_unknown_values() {
+        assert_eq!(parse_text_facing(&None), None);
+        assert_eq!(parse_text_facing(&Some("Flat".to_string())), None);
+    }
+
+    #[test]
+    fn merge_keeps_the_previous_facing_when_unspecified() {
+        let other = navara_material::TextMaterial {
+            text_facing: TextFacing::Flat,
+            rotate_with_camera: false,
+            ..Default::default()
+        };
+        let merged = TextMaterial::from(&other).merge(&Default::default());
+        assert_eq!(merged.text_facing, TextFacing::Flat);
+        assert!(!merged.rotate_with_camera);
     }
 }

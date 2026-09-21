@@ -30,7 +30,7 @@ knowing before touching either shader.
 ```mermaid
 flowchart LR
   subgraph U["Tier 1 · batch-wide<br/>uniforms"]
-    U1["outline width/color/opacity<br/>background color/border<br/>uCenter, uSizeInMeters, uOffsetDepth<br/>atlas samplers + sizes<br/>camera fov / screen height / far plane<br/>RTE eye split, RTC center<br/>nvr_uPickable"]
+    U1["outline width/color/opacity<br/>background color/border<br/>uCenter, uSizeInMeters, uOffsetDepth<br/>uFlatFacing, uRotateWithCamera<br/>atlas samplers + sizes<br/>camera fov / screen height / far plane<br/>RTE eye split, RTC center<br/>nvr_uPickable"]
   end
   subgraph L["Tier 2 · per-label<br/>uLabelData texels"]
     L1["anchor, fontSize, addHeight<br/>color, opacity<br/>text box metrics<br/>declutterHide, batchId, show"]
@@ -155,6 +155,82 @@ before its own glyphs. The fragment shader's outline-seam fix depends on that
 ordering. Whether it actually draws is a batch-wide `uShowBackground` test in
 the shader, so toggling backgrounds costs no buffer writes.
 
+## Quad orientation
+
+A glyph's vertex position is its unit quad offset from the label's anchor **in
+view space**: `mvPosition + vec4(localPos.x * right + localPos.y * up, 0.0) *
+scaleFactor`. All four orientation modes differ only in that `(right, up)`
+pair, which `nvr_labelBasis` resolves from two batch-wide booleans —
+`uFlatFacing` picks the plane, `uRotateWithCamera` picks whether the quad
+follows the camera or is frozen in the anchor's east-north-up frame:
+
+| `uFlatFacing` | `uRotateWithCamera` | right, up | behaviour |
+| --- | --- | --- | --- |
+| `false` | `true` | view `+x`, `+y` | screen-aligned billboard (the default) |
+| `false` | `false` | east, surface normal | signboard standing on the surface |
+| `true` | `true` | screen `+x` projected onto the tangent plane | lies on the surface, yawed to keep reading left-to-right |
+| `true` | `false` | east, north | lies on the surface, pinned north-up |
+
+A zero-Z offset is exactly what makes a quad screen-aligned, so only the first
+row is camera-relative; the rest rotate a *world* direction into view space
+(`viewMatrix * vec4(dir, 0.0)`, the idiom `mvr_getMvHeightOffset` already uses).
+The surface normal is `normalize(absTransformed)` — the same spherical
+approximation as the height offset, reusing the ECEF position horizon culling
+already reconstructed.
+
+The two `uRotateWithCamera == false` rows share one branch: both are the
+anchor's east-north-up frame, differing only in whether up is north (flat) or
+the surface normal (upright). Because neither reads the camera, the basis is a
+pure function of the anchor and has no camera-dependent singularity.
+
+Both booleans are uniforms rather than defines: they are batch-wide, so the
+branches are coherent across a draw call, and toggling the mode costs no shader
+recompile.
+
+`nvr_labelBasis` then spins that basis by `uRotation` (the material's
+`rotation`, converted from degrees to radians CPU-side) **inside the quad's own
+plane**, turning both axes together. Because it composes with the resolved
+basis rather than replacing it, one implementation covers every mode: it spins
+a billboard on screen and swings a surface label like a compass bearing, and
+the quad never leaves the plane its mode put it in. The sine is negated
+relative to the usual counter-clockwise matrix so a positive angle reads
+clockwise from in front, matching compass bearings and MapLibre's
+`text-rotate`.
+
+The pivot is the **anchor**: glyph offsets are measured from it once `uCenter`
+has shifted the text block, so `center` is what decides where inside the text
+the label turns about — `{x: 0.5, y: 0.5}` spins it about its middle,
+`{x: 0.5, y: 0.0}` about the bottom of the block.
+
+> **`rotateWithCamera` must not be implemented as a screen-space spin.** An
+> earlier revision gave the screen-plane quad an up vector of *north projected
+> onto the screen*. That inverts every label whenever the camera faces south —
+> north then points down-screen — and its direction is undefined outright when
+> north lies along the view axis. Freezing the quad in the world frame, as
+> above, is what makes the mode well-posed.
+
+Two consequences worth knowing:
+
+- **The background quad shares the basis**, so it stays coplanar with its
+  glyphs in every mode.
+- **A world-frozen quad has a back and an edge.** `textFacing: "upright"` with
+  `rotateWithCamera: false` is a real signboard: invisible edge-on from
+  directly above, and mirrored when viewed from behind. That is inherent to a
+  fixed-orientation quad, not a defect. Its face points south, so the default
+  north-looking camera reads it.
+- **The batch material is `DoubleSide`.** Backface culling would delete a
+  world-locked label outright as soon as the camera crossed to its far side,
+  which is the one case where a mirrored label is the wanted result. The
+  camera-following modes never present a back face, so they pay nothing for
+  it, and `screenSpaceNormal()` in the fragment shader already flips a
+  away-facing normal before it reaches the G-buffer.
+- **Declutter still measures a screen-aligned box.** The Rust kernel projects
+  the anchor and scales the label's em box by pixels-per-meter
+  (`crates/navara_wasm_api/src/declutter.rs`), which ignores the foreshortening
+  and rotation a flat label picks up. The box is therefore an over-estimate for
+  `textFacing: "flat"` — conservative (it hides slightly more than it must),
+  never an under-estimate.
+
 ## Picking
 
 `sdfText.frag.glsl` deliberately does **not** include
@@ -208,7 +284,7 @@ requires reading the instance count at the GL level, e.g. patching
 
 | File | Role |
 | --- | --- |
-| `shaders/glsl/sdfText.vert.glsl` | `nvr_readLabel`, the `GLYPH_KIND_*` culls, billboard + RTE/RTC transform |
+| `shaders/glsl/sdfText.vert.glsl` | `nvr_readLabel`, the `GLYPH_KIND_*` culls, `nvr_labelBasis` + RTE/RTC transform |
 | `shaders/glsl/sdfText.frag.glsl` | SDF/MTSDF and COLRv1 sampling, outline, background, pick encoding via `vBatchID` |
 | `web/navara_three/src/mesh/sdfText/batchedSdfText.ts` | `BatchedSdfTextMesh` — label records, the engine/evaluator API, declutter participation, atlas retain/release |
 | `web/navara_three/src/mesh/sdfText/glyphBuffers.ts` | Instance attributes, partial uploads, capacity growth, `GlyphKind` |

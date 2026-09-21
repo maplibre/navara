@@ -64,6 +64,19 @@ vec4 nvr_readLabel(int slot, int row) {
 uniform vec2 uSdfAtlasSize;
 uniform vec2 uColorAtlasSize;
 uniform bool uSizeInMeters;
+// Quad orientation. Both are batch-wide, so the branches below are uniform
+// across a draw call.
+//   uFlatFacing      false = quad parallel to the screen plane
+//                    true  = quad in the ellipsoid tangent plane at the anchor
+//   uRotateWithCamera true = up follows the camera (screen up, or the yaw that
+//                            keeps flat text reading left-to-right)
+//                    false = up follows geodetic north
+uniform bool uFlatFacing;
+uniform bool uRotateWithCamera;
+// Spin of the quad inside its own plane about the anchor, in radians,
+// clockwise seen from the front. Converted from the material's degrees on the
+// CPU.
+uniform float uRotation;
 uniform float uFovRad;
 uniform float uScreenHeightPx;
 uniform vec2 uCenter;
@@ -85,6 +98,75 @@ flat varying vec3 vColor;
 // Style opacity already scaled by the declutter fade.
 flat varying float vOpacity;
 flat varying float vBatchID;
+
+// View-space basis the label's quad is laid out in: `right` spans local +x,
+// `up` spans local +y. The four orientation modes differ only in this basis;
+// everything downstream is shared.
+//
+// uFlatFacing picks the plane (screen-parallel / upright vs. the ellipsoid
+// tangent plane), uRotateWithCamera picks whether the quad turns to follow the
+// camera or is frozen in the anchor's local east-north-up frame.
+//
+// `worldPos` is the anchor in ECEF meters — its normalized direction is the
+// surface normal, matching mvr_getMvHeightOffset's spherical approximation.
+void nvr_labelOrientation(vec3 worldPos, out vec3 right, out vec3 up) {
+    if (!uFlatFacing && uRotateWithCamera) {
+        // Screen plane, screen up — the default billboard.
+        right = vec3(1.0, 0.0, 0.0);
+        up = vec3(0.0, 1.0, 0.0);
+        return;
+    }
+
+    vec3 nWorld = normalize(worldPos);
+
+    if (uFlatFacing && uRotateWithCamera) {
+        // Tangent plane, yawed so the text still reads left-to-right: screen
+        // right projected onto the plane. That projection degenerates only
+        // when the normal points along screen x, where the quad is edge-on
+        // anyway.
+        vec3 n = (viewMatrix * vec4(nWorld, 0.0)).xyz;
+        vec3 t = vec3(1.0, 0.0, 0.0) - n.x * n;
+        float tLen = length(t);
+        right = tLen > 1e-4 ? t / tLen : normalize(vec3(0.0, 1.0, 0.0) - n.y * n);
+        up = cross(n, right);
+        return;
+    }
+
+    // Both no-rotate modes are pinned to the anchor's east-north-up frame, so
+    // the basis depends only on the anchor and the camera cannot disturb it.
+    // cross(polar axis, nWorld) vanishes at the poles, where every tangent
+    // direction is an equally valid "east"; fall back to ECEF +x there.
+    vec3 eastWorld = vec3(-nWorld.y, nWorld.x, 0.0);
+    float eastLen = length(eastWorld);
+    eastWorld = eastLen > 1e-6 ? eastWorld / eastLen : vec3(1.0, 0.0, 0.0);
+    // Flat lies in the tangent plane with up = north. Upright stands the quad
+    // on the surface with up = the surface normal, a signboard whose face
+    // points south — readable from a camera looking northward.
+    vec3 upWorld = uFlatFacing ? cross(nWorld, eastWorld) : nWorld;
+    right = (viewMatrix * vec4(eastWorld, 0.0)).xyz;
+    up = (viewMatrix * vec4(upWorld, 0.0)).xyz;
+}
+
+// The basis above, then spun by uRotation inside the quad's own plane. Both
+// axes turn together, so the glyph layout rotates rigidly and the quad never
+// leaves the plane its orientation mode put it in.
+//
+// Glyph offsets are measured from the anchor (after `uCenter` shifts the text
+// block), so rotating the basis pivots the label about that anchor — which
+// makes `center` the control for where the pivot sits inside the text.
+void nvr_labelBasis(vec3 worldPos, out vec3 right, out vec3 up) {
+    nvr_labelOrientation(worldPos, right, up);
+    if (uRotation == 0.0) {
+        return;
+    }
+    // Negated sine relative to the usual counter-clockwise matrix, so a
+    // positive angle reads clockwise from in front of the quad.
+    float s = sin(uRotation);
+    float c = cos(uRotation);
+    vec3 rotatedRight = c * right - s * up;
+    up = s * right + c * up;
+    right = rotatedRight;
+}
 
 void main() {
     // Cull unused run slots before any texture reads.
@@ -174,6 +256,10 @@ void main() {
         scaleFactor = nvr_pxToWorld(fontSize, uFovRad, uScreenHeightPx, vec3(0.0, 0.0, mvPosition.z), vec3(0.0, 0.0, 0.0));
     }
 
+    vec3 axisRight;
+    vec3 axisUp;
+    nvr_labelBasis(absTransformed, axisRight, axisUp);
+
     vec2 center = clamp(uCenter, vec2(-0.5), vec2(0.5)); // Ensure center is within the bounds of the sprite
 
     vIsColor = glyphKind == GLYPH_KIND_COLOR ? 1 : 0;
@@ -186,7 +272,8 @@ void main() {
         bgLocalPos.x -= center.x * textWidth;
         bgLocalPos.y -= center.y * textHeight;
 
-        vec4 newMvPosition = mvPosition + vec4(bgLocalPos * scaleFactor, 0.0, 0.0);
+        vec4 newMvPosition = mvPosition
+            + vec4((bgLocalPos.x * axisRight + bgLocalPos.y * axisUp) * scaleFactor, 0.0);
 
         gl_Position = projectionMatrix * newMvPosition;
 
@@ -204,8 +291,8 @@ void main() {
         localPos.x -= center.x * textWidth;
         localPos.y -= center.y * textHeight;
 
-        // Apply billboard transform (screen-aligned, scaled)
-        vec4 delta = vec4(localPos * scaleFactor, 0.0, 0.0);
+        // Lay the glyph out in the label's basis (see nvr_labelBasis), scaled.
+        vec4 delta = vec4((localPos.x * axisRight + localPos.y * axisUp) * scaleFactor, 0.0);
         vec4 newMvPosition = mvPosition + delta;
 
         gl_Position = projectionMatrix * newMvPosition;

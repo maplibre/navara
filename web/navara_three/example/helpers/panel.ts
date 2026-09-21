@@ -194,6 +194,9 @@ export const addCtrlPanel = (
     outlineOpacity: 1.0,
     surfaceShow: true,
     pointSize: 0.3,
+    textFacing: "upright",
+    rotateWithCamera: true,
+    rotation: 0,
     offsetDepth: true,
     depthTest: true,
   };
@@ -446,6 +449,18 @@ export const addCtrlPanel = (
         material.pointSize = paneParams.pointSize;
       }
 
+      if ("textFacing" in material) {
+        material.textFacing = paneParams.textFacing;
+      }
+
+      if ("rotateWithCamera" in material) {
+        material.rotateWithCamera = paneParams.rotateWithCamera;
+      }
+
+      if ("rotation" in material) {
+        material.rotation = paneParams.rotation;
+      }
+
       if ("offsetDepth" in material) {
         material.offsetDepth = paneParams.offsetDepth;
       }
@@ -692,6 +707,26 @@ function createParamCtrl(
     if ("pointSize" in material) {
       paneParams.pointSize = material.pointSize;
       f.addBinding(paneParams, "pointSize", { min: 0, max: 10 }).on(
+        "change",
+        changeFunc,
+      );
+    }
+
+    if ("textFacing" in material) {
+      paneParams.textFacing = material.textFacing ?? "upright";
+      f.addBinding(paneParams, "textFacing", {
+        options: { upright: "upright", flat: "flat" },
+      }).on("change", changeFunc);
+    }
+
+    if ("rotateWithCamera" in material) {
+      paneParams.rotateWithCamera = material.rotateWithCamera ?? true;
+      f.addBinding(paneParams, "rotateWithCamera").on("change", changeFunc);
+    }
+
+    if ("rotation" in material) {
+      paneParams.rotation = material.rotation ?? 0;
+      f.addBinding(paneParams, "rotation", { min: -180, max: 180, step: 1 }).on(
         "change",
         changeFunc,
       );

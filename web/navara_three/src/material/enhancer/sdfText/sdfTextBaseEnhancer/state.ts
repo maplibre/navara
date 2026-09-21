@@ -1,4 +1,4 @@
-import { Color } from "three";
+import { Color, MathUtils } from "three";
 
 import {
   sdfRadiusFor,
@@ -16,6 +16,9 @@ export const DEFAULT_BASE_PROPS: Required<
   useRTE: false,
   useMsdf: false,
   center: [0.5, 0.0],
+  flatFacing: false,
+  rotateWithCamera: true,
+  rotation: 0,
   sizeInMeters: true,
   offsetDepth: true,
   outlineWidth: 0,
@@ -38,6 +41,9 @@ export const DEFAULT_BASE_STATE: SdfTextBaseState = {
   useRTE: DEFAULT_BASE_PROPS.useRTE,
   useMsdf: DEFAULT_BASE_PROPS.useMsdf,
   center: DEFAULT_BASE_PROPS.center,
+  flatFacing: DEFAULT_BASE_PROPS.flatFacing,
+  rotateWithCamera: DEFAULT_BASE_PROPS.rotateWithCamera,
+  rotation: DEFAULT_BASE_PROPS.rotation * MathUtils.DEG2RAD,
   sizeInMeters: DEFAULT_BASE_PROPS.sizeInMeters,
   offsetDepth: DEFAULT_BASE_PROPS.offsetDepth,
   outlineWidth:
@@ -71,6 +77,12 @@ export const updateState = (
     useMsdf: currentState.useMsdf,
     // Mutable
     center: props.center ?? currentState.center,
+    flatFacing: props.flatFacing ?? currentState.flatFacing,
+    rotateWithCamera: props.rotateWithCamera ?? currentState.rotateWithCamera,
+    rotation:
+      props.rotation !== undefined
+        ? props.rotation * MathUtils.DEG2RAD
+        : currentState.rotation,
     sizeInMeters: props.sizeInMeters ?? currentState.sizeInMeters,
     offsetDepth: props.offsetDepth ?? currentState.offsetDepth,
     outlineWidth:

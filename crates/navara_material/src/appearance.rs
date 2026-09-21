@@ -60,6 +60,43 @@ impl SourceGeometryType {
     }
 }
 
+/// Plane a text label's quad lies in.
+///
+/// Orthogonal to [`TextMaterial::rotate_with_camera`], which picks the quad's
+/// up direction *within* that plane.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum TextFacing {
+    /// The label stands upright rather than lying on the ground. Combined
+    /// with `rotate_with_camera` it is either a screen-aligned billboard,
+    /// never foreshortened however the camera is pitched, or a signboard
+    /// planted on the surface at a fixed bearing.
+    #[default]
+    Upright,
+    /// The quad lies in the ellipsoid's tangent plane at the label's anchor,
+    /// so the label reads as painted onto the globe surface and foreshortens
+    /// with camera pitch.
+    Flat,
+}
+
+impl TextFacing {
+    /// Parse the JS-facing name (`"upright" | "flat"`).
+    pub fn parse(value: &str) -> Option<Self> {
+        match value {
+            "upright" => Some(Self::Upright),
+            "flat" => Some(Self::Flat),
+            _ => None,
+        }
+    }
+
+    /// JS-facing name of this facing mode.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Upright => "upright",
+            Self::Flat => "flat",
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum Appearance {
     Point(PointMaterial),
@@ -252,6 +289,27 @@ pub struct TextMaterial {
     pub size: f32,
     pub color: u32,
     pub center: Vec2,
+    /// Plane the label's quad lies in. See [`TextFacing`].
+    pub text_facing: TextFacing,
+    /// Rotation of the label within its own plane, about its anchor point, in
+    /// degrees, clockwise seen from the front. Applied on top of whatever
+    /// orientation `text_facing` and `rotate_with_camera` resolve to, so it
+    /// spins a billboard on screen and turns a surface label like a compass
+    /// bearing. `center` decides where inside the text the pivot sits.
+    /// Default `0.0`.
+    pub rotation: f32,
+    /// Whether the quad turns to follow the camera.
+    ///
+    /// `true` (the default) keeps the label facing the viewer: with
+    /// [`TextFacing::Upright`] that is the screen-aligned billboard, and with
+    /// [`TextFacing::Flat`] the quad yaws around the surface normal so the
+    /// text still reads left-to-right.
+    ///
+    /// `false` freezes the quad in the anchor's local east-north-up frame, so
+    /// moving the camera never reorients it: [`TextFacing::Upright`] becomes a
+    /// signboard standing on the surface, [`TextFacing::Flat`] a north-up
+    /// label painted on it.
+    pub rotate_with_camera: bool,
     pub height: f32,
     pub size_in_meters: bool,
     pub clamp_to_ground: bool,
@@ -319,6 +377,9 @@ impl Default for TextMaterial {
             size: 10.0,
             color: 0xffffff,
             center: Vec2::new(0.5, 0.),
+            text_facing: TextFacing::Upright,
+            rotate_with_camera: true,
+            rotation: 0.0,
             clamp_to_ground: true,
             height: 1.,
             size_in_meters: true,

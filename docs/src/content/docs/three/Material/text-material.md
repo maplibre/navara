@@ -459,6 +459,54 @@ import { Color } from "@navaramap/three";
 }
 ```
 
+### rotation
+
+**Type:** `number | undefined`
+
+**Description:** Rotates the label within its own plane, about its anchor point, in degrees, clockwise as seen from the front. It is applied on top of whatever orientation [`textFacing`](#textfacing) and [`rotateWithCamera`](#rotatewithcamera) resolve to, so it spins a billboard on screen and turns a surface label like a compass bearing.
+
+[`center`](#center) decides where inside the text the pivot sits: `{ x: 0.5, y: 0.5 }` turns the label about its middle, `{ x: 0.5, y: 0.0 }` about the bottom of the text block.
+
+This is a material-wide value: every label in the layer shares it.
+
+**Default:** `0.0`
+
+**Example:**
+
+```typescript
+{
+  text: {
+    textFacing: "flat",
+    rotateWithCamera: false,
+    rotation: 45, // Turned 45° clockwise on the surface
+    center: { x: 0.5, y: 0.5 } // Pivot about the middle of the text
+  }
+}
+```
+
+### rotateWithCamera
+
+**Type:** `boolean | undefined`
+
+**Description:** Whether the label turns to follow the camera.
+
+When `true`, the label always faces the viewer: with [`textFacing`](#textfacing) `"upright"` that is a screen-aligned billboard, and with `"flat"` the label yaws around the globe's surface normal so the text still reads left to right.
+
+When `false`, the label is frozen in its anchor's local east/north/up frame and moving the camera never reorients it. With `"upright"` it becomes a signboard standing on the surface, facing south — readable from a camera looking northward, edge-on from directly above, and mirrored from behind. With `"flat"` it is a north-up label painted on the surface, turning with the map.
+
+**Default:** `true`
+
+**Example:**
+
+```typescript
+{
+  text: {
+    textFacing: "flat",
+    rotateWithCamera: false // North-up, painted on the surface
+  }
+}
+```
+
 ### highQuality
 
 **Type:** `boolean | undefined`
@@ -563,6 +611,33 @@ import { Color } from "@navaramap/three";
 {
   text: {
     textAlign: "left"
+  }
+}
+```
+
+### textFacing
+
+**Type:** `"upright" | "flat" | undefined`
+
+**Description:** Whether the label stands up or lies on the globe surface. `"upright"` keeps the label standing; `"flat"` lays it in the globe's tangent plane at the label's anchor, so it reads as painted onto the surface and foreshortens with camera pitch.
+
+Combine with [`rotateWithCamera`](#rotatewithcamera) for four behaviours:
+
+| `textFacing` | `rotateWithCamera` | Result |
+| --- | --- | --- |
+| `"upright"` | `true` | Screen-aligned billboard, never foreshortened (the default) |
+| `"upright"` | `false` | Signboard standing on the surface at a fixed bearing |
+| `"flat"` | `true` | Painted on the surface, turned so it always reads left to right |
+| `"flat"` | `false` | Painted on the surface, north-up, turning with the map |
+
+**Default:** `"upright"`
+
+**Example:**
+
+```typescript
+{
+  text: {
+    textFacing: "flat"
   }
 }
 ```

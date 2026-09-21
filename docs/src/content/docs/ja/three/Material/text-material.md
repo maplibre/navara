@@ -459,6 +459,54 @@ import { Color } from "@navaramap/three";
 }
 ```
 
+### rotation
+
+**Type:** `number | undefined`
+
+**Description:** ラベルを自身の平面内で、アンカー位置を中心に回転させる角度を度数で指定します。正面から見て時計回りです。[`textFacing`](#textfacing) と [`rotateWithCamera`](#rotatewithcamera) で決まる向きに対して追加で適用されるため、ビルボードでは画面上で回転し、地表のラベルでは方位角のように回転します。
+
+回転の中心がテキストのどこになるかは [`center`](#center) で決まります。`{ x: 0.5, y: 0.5 }` ならテキストの中央、`{ x: 0.5, y: 0.0 }` ならテキストブロックの下端が中心になります。
+
+マテリアル全体に適用される値で、レイヤー内のすべてのラベルで共有されます。
+
+**Default:** `0.0`
+
+**Example:**
+
+```typescript
+{
+  text: {
+    textFacing: "flat",
+    rotateWithCamera: false,
+    rotation: 45, // 地表上で時計回りに 45 度回転
+    center: { x: 0.5, y: 0.5 } // テキストの中央を軸に回転
+  }
+}
+```
+
+### rotateWithCamera
+
+**Type:** `boolean | undefined`
+
+**Description:** ラベルをカメラに追従して回転させるかどうかを指定します。
+
+`true` の場合、ラベルは常に視点の方を向きます。[`textFacing`](#textfacing) が `"upright"` のときは画面に正対するビルボードになり、`"flat"` のときは地表の法線を軸に回転して、テキストが常に左から右に読める向きになります。
+
+`false` の場合、ラベルはアンカー位置のローカルな東・北・上の座標系に固定され、カメラを動かしても向きは変わりません。`"upright"` では地表に立つ看板となり、南を向くため北向きのカメラから読めます（真上からは水平に見えて消え、裏側からは鏡像になります）。`"flat"` では北を上にして地表に描かれ、地図とともに回転します。
+
+**Default:** `true`
+
+**Example:**
+
+```typescript
+{
+  text: {
+    textFacing: "flat",
+    rotateWithCamera: false // 北を上にして地表に貼り付ける
+  }
+}
+```
+
 ### highQuality
 
 **Type:** `boolean | undefined`
@@ -563,6 +611,33 @@ import { Color } from "@navaramap/three";
 {
   text: {
     textAlign: "left"
+  }
+}
+```
+
+### textFacing
+
+**Type:** `"upright" | "flat" | undefined`
+
+**Description:** ラベルを立てて表示するか、地球表面に寝かせて表示するかを指定します。`"upright"` はラベルを立てた状態に保ちます。`"flat"` はラベルのアンカー位置における地球の接平面に配置するため、地表に描かれているように見え、カメラのピッチに応じて短縮されます。
+
+[`rotateWithCamera`](#rotatewithcamera) との組み合わせで、次の 4 通りの表示になります。
+
+| `textFacing` | `rotateWithCamera` | 表示 |
+| --- | --- | --- |
+| `"upright"` | `true` | 画面に正対するビルボード。短縮されません（デフォルト） |
+| `"upright"` | `false` | 地表に立つ看板。方位は固定されます |
+| `"flat"` | `true` | 地表に描かれ、常に左から右に読める向きに回転します |
+| `"flat"` | `false` | 地表に描かれ、北を上にして地図とともに回転します |
+
+**Default:** `"upright"`
+
+**Example:**
+
+```typescript
+{
+  text: {
+    textFacing: "flat"
   }
 }
 ```
