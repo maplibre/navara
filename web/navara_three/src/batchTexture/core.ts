@@ -4,6 +4,7 @@ import {
   FloatType,
   Material,
   RGBAFormat,
+  type ShaderMaterial,
   type WebGLRenderer,
 } from "three";
 import invariant from "tiny-invariant";
@@ -44,7 +45,36 @@ function scalarDefault(key: BatchScalarKey): number {
     // Negative value indicates shader should fall back to the material size
     case "size":
       return -1.0;
+    case "rotation":
+      return 0.0;
+    // Upright + following the camera, matching the material defaults.
+    case "orientation":
+      return packOrientation(false, true);
   }
+}
+
+/**
+ * Pack the two orientation booleans into one component: `flatFacing` in the
+ * 2s place, `rotateWithCamera` in the 1s place, giving the exact float values
+ * 0-3. Same trick as {@link packShowOpacity} — two per-feature booleans that
+ * would otherwise each burn a texel component.
+ */
+export function packOrientation(
+  flatFacing: boolean,
+  rotateWithCamera: boolean,
+): number {
+  return (flatFacing ? 2 : 0) + (rotateWithCamera ? 1 : 0);
+}
+
+/** Unpack orientation (see {@link packOrientation}). */
+export function unpackOrientation(packed: number): {
+  flatFacing: boolean;
+  rotateWithCamera: boolean;
+} {
+  return {
+    flatFacing: packed >= 1.5,
+    rotateWithCamera: packed % 2 >= 0.5,
+  };
 }
 
 /**
@@ -308,6 +338,73 @@ function ensureShowOpacitySlot(
   );
 }
 
+/**
+ * Current value of a material uniform, for backfilling a slot with the
+ * material-level default.
+ */
+function materialUniform<T>(material: Material, name: string, fallback: T): T {
+  const value = (material as Partial<ShaderMaterial>).uniforms?.[name]?.value;
+  return (value as T | undefined) ?? fallback;
+}
+
+/**
+ * Slot of the per-feature rotation, and of the packed orientation pair.
+ *
+ * Both backfill with the **material's** current value rather than a fixed
+ * constant, because `USE_BATCH_*` is a material-wide define: the moment one
+ * feature gets its own value every feature starts reading the slot, so
+ * features nobody has styled must already hold what the uniform was giving
+ * them. Same reasoning as {@link ensureShowOpacitySlot}.
+ */
+function ensureRotationSlot(
+  state: BatchTextureState,
+  material: Material,
+): BatchSlot | undefined {
+  if (!state.supported.has("rotation")) return undefined;
+  return (
+    state.layout.getScalarSlot("rotation") ??
+    allocateScalarSlot(
+      state,
+      "rotation",
+      materialUniform(material, "uRotation", 0),
+    )
+  );
+}
+
+function ensureOrientationSlot(
+  state: BatchTextureState,
+  material: Material,
+): BatchSlot | undefined {
+  if (!state.supported.has("orientation")) return undefined;
+  return (
+    state.layout.getScalarSlot("orientation") ??
+    allocateScalarSlot(
+      state,
+      "orientation",
+      packOrientation(
+        materialUniform(material, "uFlatFacing", false),
+        materialUniform(material, "uRotateWithCamera", true),
+      ),
+    )
+  );
+}
+
+/**
+ * Whether an attribute's slot has already been allocated on this material.
+ *
+ * Meshes use this to decide whether a **material**-level change has to be
+ * written through to every feature. While no slot exists the shader's uniform
+ * is still governing, so there is nothing to reconcile and writing would only
+ * allocate a row the layer never needed; once a slot exists every feature
+ * reads the texture, so a stale per-feature value would survive the change.
+ */
+export function hasBatchScalarSlot(
+  material: Material,
+  key: BatchScalarSlotKey,
+): boolean {
+  return !!getBatchTextureState(material)?.layout.getScalarSlot(key);
+}
+
 export function getBatchDataTexture(
   material: Material,
 ): DataTexture | undefined {
@@ -501,6 +598,46 @@ export function updateBatchAttribute(
         slots.intensity.row,
       );
       data[baseIndex + slots.intensity.comp] = sanitized;
+      markTexelDirty(texture, baseIndex);
+      return true;
+    }
+    case "flatFacing":
+    case "rotateWithCamera": {
+      if (typeof value !== "boolean") return false;
+      const slot = ensureOrientationSlot(state, material);
+      if (!slot) return false;
+      enableDefine(material, "USE_BATCH_ORIENTATION");
+
+      const { texture, data } = textureData(state);
+      const baseIndex = batchBaseIndex(
+        state.width,
+        state.groups,
+        batchId,
+        slot.row,
+      );
+      // Read-modify-write: the two booleans share this component.
+      const current = unpackOrientation(data[baseIndex + slot.comp]);
+      data[baseIndex + slot.comp] =
+        attribute === "flatFacing"
+          ? packOrientation(value, current.rotateWithCamera)
+          : packOrientation(current.flatFacing, value);
+      markTexelDirty(texture, baseIndex);
+      return true;
+    }
+    case "rotation": {
+      if (typeof value !== "number") return false;
+      const slot = ensureRotationSlot(state, material);
+      if (!slot) return false;
+      enableDefine(material, "USE_BATCH_ROTATION");
+
+      const { texture, data } = textureData(state);
+      const baseIndex = batchBaseIndex(
+        state.width,
+        state.groups,
+        batchId,
+        slot.row,
+      );
+      data[baseIndex + slot.comp] = Number.isFinite(value) ? value : 0;
       markTexelDirty(texture, baseIndex);
       return true;
     }

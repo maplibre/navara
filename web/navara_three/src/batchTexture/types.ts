@@ -9,6 +9,9 @@ export const BATCHED_ATTRIBUTE_NAMES = [
   "extrudedHeight",
   "lineWidth",
   "size",
+  "rotation",
+  "flatFacing",
+  "rotateWithCamera",
   "emissive",
   "emissiveIntensity",
 ] as const;
@@ -26,6 +29,15 @@ export const BATCH_SCALAR_KEYS = [
   "extrudedHeight",
   "lineWidth",
   "size",
+  "rotation",
+  /**
+   * Packed orientation: `facing` and `rotateWithCamera` share one component
+   * (see `packOrientation`). It is a slot key rather than a public attribute
+   * — callers write the two booleans by name — but it lives here so a mesh
+   * type can declare support for it, which gates allocation to the shaders
+   * that actually declare receivers.
+   */
+  "orientation",
 ] as const;
 
 export type BatchScalarKey = (typeof BATCH_SCALAR_KEYS)[number];

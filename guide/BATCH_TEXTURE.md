@@ -48,6 +48,12 @@ never styled has no texture at all. Slots come in two sizes:
   oldest-first (vec3 leftovers included) before opening a new row, so no
   component is wasted regardless of allocation order.
 
+Two attributes can also **share** one scalar component when each needs only a
+bit or two: `show`+`opacity` pack into `showOpacity`, and `facing`+
+`rotateWithCamera` into `orientation`. Both are slot keys rather than public
+attribute names — callers still write the halves by name, and the write is a
+read-modify-write of the shared component.
+
 Example after styling `color`, then `show`, then `height`:
 
 | attribute row | comp 0  | comp 1  | comp 2  | comp 3        |

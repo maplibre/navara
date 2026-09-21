@@ -30,7 +30,7 @@ knowing before touching either shader.
 ```mermaid
 flowchart LR
   subgraph U["Tier 1 · batch-wide<br/>uniforms"]
-    U1["outline width/color/opacity<br/>background color/border<br/>uCenter, uSizeInMeters, uOffsetDepth<br/>uFlatFacing, uRotateWithCamera<br/>atlas samplers + sizes<br/>camera fov / screen height / far plane<br/>RTE eye split, RTC center<br/>nvr_uPickable"]
+    U1["outline width/color/opacity<br/>background color/border<br/>uCenter, uSizeInMeters, uOffsetDepth<br/>atlas samplers + sizes<br/>camera fov / screen height / far plane<br/>RTE eye split, RTC center<br/>nvr_uPickable"]
   end
   subgraph L["Tier 2 · per-label<br/>uLabelData texels"]
     L1["anchor, fontSize, addHeight<br/>color, opacity<br/>text box metrics<br/>declutterHide, batchId, show"]
@@ -183,13 +183,28 @@ anchor's east-north-up frame, differing only in whether up is north (flat) or
 the surface normal (upright). Because neither reads the camera, the basis is a
 pure function of the anchor and has no camera-dependent singularity.
 
-Both booleans are uniforms rather than defines: they are batch-wide, so the
-branches are coherent across a draw call, and toggling the mode costs no shader
-recompile.
+The orientation resolver lives in `chunks/quad_orientation.glsl`, shared with
+`instancedSprite.vert.glsl` so labels and sprites cannot drift apart. It takes
+the two booleans and the rotation as **parameters** rather than reading
+uniforms, which is what lets them arrive either way — see below.
 
-`nvr_labelBasis` then spins that basis by `uRotation` (the material's
-`rotation`, converted from degrees to radians CPU-side) **inside the quad's own
-plane**, turning both axes together. Because it composes with the resolved
+**These three are per-feature, not batch-wide.** The uniforms
+(`uFlatFacing`, `uRotateWithCamera`, `uRotation`) are only the material-level
+default: the shader seeds its locals from them, then
+`chunks/batch_texture_vertex.glsl` overwrites those locals from the batch data
+texture when a feature has its own value (see
+[BATCH_TEXTURE.md](BATCH_TEXTURE.md)). The two booleans share one texel
+component through `packOrientation`, the same trick `showOpacity` uses.
+
+One subtlety this forced: `USE_BATCH_*` is a **material-wide** define, so the
+moment one feature is given its own rotation, every feature starts reading the
+slot. Features nobody styled must therefore already hold what the uniform was
+giving them, which is why `ensureRotationSlot` / `ensureOrientationSlot`
+backfill from the material's current uniform value instead of a fixed constant
+(`ensureShowOpacitySlot` does the same with `material.visible`).
+
+`nvr_quadBasis` then spins that basis by the rotation (converted from the material's
+degrees to radians CPU-side) **inside the quad's own plane**, turning both axes together. Because it composes with the resolved
 basis rather than replacing it, one implementation covers every mode: it spins
 a billboard on screen and swings a surface label like a compass bearing, and
 the quad never leaves the plane its mode put it in. The sine is negated
@@ -284,7 +299,8 @@ requires reading the instance count at the GL level, e.g. patching
 
 | File | Role |
 | --- | --- |
-| `shaders/glsl/sdfText.vert.glsl` | `nvr_readLabel`, the `GLYPH_KIND_*` culls, `nvr_labelBasis` + RTE/RTC transform |
+| `shaders/glsl/sdfText.vert.glsl` | `nvr_readLabel`, the `GLYPH_KIND_*` culls, RTE/RTC transform |
+| `shaders/glsl/chunks/quad_orientation.glsl` | `nvr_quadOrientation` / `nvr_quadBasis` — the orientation basis, shared with instancedSprite |
 | `shaders/glsl/sdfText.frag.glsl` | SDF/MTSDF and COLRv1 sampling, outline, background, pick encoding via `vBatchID` |
 | `web/navara_three/src/mesh/sdfText/batchedSdfText.ts` | `BatchedSdfTextMesh` — label records, the engine/evaluator API, declutter participation, atlas retain/release |
 | `web/navara_three/src/mesh/sdfText/glyphBuffers.ts` | Instance attributes, partial uploads, capacity growth, `GlyphKind` |

@@ -1,6 +1,7 @@
 #include "chunks/horizon_culling_pars_vertex.glsl"
 #include "chunks/sprite_height_pars_vertex.glsl"
 #include "chunks/pixelToWorld.glsl"
+#include "chunks/quad_orientation.glsl"
 
 // Glyph instances have no `_batchid` attribute; the feature index rides in
 // the label data texture's STATE row instead (read into this local before
@@ -64,18 +65,13 @@ vec4 nvr_readLabel(int slot, int row) {
 uniform vec2 uSdfAtlasSize;
 uniform vec2 uColorAtlasSize;
 uniform bool uSizeInMeters;
-// Quad orientation. Both are batch-wide, so the branches below are uniform
-// across a draw call.
-//   uFlatFacing      false = quad parallel to the screen plane
-//                    true  = quad in the ellipsoid tangent plane at the anchor
-//   uRotateWithCamera true = up follows the camera (screen up, or the yaw that
-//                            keeps flat text reading left-to-right)
-//                    false = up follows geodetic north
+// Material-level orientation defaults. Per-feature overrides arrive through
+// the batch data texture (USE_BATCH_ORIENTATION / USE_BATCH_ROTATION), so
+// these are what a label uses until something writes its own value.
 uniform bool uFlatFacing;
 uniform bool uRotateWithCamera;
-// Spin of the quad inside its own plane about the anchor, in radians,
-// clockwise seen from the front. Converted from the material's degrees on the
-// CPU.
+// Radians, clockwise seen from the front; converted from the material's
+// degrees on the CPU.
 uniform float uRotation;
 uniform float uFovRad;
 uniform float uScreenHeightPx;
@@ -98,75 +94,6 @@ flat varying vec3 vColor;
 // Style opacity already scaled by the declutter fade.
 flat varying float vOpacity;
 flat varying float vBatchID;
-
-// View-space basis the label's quad is laid out in: `right` spans local +x,
-// `up` spans local +y. The four orientation modes differ only in this basis;
-// everything downstream is shared.
-//
-// uFlatFacing picks the plane (screen-parallel / upright vs. the ellipsoid
-// tangent plane), uRotateWithCamera picks whether the quad turns to follow the
-// camera or is frozen in the anchor's local east-north-up frame.
-//
-// `worldPos` is the anchor in ECEF meters — its normalized direction is the
-// surface normal, matching mvr_getMvHeightOffset's spherical approximation.
-void nvr_labelOrientation(vec3 worldPos, out vec3 right, out vec3 up) {
-    if (!uFlatFacing && uRotateWithCamera) {
-        // Screen plane, screen up — the default billboard.
-        right = vec3(1.0, 0.0, 0.0);
-        up = vec3(0.0, 1.0, 0.0);
-        return;
-    }
-
-    vec3 nWorld = normalize(worldPos);
-
-    if (uFlatFacing && uRotateWithCamera) {
-        // Tangent plane, yawed so the text still reads left-to-right: screen
-        // right projected onto the plane. That projection degenerates only
-        // when the normal points along screen x, where the quad is edge-on
-        // anyway.
-        vec3 n = (viewMatrix * vec4(nWorld, 0.0)).xyz;
-        vec3 t = vec3(1.0, 0.0, 0.0) - n.x * n;
-        float tLen = length(t);
-        right = tLen > 1e-4 ? t / tLen : normalize(vec3(0.0, 1.0, 0.0) - n.y * n);
-        up = cross(n, right);
-        return;
-    }
-
-    // Both no-rotate modes are pinned to the anchor's east-north-up frame, so
-    // the basis depends only on the anchor and the camera cannot disturb it.
-    // cross(polar axis, nWorld) vanishes at the poles, where every tangent
-    // direction is an equally valid "east"; fall back to ECEF +x there.
-    vec3 eastWorld = vec3(-nWorld.y, nWorld.x, 0.0);
-    float eastLen = length(eastWorld);
-    eastWorld = eastLen > 1e-6 ? eastWorld / eastLen : vec3(1.0, 0.0, 0.0);
-    // Flat lies in the tangent plane with up = north. Upright stands the quad
-    // on the surface with up = the surface normal, a signboard whose face
-    // points south — readable from a camera looking northward.
-    vec3 upWorld = uFlatFacing ? cross(nWorld, eastWorld) : nWorld;
-    right = (viewMatrix * vec4(eastWorld, 0.0)).xyz;
-    up = (viewMatrix * vec4(upWorld, 0.0)).xyz;
-}
-
-// The basis above, then spun by uRotation inside the quad's own plane. Both
-// axes turn together, so the glyph layout rotates rigidly and the quad never
-// leaves the plane its orientation mode put it in.
-//
-// Glyph offsets are measured from the anchor (after `uCenter` shifts the text
-// block), so rotating the basis pivots the label about that anchor — which
-// makes `center` the control for where the pivot sits inside the text.
-void nvr_labelBasis(vec3 worldPos, out vec3 right, out vec3 up) {
-    nvr_labelOrientation(worldPos, right, up);
-    if (uRotation == 0.0) {
-        return;
-    }
-    // Negated sine relative to the usual counter-clockwise matrix, so a
-    // positive angle reads clockwise from in front of the quad.
-    float s = sin(uRotation);
-    float c = cos(uRotation);
-    vec3 rotatedRight = c * right - s * up;
-    up = s * right + c * up;
-    right = rotatedRight;
-}
 
 void main() {
     // Cull unused run slots before any texture reads.
@@ -206,6 +133,9 @@ void main() {
     float batchSize = -1.0;
     float nvr_vShow = 1.0;
     float nvr_vOpacity = 1.0;
+    float nvr_batchRotation = uRotation;
+    bool nvr_batchFlatFacing = uFlatFacing;
+    bool nvr_batchRotateWithCamera = uRotateWithCamera;
     vColor = vec3(1.0);
     #include "chunks/batch_texture_vertex.glsl"
 
@@ -258,7 +188,14 @@ void main() {
 
     vec3 axisRight;
     vec3 axisUp;
-    nvr_labelBasis(absTransformed, axisRight, axisUp);
+    nvr_quadBasis(
+        absTransformed,
+        nvr_batchFlatFacing,
+        nvr_batchRotateWithCamera,
+        nvr_batchRotation,
+        axisRight,
+        axisUp
+    );
 
     vec2 center = clamp(uCenter, vec2(-0.5), vec2(0.5)); // Ensure center is within the bounds of the sprite
 
@@ -291,7 +228,7 @@ void main() {
         localPos.x -= center.x * textWidth;
         localPos.y -= center.y * textHeight;
 
-        // Lay the glyph out in the label's basis (see nvr_labelBasis), scaled.
+        // Lay the glyph out in the label's basis (see nvr_quadBasis), scaled.
         vec4 delta = vec4((localPos.x * axisRight + localPos.y * axisUp) * scaleFactor, 0.0);
         vec4 newMvPosition = mvPosition + delta;
 

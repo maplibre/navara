@@ -36,6 +36,19 @@
     batchLineWidth = getBatchTexel(batchId, BATCHED_TEXTURE_ROW_LINE_WIDTH)[BATCHED_TEXTURE_COMP_LINE_WIDTH];
   #endif
 
+  #ifdef USE_BATCH_ROTATION
+    // Radians; the CPU converts the material's degrees before writing.
+    nvr_batchRotation = getBatchTexel(batchId, BATCHED_TEXTURE_ROW_ROTATION)[BATCHED_TEXTURE_COMP_ROTATION];
+  #endif
+
+  #ifdef USE_BATCH_ORIENTATION
+    // Packed: flatFacing in the 2s place, rotateWithCamera in the 1s place;
+    // see packOrientation in web/navara_three/src/batchTexture/core.ts
+    float nvr_batchOrientation = getBatchTexel(batchId, BATCHED_TEXTURE_ROW_ORIENTATION)[BATCHED_TEXTURE_COMP_ORIENTATION];
+    nvr_batchFlatFacing = nvr_batchOrientation >= 1.5;
+    nvr_batchRotateWithCamera = mod(nvr_batchOrientation, 2.0) >= 0.5;
+  #endif
+
   #ifdef USE_BATCH_SIZE
     // Negative = fall back to the material size (see SCALAR_FALLBACK in
     // web/navara_three/src/batchTexture/core.ts)

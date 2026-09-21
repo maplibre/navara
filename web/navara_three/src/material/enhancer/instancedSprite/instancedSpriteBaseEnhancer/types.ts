@@ -14,6 +14,15 @@ export type InstancedSpriteBaseProps = {
   // Mutable state
   scale?: number;
   center?: [number, number];
+  /** `false` (the default) stands the quad up; `true` lays it in the
+   *  ellipsoid's tangent plane at the anchor. Material-level default;
+   *  per-feature overrides come from the batch data texture. */
+  flatFacing?: boolean;
+  /** Whether the quad turns to follow the camera. Material-level default. */
+  rotateWithCamera?: boolean;
+  /** Spin of the quad inside its own plane about the anchor, in **degrees**,
+   *  clockwise seen from the front. Converted to radians in state. */
+  rotation?: number;
   sizeInMeters?: boolean;
   offsetDepth?: boolean;
   alphaTest?: number;
@@ -57,6 +66,9 @@ export type InstancedSpriteBaseState = Readonly<{
   // Mutable
   scale: number;
   center: [number, number];
+  flatFacing: boolean;
+  rotateWithCamera: boolean;
+  rotation: number; // pre-converted: degrees -> radians
   sizeInMeters: boolean;
   offsetDepth: boolean;
   alphaTest: number;
@@ -95,6 +107,9 @@ export type InstancedSpriteBaseRefs = {
   uOpacity: UniformValue<number>;
   uAddHeight: UniformValue<number>;
   uCenter: UniformValue<Vector2>;
+  uFlatFacing: UniformValue<boolean>;
+  uRotateWithCamera: UniformValue<boolean>;
+  uRotation: UniformValue<number>;
   uSizeInMeters: UniformValue<boolean>;
   uOffsetDepth: UniformValue<boolean>;
   uAlphaTest: UniformValue<number>;

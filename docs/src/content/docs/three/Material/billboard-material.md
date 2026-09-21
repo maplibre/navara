@@ -285,6 +285,76 @@ import { Color } from "@navaramap/three";
 }
 ```
 
+### billboardFacing
+
+**Type:** `"upright" | "flat" | undefined`
+
+**Description:** Whether the billboard stands up or lies on the globe surface. `"upright"` keeps it standing; `"flat"` lays it in the globe's tangent plane at its anchor, so it reads as painted onto the surface and foreshortens with camera pitch.
+
+Combine with [`rotateWithCamera`](#rotatewithcamera) for four behaviours:
+
+| `billboardFacing` | `rotateWithCamera` | Result |
+| --- | --- | --- |
+| `"upright"` | `true` | Screen-aligned billboard, never foreshortened (the default) |
+| `"upright"` | `false` | Standing on the surface at a fixed bearing |
+| `"flat"` | `true` | Painted on the surface, turned to keep facing the viewer |
+| `"flat"` | `false` | Painted on the surface, north-up, turning with the map |
+
+Can also be set per feature from a [feature evaluator](../../api/feature-evaluator/) as `facing`.
+
+**Default:** `"upright"`
+
+**Example:**
+
+```typescript
+{
+  billboard: {
+    billboardFacing: "flat"
+  }
+}
+```
+
+### rotateWithCamera
+
+**Type:** `boolean | undefined`
+
+**Description:** Whether the billboard turns to follow the camera. When `true` it always faces the viewer. When `false` it is frozen in its anchor's local east/north/up frame and moving the camera never reorients it — with `"upright"` it stands on the surface facing south, edge-on from directly above and mirrored from behind.
+
+Can also be set per feature from a [feature evaluator](../../api/feature-evaluator/).
+
+**Default:** `true`
+
+**Example:**
+
+```typescript
+{
+  billboard: {
+    billboardFacing: "upright",
+    rotateWithCamera: false
+  }
+}
+```
+
+### rotation
+
+**Type:** `number | undefined`
+
+**Description:** Rotates the billboard within its own plane, about its anchor point, in degrees, clockwise as seen from the front. Applied on top of whatever orientation `billboardFacing` and `rotateWithCamera` resolve to.
+
+[`center`](#center) decides where inside the quad the pivot sits. Can also be set per feature from a [feature evaluator](../../api/feature-evaluator/), so every billboard in a layer can point a different way.
+
+**Default:** `0.0`
+
+**Example:**
+
+```typescript
+{
+  billboard: {
+    rotation: 45
+  }
+}
+```
+
 ### show
 
 **Type:** `boolean | undefined`

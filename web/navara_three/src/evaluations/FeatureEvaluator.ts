@@ -62,6 +62,16 @@ export type EvaluatableMaterialProperty = {
   declutterPriority: AvailableMaterialProperty["declutterPriority"];
   /** Image URL for billboards; packed into a shared per-mesh texture atlas. */
   image: string;
+  /** Whether this label/sprite stands up (`"upright"`) or lies in the globe's
+   *  tangent plane (`"flat"`). Overrides the material's
+   *  `textFacing`/`billboardFacing`/`pointFacing` for this feature. */
+  facing: "upright" | "flat";
+  /** Whether this label/sprite turns to follow the camera. Overrides the
+   *  material's `rotateWithCamera` for this feature. */
+  rotateWithCamera: boolean;
+  /** In-plane rotation of this label/sprite about its anchor, in degrees,
+   *  clockwise seen from the front. Overrides the material's `rotation`. */
+  rotation: number;
   /** Emissive color expression (for polygons/3D Tiles models/points/billboards/text). */
   emissive: AvailableMaterialProperty["emissiveColor"];
   /** Emissive intensity expression (for polygons/3D Tiles models/points/billboards/text). */
@@ -81,6 +91,9 @@ type EvaluatedMaterialProperty = {
   opacity: number;
   declutterPriority: number;
   image: string | null;
+  facing: "upright" | "flat";
+  rotateWithCamera: boolean;
+  rotation: number;
   emissive: Color;
   emissiveIntensity: number;
 };
@@ -489,6 +502,18 @@ export class FeatureEvaluator {
           evaluated.declutterPriority,
         );
       }
+      if (evaluated.facing != null) {
+        obj.setFeatureFacingByBatchIndex(batchIndex, evaluated.facing);
+      }
+      if (evaluated.rotateWithCamera != null) {
+        obj.setFeatureRotateWithCameraByBatchIndex(
+          batchIndex,
+          evaluated.rotateWithCamera,
+        );
+      }
+      if (evaluated.rotation != null) {
+        obj.setFeatureRotationByBatchIndex(batchIndex, evaluated.rotation);
+      }
       if (evaluated.emissive != null) {
         obj.setFeatureEmissiveByBatchIndex(batchIndex, evaluated.emissive.raw);
       }
@@ -525,6 +550,21 @@ export class FeatureEvaluator {
       }
       if (evaluated.opacity != null && obj instanceof BatchedSdfTextMesh) {
         obj.setFeatureOpacityByBatchIndex(batchIndex, evaluated.opacity);
+      }
+      if (evaluated.facing != null && obj instanceof BatchedSdfTextMesh) {
+        obj.setFeatureFacingByBatchIndex(batchIndex, evaluated.facing);
+      }
+      if (
+        evaluated.rotateWithCamera != null &&
+        obj instanceof BatchedSdfTextMesh
+      ) {
+        obj.setFeatureRotateWithCameraByBatchIndex(
+          batchIndex,
+          evaluated.rotateWithCamera,
+        );
+      }
+      if (evaluated.rotation != null && obj instanceof BatchedSdfTextMesh) {
+        obj.setFeatureRotationByBatchIndex(batchIndex, evaluated.rotation);
       }
       if (
         evaluated.declutterPriority != null &&

@@ -148,8 +148,20 @@ The callback function can return an object containing the following properties:
 | `opacity` | `number` | Feature opacity, range 0.0-1.0 (for polygons/points/billboards/models/text) |
 | `declutterPriority` | `number` | Placement priority for decluttering. Higher wins an overlap (for points/billboards/text with [`declutter`](../../../three/material/text-material/#declutter) enabled). Overrides the layer's `declutterPriority` |
 | `image` | `string \| null` | Image URL (for billboard features). Each distinct URL is loaded once and packed into the layer's texture atlas. Return `null` to clear a previous per-feature image and revert to the billboard material's default `url` (the feature becomes invisible if the material has no `url`) |
+| `facing` | `"upright" \| "flat"` | Whether the quad stands up or lies in the globe's tangent plane (for points/billboards/text). Overrides the material's `pointFacing`/`billboardFacing`/`textFacing` |
+| `rotateWithCamera` | `boolean` | Whether the quad turns to follow the camera (for points/billboards/text). `false` freezes it in the anchor's east/north/up frame |
+| `rotation` | `number` | In-plane rotation about the anchor, in degrees, clockwise seen from the front (for points/billboards/text). Lets every feature in one layer point a different way |
 | `emissive` | `Color` | Emissive color (for batched polygons/3D Tiles models/points/billboards/text, ignored on models without batch/feature ids). Pairs with `emissiveIntensity` and drives selective bloom. On text only the glyph fill glows, while the outline and background stay dark |
 | `emissiveIntensity` | `number` | Emissive intensity multiplier (for batched polygons/3D Tiles models/points/billboards/text) |
+
+:::note
+A per-feature value **persists until something overwrites it**. An evaluator
+that stops returning a property leaves the last value in place; return the
+material value explicitly to hand the feature back. Changing the property on
+the material also reclaims every feature — but only when the material value
+actually changes, so an unchanged material re-sent by the engine never stomps
+your overrides.
+:::
 
 :::note
 Evaluated styles override the layer's default styles.
@@ -321,6 +333,14 @@ type EvaluatedValue = {
    * packed into the layer's texture atlas. `null` clears a previous
    * per-feature image, reverting to the billboard material's default url */
   image?: string | null;
+  /** Whether the quad stands up or lies in the globe's tangent plane (for
+   * points/billboards/text). Overrides the material's facing option */
+  facing?: "upright" | "flat";
+  /** Whether the quad turns to follow the camera (for points/billboards/text) */
+  rotateWithCamera?: boolean;
+  /** In-plane rotation about the anchor, in degrees, clockwise seen from the
+   * front (for points/billboards/text) */
+  rotation?: number;
   /** Emissive color (for batched polygons/3D Tiles models/points/billboards/
    * text; ignored on models without batch/feature ids). Pairs with
    * `emissiveIntensity` and drives selective bloom. On text only the glyph

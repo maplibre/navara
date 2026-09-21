@@ -1,3 +1,5 @@
+import { MathUtils } from "three";
+
 import type {
   InstancedSpriteBaseProps,
   InstancedSpriteBaseState,
@@ -10,6 +12,9 @@ export const DEFAULT_BASE_PROPS: Required<
   billboard: false,
   scale: 100.0,
   center: [0.0, 0.0],
+  flatFacing: false,
+  rotateWithCamera: true,
+  rotation: 0,
   sizeInMeters: true,
   offsetDepth: true,
   alphaTest: 0.0,
@@ -33,6 +38,9 @@ export const DEFAULT_BASE_STATE: InstancedSpriteBaseState = {
   billboard: DEFAULT_BASE_PROPS.billboard,
   scale: DEFAULT_BASE_PROPS.scale,
   center: DEFAULT_BASE_PROPS.center,
+  flatFacing: DEFAULT_BASE_PROPS.flatFacing,
+  rotateWithCamera: DEFAULT_BASE_PROPS.rotateWithCamera,
+  rotation: DEFAULT_BASE_PROPS.rotation * MathUtils.DEG2RAD,
   sizeInMeters: DEFAULT_BASE_PROPS.sizeInMeters,
   offsetDepth: DEFAULT_BASE_PROPS.offsetDepth,
   alphaTest: DEFAULT_BASE_PROPS.alphaTest,
@@ -69,6 +77,12 @@ export const updateState = (
     // Mutable
     scale: props.scale ?? currentState.scale,
     center: props.center ?? currentState.center,
+    flatFacing: props.flatFacing ?? currentState.flatFacing,
+    rotateWithCamera: props.rotateWithCamera ?? currentState.rotateWithCamera,
+    rotation:
+      props.rotation !== undefined
+        ? props.rotation * MathUtils.DEG2RAD
+        : currentState.rotation,
     sizeInMeters: props.sizeInMeters ?? currentState.sizeInMeters,
     offsetDepth: props.offsetDepth ?? currentState.offsetDepth,
     alphaTest: props.alphaTest ?? currentState.alphaTest,

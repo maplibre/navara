@@ -35,11 +35,11 @@ fn geometry_type_names(value: &[navara_material::SourceGeometryType]) -> Vec<Str
     value.iter().map(|t| t.as_str().to_string()).collect()
 }
 
-/// Parse the JS-facing `textFacing` name, warning on an unknown value so the
-/// caller falls back to the material's current value rather than failing.
-fn parse_text_facing(value: &Option<String>) -> Option<navara_material::TextFacing> {
+/// Parse a JS-facing facing name (`textFacing` / `billboardFacing`), warning on
+/// an unknown value so the caller keeps the material's current value.
+fn parse_facing(value: &Option<String>) -> Option<navara_material::Facing> {
     let name = value.as_ref()?;
-    match navara_material::TextFacing::parse(name) {
+    match navara_material::Facing::parse(name) {
         Some(f) => Some(f),
         None => {
             bevy_log::warn!(
@@ -56,6 +56,22 @@ pub struct PointMaterial {
     /// size in pixels/meters (units are determined by `sizeInMeters`).
     pub size: Option<f32>,
     pub color: Option<u32>,
+    /// Whether the point stands up (`"upright"`, the default) or lies in the
+    /// globe's tangent plane at its anchor (`"flat"`). Pair with
+    /// `rotateWithCamera`.
+    #[wasm_bindgen(getter_with_clone, js_name = pointFacing)]
+    #[serde(rename = "pointFacing")]
+    pub point_facing: Option<String>,
+    /// Whether the point turns to follow the camera. `true` (the default)
+    /// keeps it facing the viewer. `false` freezes it in the anchor's local
+    /// east-north-up frame, so moving the camera never reorients it.
+    #[wasm_bindgen(js_name = rotateWithCamera)]
+    #[serde(rename = "rotateWithCamera")]
+    pub rotate_with_camera: Option<bool>,
+    /// Rotation of the point within its own plane, about its anchor point, in
+    /// degrees, clockwise seen from the front. `center` decides where inside
+    /// the quad the pivot sits. Defaults to `0.0`.
+    pub rotation: Option<f32>,
     /// anchor point of the sprite, range is (-0.5, -0.5) to (0.5, 0.5).
     /// Default is (0.0, 0.0) which means the center of the sprite.
     pub center: Option<Vec2>,
@@ -112,6 +128,9 @@ impl From<PointMaterial> for navara_material::PointMaterial {
         navara_material::PointMaterial {
             show: val.show.unwrap_or(default.show),
             size: val.size.unwrap_or(default.size),
+            point_facing: parse_facing(&val.point_facing).unwrap_or(default.point_facing),
+            rotate_with_camera: val.rotate_with_camera.unwrap_or(default.rotate_with_camera),
+            rotation: val.rotation.unwrap_or(default.rotation),
             color: val.color.unwrap_or(default.color),
             center: val.center.unwrap_or(default.center.into()).into(),
             height: val.height.unwrap_or(default.height),
@@ -136,6 +155,9 @@ impl<'a> From<&'a navara_material::PointMaterial> for PointMaterial {
         PointMaterial {
             show: Some(value.show),
             size: Some(value.size),
+            point_facing: Some(value.point_facing.as_str().to_string()),
+            rotate_with_camera: Some(value.rotate_with_camera),
+            rotation: Some(value.rotation),
             color: Some(value.color),
             center: Some(value.center.into()),
             height: Some(value.height),
@@ -161,6 +183,9 @@ impl PointMaterial {
             show: self.show.unwrap_or(other.show),
             size: self.size.unwrap_or(other.size),
             color: self.color.unwrap_or(other.color),
+            point_facing: parse_facing(&self.point_facing).unwrap_or(other.point_facing),
+            rotate_with_camera: self.rotate_with_camera.unwrap_or(other.rotate_with_camera),
+            rotation: self.rotation.unwrap_or(other.rotation),
             center: self.center.unwrap_or(other.center.into()).into(),
             height: self.height.unwrap_or(other.height),
             size_in_meters: self.size_in_meters.unwrap_or(other.size_in_meters),
@@ -194,6 +219,22 @@ pub struct BillboardMaterial {
     /// size in pixels/meters (units are determined by `sizeInMeters`).
     pub size: Option<f32>,
     pub color: Option<u32>,
+    /// Whether the sprite stands up (`"upright"`, the default) or lies in the
+    /// globe's tangent plane at its anchor (`"flat"`). Pair with
+    /// `rotateWithCamera`.
+    #[wasm_bindgen(getter_with_clone, js_name = billboardFacing)]
+    #[serde(rename = "billboardFacing")]
+    pub billboard_facing: Option<String>,
+    /// Whether the sprite turns to follow the camera. `true` (the default)
+    /// keeps it facing the viewer. `false` freezes it in the anchor's local
+    /// east-north-up frame, so moving the camera never reorients it.
+    #[wasm_bindgen(js_name = rotateWithCamera)]
+    #[serde(rename = "rotateWithCamera")]
+    pub rotate_with_camera: Option<bool>,
+    /// Rotation of the sprite within its own plane, about its anchor point,
+    /// in degrees, clockwise seen from the front. `center` decides where
+    /// inside the sprite the pivot sits. Defaults to `0.0`.
+    pub rotation: Option<f32>,
     /// anchor point of the sprite, range is (-0.5, -0.5) to (0.5, 0.5).
     /// Default is (0.0, 0.0) which means the center of the sprite.
     pub center: Option<Vec2>,
@@ -256,6 +297,10 @@ impl From<BillboardMaterial> for navara_material::BillboardMaterial {
             show: val.show.unwrap_or(default.show),
             size: val.size.unwrap_or(default.size),
             color: val.color.unwrap_or(default.color),
+            billboard_facing: parse_facing(&val.billboard_facing)
+                .unwrap_or(default.billboard_facing),
+            rotate_with_camera: val.rotate_with_camera.unwrap_or(default.rotate_with_camera),
+            rotation: val.rotation.unwrap_or(default.rotation),
             center: val.center.unwrap_or(default.center.into()).into(),
             height: val.height.unwrap_or(default.height),
             url: val.url.unwrap_or(default.url),
@@ -283,6 +328,9 @@ impl<'a> From<&'a navara_material::BillboardMaterial> for BillboardMaterial {
             size: Some(value.size),
             color: Some(value.color),
             center: Some(value.center.into()),
+            billboard_facing: Some(value.billboard_facing.as_str().to_string()),
+            rotate_with_camera: Some(value.rotate_with_camera),
+            rotation: Some(value.rotation),
             height: Some(value.height),
             url: Some(value.url.clone()),
             size_in_meters: Some(value.size_in_meters),
@@ -311,6 +359,10 @@ impl BillboardMaterial {
             show: self.show.unwrap_or(other.show),
             size: self.size.unwrap_or(other.size),
             color: self.color.unwrap_or(other.color),
+            billboard_facing: parse_facing(&self.billboard_facing)
+                .unwrap_or(other.billboard_facing),
+            rotate_with_camera: self.rotate_with_camera.unwrap_or(other.rotate_with_camera),
+            rotation: self.rotation.unwrap_or(other.rotation),
             center: self.center.unwrap_or(other.center.into()).into(),
             height: self.height.unwrap_or(other.height),
             url: self.url.clone().unwrap_or(other.url.clone()),
@@ -500,7 +552,7 @@ impl From<TextMaterial> for navara_material::TextMaterial {
             size: val.size.unwrap_or(default.size),
             color: val.color.unwrap_or(default.color),
             center: val.center.unwrap_or(default.center.into()).into(),
-            text_facing: parse_text_facing(&val.text_facing).unwrap_or(default.text_facing),
+            text_facing: parse_facing(&val.text_facing).unwrap_or(default.text_facing),
             rotate_with_camera: val.rotate_with_camera.unwrap_or(default.rotate_with_camera),
             rotation: val.rotation.unwrap_or(default.rotation),
             height: val.height.unwrap_or(default.height),
@@ -597,7 +649,7 @@ impl TextMaterial {
             size: self.size.unwrap_or(other.size),
             color: self.color.unwrap_or(other.color),
             center: self.center.unwrap_or(other.center.into()).into(),
-            text_facing: parse_text_facing(&self.text_facing).unwrap_or(other.text_facing),
+            text_facing: parse_facing(&self.text_facing).unwrap_or(other.text_facing),
             rotate_with_camera: self.rotate_with_camera.unwrap_or(other.rotate_with_camera),
             rotation: self.rotation.unwrap_or(other.rotation),
             height: self.height.unwrap_or(other.height),
@@ -1923,8 +1975,8 @@ pub struct HillshadeMaterial {
 
 #[cfg(test)]
 mod test {
-    use super::{TextMaterial, parse_geometry_types, parse_text_facing};
-    use navara_material::{SourceGeometryType, TextFacing};
+    use super::{TextMaterial, parse_facing, parse_geometry_types};
+    use navara_material::{Facing, SourceGeometryType};
 
     #[test]
     fn parse_geometry_types_keeps_valid_names() {
@@ -1959,34 +2011,31 @@ mod test {
     }
 
     #[test]
-    fn parse_text_facing_reads_the_js_names() {
+    fn parse_facing_reads_the_js_names() {
         assert_eq!(
-            parse_text_facing(&Some("upright".to_string())),
-            Some(TextFacing::Upright)
+            parse_facing(&Some("upright".to_string())),
+            Some(Facing::Upright)
         );
-        assert_eq!(
-            parse_text_facing(&Some("flat".to_string())),
-            Some(TextFacing::Flat)
-        );
+        assert_eq!(parse_facing(&Some("flat".to_string())), Some(Facing::Flat));
     }
 
     /// An absent field and an unrecognized one both read as "unspecified", so
     /// the caller keeps whatever facing the material already had.
     #[test]
-    fn parse_text_facing_falls_back_on_unknown_values() {
-        assert_eq!(parse_text_facing(&None), None);
-        assert_eq!(parse_text_facing(&Some("Flat".to_string())), None);
+    fn parse_facing_falls_back_on_unknown_values() {
+        assert_eq!(parse_facing(&None), None);
+        assert_eq!(parse_facing(&Some("Flat".to_string())), None);
     }
 
     #[test]
     fn merge_keeps_the_previous_facing_when_unspecified() {
         let other = navara_material::TextMaterial {
-            text_facing: TextFacing::Flat,
+            text_facing: Facing::Flat,
             rotate_with_camera: false,
             ..Default::default()
         };
         let merged = TextMaterial::from(&other).merge(&Default::default());
-        assert_eq!(merged.text_facing, TextFacing::Flat);
+        assert_eq!(merged.text_facing, Facing::Flat);
         assert!(!merged.rotate_with_camera);
     }
 }

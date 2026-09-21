@@ -453,6 +453,14 @@ export const addCtrlPanel = (
         material.textFacing = paneParams.textFacing;
       }
 
+      if ("billboardFacing" in material) {
+        material.billboardFacing = paneParams.textFacing;
+      }
+
+      if ("pointFacing" in material) {
+        material.pointFacing = paneParams.textFacing;
+      }
+
       if ("rotateWithCamera" in material) {
         material.rotateWithCamera = paneParams.rotateWithCamera;
       }
@@ -712,9 +720,13 @@ function createParamCtrl(
       );
     }
 
-    if ("textFacing" in material) {
-      paneParams.textFacing = material.textFacing ?? "upright";
+    const facingKey = ["textFacing", "billboardFacing", "pointFacing"].find(
+      (k) => k in material,
+    );
+    if (facingKey) {
+      paneParams.textFacing = (material as never)[facingKey] ?? "upright";
       f.addBinding(paneParams, "textFacing", {
+        label: "facing",
         options: { upright: "upright", flat: "flat" },
       }).on("change", changeFunc);
     }

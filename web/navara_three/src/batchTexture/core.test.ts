@@ -4,9 +4,11 @@ import { describe, expect, test } from "vitest";
 import {
   flushBatchTextureUpdates,
   getBatchDataTexture,
+  packOrientation,
   packShowOpacity,
   readBatchScalar,
   readBatchShowOpacity,
+  unpackOrientation,
   unpackShowOpacity,
   updateBatchAttribute,
 } from "./core";
@@ -470,5 +472,80 @@ describe("flushBatchTextureUpdates", () => {
     updateBatchAttribute(material, 1, "height", 2);
     updateBatchAttribute(material, 2, "height", 3);
     expect(texture.version).toBe(versionBefore);
+  });
+});
+
+describe("packOrientation / unpackOrientation", () => {
+  test("round-trips all four combinations", () => {
+    for (const flatFacing of [false, true]) {
+      for (const rotateWithCamera of [false, true]) {
+        const unpacked = unpackOrientation(
+          packOrientation(flatFacing, rotateWithCamera),
+        );
+        expect(unpacked.flatFacing).toBe(flatFacing);
+        expect(unpacked.rotateWithCamera).toBe(rotateWithCamera);
+      }
+    }
+  });
+
+  test("packs to exact floats so the thresholds are never borderline", () => {
+    expect(packOrientation(false, false)).toBe(0);
+    expect(packOrientation(false, true)).toBe(1);
+    expect(packOrientation(true, false)).toBe(2);
+    expect(packOrientation(true, true)).toBe(3);
+  });
+});
+
+describe("orientation and rotation attributes", () => {
+  const SPRITE_SCALARS = ["height", "size", "rotation", "orientation"] as const;
+
+  test("the two orientation booleans share one component", () => {
+    const { material } = setupBatchMaterial(4, [...SPRITE_SCALARS]);
+    updateBatchAttribute(material, 1, "flatFacing", true);
+    updateBatchAttribute(material, 1, "rotateWithCamera", false);
+
+    const texture = getBatchDataTexture(material);
+    invariant(texture);
+    // One attribute row, not two: the pair packs into a single component.
+    expect(texture.image.height).toBe(1);
+
+    const defines = material.userData.defines;
+    expect(defines.USE_BATCH_ORIENTATION).toBe(true);
+    expect(readBatchScalar(material, 1, "orientation")).toBe(
+      packOrientation(true, false),
+    );
+  });
+
+  test("writing one boolean preserves the other", () => {
+    const { material } = setupBatchMaterial(4, [...SPRITE_SCALARS]);
+    updateBatchAttribute(material, 0, "rotateWithCamera", false);
+    updateBatchAttribute(material, 0, "flatFacing", true);
+
+    const { flatFacing, rotateWithCamera } = unpackOrientation(
+      readBatchScalar(material, 0, "orientation") ?? NaN,
+    );
+    expect(flatFacing).toBe(true);
+    expect(rotateWithCamera).toBe(false);
+  });
+
+  test("rotation stores per-feature radians independently", () => {
+    const { material } = setupBatchMaterial(4, [...SPRITE_SCALARS]);
+    updateBatchAttribute(material, 0, "rotation", Math.PI / 2);
+    updateBatchAttribute(material, 3, "rotation", Math.PI);
+
+    expect(readBatchScalar(material, 0, "rotation")).toBeCloseTo(Math.PI / 2);
+    expect(readBatchScalar(material, 3, "rotation")).toBeCloseTo(Math.PI);
+    // Untouched features keep the backfilled material default.
+    expect(readBatchScalar(material, 1, "rotation")).toBe(0);
+  });
+
+  test("a mesh type that declares no support ignores the write", () => {
+    // Polygon capabilities: no rotation / orientation receivers in its shaders.
+    const { material } = setupBatchMaterial(4);
+    expect(updateBatchAttribute(material, 0, "rotation", 1)).toBe(false);
+    expect(updateBatchAttribute(material, 0, "flatFacing", true)).toBe(false);
+    // Rejected before any allocation, so no texture and no defines exist.
+    expect(getBatchDataTexture(material)).toBeUndefined();
+    expect(material.userData.defines).toBeUndefined();
   });
 });

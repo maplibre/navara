@@ -267,6 +267,76 @@ import { Color } from "@navaramap/three";
 }
 ```
 
+### pointFacing
+
+**Type:** `"upright" | "flat" | undefined`
+
+**Description:** ポイントを立てて表示するか、地球表面に寝かせて表示するかを指定します。`"upright"` は立てた状態に保ちます。`"flat"` はアンカー位置における地球の接平面に配置するため、地表に描かれているように見え、カメラのピッチに応じて短縮されます。
+
+[`rotateWithCamera`](#rotatewithcamera) との組み合わせで、次の 4 通りの表示になります。
+
+| `pointFacing` | `rotateWithCamera` | 表示 |
+| --- | --- | --- |
+| `"upright"` | `true` | 画面に正対するビルボード。短縮されません（デフォルト） |
+| `"upright"` | `false` | 地表に立ち、方位は固定されます |
+| `"flat"` | `true` | 地表に描かれ、常に視点の方を向くように回転します |
+| `"flat"` | `false` | 地表に描かれ、北を上にして地図とともに回転します |
+
+[フィーチャーエバリュエーター](../../api/feature-evaluator/)から `facing` としてフィーチャーごとに指定することもできます。
+
+**Default:** `"upright"`
+
+**Example:**
+
+```typescript
+{
+  ポイント: {
+    pointFacing: "flat"
+  }
+}
+```
+
+### rotateWithCamera
+
+**Type:** `boolean | undefined`
+
+**Description:** ポイントをカメラに追従して回転させるかどうかを指定します。`true` の場合は常に視点の方を向きます。`false` の場合はアンカー位置のローカルな東・北・上の座標系に固定され、カメラを動かしても向きは変わりません。`"upright"` では地表に立って南を向くため、真上からは水平に見えて消え、裏側からは鏡像になります。
+
+[フィーチャーエバリュエーター](../../api/feature-evaluator/)からフィーチャーごとに指定することもできます。
+
+**Default:** `true`
+
+**Example:**
+
+```typescript
+{
+  ポイント: {
+    pointFacing: "upright",
+    rotateWithCamera: false
+  }
+}
+```
+
+### rotation
+
+**Type:** `number | undefined`
+
+**Description:** ポイントを自身の平面内で、アンカー位置を中心に回転させる角度を度数で指定します。正面から見て時計回りです。`pointFacing` と `rotateWithCamera` で決まる向きに対して追加で適用されます。
+
+回転の中心は [`center`](#center) で決まります。[フィーチャーエバリュエーター](../../api/feature-evaluator/)からフィーチャーごとに指定できるため、レイヤー内のポイントごとに異なる向きにできます。
+
+**Default:** `0.0`
+
+**Example:**
+
+```typescript
+{
+  ポイント: {
+    rotation: 45
+  }
+}
+```
+
 ### show
 
 **Type:** `boolean | undefined`

@@ -33,11 +33,11 @@ export const MODEL_BATCH_SUPPORT: BatchTextureSupport = {
 };
 
 export const SPRITE_BATCH_SUPPORT: BatchTextureSupport = {
-  scalars: ["height", "size"],
+  scalars: ["height", "size", "rotation", "orientation"],
   vec3s: ["color", "emissive"],
 };
 
 export const TEXT_BATCH_SUPPORT: BatchTextureSupport = {
-  scalars: ["height", "size"],
+  scalars: ["height", "size", "rotation", "orientation"],
   vec3s: ["color", "emissive"],
 };

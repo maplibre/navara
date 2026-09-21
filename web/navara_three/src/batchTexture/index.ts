@@ -1,6 +1,7 @@
 export {
   flushBatchTextureUpdates,
   getBatchDataTexture,
+  hasBatchScalarSlot,
   packShowOpacity,
   readBatchScalar,
   readBatchShowOpacity,

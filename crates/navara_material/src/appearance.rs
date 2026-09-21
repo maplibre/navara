@@ -60,12 +60,12 @@ impl SourceGeometryType {
     }
 }
 
-/// Plane a text label's quad lies in.
+/// Plane a label or sprite quad lies in.
 ///
-/// Orthogonal to [`TextMaterial::rotate_with_camera`], which picks the quad's
-/// up direction *within* that plane.
+/// Orthogonal to the material's `rotate_with_camera`, which picks whether the
+/// quad follows the camera or stays frozen in the anchor's local frame.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum TextFacing {
+pub enum Facing {
     /// The label stands upright rather than lying on the ground. Combined
     /// with `rotate_with_camera` it is either a screen-aligned billboard,
     /// never foreshortened however the camera is pitched, or a signboard
@@ -78,7 +78,7 @@ pub enum TextFacing {
     Flat,
 }
 
-impl TextFacing {
+impl Facing {
     /// Parse the JS-facing name (`"upright" | "flat"`).
     pub fn parse(value: &str) -> Option<Self> {
         match value {
@@ -154,6 +154,15 @@ pub struct PointMaterial {
     pub show: bool,
     pub size: f32,
     pub color: u32,
+    /// Plane the point's quad lies in. See [`Facing`].
+    pub point_facing: Facing,
+    /// Whether the quad turns to follow the camera. See
+    /// [`TextMaterial::rotate_with_camera`] — the semantics are identical.
+    pub rotate_with_camera: bool,
+    /// Rotation of the point within its own plane, about its anchor point,
+    /// in degrees, clockwise seen from the front. `center` decides where
+    /// inside the quad the pivot sits. Default `0.0`.
+    pub rotation: f32,
     pub center: Vec2,
     pub height: f32,
     pub size_in_meters: bool,
@@ -186,6 +195,9 @@ impl Default for PointMaterial {
             show: true,
             size: 0.1,
             color: 0xffffff,
+            point_facing: Facing::Upright,
+            rotate_with_camera: true,
+            rotation: 0.0,
             center: Vec2::new(0.0, 0.),
             clamp_to_ground: true,
             height: 1.,
@@ -219,6 +231,15 @@ pub struct BillboardMaterial {
     pub show: bool,
     pub size: f32,
     pub color: u32,
+    /// Plane the sprite's quad lies in. See [`Facing`].
+    pub billboard_facing: Facing,
+    /// Whether the quad turns to follow the camera. See
+    /// [`TextMaterial::rotate_with_camera`] — the semantics are identical.
+    pub rotate_with_camera: bool,
+    /// Rotation of the sprite within its own plane, about its anchor point,
+    /// in degrees, clockwise seen from the front. `center` decides where
+    /// inside the sprite the pivot sits. Default `0.0`.
+    pub rotation: f32,
     pub center: Vec2,
     pub height: f32,
     pub url: String,
@@ -253,6 +274,9 @@ impl Default for BillboardMaterial {
             show: true,
             size: 0.1,
             color: 0xffffff,
+            billboard_facing: Facing::Upright,
+            rotate_with_camera: true,
+            rotation: 0.0,
             center: Vec2::new(0.0, 0.),
             clamp_to_ground: true,
             height: 1.,
@@ -289,8 +313,8 @@ pub struct TextMaterial {
     pub size: f32,
     pub color: u32,
     pub center: Vec2,
-    /// Plane the label's quad lies in. See [`TextFacing`].
-    pub text_facing: TextFacing,
+    /// Plane the label's quad lies in. See [`Facing`].
+    pub text_facing: Facing,
     /// Rotation of the label within its own plane, about its anchor point, in
     /// degrees, clockwise seen from the front. Applied on top of whatever
     /// orientation `text_facing` and `rotate_with_camera` resolve to, so it
@@ -301,13 +325,13 @@ pub struct TextMaterial {
     /// Whether the quad turns to follow the camera.
     ///
     /// `true` (the default) keeps the label facing the viewer: with
-    /// [`TextFacing::Upright`] that is the screen-aligned billboard, and with
-    /// [`TextFacing::Flat`] the quad yaws around the surface normal so the
+    /// [`Facing::Upright`] that is the screen-aligned billboard, and with
+    /// [`Facing::Flat`] the quad yaws around the surface normal so the
     /// text still reads left-to-right.
     ///
     /// `false` freezes the quad in the anchor's local east-north-up frame, so
-    /// moving the camera never reorients it: [`TextFacing::Upright`] becomes a
-    /// signboard standing on the surface, [`TextFacing::Flat`] a north-up
+    /// moving the camera never reorients it: [`Facing::Upright`] becomes a
+    /// signboard standing on the surface, [`Facing::Flat`] a north-up
     /// label painted on it.
     pub rotate_with_camera: bool,
     pub height: f32,
@@ -377,7 +401,7 @@ impl Default for TextMaterial {
             size: 10.0,
             color: 0xffffff,
             center: Vec2::new(0.5, 0.),
-            text_facing: TextFacing::Upright,
+            text_facing: Facing::Upright,
             rotate_with_camera: true,
             rotation: 0.0,
             clamp_to_ground: true,

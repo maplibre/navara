@@ -13,12 +13,14 @@ import {
   type BufferGeometry,
   Color,
   type Material,
+  MathUtils,
   PerspectiveCamera,
   Vector2,
 } from "three";
 import invariant from "tiny-invariant";
 
 import {
+  hasBatchScalarSlot,
   readBatchScalar,
   readBatchShowOpacity,
   registerBatchedMaterial,
@@ -93,6 +95,12 @@ export class InstancedSpriteMesh
   private _instanceBatchIndex: Float32Array | null = null;
   /** Feature count — the batch data texture's column count. */
   private _batchLength = 0;
+  /** Last orientation/rotation applied from the material, for change detection. */
+  private _lastOrientation?: {
+    rotation: number;
+    facing: "upright" | "flat";
+    follow: boolean;
+  };
   /** Instance count of the current geometry; bounds the identity fallback. */
   private _instanceCount = 0;
   private _atlas?: BillboardAtlas;
@@ -374,6 +382,12 @@ export class InstancedSpriteMesh
       base: {
         scale: m.material.size ?? 100.0,
         center: [m.material.center?.x ?? 0.0, m.material.center?.y ?? 0.0],
+        flatFacing:
+          ("billboardFacing" in m.material
+            ? m.material.billboardFacing
+            : m.material.pointFacing) === "flat",
+        rotateWithCamera: m.material.rotateWithCamera ?? true,
+        rotation: m.material.rotation ?? 0,
         sizeInMeters: m.material.sizeInMeters ?? true,
         offsetDepth: m.material.offsetDepth ?? true,
         transparent: m.material.transparent ?? true,
@@ -389,6 +403,12 @@ export class InstancedSpriteMesh
         emissiveIntensity: m.material.emissiveIntensity ?? 0,
       },
     });
+
+    // Orientation/rotation are uniform-driven until some feature gets its own
+    // value. Once a slot exists every feature reads the texture, so a material
+    // change has to be written through or evaluator overrides would outlive
+    // it. Mirrors BatchedSdfTextMesh._applyUpdate.
+    this._writeThroughOrientation(m.material);
 
     // Position updates (per-instance attributes)
     {
@@ -559,6 +579,12 @@ export class InstancedSpriteMesh
         billboard: isBillboard,
         scale: m.material.size ?? 100.0,
         center: [m.material.center?.x ?? 0.0, m.material.center?.y ?? 0.0],
+        flatFacing:
+          ("billboardFacing" in m.material
+            ? m.material.billboardFacing
+            : m.material.pointFacing) === "flat",
+        rotateWithCamera: m.material.rotateWithCamera ?? true,
+        rotation: m.material.rotation ?? 0,
         sizeInMeters: m.material.sizeInMeters ?? true,
         offsetDepth: m.material.offsetDepth ?? true,
         alphaTest: isBillboard ? (m.material.alphaTest ?? 0.0) : 0.0,
@@ -945,6 +971,75 @@ export class InstancedSpriteMesh
   setFeatureSizeByBatchIndex(batchIndex: number, size: number) {
     if (this._updateBatchAttribute(batchIndex, "size", size)) {
       this.ctx.declutter?.markDirty();
+    }
+  }
+
+  /**
+   * Orientation and in-plane rotation for one feature, overriding the
+   * material's. `rotation` is in degrees, clockwise seen from the front; it is
+   * converted to the radians the shader wants here, matching the material path.
+   */
+  setFeatureFacingByBatchIndex(batchIndex: number, facing: "upright" | "flat") {
+    this._updateBatchAttribute(batchIndex, "flatFacing", facing === "flat");
+  }
+
+  setFeatureRotateWithCameraByBatchIndex(batchIndex: number, follow: boolean) {
+    this._updateBatchAttribute(batchIndex, "rotateWithCamera", follow);
+  }
+
+  setFeatureRotationByBatchIndex(batchIndex: number, degrees: number) {
+    this._updateBatchAttribute(
+      batchIndex,
+      "rotation",
+      degrees * MathUtils.DEG2RAD,
+    );
+  }
+
+  /**
+   * Push the material's orientation/rotation onto every feature when the
+   * material value actually **changed**, and only once a slot exists.
+   *
+   * Both guards matter. Without a slot the shader's uniform is still
+   * governing, so writing would allocate a row the layer never needed.
+   * Without the change check, the engine re-sending an unchanged material —
+   * which it does for geometry and activation updates too — would stomp
+   * evaluator overrides on every terrain tick. Mirrors the style/size writes
+   * in `BatchedSdfTextMesh._applyUpdate`.
+   */
+  private _writeThroughOrientation(
+    material: (NavaraPointMesh | NavaraBillboardMesh)["material"],
+  ): void {
+    const facing =
+      ("billboardFacing" in material
+        ? material.billboardFacing
+        : material.pointFacing) === "flat"
+        ? "flat"
+        : "upright";
+    const next = {
+      rotation: material.rotation ?? 0,
+      facing,
+      follow: material.rotateWithCamera ?? true,
+    } as const;
+    const prev = this._lastOrientation;
+    this._lastOrientation = next;
+    if (!prev) return;
+
+    const mat = this.material as Material;
+    const rotationChanged =
+      next.rotation !== prev.rotation && hasBatchScalarSlot(mat, "rotation");
+    const orientationChanged =
+      (next.facing !== prev.facing || next.follow !== prev.follow) &&
+      hasBatchScalarSlot(mat, "orientation");
+    if (!rotationChanged && !orientationChanged) return;
+
+    for (let i = 0; i < this._batchLength; i++) {
+      if (rotationChanged) {
+        this.setFeatureRotationByBatchIndex(i, next.rotation);
+      }
+      if (orientationChanged) {
+        this.setFeatureFacingByBatchIndex(i, next.facing);
+        this.setFeatureRotateWithCameraByBatchIndex(i, next.follow);
+      }
     }
   }
 

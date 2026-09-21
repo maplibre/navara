@@ -85,13 +85,16 @@ type WithColorSupport<T> = ConvertColorFields<T>;
 export type SourceGeometryType = "point" | "line" | "polygon";
 
 /**
- * Whether a text label stands up (`"upright"`, the default) or lies in the
- * globe's tangent plane at its anchor (`"flat"`), reading as painted on the
- * surface. Pair with `rotateWithCamera`, which chooses whether the label
- * turns to follow the camera or stays frozen in the anchor's east-north-up
- * frame.
+ * Whether a label or sprite stands up (`"upright"`, the default) or lies in
+ * the globe's tangent plane at its anchor (`"flat"`), reading as painted on
+ * the surface. The value of `textFacing` / `billboardFacing` / `pointFacing`.
+ * Pair with `rotateWithCamera`, which chooses whether the quad turns to
+ * follow the camera or stays frozen in the anchor's east-north-up frame.
  */
-export type TextFacing = "upright" | "flat";
+export type Facing = "upright" | "flat";
+
+/** @deprecated Use {@link Facing}, which covers all three material types. */
+export type TextFacing = Facing;
 
 /**
  * Helper type to narrow the material fields that wasm-bindgen generates as
@@ -100,8 +103,8 @@ export type TextFacing = "upright" | "flat";
 type ConvertStringUnionFields<T> = {
   [K in keyof T]: K extends "geometryTypes"
     ? SourceGeometryType[] | Extract<T[K], undefined>
-    : K extends "textFacing"
-      ? TextFacing | Extract<T[K], undefined>
+    : K extends "textFacing" | "billboardFacing" | "pointFacing"
+      ? Facing | Extract<T[K], undefined>
       : T[K] extends object | undefined
         ? ConvertStringUnionFields<T[K]> | Extract<T[K], undefined>
         : T[K];

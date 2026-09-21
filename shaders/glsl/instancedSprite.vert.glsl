@@ -4,6 +4,7 @@
 #include "chunks/pixelToWorld.glsl"
 #include "chunks/height_pars_vertex.glsl"
 #include "chunks/batch_texture_pars_vertex.glsl"
+#include "chunks/quad_orientation.glsl"
 
 #ifdef USE_RTE
     attribute vec3 instancePositionLOW;
@@ -43,6 +44,14 @@ uniform float uScale;
 uniform vec3 uColor;
 uniform float uOpacity;
 uniform bool uSizeInMeters;
+// Material-level orientation defaults. Per-feature overrides arrive through
+// the batch data texture (USE_BATCH_ORIENTATION / USE_BATCH_ROTATION), so
+// these are what a sprite uses until something writes its own value.
+uniform bool uFlatFacing;
+uniform bool uRotateWithCamera;
+// Radians, clockwise seen from the front; converted from the material's
+// degrees on the CPU.
+uniform float uRotation;
 uniform vec2 uCenter;
 uniform float uFovRad;
 uniform float uScreenHeightPx;
@@ -60,6 +69,9 @@ void main() {
     float batchSize = -1.0; // Negative = use uScale
     float nvr_vShow = 1.0;
     float nvr_vOpacity = uOpacity;
+    float nvr_batchRotation = uRotation;
+    bool nvr_batchFlatFacing = uFlatFacing;
+    bool nvr_batchRotateWithCamera = uRotateWithCamera;
     vColor = uColor;
     #include "chunks/batch_texture_vertex.glsl"
 
@@ -126,13 +138,25 @@ void main() {
 #else
     float aspect = 1.0;
 #endif
-    // This makes it always face the camera
     if (!uSizeInMeters) {
         clampedScale = nvr_pxToWorld(clampedScale, uFovRad, uScreenHeightPx, vec3(0.0, 0.0, mvPosition.z), vec3(0.0, 0.0, 0.0));
-        mvPosition.xy += (((position.xy - center)) * vec2(aspect, 1.0) * clampedScale);
-    } else {
-        mvPosition.xy += (((position.xy - center)) * vec2(aspect, 1.0) * clampedScale);
     }
+
+    // The quad's axes: view-space x/y for a plain billboard, otherwise a pair
+    // derived from the anchor's east-north-up frame (see quad_orientation).
+    vec3 axisRight;
+    vec3 axisUp;
+    nvr_quadBasis(
+        absTransformed,
+        nvr_batchFlatFacing,
+        nvr_batchRotateWithCamera,
+        nvr_batchRotation,
+        axisRight,
+        axisUp
+    );
+
+    vec2 localPos = (position.xy - center) * vec2(aspect, 1.0) * clampedScale;
+    mvPosition.xyz += localPos.x * axisRight + localPos.y * axisUp;
 
     gl_Position = projectionMatrix * mvPosition;
     vFragDepth = gl_Position.w + 1.0;

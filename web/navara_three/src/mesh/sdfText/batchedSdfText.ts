@@ -9,6 +9,7 @@ import {
   Color,
   type PerspectiveCamera,
   DoubleSide,
+  MathUtils,
   Object3D,
   ShaderMaterial,
   Vector2,
@@ -16,6 +17,7 @@ import {
 import invariant from "tiny-invariant";
 
 import {
+  hasBatchScalarSlot,
   registerBatchedMaterial,
   TEXT_BATCH_SUPPORT,
   updateBatchAttribute,
@@ -1219,6 +1221,22 @@ export class BatchedSdfTextMesh
       opacity !== clamp01(prevMaterial.opacity ?? 1.0);
     const fontSizeChanged = fontSize !== (prevMaterial.size ?? 16.0);
     const addHeightChanged = addHeight !== (prevMaterial.height ?? 0);
+    const mat = this.material as ShaderMaterial;
+    const rotationDeg = material.rotation ?? 0;
+    const flatFacing = material.textFacing === "flat";
+    const followCamera = material.rotateWithCamera ?? true;
+    // Orientation/rotation are uniform-driven until some feature gets its own
+    // value. Once a slot exists every feature reads the texture, so a changed
+    // material value must be written through or evaluator overrides would
+    // outlive it — the same "a material update overwrites per-feature style"
+    // rule the style/size writes above follow.
+    const rotationChanged =
+      rotationDeg !== (prevMaterial.rotation ?? 0) &&
+      hasBatchScalarSlot(mat, "rotation");
+    const orientationChanged =
+      (flatFacing !== (prevMaterial.textFacing === "flat") ||
+        followCamera !== (prevMaterial.rotateWithCamera ?? true)) &&
+      hasBatchScalarSlot(mat, "orientation");
 
     // A changed material show clobbers evaluator overrides — including hide
     // intents parked on anchors that never got a label.
@@ -1237,6 +1255,19 @@ export class BatchedSdfTextMesh
       if (addHeightChanged) {
         record.addHeight = addHeight;
         this._writeAddHeight(record);
+      }
+      if (rotationChanged) {
+        this.setFeatureRotationByBatchIndex(record.batchIndex, rotationDeg);
+      }
+      if (orientationChanged) {
+        this.setFeatureFacingByBatchIndex(
+          record.batchIndex,
+          flatFacing ? "flat" : "upright",
+        );
+        this.setFeatureRotateWithCameraByBatchIndex(
+          record.batchIndex,
+          followCamera,
+        );
       }
 
       if (showChanged) record.requestedShow = materialShow;
@@ -1422,6 +1453,27 @@ export class BatchedSdfTextMesh
       this._writeAddHeight(record);
     }
     this._markDeclutterDirty();
+  }
+
+  /**
+   * Orientation and in-plane rotation for one feature, overriding the
+   * material's. `rotation` is in degrees, clockwise seen from the front; it is
+   * converted to the radians the shader wants here, matching the material path.
+   */
+  setFeatureFacingByBatchIndex(batchIndex: number, facing: "upright" | "flat") {
+    this._updateBatchAttribute(batchIndex, "flatFacing", facing === "flat");
+  }
+
+  setFeatureRotateWithCameraByBatchIndex(batchIndex: number, follow: boolean) {
+    this._updateBatchAttribute(batchIndex, "rotateWithCamera", follow);
+  }
+
+  setFeatureRotationByBatchIndex(batchIndex: number, degrees: number) {
+    this._updateBatchAttribute(
+      batchIndex,
+      "rotation",
+      degrees * MathUtils.DEG2RAD,
+    );
   }
 
   setFeatureSizeByBatchIndex(batchIndex: number, size: number) {
