@@ -308,7 +308,7 @@ import { Color } from "@navaramap/three";
 
 ```typescript
 {
-  ビルボード: {
+  billboard: {
     billboardFacing: "flat"
   }
 }
@@ -328,7 +328,7 @@ import { Color } from "@navaramap/three";
 
 ```typescript
 {
-  ビルボード: {
+  billboard: {
     billboardFacing: "upright",
     rotateWithCamera: false
   }
@@ -349,7 +349,7 @@ import { Color } from "@navaramap/three";
 
 ```typescript
 {
-  ビルボード: {
+  billboard: {
     rotation: 45
   }
 }

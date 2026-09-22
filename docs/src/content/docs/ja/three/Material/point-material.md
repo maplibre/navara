@@ -290,7 +290,7 @@ import { Color } from "@navaramap/three";
 
 ```typescript
 {
-  ポイント: {
+  point: {
     pointFacing: "flat"
   }
 }
@@ -310,7 +310,7 @@ import { Color } from "@navaramap/three";
 
 ```typescript
 {
-  ポイント: {
+  point: {
     pointFacing: "upright",
     rotateWithCamera: false
   }
@@ -331,7 +331,7 @@ import { Color } from "@navaramap/three";
 
 ```typescript
 {
-  ポイント: {
+  point: {
     rotation: 45
   }
 }

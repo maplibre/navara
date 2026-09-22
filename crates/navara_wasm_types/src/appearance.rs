@@ -35,16 +35,16 @@ fn geometry_type_names(value: &[navara_material::SourceGeometryType]) -> Vec<Str
     value.iter().map(|t| t.as_str().to_string()).collect()
 }
 
-/// Parse a JS-facing facing name (`textFacing` / `billboardFacing`), warning on
-/// an unknown value so the caller keeps the material's current value.
-fn parse_facing(value: &Option<String>) -> Option<navara_material::Facing> {
+/// Parse a JS-facing facing name, warning on an unknown value so the caller
+/// keeps the material's current value. `field` is the JS property name
+/// (`textFacing` / `pointFacing` / `billboardFacing`) so the warning points at
+/// the property the caller actually set.
+fn parse_facing(field: &str, value: &Option<String>) -> Option<navara_material::Facing> {
     let name = value.as_ref()?;
     match navara_material::Facing::parse(name) {
         Some(f) => Some(f),
         None => {
-            bevy_log::warn!(
-                "textFacing: unknown value {name:?} (expected \"upright\" or \"flat\")"
-            );
+            bevy_log::warn!("{field}: unknown value {name:?} (expected \"upright\" or \"flat\")");
             None
         }
     }
@@ -128,7 +128,8 @@ impl From<PointMaterial> for navara_material::PointMaterial {
         navara_material::PointMaterial {
             show: val.show.unwrap_or(default.show),
             size: val.size.unwrap_or(default.size),
-            point_facing: parse_facing(&val.point_facing).unwrap_or(default.point_facing),
+            point_facing: parse_facing("pointFacing", &val.point_facing)
+                .unwrap_or(default.point_facing),
             rotate_with_camera: val.rotate_with_camera.unwrap_or(default.rotate_with_camera),
             rotation: val.rotation.unwrap_or(default.rotation),
             color: val.color.unwrap_or(default.color),
@@ -183,7 +184,8 @@ impl PointMaterial {
             show: self.show.unwrap_or(other.show),
             size: self.size.unwrap_or(other.size),
             color: self.color.unwrap_or(other.color),
-            point_facing: parse_facing(&self.point_facing).unwrap_or(other.point_facing),
+            point_facing: parse_facing("pointFacing", &self.point_facing)
+                .unwrap_or(other.point_facing),
             rotate_with_camera: self.rotate_with_camera.unwrap_or(other.rotate_with_camera),
             rotation: self.rotation.unwrap_or(other.rotation),
             center: self.center.unwrap_or(other.center.into()).into(),
@@ -297,7 +299,7 @@ impl From<BillboardMaterial> for navara_material::BillboardMaterial {
             show: val.show.unwrap_or(default.show),
             size: val.size.unwrap_or(default.size),
             color: val.color.unwrap_or(default.color),
-            billboard_facing: parse_facing(&val.billboard_facing)
+            billboard_facing: parse_facing("billboardFacing", &val.billboard_facing)
                 .unwrap_or(default.billboard_facing),
             rotate_with_camera: val.rotate_with_camera.unwrap_or(default.rotate_with_camera),
             rotation: val.rotation.unwrap_or(default.rotation),
@@ -359,7 +361,7 @@ impl BillboardMaterial {
             show: self.show.unwrap_or(other.show),
             size: self.size.unwrap_or(other.size),
             color: self.color.unwrap_or(other.color),
-            billboard_facing: parse_facing(&self.billboard_facing)
+            billboard_facing: parse_facing("billboardFacing", &self.billboard_facing)
                 .unwrap_or(other.billboard_facing),
             rotate_with_camera: self.rotate_with_camera.unwrap_or(other.rotate_with_camera),
             rotation: self.rotation.unwrap_or(other.rotation),
@@ -552,7 +554,8 @@ impl From<TextMaterial> for navara_material::TextMaterial {
             size: val.size.unwrap_or(default.size),
             color: val.color.unwrap_or(default.color),
             center: val.center.unwrap_or(default.center.into()).into(),
-            text_facing: parse_facing(&val.text_facing).unwrap_or(default.text_facing),
+            text_facing: parse_facing("textFacing", &val.text_facing)
+                .unwrap_or(default.text_facing),
             rotate_with_camera: val.rotate_with_camera.unwrap_or(default.rotate_with_camera),
             rotation: val.rotation.unwrap_or(default.rotation),
             height: val.height.unwrap_or(default.height),
@@ -649,7 +652,7 @@ impl TextMaterial {
             size: self.size.unwrap_or(other.size),
             color: self.color.unwrap_or(other.color),
             center: self.center.unwrap_or(other.center.into()).into(),
-            text_facing: parse_facing(&self.text_facing).unwrap_or(other.text_facing),
+            text_facing: parse_facing("textFacing", &self.text_facing).unwrap_or(other.text_facing),
             rotate_with_camera: self.rotate_with_camera.unwrap_or(other.rotate_with_camera),
             rotation: self.rotation.unwrap_or(other.rotation),
             height: self.height.unwrap_or(other.height),
@@ -2013,18 +2016,21 @@ mod test {
     #[test]
     fn parse_facing_reads_the_js_names() {
         assert_eq!(
-            parse_facing(&Some("upright".to_string())),
+            parse_facing("textFacing", &Some("upright".to_string())),
             Some(Facing::Upright)
         );
-        assert_eq!(parse_facing(&Some("flat".to_string())), Some(Facing::Flat));
+        assert_eq!(
+            parse_facing("textFacing", &Some("flat".to_string())),
+            Some(Facing::Flat)
+        );
     }
 
     /// An absent field and an unrecognized one both read as "unspecified", so
     /// the caller keeps whatever facing the material already had.
     #[test]
     fn parse_facing_falls_back_on_unknown_values() {
-        assert_eq!(parse_facing(&None), None);
-        assert_eq!(parse_facing(&Some("Flat".to_string())), None);
+        assert_eq!(parse_facing("textFacing", &None), None);
+        assert_eq!(parse_facing("textFacing", &Some("Flat".to_string())), None);
     }
 
     #[test]
