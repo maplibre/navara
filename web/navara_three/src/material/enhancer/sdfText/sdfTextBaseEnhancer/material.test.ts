@@ -1,4 +1,4 @@
-import { ShaderMaterial } from "three";
+import { DoubleSide, FrontSide, ShaderMaterial } from "three";
 import { describe, expect, it } from "vitest";
 
 import { updateMaterialProps } from "./material";
@@ -30,6 +30,20 @@ describe("sdfTextBaseEnhancer/material", () => {
 
       updateMaterialProps(material, { transparent: true });
       expect(material.transparent).toBe(true);
+    });
+
+    it("maps backfaceCulling to the material side", () => {
+      const material = new ShaderMaterial();
+
+      updateMaterialProps(material, { backfaceCulling: true });
+      expect(material.side).toBe(FrontSide);
+
+      updateMaterialProps(material, { backfaceCulling: false });
+      expect(material.side).toBe(DoubleSide);
+
+      // Absent leaves it alone.
+      updateMaterialProps(material, {});
+      expect(material.side).toBe(DoubleSide);
     });
   });
 });

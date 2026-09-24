@@ -1,4 +1,4 @@
-import { ShaderMaterial } from "three";
+import { DoubleSide, FrontSide, ShaderMaterial } from "three";
 import type { Texture } from "three";
 import { beforeEach, describe, expect, it } from "vitest";
 
@@ -126,6 +126,15 @@ describe("instancedSpriteBaseEnhancer", () => {
 
       expect(material.transparent).toBe(false);
       expect(material.depthTest).toBe(false);
+    });
+
+    it("draws both sides unless backfaceCulling is on", () => {
+      const material = new ShaderMaterial();
+      const e = createInstancedSpriteBaseEnhancer(material);
+      e.mount({});
+      expect(material.side).toBe(DoubleSide);
+      e.update({ backfaceCulling: true });
+      expect(material.side).toBe(FrontSide);
     });
 
     it("should update material properties on update", () => {

@@ -55,9 +55,9 @@ export type SdfTextBaseProps = {
 
   // Mutable state
   center?: [number, number];
-  /** `false` (the default) stands the quad up; `true` lays it in the
-   *  ellipsoid's tangent plane at the anchor, so labels read as painted on
-   *  the globe surface. */
+  /** `false` (the default) stands the quad up; `true` lays it on the globe
+   *  surface around the anchor, wrapped to its curvature, so labels read as
+   *  painted on the globe. */
   flatFacing?: boolean;
   /** Whether the quad turns to follow the camera. `true` (the default) keeps
    *  it facing the viewer — a screen-aligned billboard, or for `flatFacing` a
@@ -87,6 +87,9 @@ export type SdfTextBaseProps = {
   // Material properties (set directly on material, not via uniforms)
   depthTest?: boolean;
   transparent?: boolean;
+  /** Cull faces seen from behind (`FrontSide`); `false` (the default) draws
+   *  both sides (`DoubleSide`). */
+  backfaceCulling?: boolean;
 
   // External uniform refs / values (may change over time)
   rtcCenter?: [number, number, number];
@@ -123,6 +126,7 @@ export type SdfTextBaseState = Readonly<{
   // Material properties
   depthTest: boolean;
   transparent: boolean;
+  backfaceCulling: boolean;
 }>;
 
 /**

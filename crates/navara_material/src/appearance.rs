@@ -72,9 +72,9 @@ pub enum Facing {
     /// planted on the surface at a fixed bearing.
     #[default]
     Upright,
-    /// The quad lies in the ellipsoid's tangent plane at the label's anchor,
-    /// so the label reads as painted onto the globe surface and foreshortens
-    /// with camera pitch.
+    /// The quad lies on the globe surface around the label's anchor,
+    /// following its curvature, so the label reads as painted onto the globe
+    /// and foreshortens with camera pitch.
     Flat,
 }
 
@@ -168,6 +168,10 @@ pub struct PointMaterial {
     pub size_in_meters: bool,
     pub clamp_to_ground: bool,
     pub depth_test: bool,
+    /// Cull faces seen from behind. Off by default, since a quad frozen in
+    /// its anchor's frame (`rotate_with_camera: false`) can be viewed from
+    /// behind; a flat quad wrapped over the limb faces away past the horizon.
+    pub backface_culling: bool,
     pub offset_depth: bool,
     // Allow transparency and anti-aliasing.
     pub transparent: bool,
@@ -203,6 +207,7 @@ impl Default for PointMaterial {
             height: 1.,
             size_in_meters: true,
             depth_test: true,
+            backface_culling: false,
             offset_depth: true,
             transparent: true,
             opacity: 1.0,
@@ -246,6 +251,10 @@ pub struct BillboardMaterial {
     pub size_in_meters: bool,
     pub clamp_to_ground: bool,
     pub depth_test: bool,
+    /// Cull faces seen from behind. Off by default, since a quad frozen in
+    /// its anchor's frame (`rotate_with_camera: false`) can be viewed from
+    /// behind; a flat quad wrapped over the limb faces away past the horizon.
+    pub backface_culling: bool,
     pub offset_depth: bool,
     // Allow transparency and anti-aliasing.
     pub transparent: bool,
@@ -283,6 +292,7 @@ impl Default for BillboardMaterial {
             url: "".to_string(),
             size_in_meters: true,
             depth_test: true,
+            backface_culling: false,
             offset_depth: true,
             transparent: false,
             opacity: 1.0,
@@ -338,6 +348,10 @@ pub struct TextMaterial {
     pub size_in_meters: bool,
     pub clamp_to_ground: bool,
     pub depth_test: bool,
+    /// Cull faces seen from behind. Off by default, since a quad frozen in
+    /// its anchor's frame (`rotate_with_camera: false`) can be viewed from
+    /// behind; a flat quad wrapped over the limb faces away past the horizon.
+    pub backface_culling: bool,
     pub offset_depth: bool,
     pub text: String,
     pub font: String,
@@ -408,6 +422,7 @@ impl Default for TextMaterial {
             height: 1.,
             size_in_meters: true,
             depth_test: true,
+            backface_culling: false,
             offset_depth: true,
             text: "".to_string(),
             font: "".to_string(),

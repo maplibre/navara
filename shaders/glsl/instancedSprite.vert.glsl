@@ -156,7 +156,14 @@ void main() {
     );
 
     vec2 localPos = (position.xy - center) * vec2(aspect, 1.0) * clampedScale;
-    mvPosition.xyz += localPos.x * axisRight + localPos.y * axisUp;
+    mvPosition.xyz += nvr_quadOffset(
+        localPos,
+        axisRight,
+        axisUp,
+        nvr_batchFlatFacing,
+        absTransformed,
+        addHeight
+    );
 
     gl_Position = projectionMatrix * mvPosition;
     vFragDepth = gl_Position.w + 1.0;

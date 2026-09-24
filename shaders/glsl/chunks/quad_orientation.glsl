@@ -11,8 +11,9 @@
  * pair derived from the anchor's local east-north-up frame. Shared by
  * sdfText.vert.glsl and instancedSprite.vert.glsl so the two cannot drift.
  *
- * `flatFacing`  false = the quad stands up, true = it lies in the ellipsoid's
- *               tangent plane at the anchor.
+ * `flatFacing`  false = the quad stands up, true = its basis spans the
+ *               tangent plane at the anchor (nvr_quadOffset then wraps the
+ *               offsets onto the globe).
  * `rotateWithCamera` true = the quad turns to follow the camera, false = it is
  *               frozen in the anchor's east-north-up frame.
  *
@@ -91,6 +92,55 @@ void nvr_quadBasis(
     vec3 rotatedRight = c * right - s * up;
     up = s * right + c * up;
     right = rotatedRight;
+}
+
+/**
+ * View-space offset of a quad vertex at `local` (already scaled to meters)
+ * from its anchor, laid out in the `(right, up)` basis above.
+ *
+ * An upright quad is a plain planar offset. A flat one is instead wrapped onto
+ * the sphere through the anchor: the tangent-plane offset is walked the same
+ * distance along the great circle it points down, so the quad follows the
+ * globe's curvature. A planar quad only touches the surface at its anchor and
+ * rises off it quadratically with distance, which is invisible for a
+ * street-scale label but lifts a pixel-sized label at globe scale thousands
+ * of kilometres wide clean off the surface, past the limb.
+ *
+ * Each vertex is bent, not each fragment, so a quad stays a flat chord between
+ * its bent corners. That is why a text background is drawn as glyph-wide
+ * strips (backgroundSliceCount in glyphBuffers.ts), and why a sprite switches
+ * to a subdivided grid while any of its features can be flat
+ * (FLAT_QUAD_SEGMENTS in instancedSprite.ts): as one quad, either would stay
+ * a flat plane while the surface under it curves. A glyph-, strip- or
+ * cell-wide chord's dip below the arc is tiny next to the offset it corrects,
+ * and `offsetDepth` keeps it from sinking into the globe.
+ *
+ * `worldPos` is the anchor in ECEF meters and `addHeight` its height offset,
+ * so the sphere is concentric with the one `mvr_getMvHeightOffset` lifts the
+ * anchor along.
+ */
+vec3 nvr_quadOffset(
+    vec2 local,
+    vec3 right,
+    vec3 up,
+    bool flatFacing,
+    vec3 worldPos,
+    float addHeight
+) {
+    vec3 offset = local.x * right + local.y * up;
+    float dist = length(offset);
+    float radius = length(worldPos) + addHeight;
+    if (!flatFacing || dist < 1e-6 || radius < 1.0) {
+        return offset;
+    }
+    vec3 n = (viewMatrix * vec4(normalize(worldPos), 0.0)).xyz;
+    // Exponential map on the sphere: arc length `dist` along the offset's
+    // direction. cos(theta) - 1 is written as -2 sin^2(theta / 2) so small
+    // angles do not cancel to zero in float32.
+    float theta = dist / radius;
+    float halfSin = sin(0.5 * theta);
+    return offset * (radius * sin(theta) / dist)
+        - n * (2.0 * radius * halfSin * halfSin);
 }
 
 #endif // QUAD_ORIENTATION_GLSL

@@ -9,6 +9,27 @@ sidebar:
 
 ## Properties
 
+### backfaceCulling
+
+**Type:** `boolean | undefined`
+
+**Description:** Whether the label is hidden when seen from behind. When `false`, both sides of the label are drawn. When `true`, only its front is drawn.
+
+It has no effect on an upright label that follows the camera (the default), which always shows its front. It matters in two cases. With [`rotateWithCamera`](#rotatewithcamera) set to `false`, the label can be seen from behind, where it appears mirrored, and turning this on hides it instead. With [`textFacing`](#textfacing) set to `"flat"`, its front faces away from the globe, so turning this on also hides the parts of a large label that wrap over the horizon.
+
+**Default:** `false`
+
+**Example:**
+
+```typescript
+{
+  text: {
+    textFacing: "flat",
+    backfaceCulling: true
+  }
+}
+```
+
 ### backgroundColor
 
 **Type:** `Color | undefined`
@@ -459,15 +480,40 @@ import { Color } from "@navaramap/three";
 }
 ```
 
+### rotateWithCamera
+
+**Type:** `boolean | undefined`
+
+**Description:** Whether the label turns to follow the camera.
+
+When `true`, the label always faces the viewer. With [`textFacing`](#textfacing) set to `"upright"`, it is a screen-aligned billboard. With `"flat"`, the label turns around the globe's surface normal so the text still reads left to right.
+
+When `false`, the label is fixed in its anchor's local east/north/up frame, and moving the camera never reorients it. With `"upright"`, it becomes a signboard standing on the surface and facing south. It is readable from a camera looking northward, seen edge-on from directly above, and mirrored from behind. With `"flat"`, it is a north-up label painted on the surface that turns with the map.
+
+Can also be set per feature from a [feature evaluator](../../api/feature-evaluator/).
+
+**Default:** `true`
+
+**Example:**
+
+```typescript
+{
+  text: {
+    textFacing: "flat",
+    rotateWithCamera: false // North-up, painted on the surface
+  }
+}
+```
+
 ### rotation
 
 **Type:** `number | undefined`
 
-**Description:** Rotates the label within its own plane, about its anchor point, in degrees, clockwise as seen from the front. It is applied on top of whatever orientation [`textFacing`](#textfacing) and [`rotateWithCamera`](#rotatewithcamera) resolve to, so it spins a billboard on screen and turns a surface label like a compass bearing.
+**Description:** Rotates the label within its own plane around its anchor point, in degrees, clockwise as seen from the front. The rotation is applied on top of the orientation that [`textFacing`](#textfacing) and [`rotateWithCamera`](#rotatewithcamera) resolve to. It spins a billboard on screen and turns a surface label like a compass bearing.
 
-[`center`](#center) decides where inside the text the pivot sits: `{ x: 0.5, y: 0.5 }` turns the label about its middle, `{ x: 0.5, y: 0.0 }` about the bottom of the text block.
+[`center`](#center) decides where inside the text the pivot sits. For example, `{ x: 0.5, y: 0.5 }` turns the label around its middle, and `{ x: 0.5, y: 0.0 }` turns it around the bottom of the text block.
 
-This is a material-wide value: every label in the layer shares it.
+Can also be set per feature from a [feature evaluator](../../api/feature-evaluator/), so every label in a layer can point a different way.
 
 **Default:** `0.0`
 
@@ -479,30 +525,7 @@ This is a material-wide value: every label in the layer shares it.
     textFacing: "flat",
     rotateWithCamera: false,
     rotation: 45, // Turned 45° clockwise on the surface
-    center: { x: 0.5, y: 0.5 } // Pivot about the middle of the text
-  }
-}
-```
-
-### rotateWithCamera
-
-**Type:** `boolean | undefined`
-
-**Description:** Whether the label turns to follow the camera.
-
-When `true`, the label always faces the viewer: with [`textFacing`](#textfacing) `"upright"` that is a screen-aligned billboard, and with `"flat"` the label yaws around the globe's surface normal so the text still reads left to right.
-
-When `false`, the label is frozen in its anchor's local east/north/up frame and moving the camera never reorients it. With `"upright"` it becomes a signboard standing on the surface, facing south — readable from a camera looking northward, edge-on from directly above, and mirrored from behind. With `"flat"` it is a north-up label painted on the surface, turning with the map.
-
-**Default:** `true`
-
-**Example:**
-
-```typescript
-{
-  text: {
-    textFacing: "flat",
-    rotateWithCamera: false // North-up, painted on the surface
+    center: { x: 0.5, y: 0.5 } // Pivot around the middle of the text
   }
 }
 ```
@@ -619,7 +642,7 @@ When `false`, the label is frozen in its anchor's local east/north/up frame and 
 
 **Type:** `"upright" | "flat" | undefined`
 
-**Description:** Whether the label stands up or lies on the globe surface. `"upright"` keeps the label standing; `"flat"` lays it in the globe's tangent plane at the label's anchor, so it reads as painted onto the surface and foreshortens with camera pitch.
+**Description:** Whether the label stands up or lies on the globe surface. `"upright"` keeps the label standing. `"flat"` lays the label on the globe surface around its anchor, following the globe's curvature so that long text stays on the surface instead of lifting off at its ends. A flat label reads as painted onto the surface and foreshortens with camera pitch.
 
 Combine with [`rotateWithCamera`](#rotatewithcamera) for four behaviours:
 
@@ -629,6 +652,8 @@ Combine with [`rotateWithCamera`](#rotatewithcamera) for four behaviours:
 | `"upright"` | `false` | Signboard standing on the surface at a fixed bearing |
 | `"flat"` | `true` | Painted on the surface, turned so it always reads left to right |
 | `"flat"` | `false` | Painted on the surface, north-up, turning with the map |
+
+Can also be set per feature from a [feature evaluator](../../api/feature-evaluator/) as `facing`.
 
 **Default:** `"upright"`
 

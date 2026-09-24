@@ -56,8 +56,8 @@ pub struct PointMaterial {
     /// size in pixels/meters (units are determined by `sizeInMeters`).
     pub size: Option<f32>,
     pub color: Option<u32>,
-    /// Whether the point stands up (`"upright"`, the default) or lies in the
-    /// globe's tangent plane at its anchor (`"flat"`). Pair with
+    /// Whether the point stands up (`"upright"`, the default) or lies on the
+    /// globe surface around its anchor (`"flat"`). Pair with
     /// `rotateWithCamera`.
     #[wasm_bindgen(getter_with_clone, js_name = pointFacing)]
     #[serde(rename = "pointFacing")]
@@ -86,6 +86,13 @@ pub struct PointMaterial {
     #[wasm_bindgen(js_name = depthTest)]
     #[serde(rename = "depthTest")]
     pub depth_test: Option<bool>,
+    /// Whether faces seen from behind are culled. Default is false, so a
+    /// quad frozen in its anchor's frame (`rotateWithCamera: false`) stays
+    /// visible from behind. Turn it on to hide a flat quad's parts that wrap
+    /// over the horizon, which face away from the camera.
+    #[wasm_bindgen(js_name = backfaceCulling)]
+    #[serde(rename = "backfaceCulling")]
+    pub backface_culling: Option<bool>,
     /// Avoid overlapping with the globe surface.
     #[wasm_bindgen(js_name = offsetDepth)]
     #[serde(rename = "offsetDepth")]
@@ -138,6 +145,7 @@ impl From<PointMaterial> for navara_material::PointMaterial {
             size_in_meters: val.size_in_meters.unwrap_or(default.size_in_meters),
             clamp_to_ground: val.clamp_to_ground.unwrap_or(default.clamp_to_ground),
             depth_test: val.depth_test.unwrap_or(default.depth_test),
+            backface_culling: val.backface_culling.unwrap_or(default.backface_culling),
             offset_depth: val.offset_depth.unwrap_or(default.offset_depth),
             transparent: val.transparent.unwrap_or(default.transparent),
             opacity: val.opacity.unwrap_or(default.opacity),
@@ -165,6 +173,7 @@ impl<'a> From<&'a navara_material::PointMaterial> for PointMaterial {
             size_in_meters: Some(value.size_in_meters),
             clamp_to_ground: Some(value.clamp_to_ground),
             depth_test: Some(value.depth_test),
+            backface_culling: Some(value.backface_culling),
             offset_depth: Some(value.offset_depth),
             transparent: Some(value.transparent),
             opacity: Some(value.opacity),
@@ -193,6 +202,7 @@ impl PointMaterial {
             size_in_meters: self.size_in_meters.unwrap_or(other.size_in_meters),
             clamp_to_ground: self.clamp_to_ground.unwrap_or(other.clamp_to_ground),
             depth_test: self.depth_test.unwrap_or(other.depth_test),
+            backface_culling: self.backface_culling.unwrap_or(other.backface_culling),
             offset_depth: self.offset_depth.unwrap_or(other.offset_depth),
             transparent: self.transparent.unwrap_or(other.transparent),
             opacity: self.opacity.unwrap_or(other.opacity),
@@ -221,8 +231,8 @@ pub struct BillboardMaterial {
     /// size in pixels/meters (units are determined by `sizeInMeters`).
     pub size: Option<f32>,
     pub color: Option<u32>,
-    /// Whether the sprite stands up (`"upright"`, the default) or lies in the
-    /// globe's tangent plane at its anchor (`"flat"`). Pair with
+    /// Whether the sprite stands up (`"upright"`, the default) or lies on the
+    /// globe surface around its anchor (`"flat"`). Pair with
     /// `rotateWithCamera`.
     #[wasm_bindgen(getter_with_clone, js_name = billboardFacing)]
     #[serde(rename = "billboardFacing")]
@@ -253,6 +263,13 @@ pub struct BillboardMaterial {
     #[wasm_bindgen(js_name = depthTest)]
     #[serde(rename = "depthTest")]
     pub depth_test: Option<bool>,
+    /// Whether faces seen from behind are culled. Default is false, so a
+    /// quad frozen in its anchor's frame (`rotateWithCamera: false`) stays
+    /// visible from behind. Turn it on to hide a flat quad's parts that wrap
+    /// over the horizon, which face away from the camera.
+    #[wasm_bindgen(js_name = backfaceCulling)]
+    #[serde(rename = "backfaceCulling")]
+    pub backface_culling: Option<bool>,
     /// Avoid overlapping with the globe surface.
     #[wasm_bindgen(js_name = offsetDepth)]
     #[serde(rename = "offsetDepth")]
@@ -309,6 +326,7 @@ impl From<BillboardMaterial> for navara_material::BillboardMaterial {
             size_in_meters: val.size_in_meters.unwrap_or(default.size_in_meters),
             clamp_to_ground: val.clamp_to_ground.unwrap_or(default.clamp_to_ground),
             depth_test: val.depth_test.unwrap_or(default.depth_test),
+            backface_culling: val.backface_culling.unwrap_or(default.backface_culling),
             offset_depth: val.offset_depth.unwrap_or(default.offset_depth),
             transparent: val.transparent.unwrap_or(default.transparent),
             opacity: val.opacity.unwrap_or(default.opacity),
@@ -338,6 +356,7 @@ impl<'a> From<&'a navara_material::BillboardMaterial> for BillboardMaterial {
             size_in_meters: Some(value.size_in_meters),
             clamp_to_ground: Some(value.clamp_to_ground),
             depth_test: Some(value.depth_test),
+            backface_culling: Some(value.backface_culling),
             offset_depth: Some(value.offset_depth),
             transparent: Some(value.transparent),
             opacity: Some(value.opacity),
@@ -371,6 +390,7 @@ impl BillboardMaterial {
             size_in_meters: self.size_in_meters.unwrap_or(other.size_in_meters),
             clamp_to_ground: self.clamp_to_ground.unwrap_or(other.clamp_to_ground),
             depth_test: self.depth_test.unwrap_or(other.depth_test),
+            backface_culling: self.backface_culling.unwrap_or(other.backface_culling),
             offset_depth: self.offset_depth.unwrap_or(other.offset_depth),
             transparent: self.transparent.unwrap_or(other.transparent),
             opacity: self.opacity.unwrap_or(other.opacity),
@@ -394,9 +414,9 @@ pub struct TextMaterial {
     pub size: Option<f32>,
     pub color: Option<u32>,
     pub center: Option<Vec2>,
-    /// Whether the label stands up (`"upright"`, the default) or lies in the
-    /// globe's tangent plane at the anchor (`"flat"`), reading as painted on
-    /// the surface. Pair with `rotateWithCamera`.
+    /// Whether the label stands up (`"upright"`, the default) or lies on the
+    /// globe surface around its anchor (`"flat"`), following its curvature so
+    /// it reads as painted on the surface. Pair with `rotateWithCamera`.
     #[wasm_bindgen(getter_with_clone, js_name = textFacing)]
     #[serde(rename = "textFacing")]
     pub text_facing: Option<String>,
@@ -426,6 +446,13 @@ pub struct TextMaterial {
     #[wasm_bindgen(js_name = depthTest)]
     #[serde(rename = "depthTest")]
     pub depth_test: Option<bool>,
+    /// Whether faces seen from behind are culled. Default is false, so a
+    /// quad frozen in its anchor's frame (`rotateWithCamera: false`) stays
+    /// visible from behind. Turn it on to hide a flat quad's parts that wrap
+    /// over the horizon, which face away from the camera.
+    #[wasm_bindgen(js_name = backfaceCulling)]
+    #[serde(rename = "backfaceCulling")]
+    pub backface_culling: Option<bool>,
     /// Avoid overlapping with the globe surface.
     #[wasm_bindgen(js_name = offsetDepth)]
     #[serde(rename = "offsetDepth")]
@@ -562,6 +589,7 @@ impl From<TextMaterial> for navara_material::TextMaterial {
             size_in_meters: val.size_in_meters.unwrap_or(default.size_in_meters),
             clamp_to_ground: val.clamp_to_ground.unwrap_or(default.clamp_to_ground),
             depth_test: val.depth_test.unwrap_or(default.depth_test),
+            backface_culling: val.backface_culling.unwrap_or(default.backface_culling),
             offset_depth: val.offset_depth.unwrap_or(default.offset_depth),
             text: val.text.unwrap_or(default.text),
             font: val.font.unwrap_or(default.font),
@@ -612,6 +640,7 @@ impl<'a> From<&'a navara_material::TextMaterial> for TextMaterial {
             size_in_meters: Some(value.size_in_meters),
             clamp_to_ground: Some(value.clamp_to_ground),
             depth_test: Some(value.depth_test),
+            backface_culling: Some(value.backface_culling),
             offset_depth: Some(value.offset_depth),
             text: Some(value.text.clone()),
             font: Some(value.font.clone()),
@@ -659,6 +688,7 @@ impl TextMaterial {
             size_in_meters: self.size_in_meters.unwrap_or(other.size_in_meters),
             clamp_to_ground: self.clamp_to_ground.unwrap_or(other.clamp_to_ground),
             depth_test: self.depth_test.unwrap_or(other.depth_test),
+            backface_culling: self.backface_culling.unwrap_or(other.backface_culling),
             offset_depth: self.offset_depth.unwrap_or(other.offset_depth),
             text: self.text.clone().unwrap_or(other.text.clone()),
             font: self.font.clone().unwrap_or(other.font.clone()),

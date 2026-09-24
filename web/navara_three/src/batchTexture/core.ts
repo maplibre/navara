@@ -4,7 +4,6 @@ import {
   FloatType,
   Material,
   RGBAFormat,
-  type ShaderMaterial,
   type WebGLRenderer,
 } from "three";
 import invariant from "tiny-invariant";
@@ -19,6 +18,7 @@ import {
   type BatchTextureState,
 } from "./material";
 import type {
+  BatchAttributeDefaults,
   BatchScalarKey,
   BatchScalarSlotKey,
   BatchSlot,
@@ -339,26 +339,18 @@ function ensureShowOpacitySlot(
 }
 
 /**
- * Current value of a material uniform, for backfilling a slot with the
- * material-level default.
- */
-function materialUniform<T>(material: Material, name: string, fallback: T): T {
-  const value = (material as Partial<ShaderMaterial>).uniforms?.[name]?.value;
-  return (value as T | undefined) ?? fallback;
-}
-
-/**
  * Slot of the per-feature rotation, and of the packed orientation pair.
  *
- * Both backfill with the **material's** current value rather than a fixed
- * constant, because `USE_BATCH_*` is a material-wide define: the moment one
- * feature gets its own value every feature starts reading the slot, so
- * features nobody has styled must already hold what the uniform was giving
- * them. Same reasoning as {@link ensureShowOpacitySlot}.
+ * Both backfill with the **material's** current value (passed in by the mesh
+ * as {@link BatchAttributeDefaults}) rather than a fixed constant, because
+ * `USE_BATCH_*` is a material-wide define: the moment one feature gets its own
+ * value every feature starts reading the slot, so features nobody has styled
+ * must already hold what the uniform was giving them. Same reasoning as
+ * {@link ensureShowOpacitySlot}.
  */
 function ensureRotationSlot(
   state: BatchTextureState,
-  material: Material,
+  defaults: Partial<BatchAttributeDefaults> | undefined,
 ): BatchSlot | undefined {
   if (!state.supported.has("rotation")) return undefined;
   return (
@@ -366,14 +358,14 @@ function ensureRotationSlot(
     allocateScalarSlot(
       state,
       "rotation",
-      materialUniform(material, "uRotation", 0),
+      defaults?.rotation ?? scalarDefault("rotation"),
     )
   );
 }
 
 function ensureOrientationSlot(
   state: BatchTextureState,
-  material: Material,
+  defaults: Partial<BatchAttributeDefaults> | undefined,
 ): BatchSlot | undefined {
   if (!state.supported.has("orientation")) return undefined;
   return (
@@ -382,8 +374,8 @@ function ensureOrientationSlot(
       state,
       "orientation",
       packOrientation(
-        materialUniform(material, "uFlatFacing", false),
-        materialUniform(material, "uRotateWithCamera", true),
+        defaults?.flatFacing ?? false,
+        defaults?.rotateWithCamera ?? true,
       ),
     )
   );
@@ -482,12 +474,17 @@ function textureData(state: BatchTextureState): {
  * Returns whether the write actually landed — callers must not stamp any
  * batch define or enhancer flag for a rejected write (wrong value type,
  * unsupported attribute, or no texture yet).
+ *
+ * `defaults` carries the material-level values of uniform-backed attributes;
+ * it is only read when this write is the one that allocates the slot (see
+ * {@link BatchAttributeDefaults}).
  */
 export function updateBatchAttribute(
   material: Material,
   batchId: number,
   attribute: BatchedAttributeName,
   value: number | number[] | boolean,
+  defaults?: Partial<BatchAttributeDefaults>,
 ): boolean {
   const state = getBatchTextureState(material);
   // Without a known batchLength the texture cannot exist yet; nothing to write.
@@ -604,7 +601,7 @@ export function updateBatchAttribute(
     case "flatFacing":
     case "rotateWithCamera": {
       if (typeof value !== "boolean") return false;
-      const slot = ensureOrientationSlot(state, material);
+      const slot = ensureOrientationSlot(state, defaults);
       if (!slot) return false;
       enableDefine(material, "USE_BATCH_ORIENTATION");
 
@@ -626,7 +623,7 @@ export function updateBatchAttribute(
     }
     case "rotation": {
       if (typeof value !== "number") return false;
-      const slot = ensureRotationSlot(state, material);
+      const slot = ensureRotationSlot(state, defaults);
       if (!slot) return false;
       enableDefine(material, "USE_BATCH_ROTATION");
 

@@ -14,8 +14,8 @@ export type InstancedSpriteBaseProps = {
   // Mutable state
   scale?: number;
   center?: [number, number];
-  /** `false` (the default) stands the quad up; `true` lays it in the
-   *  ellipsoid's tangent plane at the anchor. Material-level default;
+  /** `false` (the default) stands the quad up; `true` lays it on the globe
+   *  surface around the anchor, wrapped to its curvature. Material-level default;
    *  per-feature overrides come from the batch data texture. */
   flatFacing?: boolean;
   /** Whether the quad turns to follow the camera. Material-level default. */
@@ -42,6 +42,9 @@ export type InstancedSpriteBaseProps = {
   // Material properties (set directly on material, not via uniforms)
   transparent?: boolean;
   depthTest?: boolean;
+  /** Cull faces seen from behind (`FrontSide`); `false` (the default) draws
+   *  both sides (`DoubleSide`). */
+  backfaceCulling?: boolean;
 
   // External uniform refs / values (may change over time)
   rtcCenter?: [number, number, number];
@@ -83,6 +86,7 @@ export type InstancedSpriteBaseState = Readonly<{
   // Material properties
   transparent: boolean;
   depthTest: boolean;
+  backfaceCulling: boolean;
 
   // External ref state
   atlasSize: [number, number];

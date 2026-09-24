@@ -27,6 +27,27 @@ sidebar:
 }
 ```
 
+### backfaceCulling
+
+**Type:** `boolean | undefined`
+
+**Description:** Whether the billboard is hidden when seen from behind. When `false`, both sides of the billboard are drawn. When `true`, only its front is drawn.
+
+It has no effect on an upright billboard that follows the camera (the default), which always shows its front. It matters in two cases. With [`rotateWithCamera`](#rotatewithcamera) set to `false`, the billboard can be seen from behind, where it appears mirrored, and turning this on hides it instead. With [`billboardFacing`](#billboardfacing) set to `"flat"`, its front faces away from the globe, so turning this on also hides the parts of a large billboard that wrap over the horizon.
+
+**Default:** `false`
+
+**Example:**
+
+```typescript
+{
+  billboard: {
+    billboardFacing: "flat",
+    backfaceCulling: true
+  }
+}
+```
+
 ### center
 
 **Type:** [`Vec2`](../../api/types/#vec2)
@@ -289,7 +310,7 @@ import { Color } from "@navaramap/three";
 
 **Type:** `"upright" | "flat" | undefined`
 
-**Description:** Whether the billboard stands up or lies on the globe surface. `"upright"` keeps it standing; `"flat"` lays it in the globe's tangent plane at its anchor, so it reads as painted onto the surface and foreshortens with camera pitch.
+**Description:** Whether the billboard stands up or lies on the globe surface. `"upright"` keeps it standing. `"flat"` lays it on the globe surface around its anchor, following the globe's curvature, so it reads as painted onto the surface and foreshortens with camera pitch.
 
 Combine with [`rotateWithCamera`](#rotatewithcamera) for four behaviours:
 
@@ -318,7 +339,7 @@ Can also be set per feature from a [feature evaluator](../../api/feature-evaluat
 
 **Type:** `boolean | undefined`
 
-**Description:** Whether the billboard turns to follow the camera. When `true` it always faces the viewer. When `false` it is frozen in its anchor's local east/north/up frame and moving the camera never reorients it — with `"upright"` it stands on the surface facing south, edge-on from directly above and mirrored from behind.
+**Description:** Whether the billboard turns to follow the camera. When `true`, it always faces the viewer. When `false`, it is fixed in its anchor's local east/north/up frame, and moving the camera never reorients it. With `"upright"`, it stands on the surface facing south, so it is seen edge-on from directly above and mirrored from behind.
 
 Can also be set per feature from a [feature evaluator](../../api/feature-evaluator/).
 
@@ -339,9 +360,11 @@ Can also be set per feature from a [feature evaluator](../../api/feature-evaluat
 
 **Type:** `number | undefined`
 
-**Description:** Rotates the billboard within its own plane, about its anchor point, in degrees, clockwise as seen from the front. Applied on top of whatever orientation `billboardFacing` and `rotateWithCamera` resolve to.
+**Description:** Rotates the billboard within its own plane around its anchor point, in degrees, clockwise as seen from the front. The rotation is applied on top of the orientation that [`billboardFacing`](#billboardfacing) and [`rotateWithCamera`](#rotatewithcamera) resolve to.
 
-[`center`](#center) decides where inside the quad the pivot sits. Can also be set per feature from a [feature evaluator](../../api/feature-evaluator/), so every billboard in a layer can point a different way.
+[`center`](#center) decides where inside the billboard the pivot sits.
+
+Can also be set per feature from a [feature evaluator](../../api/feature-evaluator/), so every billboard in a layer can point a different way.
 
 **Default:** `0.0`
 

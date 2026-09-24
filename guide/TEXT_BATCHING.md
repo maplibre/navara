@@ -143,24 +143,34 @@ One float per instance encodes four roles (`GlyphKind` in
 | --- | --- |
 | `0` SDF | sample the single/multi-channel SDF atlas |
 | `1` COLOR | sample the COLRv1 RGBA atlas — lets one batch mix text and emoji |
-| `2` BACKGROUND | this label's background quad |
+| `2` BACKGROUND | one strip of this label's background (see below) |
 | `3` EMPTY | unused tail of an over-allocated run, or a hole from a freed run |
 
 `EMPTY` is culled on the first line of `main()`, before any texture read. New
 buffer capacity is explicitly filled with `EMPTY`: a zero-filled array would
 read as `SDF` and draw garbage quads.
 
-`BACKGROUND` always occupies `run.start`, so a label's background is submitted
-before its own glyphs. The fragment shader's outline-seam fix depends on that
-ordering. Whether it actually draws is a batch-wide `uShowBackground` test in
-the shader, so toggling backgrounds costs no buffer writes.
+`BACKGROUND` always occupies the first slots of the run, so a label's
+background is submitted before its own glyphs. The fragment shader's
+outline-seam fix depends on that ordering. Whether it actually draws is a
+batch-wide `uShowBackground` test in the shader, so toggling backgrounds costs
+no buffer writes.
+
+The background is `backgroundSliceCount(glyphs)` strips rather than one quad,
+so a flat label's box can bend with the globe (see
+[Quad orientation](#quad-orientation)). Each strip stores its span of the box
+as `[0, 1]` fractions, the start in `glyphOffset.x` and the **end** (not a
+width) in `glyphSize.x`, so neighbouring strips share bit-identical edges. The
+vertex shader remaps `vAtlasUv.x` to that span, and since the fragment shader
+draws fill and border from the UV alone, the split is pixel-identical to a
+single quad.
 
 ## Quad orientation
 
 A glyph's vertex position is its unit quad offset from the label's anchor **in
 view space**: `mvPosition + vec4(localPos.x * right + localPos.y * up, 0.0) *
 scaleFactor`. All four orientation modes differ only in that `(right, up)`
-pair, which `nvr_labelBasis` resolves from two batch-wide booleans —
+pair, which `nvr_quadOrientation` resolves from two booleans —
 `uFlatFacing` picks the plane, `uRotateWithCamera` picks whether the quad
 follows the camera or is frozen in the anchor's east-north-up frame:
 
@@ -200,8 +210,10 @@ One subtlety this forced: `USE_BATCH_*` is a **material-wide** define, so the
 moment one feature is given its own rotation, every feature starts reading the
 slot. Features nobody styled must therefore already hold what the uniform was
 giving them, which is why `ensureRotationSlot` / `ensureOrientationSlot`
-backfill from the material's current uniform value instead of a fixed constant
-(`ensureShowOpacitySlot` does the same with `material.visible`).
+backfill from the material's current value instead of a fixed constant. The
+mesh supplies those values as a typed `BatchAttributeDefaults` argument to
+`updateBatchAttribute` (`ensureShowOpacitySlot` does the same with
+`material.visible`).
 
 `nvr_quadBasis` then spins that basis by the rotation (converted from the material's
 degrees to radians CPU-side) **inside the quad's own plane**, turning both axes together. Because it composes with the resolved
@@ -217,6 +229,29 @@ has shifted the text block, so `center` is what decides where inside the text
 the label turns about — `{x: 0.5, y: 0.5}` spins it about its middle,
 `{x: 0.5, y: 0.0}` about the bottom of the block.
 
+Flat labels are then **wrapped onto the globe** by `nvr_quadOffset`: each
+vertex's tangent-plane offset is walked the same distance along the great
+circle it points down (the sphere's exponential map), instead of being added
+as a straight line. A tangent plane touches the surface only at the anchor and
+rises off it as `d² / 2R`, which is nothing for a street-scale label, but a
+pixel-sized label seen at globe scale can be thousands of kilometres wide, and
+its ends would otherwise float off the surface and past the limb. The bend is
+per vertex, so every quad remains a flat chord between its bent corners. For a
+glyph that chord is short enough to ignore, but a single background quad would
+stay straight while the text above it curved, so the text rose out of its box
+in the middle. The background is therefore drawn as side-by-side strips, one
+per two glyphs and capped at 8 (`backgroundSliceCount`), each about glyph-wide
+and bending the way the glyphs do.
+
+Strips and glyphs are still chords with *different* endpoints, so they are no
+longer exactly coplanar, and glyph outlines only draw over the background
+because they share its depth (see the depth notes in `sdfText.frag.glsl`).
+Wherever a glyph dipped below its strip, the outline lost the depth test and
+the background showed through it. A flat label's strips are therefore pushed
+back along the view ray by twice their chord's sagitta (`s² / 4R`, added to
+`vFragDepth` in meters), which bounds the mismatch. The push is zero for upright
+labels and negligible at street scale.
+
 > **`rotateWithCamera` must not be implemented as a screen-space spin.** An
 > earlier revision gave the screen-plane quad an up vector of *north projected
 > onto the screen*. That inverts every label whenever the camera faces south —
@@ -226,20 +261,25 @@ the label turns about — `{x: 0.5, y: 0.5}` spins it about its middle,
 
 Two consequences worth knowing:
 
-- **The background quad shares the basis**, so it stays coplanar with its
-  glyphs in every mode.
+- **The background strips share the basis and the bend**, so the box stays
+  on the same surface as its glyphs in every mode.
 - **A world-frozen quad has a back and an edge.** `textFacing: "upright"` with
   `rotateWithCamera: false` is a real signboard: invisible edge-on from
   directly above, and mirrored when viewed from behind. That is inherent to a
   fixed-orientation quad, not a defect. Its face points south, so the default
   north-looking camera reads it.
-- **The batch material is `DoubleSide`**, as is `InstancedSpriteMesh`'s.
-  Backface culling would delete a world-locked quad outright as soon as the
-  camera crossed to its far side, which is the one case where a mirrored quad
-  is the wanted result. The camera-following modes never present a back face,
-  so they pay nothing for it, and `screenSpaceNormal()` in both fragment
-  shaders already flips an away-facing normal before it reaches the
-  G-buffer.
+- **The batch material is `DoubleSide` by default**, as is
+  `InstancedSpriteMesh`'s. The material's `backfaceCulling` option switches
+  both to `FrontSide` (the enhancer's `updateMaterialProps` owns `side`).
+  Culling would delete a world-locked quad outright as soon as the camera
+  crossed to its far side, which is the case where a mirrored quad is usually
+  the wanted result, so it stays opt-in. Opting in is useful for flat quads:
+  their front faces away from the globe, so the triangles of a large flat
+  label or sprite that wrap over the horizon face away from the camera and
+  are culled one by one, trimming it at the limb (horizon culling itself only
+  tests the anchor). An upright camera-following quad never presents a back
+  face, and `screenSpaceNormal()` in both fragment shaders already flips an
+  away-facing normal before it reaches the G-buffer.
 - **Declutter still measures a screen-aligned box.** The Rust kernel projects
   the anchor and scales the label's em box by pixels-per-meter
   (`crates/navara_wasm_api/src/declutter.rs`), which ignores the foreshortening
@@ -301,7 +341,7 @@ requires reading the instance count at the GL level, e.g. patching
 | File | Role |
 | --- | --- |
 | `shaders/glsl/sdfText.vert.glsl` | `nvr_readLabel`, the `GLYPH_KIND_*` culls, RTE/RTC transform |
-| `shaders/glsl/chunks/quad_orientation.glsl` | `nvr_quadOrientation` / `nvr_quadBasis` — the orientation basis, shared with instancedSprite |
+| `shaders/glsl/chunks/quad_orientation.glsl` | `nvr_quadOrientation` / `nvr_quadBasis` — the orientation basis; `nvr_quadOffset` — the vertex offset, wrapped onto the globe when flat. Shared with instancedSprite |
 | `shaders/glsl/sdfText.frag.glsl` | SDF/MTSDF and COLRv1 sampling, outline, background, pick encoding via `vBatchID` |
 | `web/navara_three/src/mesh/sdfText/batchedSdfText.ts` | `BatchedSdfTextMesh` — label records, the engine/evaluator API, declutter participation, atlas retain/release |
 | `web/navara_three/src/mesh/sdfText/glyphBuffers.ts` | Instance attributes, partial uploads, capacity growth, `GlyphKind` |

@@ -8,7 +8,6 @@ import { degreeToRadian } from "@navaramap/three-api";
 import {
   Color,
   type PerspectiveCamera,
-  DoubleSide,
   MathUtils,
   Object3D,
   ShaderMaterial,
@@ -21,6 +20,7 @@ import {
   registerBatchedMaterial,
   TEXT_BATCH_SUPPORT,
   updateBatchAttribute,
+  type BatchAttributeDefaults,
   type BatchedAttributeName,
   type BatchTextureSupport,
 } from "../../batchTexture";
@@ -42,7 +42,7 @@ import { GEOMETRY_TYPES } from "../constants";
 import { InstancedMesh, type InstancedMeshOptions } from "../instanced";
 import type { PickableMesh } from "../pickableMesh";
 
-import { GlyphBuffers } from "./glyphBuffers";
+import { backgroundSliceCount, GlyphBuffers } from "./glyphBuffers";
 import { GlyphSlotAllocator, type GlyphRun } from "./glyphSlots";
 import { LabelDataTexture, LabelRow } from "./labelData";
 import {
@@ -288,11 +288,6 @@ export class BatchedSdfTextMesh
       // so a neighbouring glyph's fill occludes this glyph's outline at overlaps
       // — without depth writes that outline-seam fix becomes a no-op.
       depthWrite: true,
-      // A world-locked quad (`rotateWithCamera: false`) can legitimately be
-      // viewed from behind, where backface culling would drop it entirely
-      // rather than show it mirrored. The camera-following modes are always
-      // front-facing by construction, so this costs them nothing.
-      side: DoubleSide,
     });
     this._enhancer = createSdfTextMaterialEnhancer(mat);
     this._setupMaterial(mat, material);
@@ -351,6 +346,7 @@ export class BatchedSdfTextMesh
         backgroundOutlineColor: material.borderColor ?? 0x000000,
         backgroundOutlineWidth: material.borderWidth ?? 0.1,
         depthTest: material.depthTest ?? true,
+        backfaceCulling: material.backfaceCulling ?? false,
         transparent: material.transparent ?? true,
         effectIdsMask: this._computeEffectIdsMask(material),
         emissiveColor: material.emissiveColor ?? 0,
@@ -550,13 +546,24 @@ export class BatchedSdfTextMesh
     batchIndex: number,
     attribute: BatchedAttributeName,
     value: number | number[] | boolean,
+    defaults?: Partial<BatchAttributeDefaults>,
   ): boolean {
     return updateBatchAttribute(
       this.material as ShaderMaterial,
       batchIndex,
       attribute,
       value,
+      defaults,
     );
+  }
+
+  /** The material's orientation/rotation, backfilled into a new batch slot. */
+  private _orientationDefaults(): BatchAttributeDefaults {
+    return {
+      rotation: (this._material.rotation ?? 0) * MathUtils.DEG2RAD,
+      flatFacing: this._material.textFacing === "flat",
+      rotateWithCamera: this._material.rotateWithCamera ?? true,
+    };
   }
 
   private _writeStyle(record: LabelRecord): void {
@@ -678,9 +685,10 @@ export class BatchedSdfTextMesh
       return;
     }
 
-    // One extra slot for the background quad, which always leads the run so it
-    // draws before the label's glyphs.
-    const needed = layout.quads.length + 1;
+    // Extra slots for the background strips, which always lead the run so they
+    // draw before the label's glyphs.
+    const needed =
+      layout.quads.length + backgroundSliceCount(layout.quads.length);
     const previous = record.run;
     const run = this._slots.realloc(previous, needed);
     record.run = run;
@@ -1194,6 +1202,7 @@ export class BatchedSdfTextMesh
         backgroundOutlineColor: material.borderColor ?? 0x000000,
         backgroundOutlineWidth: material.borderWidth ?? 0,
         depthTest: material.depthTest ?? true,
+        backfaceCulling: material.backfaceCulling ?? false,
         transparent: material.transparent ?? true,
         effectIdsMask: this._computeEffectIdsMask(material),
         emissiveColor: material.emissiveColor ?? 0,
@@ -1461,11 +1470,21 @@ export class BatchedSdfTextMesh
    * converted to the radians the shader wants here, matching the material path.
    */
   setFeatureFacingByBatchIndex(batchIndex: number, facing: "upright" | "flat") {
-    this._updateBatchAttribute(batchIndex, "flatFacing", facing === "flat");
+    this._updateBatchAttribute(
+      batchIndex,
+      "flatFacing",
+      facing === "flat",
+      this._orientationDefaults(),
+    );
   }
 
   setFeatureRotateWithCameraByBatchIndex(batchIndex: number, follow: boolean) {
-    this._updateBatchAttribute(batchIndex, "rotateWithCamera", follow);
+    this._updateBatchAttribute(
+      batchIndex,
+      "rotateWithCamera",
+      follow,
+      this._orientationDefaults(),
+    );
   }
 
   setFeatureRotationByBatchIndex(batchIndex: number, degrees: number) {
@@ -1473,6 +1492,7 @@ export class BatchedSdfTextMesh
       batchIndex,
       "rotation",
       degrees * MathUtils.DEG2RAD,
+      this._orientationDefaults(),
     );
   }
 

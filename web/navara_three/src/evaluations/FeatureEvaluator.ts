@@ -62,8 +62,8 @@ export type EvaluatableMaterialProperty = {
   declutterPriority: AvailableMaterialProperty["declutterPriority"];
   /** Image URL for billboards; packed into a shared per-mesh texture atlas. */
   image: string;
-  /** Whether this label/sprite stands up (`"upright"`) or lies in the globe's
-   *  tangent plane (`"flat"`). Overrides the material's
+  /** Whether this label/sprite stands up (`"upright"`) or lies on the globe
+   *  surface (`"flat"`). Overrides the material's
    *  `textFacing`/`billboardFacing`/`pointFacing` for this feature. */
   facing: "upright" | "flat";
   /** Whether this label/sprite turns to follow the camera. Overrides the

@@ -18,6 +18,23 @@ export const BATCHED_ATTRIBUTE_NAMES = [
 
 export type BatchedAttributeName = (typeof BATCHED_ATTRIBUTE_NAMES)[number];
 
+/**
+ * Material-level values the mesh passes to `updateBatchAttribute`, used to
+ * backfill a slot for every feature when that slot is first allocated.
+ *
+ * Only attributes whose material value lives in a shader uniform need one:
+ * `USE_BATCH_*` is a material-wide define, so the moment one feature gets its
+ * own value every feature starts reading the slot, and features nobody styled
+ * must already hold what the uniform was giving them. Attributes left out fall
+ * back to the fixed defaults in `core.ts`.
+ */
+export type BatchAttributeDefaults = {
+  /** Radians, clockwise seen from the front. */
+  rotation: number;
+  flatFacing: boolean;
+  rotateWithCamera: boolean;
+};
+
 /** vec3 attributes: three components of a row (component 3 stays scalar-poolable). */
 export const BATCH_VEC3_KEYS = ["color", "emissive"] as const;
 

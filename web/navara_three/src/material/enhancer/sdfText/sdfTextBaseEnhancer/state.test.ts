@@ -121,6 +121,12 @@ describe("sdfTextBaseEnhancer / state", () => {
       expect(state.depthTest).toBe(false);
     });
 
+    it("updates backfaceCulling, defaulting to off", () => {
+      expect(DEFAULT_BASE_STATE.backfaceCulling).toBe(false);
+      const state = updateState({ backfaceCulling: true }, DEFAULT_BASE_STATE);
+      expect(state.backfaceCulling).toBe(true);
+    });
+
     it("falls back to currentState for missing props", () => {
       const currentState = {
         ...DEFAULT_BASE_STATE,

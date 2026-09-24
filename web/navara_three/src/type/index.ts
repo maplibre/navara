@@ -85,9 +85,9 @@ type WithColorSupport<T> = ConvertColorFields<T>;
 export type SourceGeometryType = "point" | "line" | "polygon";
 
 /**
- * Whether a label or sprite stands up (`"upright"`, the default) or lies in
- * the globe's tangent plane at its anchor (`"flat"`), reading as painted on
- * the surface. The value of `textFacing` / `billboardFacing` / `pointFacing`.
+ * Whether a label or sprite stands up (`"upright"`, the default) or lies on
+ * the globe surface around its anchor (`"flat"`), following its curvature so
+ * it reads as painted on the surface. The value of `textFacing` / `billboardFacing` / `pointFacing`.
  * Pair with `rotateWithCamera`, which chooses whether the quad turns to
  * follow the camera or stays frozen in the anchor's east-north-up frame.
  */

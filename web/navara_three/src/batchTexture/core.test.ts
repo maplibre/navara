@@ -539,6 +539,28 @@ describe("orientation and rotation attributes", () => {
     expect(readBatchScalar(material, 1, "rotation")).toBe(0);
   });
 
+  test("a new slot backfills the material defaults the mesh passes", () => {
+    const { material } = setupBatchMaterial(4, [...SPRITE_SCALARS]);
+    const defaults = {
+      rotation: Math.PI / 4,
+      flatFacing: true,
+      rotateWithCamera: false,
+    };
+    updateBatchAttribute(material, 0, "rotation", Math.PI, defaults);
+    updateBatchAttribute(material, 0, "flatFacing", false, defaults);
+
+    // Untouched features hold the material values, not the fixed defaults.
+    expect(readBatchScalar(material, 2, "rotation")).toBeCloseTo(Math.PI / 4);
+    expect(readBatchScalar(material, 2, "orientation")).toBe(
+      packOrientation(true, false),
+    );
+    // The written feature keeps its own value, the other boolean backfilled.
+    expect(readBatchScalar(material, 0, "rotation")).toBeCloseTo(Math.PI);
+    expect(readBatchScalar(material, 0, "orientation")).toBe(
+      packOrientation(false, false),
+    );
+  });
+
   test("a mesh type that declares no support ignores the write", () => {
     // Polygon capabilities: no rotation / orientation receivers in its shaders.
     const { material } = setupBatchMaterial(4);

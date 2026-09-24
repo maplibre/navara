@@ -27,6 +27,27 @@ sidebar:
 }
 ```
 
+### backfaceCulling
+
+**Type:** `boolean | undefined`
+
+**Description:** 裏側から見たときにビルボードを非表示にするかどうかを指定します。`false` の場合はビルボードの両面を描画し、`true` の場合は表側のみを描画します。
+
+カメラに追従して立っているビルボード（デフォルト）は常に表側が見えるため、影響はありません。影響があるのは次の 2 つの場合です。[`rotateWithCamera`](#rotatewithcamera) が `false` のビルボードは裏側から見えることがあり、その場合は左右反転して表示されますが、この設定を有効にすると非表示になります。[`billboardFacing`](#billboardfacing) が `"flat"` のビルボードは地球の外側を表側としているため、この設定を有効にすると、大きなビルボードのうち地平線の向こう側に回り込んだ部分も非表示になります。
+
+**Default:** `false`
+
+**Example:**
+
+```typescript
+{
+  billboard: {
+    billboardFacing: "flat",
+    backfaceCulling: true
+  }
+}
+```
+
 ### center
 
 **Type:** [`Vec2`](../../api/types/#vec2)
@@ -289,7 +310,7 @@ import { Color } from "@navaramap/three";
 
 **Type:** `"upright" | "flat" | undefined`
 
-**Description:** ビルボードを立てて表示するか、地球表面に寝かせて表示するかを指定します。`"upright"` は立てた状態に保ちます。`"flat"` はアンカー位置における地球の接平面に配置するため、地表に描かれているように見え、カメラのピッチに応じて短縮されます。
+**Description:** ビルボードを立てて表示するか、地球表面に寝かせて表示するかを指定します。`"upright"` は立てた状態に保ちます。`"flat"` はアンカー位置の周辺で地球の曲率に沿って地表に配置するため、地表に描かれているように見え、カメラのピッチに応じて短縮されます。
 
 [`rotateWithCamera`](#rotatewithcamera) との組み合わせで、次の 4 通りの表示になります。
 
@@ -300,7 +321,7 @@ import { Color } from "@navaramap/three";
 | `"flat"` | `true` | 地表に描かれ、常に視点の方を向くように回転します |
 | `"flat"` | `false` | 地表に描かれ、北を上にして地図とともに回転します |
 
-[フィーチャーエバリュエーター](../../api/feature-evaluator/)から `facing` としてフィーチャーごとに指定することもできます。
+[`FeatureEvaluator`](../../api/feature-evaluator/) から `facing` として地物ごとに指定することもできます。
 
 **Default:** `"upright"`
 
@@ -318,9 +339,9 @@ import { Color } from "@navaramap/three";
 
 **Type:** `boolean | undefined`
 
-**Description:** ビルボードをカメラに追従して回転させるかどうかを指定します。`true` の場合は常に視点の方を向きます。`false` の場合はアンカー位置のローカルな東・北・上の座標系に固定され、カメラを動かしても向きは変わりません。`"upright"` では地表に立って南を向くため、真上からは水平に見えて消え、裏側からは鏡像になります。
+**Description:** ビルボードをカメラに追従して回転させるかどうかを指定します。`true` の場合は常に視点の方を向きます。`false` の場合はアンカー位置のローカルな東・北・上の座標系に固定され、カメラを動かしても向きは変わりません。`"upright"` では地表に立って南を向くため、真上から見ると縁しか見えずに消え、裏側からは鏡像になります。
 
-[フィーチャーエバリュエーター](../../api/feature-evaluator/)からフィーチャーごとに指定することもできます。
+[`FeatureEvaluator`](../../api/feature-evaluator/) から地物ごとに指定することもできます。
 
 **Default:** `true`
 
@@ -339,9 +360,11 @@ import { Color } from "@navaramap/three";
 
 **Type:** `number | undefined`
 
-**Description:** ビルボードを自身の平面内で、アンカー位置を中心に回転させる角度を度数で指定します。正面から見て時計回りです。`billboardFacing` と `rotateWithCamera` で決まる向きに対して追加で適用されます。
+**Description:** ビルボードを自身の平面内で、アンカー位置を中心に回転させる角度を度数で指定します。正面から見て時計回りです。回転は [`billboardFacing`](#billboardfacing) と [`rotateWithCamera`](#rotatewithcamera) で決まる向きに対して追加で適用されます。
 
-回転の中心は [`center`](#center) で決まります。[フィーチャーエバリュエーター](../../api/feature-evaluator/)からフィーチャーごとに指定できるため、レイヤー内のビルボードごとに異なる向きにできます。
+回転の中心がビルボードのどこになるかは [`center`](#center) で決まります。
+
+[`FeatureEvaluator`](../../api/feature-evaluator/) から地物ごとに指定できるため、レイヤー内のビルボードごとに異なる向きにできます。
 
 **Default:** `0.0`
 
