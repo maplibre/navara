@@ -22,7 +22,6 @@ type CustomDescriptions = DefaultDescriptions;
 const run = async () => {
   const view = new ThreeView<CustomDescriptions>({
     debug: true,
-    hideUnderground: false,
   });
   view.addPlugin(new DefaultPlugin());
 
@@ -59,16 +58,7 @@ const run = async () => {
     roll: 0,
   });
 
-  // Base tiles layer
-  const seamlessphoto = view.addSource({
-    type: "raster-tile",
-    url: TILE_DATASETS.gsiSeamlessphoto.url,
-    maxZoom: 18,
-  });
-  view.addLayer({
-    type: "raster",
-    source: seamlessphoto,
-  });
+  // Base layers
   const terrainDem = view.addSource({
     type: "raster-dem",
     url: TERRAIN_DATASETS.gsi.url,
@@ -78,15 +68,21 @@ const run = async () => {
   view.addLayer({
     type: "terrain",
     source: terrainDem,
-    terrain: {
-      castShadow: true,
-      receiveShadow: true,
-    },
   });
   view.addLayer({
     type: "raster",
     source: terrainDem,
     hillshade: {},
+  });
+
+  const seamlessphoto = view.addSource({
+    type: "raster-tile",
+    url: TILE_DATASETS.gsiSeamlessphoto.url,
+    maxZoom: 18,
+  });
+  view.addLayer({
+    type: "raster",
+    source: seamlessphoto,
   });
 
   // Track updated features to prevent duplicate evaluations

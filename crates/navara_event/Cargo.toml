@@ -15,6 +15,7 @@ navara_mesh.workspace = true
 navara_material.workspace = true
 navara_tile_component.workspace = true
 navara_data_requester.workspace = true
+navara_component.workspace = true
 navara_worker.workspace = true
 navara_layer.workspace = true
 navara_camera.workspace = true

@@ -34,7 +34,7 @@ const run = async () => {
   // Selective bloom effect
   const bloomEffect = view.addEffect({
     selectiveBloom: {
-      strength: 0.5,
+      strength: 1.5,
       radius: 0.5,
     },
   });

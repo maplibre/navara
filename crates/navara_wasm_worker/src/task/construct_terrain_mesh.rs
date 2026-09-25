@@ -1,19 +1,20 @@
 use navara_core::WGS84_64;
 use navara_geometry::calculate_skirt_height;
-use navara_tile_component::{
-    MartiniComponent, RasterDEMData, TerrainConstructContext, TerrainData, TerrainTile,
-};
-use navara_wasm_transferable::{TransferableMartini, TransferableRasterDEMData, TransferableTile};
+use navara_tile_component::{RasterDEMData, TerrainConstructContext, TerrainData, TerrainTile};
+use navara_wasm_transferable::{TransferableRasterDEMData, TransferableTile};
 use navara_wasm_types::ReturnedConstructedTerrainMesh;
 use wasm_bindgen::prelude::wasm_bindgen;
 
+use crate::martini_cache::with_martini;
+
+/// `martini_size` is the DEM tile width plus one (the grid is 2^n + 1).
 #[allow(clippy::too_many_arguments)]
 #[wasm_bindgen(js_name = constructTerrainMesh)]
 pub fn construct_terrain_mesh(
     bytes: &[u8],
     tile: TransferableTile,
     raster_dem_data: TransferableRasterDEMData,
-    martini: TransferableMartini,
+    martini_size: u32,
     skirt: bool,
     skirt_exaggeration: f32,
     pole_north: bool,
@@ -27,10 +28,9 @@ pub fn construct_terrain_mesh(
         max_height: tile.max_height,
     };
 
-    let mut martini: MartiniComponent = martini.into();
-
-    let mut result =
-        raster_dem_data.construct_terrain_mesh(WGS84_64, &ctx, bytes, 0., Some(martini.get_mut()));
+    let mut result = with_martini(martini_size, |martini| {
+        raster_dem_data.construct_terrain_mesh(WGS84_64, &ctx, bytes, 0., Some(martini.get_mut()))
+    });
 
     // Computed unconditionally: the polar cap closes its meridian seams with a
     // curtain of this depth even when grid skirts are switched off, since those

@@ -3,11 +3,24 @@ import { describe, it, expect, vi } from "vitest";
 import { JsStyleEngine } from "../engine/JsStyleEngine";
 import type { StyleLayer } from "../engine/types";
 
-import { createPaintEvaluators, toEvaluatedValue } from "./toEvaluatedValue";
+import {
+  createPaintEvaluators,
+  toEvaluatedValue,
+  toNavaraColor,
+} from "./toEvaluatedValue";
+
+// Type for the mock Color class with exposed r, g, b properties
+type MockColor = {
+  r: number;
+  g: number;
+  b: number;
+  setRGB(r: number, g: number, b: number): MockColor;
+  setStyle(style: string): MockColor;
+};
 
 // Mock @navaramap/three to avoid importing Three.js in tests
 vi.mock("@navaramap/three", () => ({
-  Color: class Color {
+  Color: class Color implements MockColor {
     r = 0;
     g = 0;
     b = 0;
@@ -533,5 +546,48 @@ describe("toEvaluatedValue", () => {
       // extrudedHeight not set because delta = max(0, 0 - 0) = 0, which fails > 0 check
       expect(result.extrudedHeight).toBeUndefined();
     });
+  });
+});
+
+describe("toNavaraColor", () => {
+  it("should parse CSS color strings with MapLibre Color.parse", () => {
+    const result = toNavaraColor("#ff0000");
+
+    expect(result).toBeDefined();
+    expect((result?.color as unknown as MockColor).r).toBe(1);
+    expect((result?.color as unknown as MockColor).g).toBe(0);
+    expect((result?.color as unknown as MockColor).b).toBe(0);
+    expect(result?.alpha).toBe(1.0);
+  });
+
+  it("should extract alpha from rgba() strings", () => {
+    const result = toNavaraColor("rgba(255, 0, 0, 0.5)");
+
+    expect(result).toBeDefined();
+    expect(result?.alpha).toBe(0.5);
+  });
+
+  it("should extract alpha from #RRGGBBAA strings", () => {
+    const result = toNavaraColor("#ff0000cc");
+
+    expect(result).toBeDefined();
+    expect(result?.alpha).toBeCloseTo(0.8, 1);
+  });
+
+  it("should handle MapLibreColor objects", () => {
+    const maplibreColor = { r: 1, g: 0, b: 0, a: 0.7 };
+    const result = toNavaraColor(maplibreColor);
+
+    expect(result).toBeDefined();
+    expect((result?.color as unknown as MockColor).r).toBe(1);
+    expect((result?.color as unknown as MockColor).g).toBe(0);
+    expect((result?.color as unknown as MockColor).b).toBe(0);
+    expect(result?.alpha).toBe(0.7);
+  });
+
+  it("should return undefined for invalid color strings", () => {
+    const result = toNavaraColor("invalid-color");
+
+    expect(result).toBeUndefined();
   });
 });

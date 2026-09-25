@@ -123,6 +123,7 @@ export class TileMesh
 
   // Separate mesh for shadow casting (uses terrain-only geometry without skirt)
   private shadowMesh?: Mesh<BufferGeometry, TileMaterial>;
+  private boundingBoxHelper?: Box3Helper;
 
   private compositor: TileTextureCompositor;
 
@@ -132,6 +133,8 @@ export class TileMesh
   // runtime value (512² on both desktop and mobile today, but configurable).
   private readonly drapeRtSize: number;
   private readonly atlasBytes: number;
+  /** Current `Mesh::fill_quadrants` mask (see `setFillQuadrants`). */
+  private fillQuadrants = 0;
   // Drape footprint (bytes) last reported to the memory ledger, so a report
   // only crosses the WASM boundary when it actually changes. Starts at the
   // atlas cost to match the seed Rust charges at mesh-attach time (the atlas
@@ -435,13 +438,133 @@ export class TileMesh
     const {
       scenes,
       meshes,
-      buf,
       loadedTexs,
       textureOptions,
       uniforms,
       textureFragmentIndex,
       tileMeshToFragmentIds,
     } = this.ctx;
+
+    const installed = this.installGeometry(mesh);
+    if (!installed) return;
+    const { geometry, terrainGeometry, boundingBox } = installed;
+
+    if (mat.showBoundingBox) {
+      this.boundingBoxHelper = new Box3Helper(boundingBox, 0x00ff00);
+      this.add(this.boundingBoxHelper);
+    }
+
+    this.material = this.initMaterial(mat, uniforms, globe);
+
+    const maxTextures = this.maxTextures;
+    this.setUniforms(mat, maxTextures);
+    this.setupTextureFragments(
+      mat.texture_fragments(),
+      textureFragmentIndex,
+      tileMeshToFragmentIds,
+    );
+    this.setupTextures(loadedTexs, textureOptions, maxTextures, mat);
+
+    this.attachShadowMesh(
+      geometry,
+      terrainGeometry,
+      !!mat.castShadow,
+      !!mat.receiveShadow,
+    );
+    applyLitOption(this.material, mat.lit);
+
+    this.visible = false;
+    this.renderOrder = mesh.render_order;
+    if (transform) setTransform(this, transform);
+    scenes.globe.add(this);
+    meshes.set(id, this);
+  }
+
+  // Watermask: 1 byte = uniform, 65536 bytes = 256x256 grid. Stored for
+  // downstream consumers (the composite pass); replaces any previous mask.
+  private setWatermask(handle: number | undefined) {
+    this.userData.watermask?.texture?.dispose();
+    this.userData.watermask = undefined;
+    if (handle == null) return;
+    const watermask = this.ctx.buf.u8(handle);
+    if (!watermask) return;
+
+    const isUniform = watermask.length === 1;
+    const size = isUniform ? 1 : 256;
+    // Single-channel R8 — the composite shader only reads `.r`. RedFormat
+    // halves GPU memory vs. RGBA (256×256 = 64KB instead of 256KB).
+    // `watermask` is a short-lived view into WASM memory; copy it once and
+    // share the copy between the texture and `data` (both only read it).
+    const data = watermask.slice();
+    const texture = new DataTexture(
+      data,
+      size,
+      size,
+      RedFormat,
+      UnsignedByteType,
+    );
+    texture.flipY = true;
+    texture.needsUpdate = true;
+    this.userData.watermask = {
+      data,
+      isUniform,
+      texture,
+    };
+  }
+
+  /**
+   * Rebuild the geometry from new buffer handles under this same TileMesh.
+   * Rust replaces an upsampled terrain mesh with its real-DEM mesh in place
+   * (same entity, same tile handle) and reports it as `mesh_geometry_replaced`
+   * rather than `mesh_updated`, so material, textures, atlas and drape state
+   * are left alone; only geometry, shadow mesh, bounds and watermask change.
+   * Touching the material path here would blank the tile until its drape is
+   * baked again.
+   */
+  replaceGeometry(mesh: EventMesh) {
+    const outgoing = this.geometry;
+    const outgoingShadow = this.shadowMesh?.geometry;
+    const hadNormalAttribute = !!this.userData.hasNormalAttribute;
+    // Shadow flags carry over from the mesh being replaced: the skirt-bearing
+    // main mesh never casts, its terrain-only shadow mesh does.
+    const castShadow = this.shadowMesh?.castShadow ?? this.castShadow;
+
+    const installed = this.installGeometry(mesh);
+    if (!installed) return;
+    const { geometry, terrainGeometry } = installed;
+
+    // Release the outgoing geometry; the shadow mesh shares its attributes.
+    outgoing.dispose();
+    outgoingShadow?.dispose();
+
+    this.attachShadowMesh(
+      geometry,
+      terrainGeometry,
+      castShadow,
+      this.receiveShadow,
+    );
+
+    if (hadNormalAttribute !== this.userData.hasNormalAttribute) {
+      // USE_VERTEX_NORMAL is compiled into the program: recompile it.
+      this.material.userData.defines.USE_VERTEX_NORMAL = this.userData
+        .hasNormalAttribute
+        ? 1
+        : 0;
+      this.material.needsUpdate = true;
+    }
+  }
+
+  // Build the geometry from `mesh`'s buffer handles and make it this tile's
+  // geometry, along with its bounds, watermask and the terrain-only geometry
+  // the shadow mesh renders. Undefined when the buffers are gone.
+  private installGeometry(mesh: EventMesh):
+    | {
+        geometry: BufferGeometry;
+        terrainGeometry: BufferGeometry;
+        boundingBox: Box3;
+      }
+    | undefined {
+    const { buf } = this.ctx;
 
     // Read the AABB before grabbing the buffer views below. `mesh.aabb` (and its
     // Vec3 center/extent) are wasm-bindgen getters that allocate WASM objects,
@@ -451,8 +574,8 @@ export class TileMesh
     const aabb = mesh.aabb;
     const center = aabb.center;
     const extent = aabb.extent;
-    const aabb_center = new Vector3(center.x, center.y, center.z);
-    const aabb_extent = new Vector3(extent.x, extent.y, extent.z);
+    const aabbCenter = new Vector3(center.x, center.y, center.z);
+    const aabbExtent = new Vector3(extent.x, extent.y, extent.z);
 
     const position = buf.f32(mesh.vertices);
     const indices = buf.u32(mesh.indices);
@@ -480,46 +603,22 @@ export class TileMesh
       normals,
     );
 
-    // Watermask: 1 byte = uniform, 65536 bytes = 256x256 grid. Stored for downstream consumers.
-    if (mesh.watermask != null) {
-      const watermask = buf.u8(mesh.watermask);
-      if (watermask) {
-        const isUniform = watermask.length === 1;
-        const size = isUniform ? 1 : 256;
-        // Single-channel R8 — the composite shader only reads `.r`. RedFormat
-        // halves GPU memory vs. RGBA (256×256 = 64KB instead of 256KB).
-        // `watermask` is a short-lived view into WASM memory; copy it once and
-        // share the copy between the texture and `data` (both only read it).
-        const data = watermask.slice();
-        const texture = new DataTexture(
-          data,
-          size,
-          size,
-          RedFormat,
-          UnsignedByteType,
-        );
-        texture.flipY = true;
-        texture.needsUpdate = true;
-        this.userData.watermask = {
-          data,
-          isUniform,
-          texture,
-        };
-      }
-    }
+    this.setWatermask(mesh.watermask);
 
     this.userData.hasNormalAttribute = normals != null;
 
-    geometry.boundingBox = new Box3(
-      aabb_center.clone().sub(aabb_extent),
-      aabb_center.clone().add(aabb_extent),
+    const boundingBox = new Box3(
+      aabbCenter.clone().sub(aabbExtent),
+      aabbCenter.clone().add(aabbExtent),
     );
-
-    geometry.boundingSphere = new Sphere(aabb_center, aabb_extent.length());
-
-    if (mat.showBoundingBox) {
-      const bb = new Box3Helper(geometry.boundingBox, 0x00ff00);
-      this.add(bb);
+    geometry.boundingBox = boundingBox;
+    geometry.boundingSphere = new Sphere(aabbCenter, aabbExtent.length());
+    if (geometry !== terrainGeometry) {
+      terrainGeometry.boundingBox = boundingBox.clone();
+      terrainGeometry.boundingSphere = geometry.boundingSphere.clone();
+    }
+    if (this.boundingBoxHelper) {
+      this.boundingBoxHelper.box = boundingBox;
     }
     this.geometry = geometry;
 
@@ -537,44 +636,36 @@ export class TileMesh
     // BufferAttribute instances, so this one call releases both meshes' arrays.
     releaseGeometryArraysAfterUpload(geometry);
 
-    this.material = this.initMaterial(mat, uniforms, globe);
+    return { geometry, terrainGeometry, boundingBox };
+  }
 
-    const maxTextures = this.maxTextures;
-    this.setUniforms(mat, maxTextures);
-    this.setupTextureFragments(
-      mat.texture_fragments(),
-      textureFragmentIndex,
-      tileMeshToFragmentIds,
-    );
-    this.setupTextures(loadedTexs, textureOptions, maxTextures, mat);
-
-    // Create shadow mesh if we have separate terrain geometry (i.e., skirt exists)
-    // This prevents the skirt from casting unexpected shadows
+  // With a skirt, the terrain-only geometry casts shadows through a separate
+  // mesh so the skirt casts none, and the main mesh only receives; without
+  // one the main mesh does both.
+  private attachShadowMesh(
+    geometry: BufferGeometry,
+    terrainGeometry: BufferGeometry,
+    castShadow: boolean,
+    receiveShadow: boolean,
+  ) {
     if (geometry !== terrainGeometry) {
-      terrainGeometry.boundingBox = geometry.boundingBox.clone();
-      terrainGeometry.boundingSphere = geometry.boundingSphere.clone();
-
-      // Create shadow mesh using terrain-only geometry (without skirt)
-      this.shadowMesh = new Mesh(terrainGeometry, this.material);
-      this.shadowMesh.castShadow = !!mat.castShadow;
-      this.shadowMesh.receiveShadow = !!mat.receiveShadow;
-      this.add(this.shadowMesh);
-
-      // Main mesh with skirt doesn't cast shadow, but receives it
+      if (this.shadowMesh) {
+        this.shadowMesh.geometry = terrainGeometry;
+      } else {
+        this.shadowMesh = new Mesh(terrainGeometry, this.material);
+        this.add(this.shadowMesh);
+      }
+      this.shadowMesh.castShadow = castShadow;
+      this.shadowMesh.receiveShadow = receiveShadow;
       this.castShadow = false;
-      this.receiveShadow = !!mat.receiveShadow;
     } else {
-      // No skirt - use the main mesh for both rendering and shadow
-      this.castShadow = !!mat.castShadow;
-      this.receiveShadow = !!mat.receiveShadow;
+      if (this.shadowMesh) {
+        this.remove(this.shadowMesh);
+        this.shadowMesh = undefined;
+      }
+      this.castShadow = castShadow;
     }
-    applyLitOption(this.material, mat.lit);
-
-    this.visible = false;
-    this.renderOrder = mesh.render_order;
-    if (transform) setTransform(this, transform);
-    scenes.globe.add(this);
-    meshes.set(id, this);
+    this.receiveShadow = receiveShadow;
   }
 
   // Create combined geometry (terrain + skirt) for rendering, and populate
@@ -720,6 +811,7 @@ export class TileMesh
     };
 
     m.userData.uTime = uniforms.time;
+    m.userData.fillQuadrants = { value: this.fillQuadrants };
 
     m.userData.defines = {
       USE_UV: 1,
@@ -778,6 +870,7 @@ export class TileMesh
       shader.uniforms.uHillshadeExaggeration = m.userData.hillshadeExaggeration;
       shader.uniforms.uIor = { value: 1.33333 };
       shader.uniforms.uTime = m.userData.uTime;
+      shader.uniforms.uFillQuadrants = m.userData.fillQuadrants;
 
       shader.vertexShader = createReplacer(shader.vertexShader)
         .replace(
@@ -865,6 +958,18 @@ ${generateTileCommonInjection(maxTextures)}
     return m;
   }
 
+  /**
+   * Restrict drawing to the given child quadrants (`Mesh::fill_quadrants`
+   * bitmask, `0` = whole tile): a shown parent fills only the quadrants of
+   * children that are not prepared yet, without overlapping the children on
+   * screen. Kept on the instance so a material rebuild carries it over.
+   */
+  private setFillQuadrants(mask: number) {
+    this.fillQuadrants = mask;
+    const uniform = this.material?.userData.fillQuadrants;
+    if (uniform) uniform.value = mask;
+  }
+
   _update(mesh: MeshChanged) {
     const {
       loadedTexs,
@@ -876,6 +981,7 @@ ${generateTileCommonInjection(maxTextures)}
     const changedMaterial = mesh.material;
     const tileMesh = mesh.mesh;
     const active = tileMesh.active;
+    this.setFillQuadrants(tileMesh.fill_quadrants);
 
     const maxTextures = textureOptions.maxTextures;
 

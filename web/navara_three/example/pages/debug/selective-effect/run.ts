@@ -193,12 +193,14 @@ export const run = async (view: ThreeView<DefaultDescriptions>) => {
     strength: 1.0,
     radius: 0.5,
     threshold: 0.0,
+    smoothing: 0.1,
+    levels: 8,
   };
   bloomFolder
     .addBinding(bloomParams, "strength", {
       label: "Strength",
       min: 0,
-      max: 3,
+      max: 5,
       step: 0.1,
     })
     .on("change", (ev) => {
@@ -223,6 +225,26 @@ export const run = async (view: ThreeView<DefaultDescriptions>) => {
     })
     .on("change", (ev) => {
       bloomEffect.update({ selectiveBloom: { threshold: ev.value } });
+    });
+  bloomFolder
+    .addBinding(bloomParams, "smoothing", {
+      label: "Smoothing",
+      min: 0,
+      max: 1,
+      step: 0.01,
+    })
+    .on("change", (ev) => {
+      bloomEffect.update({ selectiveBloom: { smoothing: ev.value } });
+    });
+  bloomFolder
+    .addBinding(bloomParams, "levels", {
+      label: "Levels",
+      min: 1,
+      max: 8,
+      step: 1,
+    })
+    .on("change", (ev) => {
+      bloomEffect.update({ selectiveBloom: { levels: ev.value } });
     });
 
   const outlineFolder = effectFolder.addFolder({

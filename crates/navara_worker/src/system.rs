@@ -5,7 +5,7 @@ use bevy_ecs::{
     system::{Commands, Query, ResMut},
 };
 use navara_buffer_store::BufferStore;
-use navara_component::Deleted;
+use navara_component::{Deleted, Priority};
 use navara_event_store::EventStore;
 
 use crate::{
@@ -15,14 +15,19 @@ use crate::{
     component::{FreeResultBuffers, WorkerTaskMarker},
 };
 
-/// Emit the dispatch event for newly delegated tasks. The matching removal
-/// event is emitted by [`remove`] at the despawn point, so a deletion can
-/// never slip past the event.
+/// Emit the dispatch event for newly delegated tasks, most urgent first: the
+/// platform dispatches the stack in order, so within a frame a terrain mesh
+/// (`High`) reaches a worker before an MVT parse (`Medium`). Tasks that could
+/// not be dispatched this frame are re-ordered against newer ones on the
+/// platform side, which reads the same priority off the event. The matching
+/// removal event is emitted by [`remove`] at the despawn point, so a deletion
+/// can never slip past the event.
+#[allow(clippy::type_complexity)]
 pub fn commit(
     mut events: ResMut<EventStore>,
-    added: Query<Entity, (Added<DelegatedWorkerTaskMarker>, Without<Deleted>)>,
+    added: Query<(Entity, &Priority), (Added<DelegatedWorkerTaskMarker>, Without<Deleted>)>,
 ) {
-    for e in &added {
+    for (e, _) in added.iter().sort::<&Priority>() {
         events.worker_task_delegated.push(e);
     }
 }
@@ -159,6 +164,28 @@ mod test {
         DelegatedWorkerTaskMarker, WorkerTaskDelegateeMarker, WorkerTaskFailedEvent,
         WorkerTaskMarker,
     };
+
+    /// Within one frame the dispatch events come out most urgent first,
+    /// whatever order the tasks were spawned in.
+    #[test]
+    fn it_should_emit_delegated_tasks_most_urgent_first() {
+        use navara_component::Priority;
+
+        let mut world = World::new();
+        world.init_resource::<EventStore>();
+        let medium = world
+            .spawn((DelegatedWorkerTaskMarker, Priority::Medium))
+            .id();
+        let high = world
+            .spawn((DelegatedWorkerTaskMarker, Priority::High))
+            .id();
+        let low = world.spawn((DelegatedWorkerTaskMarker, Priority::Low)).id();
+
+        world.run_system_once(super::commit).unwrap();
+
+        let events = world.resource::<EventStore>();
+        assert_eq!(events.worker_task_delegated, vec![high, medium, low]);
+    }
 
     /// A failure report must release the delegator: marking it `Deleted` lets
     /// the `remove` pass tear it down and free its pending dispatch slot.

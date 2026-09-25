@@ -35,6 +35,12 @@ pub struct Mesh {
     pub uvs: Handle,
     pub indices: Handle,
     pub active: bool,
+    /// Quadrants of the tile to draw, as a bitmask over the child slots
+    /// (bit `i` is `child_coords(_, i)`: `i % 2` east, `i / 2` south).
+    /// `0` draws the whole tile. A shown parent uses this to fill only the
+    /// quadrants of children that are not prepared yet, without overlapping
+    /// the children that are on screen.
+    pub fill_quadrants: u8,
     pub render_order: i32,
     pub aabb: Aabb,
     /// Per-vertex normals for the terrain. Stride 3.

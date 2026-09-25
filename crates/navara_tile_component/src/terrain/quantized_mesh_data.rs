@@ -162,10 +162,10 @@ impl TerrainData for QuantizedMeshData {
 
     fn upsample(
         &self,
-        region: &TileRegion,
+        regions: &[TileRegion],
         upsamplable_geometry: UpsamplableTerrainGeometry,
     ) -> Option<UpsampledTerrainGeometry> {
-        Some(UpsampledTerrainGeometry::new(upsamplable_geometry, region))
+        UpsampledTerrainGeometry::new_from_path(upsamplable_geometry, regions)
     }
 
     fn compute_height_at_point(

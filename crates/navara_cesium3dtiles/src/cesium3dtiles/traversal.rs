@@ -124,6 +124,7 @@ pub fn select_tiles(
     is_v1_1: bool,
 ) {
     let mut rendered_tiles_count = 0;
+    let dynamic_sse = dynamic_sse.for_max_sse(max_sse as f64);
 
     let traversal_result = mark_leaves(
         nested_map.as_ref(),

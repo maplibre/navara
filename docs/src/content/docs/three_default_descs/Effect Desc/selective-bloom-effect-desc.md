@@ -39,9 +39,9 @@ The `SelectiveBloomEffectDesc` class is a Descriptor that applies a selective bl
 
 **Type:** `number | undefined`
 
-**Description:** Specifies the radius (blur spread) of the bloom effect.
+**Description:** Specifies how much of the lower-resolution mip level is blended in when the bloom blur upsamples, from `0` (sharpest) to `1` (widest). Higher values spread the bloom wider and softer.
 
-**Default:** `0.2`
+**Default:** `0.85`
 
 **Example:**
 
@@ -67,6 +67,43 @@ The `SelectiveBloomEffectDesc` class is a Descriptor that applies a selective bl
 {
   selectiveBloom: {
     threshold: 0.5,
+  }
+}
+```
+
+### smoothing
+
+**Type:** `number | undefined`
+
+**Description:** Specifies the rise width of the threshold cutoff. A value near `0` makes the cutoff pixel-hard, which can flicker for elements sitting right at the threshold; a wider value fades bloom in smoothly as brightness crosses the threshold.
+
+**Default:** `0.1`
+
+**Example:**
+
+```typescript
+{
+  selectiveBloom: {
+    threshold: 0.2,
+    smoothing: 0.2,
+  }
+}
+```
+
+### levels
+
+**Type:** `number | undefined`
+
+**Description:** Specifies the number of mip levels used by the bloom blur. Each additional level roughly doubles how far the bloom spreads. The value is rounded to an integer and clamped to at least `1`.
+
+**Default:** `8`
+
+**Example:**
+
+```typescript
+{
+  selectiveBloom: {
+    levels: 6,
   }
 }
 ```
@@ -99,11 +136,15 @@ An array of selective effect descriptor IDs to apply to the target object. When 
 
 ### emissiveColor (optional)
 
-Specifies the bloom source color. When not set, the material's surface color (diffuseColor) is automatically used as the bloom source. This means you can enable bloom with just `effectIds` and `emissiveIntensity` without explicitly specifying a color.
+A color added to the glow. When unset, the object's surface color glows as is. When set, this color is added to the surface color (it does not replace it), so you can tint the glow or make it brighter.
 
 ### emissiveIntensity
 
-Controls the intensity of the bloom source. Higher values produce brighter bloom.
+How strongly the object glows. Higher values glow brighter. `0` turns the glow off even when `effectIds` is set.
+
+### Per-feature emissive
+
+When [FeatureEvaluator](../../../three/api/feature-evaluator/) returns `emissive` and `emissiveIntensity` for a feature, that feature glows with those values instead of the material settings. Returning `emissiveIntensity: 0` for a feature turns off its glow alone.
 
 ## Usage Examples
 
@@ -123,7 +164,7 @@ await view.init();
 const bloomDesc = view.addEffect<SelectiveBloomEffectDesc>({
   selectiveBloom: {
     strength: 0.8,
-    radius: 0.2,
+    radius: 0.85,
     threshold: 0.0,
   },
 });
@@ -312,8 +353,23 @@ cubeDesc.update({
 });
 ```
 
+## Tuning guide
+
+The effect runs in three steps. Extraction keeps only the pixels whose `effectIds` match and whose brightness passes `threshold` (softened by `smoothing`). The blur then spreads that light through a mip chain (`radius`, `levels`, `resolutionScale`). Finally the composite adds `strength × (source + blur)` to the frame: the unblurred source term makes the object itself read as self-lit, and the blurred term draws the halo around it.
+
+The blur conserves energy. The halo carries exactly as much light as the source emits (area × emissive × `strength`), so spreading it wider makes each pixel dimmer. This is why a large emissive surface glows at `strength: 1` while a small point or a thin line needs a `strength` of 2 to 4 (or a higher `emissiveIntensity` on that layer) before its halo becomes visible.
+
+| Goal | Adjust |
+|---|---|
+| Brighter glow overall | `strength`: scales both the self-lit object and the halo |
+| Wider, softer halo | `radius` toward `1` (the default `0.85` is already wide, `0.3` to `0.5` is tight). Raise `levels` only when the halo needs to reach farther |
+| Small points or thin lines barely glow | `strength` 2 to 4, or raise `emissiveIntensity` on that layer (per layer, unlike `strength`, which affects every layer using the effect) |
+| Thousands of small sources wash the whole map | `threshold` (with `smoothing`) so only the brightest sources bloom, and fewer `levels` to shorten the tails |
+| A thin line turns into a fat band | `resolutionScale: 1.0` with `radius` left at its default. Lowering `radius` concentrates the light in the finest level, which is itself blurred, so the line only gets wider. Full resolution costs about four times the bloom pixels and memory |
+| The map itself looks lit | Not bloom. Set `strength: 0` to confirm, then check the tone mapping exposure and the tile lighting |
+
 ## Notes
 
 - The selective bloom effect uses mask-based filtering to apply bloom only to specific objects.
-- When `emissiveColor` is not set, the material's surface color (diffuseColor) is automatically used as the bloom source. This includes per-instance colors for InstancedMesh and texture colors for textured materials.
+- The glow color is `(surface color + emissiveColor) × emissiveIntensity`. The surface color includes per-instance colors for InstancedMesh and texture colors for textured materials. A feature that receives `emissive` from `FeatureEvaluator` glows with that value instead.
 - To use the bloom effect effectively, it is important to set the object's `emissiveIntensity` appropriately.

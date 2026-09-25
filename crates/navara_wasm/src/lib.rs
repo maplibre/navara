@@ -100,7 +100,10 @@ pub struct DynamicSse {
     pub enabled: bool,
     /// Distance scale of the relaxation ramp before tilt/height scaling.
     pub density: f64,
-    /// Maximum SSE relaxation (in pixels) at full tilt and saturation.
+    /// Maximum SSE relaxation (in pixels) at full tilt and saturation for a
+    /// layer with the reference max SSE of 16 (the CesiumJS 3D Tiles default);
+    /// each layer scales it by its own max SSE, so terrain and imagery
+    /// (max SSE 2) relax by at most `sseFactor / 8` pixels.
     #[wasm_bindgen(js_name = sseFactor)]
     pub sse_factor: f64,
     /// Fraction of the height band below which the effect is at full strength.
@@ -652,9 +655,14 @@ impl Core {
         self.app.get_tile(handle).map(|v| v.into())
     }
 
-    #[wasm_bindgen(js_name = getParentTile)]
-    pub fn get_parent_tile(&mut self, handle: TileHandle) -> Option<TransferableTile> {
-        self.app.get_parent_tile(handle).map(|v| v.into())
+    /// Buffer handle of a tile's loaded raw DEM bytes (the data a raster-DEM
+    /// upsample of a descendant resamples from), `undefined` until it landed.
+    #[wasm_bindgen(js_name = getTerrainDemBytes)]
+    pub fn get_terrain_dem_bytes(
+        &mut self,
+        handle: TileHandle,
+    ) -> Option<navara_buffer_store::Handle> {
+        self.app.get_terrain_dem_bytes(handle)
     }
 
     #[wasm_bindgen(js_name = getVectorTileStates)]

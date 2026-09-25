@@ -63,16 +63,39 @@ class DepthPickPass {
     this.material.uniforms.samplePos.value.copy(samplePos);
   }
 
-  render(renderer: WebGLRenderer): Uint8Array {
+  private renderSample(renderer: WebGLRenderer) {
     renderer.setRenderTarget(this.sampleTarget);
     renderer.render(this.scene, this.camera);
     renderer.setRenderTarget(null);
+  }
 
-    // Read the pixel
+  render(renderer: WebGLRenderer): Uint8Array {
+    this.renderSample(renderer);
+
     const pixels = new Uint8Array(4);
     renderer.readRenderTargetPixels(this.sampleTarget, 0, 0, 1, 1, pixels);
 
     return pixels;
+  }
+
+  /**
+   * Same as {@link render} but reads the pixel back through a PBO + fence
+   * sync, so the CPU never waits on the GPU. The sample is captured into the
+   * PBO before this returns, so later renders into the sample target don't
+   * affect the result.
+   */
+  renderAsync(renderer: WebGLRenderer): Promise<Uint8Array> {
+    this.renderSample(renderer);
+
+    const pixels = new Uint8Array(4);
+    return renderer.readRenderTargetPixelsAsync(
+      this.sampleTarget,
+      0,
+      0,
+      1,
+      1,
+      pixels,
+    ) as Promise<Uint8Array>;
   }
 
   dispose() {
@@ -95,8 +118,58 @@ export class TerrainPicker {
     depthTexture: Texture,
     camera: PerspectiveCamera,
   ): Nullable<Vector3> {
-    const logDepthOrDepth = this._sampleDepthAt(x, y, renderer, depthTexture);
-    if (logDepthOrDepth === null || logDepthOrDepth > 0.99) {
+    if (!depthTexture) {
+      return null;
+    }
+    this._prepareSample(x, y, renderer, depthTexture);
+    return this._positionFromSample(
+      this.depthPickPass.render(renderer),
+      x,
+      y,
+      renderer,
+      camera,
+    );
+  }
+
+  /**
+   * Non-blocking variant of {@link pick}: the depth sample is captured now
+   * from the current depth texture, but the result resolves once the GPU has
+   * finished, typically a frame or two later. The camera pose used for the
+   * reconstruction is the one at call time.
+   */
+  async pickAsync(
+    x: number,
+    y: number,
+    renderer: WebGLRenderer,
+    depthTexture: Texture,
+    camera: PerspectiveCamera,
+  ): Promise<Nullable<Vector3>> {
+    if (!depthTexture) {
+      return null;
+    }
+    this._prepareSample(x, y, renderer, depthTexture);
+    const pending = this.depthPickPass.renderAsync(renderer);
+    // Snapshot the pose before awaiting: the camera keeps moving while the
+    // readback is in flight.
+    const cameraSnapshot = camera.clone();
+    return this._positionFromSample(
+      await pending,
+      x,
+      y,
+      renderer,
+      cameraSnapshot,
+    );
+  }
+
+  private _positionFromSample(
+    rgba: Uint8Array,
+    x: number,
+    y: number,
+    renderer: WebGLRenderer,
+    camera: PerspectiveCamera,
+  ): Nullable<Vector3> {
+    const logDepthOrDepth = this._unpackRGBAToDepth(rgba);
+    if (logDepthOrDepth > 0.99) {
       return null;
     }
 
@@ -142,17 +215,13 @@ export class TerrainPicker {
     );
   }
 
-  // Helper function to sample depth from depth texture at screen position
-  private _sampleDepthAt(
+  // Points the depth pick pass at the texel under the given screen position.
+  private _prepareSample(
     x: number,
     y: number,
     renderer: WebGLRenderer,
     depthTexture: Texture,
-  ): number | null {
-    if (!depthTexture) {
-      return null;
-    }
-
+  ) {
     const width = renderer.getContext().drawingBufferWidth;
     const height = renderer.getContext().drawingBufferHeight;
     const pixelRatio = renderer.getPixelRatio();
@@ -160,15 +229,8 @@ export class TerrainPicker {
     const centerX = this._texelCenter(x, width, pixelRatio);
     const centerY = this._texelCenter(y, height, pixelRatio);
 
-    // Update the depth pick pass with current parameters
     const samplePos = new Vector2(centerX / width, 1.0 - centerY / height); // Flip Y
     this.depthPickPass.update(depthTexture, samplePos);
-
-    // Render and get pixels
-    const pixels = this.depthPickPass.render(renderer);
-
-    // Unpack RGBA to depth using the same formula as the shader
-    return this._unpackRGBAToDepth(pixels);
   }
 
   dispose() {

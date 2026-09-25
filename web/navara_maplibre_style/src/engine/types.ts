@@ -10,6 +10,7 @@ import type {
   RasterSourceSpecification,
   RasterDEMSourceSpecification,
   TerrainSpecification,
+  FontFacesSpecification,
 } from "@maplibre/maplibre-gl-style-spec";
 
 /**
@@ -21,6 +22,9 @@ export type ParsedStyle = {
   sources: Record<string, StyleSource>;
   layers: StyleLayer[];
   terrain?: TerrainSpecification;
+  glyphs?: string; // URL template for font glyphs (not supported, use font-faces instead)
+  "font-faces"?: FontFacesSpecification; // Font face definitions
+  metadata?: Record<string, unknown>; // Custom metadata
 };
 
 /**
@@ -56,7 +60,7 @@ export type RasterDemSource = Omit<RasterDEMSourceSpecification, "encoding"> & {
 };
 
 /**
- * Layer types supported: fill, fill-extrusion, line, circle, symbol, raster, hillshade.
+ * Layer types supported: fill, fill-extrusion, line, circle, symbol, raster, hillshade, background.
  *
  * Note: We define our own simplified layer types instead of using the official MapLibre
  * LayerSpecification types because:
@@ -72,7 +76,8 @@ export type StyleLayer =
   | CircleLayer
   | SymbolLayer
   | RasterLayer
-  | HillshadeLayer;
+  | HillshadeLayer
+  | BackgroundLayer;
 
 export type LayerType =
   | "fill"
@@ -81,7 +86,8 @@ export type LayerType =
   | "circle"
   | "symbol"
   | "raster"
-  | "hillshade";
+  | "hillshade"
+  | "background";
 
 export type BaseLayer = {
   id: string;
@@ -157,6 +163,20 @@ export type HillshadePaint = {
   "hillshade-exaggeration"?: ValueExpression;
 };
 
+export type BackgroundLayer = {
+  id: string;
+  type: "background";
+  paint?: BackgroundPaint;
+  minzoom?: number;
+  maxzoom?: number;
+  layout?: Record<string, unknown>;
+};
+
+export type BackgroundPaint = {
+  "background-color"?: ValueExpression;
+  "background-opacity"?: ValueExpression;
+};
+
 export type SymbolLayer = {
   type: "symbol";
   layout?: SymbolLayout;
@@ -180,6 +200,8 @@ export type SymbolPaint = {
   "icon-opacity"?: ValueExpression;
   "text-color"?: ValueExpression;
   "text-opacity"?: ValueExpression;
+  "text-halo-color"?: ValueExpression;
+  "text-halo-width"?: ValueExpression;
 };
 
 /**
@@ -192,11 +214,14 @@ export type FilterExpression = unknown[];
 /**
  * Context for evaluating style expressions.
  *
- * TODO: Add zoom support - requires camera movement listeners and re-evaluation
- * when zoom changes, since features from different tile zoom levels coexist.
+ * Includes zoom level for zoom-based expressions (e.g., ["step", ["zoom"], ...]).
+ * Currently uses camera zoom for simplicity, though MapLibre traditionally uses
+ * per-tile zoom levels. This means all features evaluate expressions at the same
+ * zoom regardless of their source tile's zoom level.
  */
 export type EvaluationContext = {
   properties: Record<string, unknown> | undefined;
+  zoom?: number;
 };
 
 /**
@@ -204,6 +229,7 @@ export type EvaluationContext = {
  */
 export type FeatureContext = {
   properties: Record<string, unknown> | undefined;
+  zoom?: number;
 };
 
 /**
@@ -258,7 +284,14 @@ export type StyleValue =
  * This matches the structure from @maplibre/maplibre-gl-style-spec.
  */
 export type PropertySpec = {
-  type: "color" | "number" | "boolean" | "string" | "array";
+  type:
+    | "color"
+    | "number"
+    | "boolean"
+    | "string"
+    | "array"
+    | "formatted"
+    | "resolvedImage";
   default?: unknown;
   minimum?: number;
   maximum?: number;

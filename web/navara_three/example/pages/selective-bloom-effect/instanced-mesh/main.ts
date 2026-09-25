@@ -54,6 +54,8 @@ function generateBuildings(count: number, radius: number): BoxChildConfig[] {
 const run = async () => {
   const view = new ThreeView<DefaultDescriptions>({
     debug: true,
+    // Lit tiles: the exposure below is tuned for the ambient-lit (darker) basemap.
+    useNormal: true,
   });
 
   const defaultPlugin = new DefaultPlugin();
@@ -106,11 +108,7 @@ const run = async () => {
 
   const boxesLayer = view.addMesh<InstancedBoxMeshDesc>({
     boxes: {
-      castShadow: true,
-      receiveShadow: true,
       emissiveIntensity: 0.6,
-      transparent: true,
-      opacity: 1.0,
       children: buildings,
     },
     effectIds: [bloomEffect.id],
@@ -128,10 +126,6 @@ const run = async () => {
   view.addLayer({
     type: "terrain",
     source: terrainDem,
-    terrain: {
-      castShadow: true,
-      receiveShadow: true,
-    },
   });
 
   const openstreetmap = view.addSource({

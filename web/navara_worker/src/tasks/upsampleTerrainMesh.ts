@@ -2,22 +2,27 @@ import {
   ReturnedConstructedTerrainMeshLike,
   TransferableRasterDEMDataLike,
   TransferableTileLike,
-  UpsamplableTerrainGeometryLike,
 } from "@navaramap/core";
 import { upsampleTerrainMesh as upsampleTerrainMeshImpl } from "@navaramap/engine-worker";
 
 import { transfer } from "..";
 import { transferReturnedConstructedTerrainMesh } from "../helpers/transferReturnedConstructedTerrainMesh";
-import { toTransferableTile, toUpsamplableTerrainGeometry } from "../utils";
+import { toTransferableTile } from "../utils";
 import { toTransferableRasterDEMDataLike } from "../utils/toTransferableRasterDEMDataLike";
 
 import { waitWasm } from "./waitWasm";
 
+/**
+ * Upsample a raster-DEM tile from a real-DEM ancestor's pixels, resampled
+ * down to the tile and meshed at the tile's own level, like a
+ * lower-resolution real tile.
+ */
 export async function upsampleTerrainMesh(
   tile: TransferableTileLike,
-  parentTile: TransferableTileLike,
+  sourceTile: TransferableTileLike,
   rasterDEMData: TransferableRasterDEMDataLike,
-  upsamplableGeometry: UpsamplableTerrainGeometryLike,
+  sourceBytes: Uint8Array,
+  size: number,
   skirt: boolean,
   skirtExaggeration: number,
   poleNorth: boolean,
@@ -28,9 +33,10 @@ export async function upsampleTerrainMesh(
 
   const mesh = upsampleTerrainMeshImpl(
     toTransferableTile(tile),
-    toTransferableTile(parentTile),
+    toTransferableTile(sourceTile),
     toTransferableRasterDEMDataLike(rasterDEMData),
-    toUpsamplableTerrainGeometry(upsamplableGeometry),
+    sourceBytes,
+    size + 1,
     skirt,
     skirtExaggeration,
     poleNorth,

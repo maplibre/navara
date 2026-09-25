@@ -26,11 +26,11 @@ export function createTileHandler(deps: TileHandlerDeps): TileHandler {
     getTile: (handle) => {
       return getCore()?.getTile(handle);
     },
-    getParentTile: (handle) => {
-      return getCore()?.getParentTile(handle);
-    },
     getTileElevationDecoder: (handle) => {
       return getCore()?.getTileElevationDecoder(handle);
+    },
+    getTerrainDemBytes: (handle) => {
+      return getCore()?.getTerrainDemBytes(handle);
     },
     getVectorTileStates: (handle) => {
       return getCore()?.getVectorTileStates(handle);

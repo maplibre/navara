@@ -84,8 +84,9 @@ Per frame, in order:
    `shadowScene` and rendered to a dummy target with
    `renderer.shadowMap.needsUpdate = true`, so CSM shadow maps include casters
    from all three scenes.
-2. **G-buffer defines stamping** — see section 5. Gated by O(1) change
-   signals; the scene traversal does not run on quiet frames.
+2. **G-buffer defines stamping** — see section 5. Runs every frame; the
+   per-material work is `WeakSet`-gated, so the steady-state cost is the
+   scene traversal alone.
 3. **Globe** — rendered into `gbufferRenderTarget` (with the `light` group
    temporarily attached). Globe-only normal and depth are then copied out
    (`globeNormalCopyPass`, `globeDepthCopyPass`) for effects that need
@@ -206,24 +207,28 @@ and no optional buffer routes it to the MRT pass (see section 2), and
 be stamped there: those materials would declare outputs the single-attachment
 target has no room for. The two sets are tracked by separate `WeakSet`s, so a
 material first visited in `opaque` still receives the G-buffer defines when it
-later moves to `mrt`.
+later moves to `mrt`. The reverse move (a mesh re-routed to `opaque` once its
+last selective effect is gone) is reconciled by the forward traversal: a
+material that carries G-buffer defines but was not met in any G-buffer scene
+during the same traversal has them cleared. A material shared by both scene
+sets keeps them — the G-buffer needs the outputs, the forward pass merely
+discards them.
 
-Stale defines are set to `false` (three's sanctioned "absent" value — never
-`delete`). Changes flip `material.needsUpdate`, and three includes
-`material.defines` in the program cache key, so recompiles happen exactly when
-needed.
+Stale defines within the G-buffer set are set to `false` (three's sanctioned
+"absent" value). The defines of a material that left the G-buffer scenes are
+`delete`d instead: three keys its program cache on every define _name_, so a
+leftover `false` would compile a second, identical program rather than share
+the one the never-stamped forward materials use. Changes flip
+`material.needsUpdate`, and three includes `material.defines` in the program
+cache key, so recompiles happen exactly when needed.
 
-The traversal itself is **lazy** (`shouldStampGBufferDefines`): it only runs
-when an O(1) signal fires —
-
-1. explicit dirty flag (construction, `setBuffers`, `setLit`),
-2. a top-level `children.length` change on any of the five stamped scenes,
-3. a change in `renderer.info.programs.length` — a material must compile
-   before it can render, so even a deeply-nested async addition (a glTF
-   populating a scene-resident group) or a `transparent` flip that triggers a
-   recompile is caught one frame later; the system converges within a frame.
-
-Steady-state cost is a handful of integer compares per frame.
+The traversal runs **every frame**. There is no O(1) signal that catches
+every way a material can appear: added inside a group already in the scene (a
+glTF populating its group after load), swapped in place on a mesh
+(`mesh.material = ...`), or added in the same frame another mesh was removed —
+and it may compile to an already-cached program, so the program count does not
+move either. The per-material work is `WeakSet`-gated, so the steady-state
+cost is the traversal alone.
 
 ## 6. Material patching
 

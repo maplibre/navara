@@ -30,13 +30,16 @@ Only the properties listed below are actually implemented and functional. Other 
 
 #### ✅ `symbol`
 
-- **Paint:** `icon-color`, `icon-opacity`, `text-color`, `text-opacity`
+- **Paint:** `icon-color`, `icon-opacity`, `text-color`, `text-opacity`, `text-halo-color`, `text-halo-width`
 - **Layout:** `icon-image`, `icon-size`, `text-field`, `text-size`, `text-font`
 - **Note:**
-  - `text-font` only uses the first font in the array (no font fallback support)
-  - `text-halo-color`, `text-halo-width`, `text-anchor`, `icon-anchor`, `text-offset`, `icon-offset` are parsed but not applied
+  - Fonts are configured via style overrides (see Font Configuration section below)
+  - `text-font` is used to select which font to use from the configured `font-faces` (supports string or array for fallback)
+  - `text-halo-color` and `text-halo-width` map to Navara's `outlineColor` and `outlineWidth`; expressions are evaluated once at layer construction (no per-feature or zoom-reactive halo)
+  - `text-anchor`, `icon-anchor`, `text-offset`, `icon-offset` are parsed but not applied
   - Text rendering uses SDF (signed distance field)
-  - No text rotation, collision detection, or symbol sorting
+  - Automatic label deduplication via Navara's declutter system
+  - No text rotation or symbol sorting
 
 #### ⚠️ `hillshade`
 
@@ -49,9 +52,15 @@ Only the properties listed below are actually implemented and functional. Other 
   - Properties like `raster-opacity`, `raster-brightness`, `raster-contrast` are parsed but not applied
   - Basic raster tile display only
 
+#### ✅ `background`
+
+- **Paint:** `background-color`, `background-opacity`
+- **Layout:** `visibility`
+- **Note:** Background layers are mapped to `view.globe.color` and `view.globe.opacity`. No source required.
+
 #### ❌ Not Supported
 
-- `background`, `sky`: No source, not applicable
+- `sky`: Not implemented
 - `heatmap`: Not implemented
 
 ### Source Types
@@ -83,7 +92,16 @@ or
 }
 ```
 
-- **Note:** Only the `tiles` array is supported. `url` (TileJSON) is not.
+or
+
+```json
+{
+  "type": "vector",
+  "url": "https://example.com/tiles.json"
+}
+```
+
+- **Note:** Both `tiles` (direct URL array) and `url` (TileJSON) are supported
 
 #### ✅ `raster`
 
@@ -95,6 +113,17 @@ or
 }
 ```
 
+or
+
+```json
+{
+  "type": "raster",
+  "url": "https://example.com/tiles.json"
+}
+```
+
+- **Note:** Both `tiles` and `url` (TileJSON) are supported
+
 #### ✅ `raster-dem`
 
 ```json
@@ -105,8 +134,19 @@ or
 }
 ```
 
+or
+
+```json
+{
+  "type": "raster-dem",
+  "url": "https://example.com/tiles.json",
+  "encoding": "terrarium" | "mapbox"
+}
+```
+
 - Supports `terrarium` and `mapbox` encodings
 - Can be used with `terrain` property for 3D terrain rendering
+- Both `tiles` and `url` (TileJSON) are supported
 
 #### ❌ Not Supported
 
@@ -123,7 +163,7 @@ All [MapLibre expression operators](https://maplibre.org/maplibre-style-spec/exp
 - **Math:** `+`, `-`, `*`, `/`, `%`, `^`, `sqrt`, `log10`, `ln`, `abs`, `ceil`, `floor`, `round`, `min`, `max`
 - **Comparison:** `==`, `!=`, `>`, `>=`, `<`, `<=`
 - **Logical:** `!`, `all`, `any`
-- **Zoom:** `zoom` ⚠️ currently returns 0 (zoom-based styling not fully implemented)
+- **Zoom:** `zoom` ✅ Uses current camera zoom for all features
 - **Geometry:** `geometry-type`, `id`, `properties`
 
 ## Usage
@@ -148,34 +188,88 @@ view.attribution?.add([
 ]);
 ```
 
-### Style Engines
+### Font Configuration
 
-Style parsing and expression evaluation are delegated to a `StyleEngine`:
-
-- **`RustStyleEngine`** (default): Evaluates styles in WASM for better performance, powered by the `maplibre-expr` Rust crate
-- **`JsStyleEngine`**: Pure TypeScript implementation based on `@maplibre/maplibre-gl-style-spec`, useful as a reference and for comparison
-
-A custom engine can be passed as the second constructor argument:
+To render text labels from symbol layers, pre-load fonts and pass them as style overrides:
 
 ```typescript
-import { MapLibreStylePlugin, JsStyleEngine } from "@navaramap/maplibre-style";
+import { fetchFontStyleOverrides } from "@navaramap/maplibre-style";
 
-const plugin = new MapLibreStylePlugin(style, new JsStyleEngine());
+const fontOverrides = await fetchFontStyleOverrides(
+  "Open Sans",
+  "https://fonts.googleapis.com/css2?family=Open+Sans:wght@600&display=swap",
+);
+
+const plugin = new MapLibreStylePlugin(style, {
+  overrides: fontOverrides,
+});
 view.addPlugin(plugin);
 ```
+
+Alternatively, you can manually construct font overrides:
+
+```typescript
+import { fetchFontFamilyFromCss } from "@navaramap/three";
+import { fontFamilyToStyleOverrides } from "@navaramap/maplibre-style";
+
+const fontFamily = await fetchFontFamilyFromCss(
+  "Open Sans",
+  "https://fonts.googleapis.com/css2?family=Open+Sans:wght@600&display=swap",
+);
+
+const plugin = new MapLibreStylePlugin(style, {
+  overrides: fontFamilyToStyleOverrides(fontFamily),
+});
+```
+
+You can also provide a custom `TileJsonPlugin` instance:
+
+```typescript
+import { TileJsonPlugin } from "@navaramap/three-plugins";
+
+const plugin = new MapLibreStylePlugin(style, {
+  overrides: fontOverrides,
+  tileJsonPlugin: new TileJsonPlugin(),
+});
+```
+
+For advanced use cases, you can manually convert and register fonts:
+
+```typescript
+import { convertFontFacesToFontFamilies } from "@navaramap/maplibre-style";
+
+// Extract fonts from an existing MapLibre style
+const fontFamilies = convertFontFacesToFontFamilies(style["font-faces"]);
+for (const family of fontFamilies) {
+  view.addFontFamily(family);
+}
+```
+
+**Font Selection:**
+
+- Each symbol layer's `layout["text-font"]` property is used to select which font from `font-faces` to use
+- `text-font` must be an array (MapLibre Style Spec requirement)
+- For simple font references, use a single-element array: `["FontName"]`
+- For fallback support, use multiple fonts: `["PreferredFont", "FallbackFont"]` - the first available font is used
+- Font selection distinguishes between fallback lists and expressions by checking if at least one element matches an available font
+- If `text-font` is an expression (e.g., `["case", ...]`) or no fonts match, falls back to the first available font in `font-faces`
+- If no `text-font` is specified, uses the first available font
+- The style's `glyphs` property is not supported (use `font-faces` via overrides instead)
+
+**Unicode Range Support:**
+
+- Supports multiple `unicode-range` formats:
+  - Single codepoint: `"U+26"` (ampersand character)
+  - Range: `"U+0-7F"` (Basic Latin)
+  - Comma-separated: `"U+0-7F, U+100-17F"` (Basic Latin + Latin Extended-A)
+- Whitespace is automatically trimmed
+- Unparseable ranges are logged as warnings and skipped
 
 ## Known Limitations
 
 ### Sources
 
-- **No TileJSON support**: The `url` field (which points to TileJSON documents) is not supported. Use the `tiles` array with direct tile template URLs instead.
-  ```json
-  // ❌ Not supported
-  { "type": "vector", "url": "https://example.com/tiles.json" }
-
-  // ✅ Use this instead
-  { "type": "vector", "tiles": ["https://example.com/{z}/{x}/{y}.pbf"] }
-  ```
+- **TileJSON support**: Both `url` (TileJSON) and `tiles` (direct URL array) are supported for vector, raster, and raster-dem sources
 
 ### Layers
 
@@ -184,19 +278,23 @@ view.addPlugin(plugin);
 - **No advanced line styling**: Dasharray, gradient, caps, joins not implemented
 - **Limited raster support**: Raster layers have basic support but may not render identically to MapLibre GL JS
 - **No heatmap layers**: Not yet implemented
-- **No background/sky layers**: These don't have sources and aren't supported
+- **No sky layers**: Not implemented
 
 ### Expressions
 
-- **Zoom not fully implemented**: The `zoom` expression always returns 0, so zoom-dependent styles (e.g., `["interpolate", ["zoom"], ...]`) won't work as expected
+- **Zoom support**: The `zoom` expression uses the current camera zoom. Features are automatically re-evaluated when zoom changes significantly (> 0.1), with smooth fade transitions for show/hide
 - **Camera expressions not supported**: `pitch`, `distance-from-center`, etc. are not available
 
 ### Symbol Layers
 
 - **Text rendering**: Uses SDF (signed distance field) text rendering, which may differ slightly from MapLibre GL JS
-- **Icon/text collision**: No collision detection between symbols
+- **Label deduplication**: Automatic deduplication of overlapping labels via Navara's declutter system with 300ms fade animations
 - **Text rotation**: Limited support for rotated text
 - **No symbol sorting**: z-order not controlled by `symbol-sort-key`
+- **Text halo limitations**: `text-halo-color` and `text-halo-width` are evaluated once at layer construction time, not per-feature. This means:
+  - Text halo expressions cannot access feature properties (e.g., `["get", "property"]` will be `undefined`)
+  - Text halo cannot respond to zoom changes (evaluated at a default zoom level)
+  - To support dynamic text halos, Navara's `EvaluatedValue` system needs to add `outlineColor`/`outlineWidth` fields
 
 ### Performance
 

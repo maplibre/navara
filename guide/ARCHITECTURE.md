@@ -164,7 +164,7 @@ The project implements a sophisticated multi-language architecture:
 
 - **`@navaramap/core`** (`web/navara_core/`) - Core utilities, event management, type definitions
 - **`@navaramap/three`** (`web/navara_three/`) - Main Three.js integration with comprehensive 3D engine
-- **`@navaramap/worker`** (`web/navara_worker/`) - Web Worker abstraction with task queuing
+- **`@navaramap/worker`** (`web/navara_worker/`) - Web Worker abstraction with task queuing. Delegated engine tasks carry a `priority` (0 = most urgent, from the ECS `Priority` component): Rust emits them most urgent first and the web `EventManager` re-sorts the pending `worker_task_delegated` stack every pass, so a terrain mesh task overtakes MVT parses waiting for a free worker
 - **`@navaramap/three-api`** (`web/navara_three_api/`) - Bridge between Three.js and WASM API
 
 ### **WASM Integration** (`web/wasm/`)

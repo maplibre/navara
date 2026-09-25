@@ -48,15 +48,6 @@ pub(crate) fn request_terrain_data(
             return;
         };
         let url = scheme.tile_url(url_template, tile.coords);
-        let mut terrain_data: Box<dyn TerrainData> = match &t.terrain_type {
-            TerrainDataType::RasterDEM => {
-                Box::new(RasterDEMData::new(*source.elevation_decoder().unwrap()))
-            }
-            TerrainDataType::QuantizedMesh => {
-                Box::new(QuantizedMeshData::new_with_tiling_scheme(scheme.clone()))
-            }
-            TerrainDataType::Ellipsoid | TerrainDataType::Unknown => unreachable!(),
-        };
         let extension = DataRequesterExtension::from_url(&url::Url::from_str(&url).unwrap());
 
         let request_vertex_normals = source.request_vertex_normals();
@@ -106,7 +97,21 @@ pub(crate) fn request_terrain_data(
             entity_commands.insert(Requested);
         }
 
+        // An upsampled tile already carries requester-less terrain data of this
+        // type (see `prepare_upsamplable_terrain_data`) holding the height range
+        // of its current mesh: attach the fetch to it instead of replacing it.
+        let terrain_data = tile
+            .terrain_data
+            .get_or_insert_with(|| match &t.terrain_type {
+                TerrainDataType::RasterDEM => {
+                    Box::new(RasterDEMData::new(*source.elevation_decoder().unwrap()))
+                        as Box<dyn TerrainData>
+                }
+                TerrainDataType::QuantizedMesh => {
+                    Box::new(QuantizedMeshData::new_with_tiling_scheme(scheme.clone()))
+                }
+                TerrainDataType::Ellipsoid | TerrainDataType::Unknown => unreachable!(),
+            });
         terrain_data.set_data_requester_entity_id(Some(entity_id));
-        tile.terrain_data = Some(terrain_data);
     }
 }

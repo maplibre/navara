@@ -126,6 +126,7 @@ import {
   TAP_PIXEL_TOLERANCE,
 } from "./pick/pickHelper";
 import { TerrainPicker } from "./pick/pickTerrain";
+import { TerrainDistanceCache } from "./pick/terrainDistance";
 import { AttributionPlugin, type AttributionPluginOptions } from "./plugins";
 import { TexturizedSceneByTileCoordinates, type Scenes } from "./scene";
 import { ShadowMapViewers } from "./ShadowMapViewers";
@@ -1406,6 +1407,16 @@ export default class ThreeView<
     };
   }
 
+  /** Screen center in CSS client coordinates. */
+  private _viewportCenter(): [number, number] {
+    const rect = this._renderer.domElement.getBoundingClientRect();
+    return [rect.left + rect.width / 2, rect.top + rect.height / 2];
+  }
+
+  private _distanceFromCamera(pos: Nullable<Vector3>): number | null {
+    return pos ? this._camera.raw.position.distanceTo(pos) : null;
+  }
+
   private get globeDepthTexture() {
     return this.renderPass.globeDepthCopyPass.texture;
   }
@@ -1587,19 +1598,30 @@ export default class ThreeView<
     this.registerBuiltIns();
 
     if (!isWorker()) {
+      // Input deltas are scaled by the distance to whatever is under the
+      // screen center; served from a cache so wheel bursts don't each block
+      // on a GPU readback.
+      const terrainDistance = new TerrainDistanceCache(
+        () =>
+          this._distanceFromCamera(
+            this.pickDepthPosition(...this._viewportCenter()),
+          ),
+        async () => {
+          const [x, y] = this._viewportCenter();
+          const pos = await this._terrainPicker.pickAsync(
+            x,
+            y,
+            this._renderer,
+            this.depthTexture,
+            this._camera.raw,
+          );
+          return this._distanceFromCamera(pos);
+        },
+      );
       this._eventDisposer = registerInputEvents(
         this._core,
         this._renderer.domElement,
-        () => {
-          const el = this._renderer.domElement;
-          const rect = el.getBoundingClientRect();
-          const pos = this.pickDepthPosition(
-            rect.left + rect.width / 2,
-            rect.top + rect.height / 2,
-          );
-          if (!pos) return null;
-          return this._camera.raw.position.distanceTo(pos);
-        },
+        () => terrainDistance.get(),
       );
       this._pickHelper = new PickHelper(
         this._renderer.domElement,

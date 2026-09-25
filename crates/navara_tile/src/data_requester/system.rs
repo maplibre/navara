@@ -3,7 +3,6 @@ use bevy_ecs::{
     query::{Added, With, Without},
     system::{Commands, Query, Res, ResMut},
 };
-use navara_buffer_store::BufferStore;
 use navara_component::{Deleted, Ignored, OrderByDistance, Priority, Requested};
 use navara_data_requester::{DataRequester, DataRequesterStatus};
 use navara_tile_component::{TerrainDataRequesterMarker, TerrainTileQuadtree};
@@ -12,7 +11,6 @@ use navara_tile_component::{TerrainDataRequesterMarker, TerrainTileQuadtree};
 pub(crate) fn filter_requestable_data_requester(
     mut commands: Commands,
     mut qt: ResMut<TerrainTileQuadtree>,
-    mut buf: ResMut<BufferStore>,
     data_requesters: Query<
         (
             Entity,
@@ -95,13 +93,13 @@ pub(crate) fn filter_requestable_data_requester(
             continue;
         }
 
+        // Rejected: drop the requester so the traversal retries next frame,
+        // but keep the tile's terrain data — an upsampled tile keeps rendering
+        // from it and keeps counting as ready.
         let handle = marker.0;
-        let tile = qt.qt.get_mut(handle);
-        if let Some(tile) = tile {
+        if let Some(tile) = qt.qt.get_mut(handle) {
             if let Some(terrain_data) = tile.terrain_data.as_mut() {
                 terrain_data.set_data_requester_entity_id(None);
-                terrain_data.destroy(&mut buf);
-                tile.terrain_data = None;
             };
 
             commands.entity(e).insert((Deleted, Ignored));
@@ -128,6 +126,7 @@ fn prefetch_max_pendings(max_pendings: u32) -> u32 {
 mod load_gate_tests {
     use super::*;
     use bevy_app::{App, Update};
+    use navara_buffer_store::BufferStore;
     use navara_core::TileXYZ;
     use navara_data_requester::RequestLimits;
     use navara_memory::{MemoryLedger, SsePressure};
@@ -190,6 +189,7 @@ mod load_gate_tests {
 mod prefetch_cap_tests {
     use super::*;
     use bevy_app::{App, Update};
+    use navara_buffer_store::BufferStore;
     use navara_core::TileXYZ;
     use navara_data_requester::RequestLimits;
     use navara_memory::{MemoryLedger, SsePressure};
@@ -266,6 +266,7 @@ mod prefetch_cap_tests {
 mod reservation_tests {
     use super::*;
     use bevy_app::{App, Update};
+    use navara_buffer_store::BufferStore;
     use navara_core::TileXYZ;
     use navara_data_requester::{
         RequestLimits, release_landed_reservations, remove_removed_data_requesters,

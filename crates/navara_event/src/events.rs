@@ -1,5 +1,6 @@
 use bevy_ecs::world::World;
 use navara_camera::CameraFrustum;
+use navara_component::Priority;
 use navara_data_requester::DataRequester;
 use navara_event_store::{
     CameraFlightEnded, ComponentEvent, ComponentEventWithResource, EntityEvent, EventStore,
@@ -43,12 +44,14 @@ pub struct Events<'a> {
             &'a Globe,
         >,
     >,
-    pub data_requested: Vec<ReconstructableComponentEvent<&'a DataRequester>>,
+    pub mesh_geometry_replaced: Vec<ComponentEvent<&'a Mesh>>,
+    pub data_requested:
+        Vec<ReconstructableComponentEvent<(&'a DataRequester, Option<&'a Priority>)>>,
     pub data_requester_removed: Vec<ReconstructableComponentEvent<&'a DataRequester>>,
     pub texture_fragment_reqested: Vec<ReconstructableComponentEvent<&'a TextureFragment>>,
     pub texture_fragment_removed: Vec<EntityEvent>,
     pub worker_task_delegated:
-        Vec<ReconstructableComponentEvent<&'a DelegatedWorkerTasksParameters>>,
+        Vec<ReconstructableComponentEvent<(&'a DelegatedWorkerTasksParameters, &'a Priority)>>,
     pub worker_task_removed: Vec<EntityEvent>,
     pub renderable_feature_added: Vec<
         ReconstructableComponentEvent<(
@@ -117,8 +120,15 @@ impl<'a> Events<'a> {
             }
         }
 
+        for e in store.mesh_geometry_replaced.iter() {
+            if let Some(e) = ComponentEvent::from_world(*e, world) {
+                events.mesh_geometry_replaced.push(e);
+                is_changed = true;
+            }
+        }
+
         for e in store.data_requested.iter() {
-            if let Some(e) = ReconstructableComponentEvent::from_world(*e, world) {
+            if let Some(e) = ReconstructableComponentEvent::from_world_and_option(*e, world) {
                 events.data_requested.push(e);
                 is_changed = true;
             }
@@ -144,7 +154,7 @@ impl<'a> Events<'a> {
         }
 
         for e in store.worker_task_delegated.iter() {
-            if let Some(e) = ReconstructableComponentEvent::from_world(*e, world) {
+            if let Some(e) = ReconstructableComponentEvent::from_world_2(*e, world) {
                 events.worker_task_delegated.push(e);
                 is_changed = true;
             }

@@ -202,6 +202,12 @@ pub trait Tile {
             }
             new_children.push(qt.qt.initialize_child(coords, to_int(i), &init)?);
         }
+        if new_children != children {
+            qt.qt
+                .get_mut(handle)
+                .unwrap()
+                .set_children(new_children.clone());
+        }
         Some(new_children)
     }
 }

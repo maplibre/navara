@@ -35,12 +35,12 @@ pub(crate) fn upsample_terrain_mesh(
             Some(t) => t,
             None => continue,
         };
-        let parent = match tile.get_parent_tile(&qt) {
+        let source = match qt.qt.get(constructor.source_tile_handle) {
             Some(t) => t,
             None => continue,
         };
 
-        let cached_mesh_handle = match &parent.cached_mesh_handle {
+        let cached_mesh_handle = match &source.cached_mesh_handle {
             Some(c) => c,
             None => continue,
         };
@@ -58,7 +58,7 @@ pub(crate) fn upsample_terrain_mesh(
         let returned = tile
             .upsample(
                 WGS84_32,
-                parent,
+                source,
                 UpsamplableTerrainGeometry {
                     uvs,
                     heights,

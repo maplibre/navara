@@ -1,6 +1,7 @@
 use navara_wasm_utils::set_panic_hook;
 use wasm_bindgen::prelude::*;
 
+mod martini_cache;
 mod task;
 
 pub use navara_wasm_transferable::*;

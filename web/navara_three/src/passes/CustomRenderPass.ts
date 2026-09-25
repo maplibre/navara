@@ -78,7 +78,6 @@ export class CustomRenderPass extends RenderPass {
   // Rendered outside the G-buffer pass, so these must never declare G-buffer
   // outputs the render target has no attachments for.
   private readonly forwardScenes: readonly Scene[];
-  private readonly stampScenes: readonly Scene[];
   private allowTransparent: boolean;
   private buffers: ResolvedGBufferOptions;
   // Scene-level default of the `lit` material option (`view.lit`).
@@ -94,19 +93,20 @@ export class CustomRenderPass extends RenderPass {
   // stamped onto every material rendered into the G-buffer.
   private gbufferDefines: Readonly<Record<string, number>>;
   private gbufferDefinesStamped = new WeakSet<Material>();
+  // Materials met in a G-buffer scene during the current traversal. Lets the
+  // forward traversal tell a material that left the G-buffer scenes (its
+  // defines must go) from one shared with them (they must stay).
+  private readonly gbufferVisited = new Set<Material>();
   // Separate from the G-buffer set: the two cover different scene sets, and a
   // shared one would skip the G-buffer defines for a material first seen in
   // the opaque scene that later moves to the MRT pass.
   private litStamped = new WeakSet<Material>();
-  private stampDirty = true;
   // Drives the globe-normal copy target, which stays 1x1 until a draped mesh
   // exists. Tracked here because setSize can arrive while it is inactive.
   private globeNormalActive = false;
   private readonly globeNormalUniform: { value: Texture | null };
   private width = 1;
   private height = 1;
-  private lastProgramCount = -1;
-  private readonly lastSceneChildCounts = [-1, -1, -1, -1, -1];
 
   constructor(
     scenes: Scenes,
@@ -127,7 +127,6 @@ export class CustomRenderPass extends RenderPass {
 
     this.gbufferScenes = [scenes.globe, scenes.mrt, scenes.draped];
     this.forwardScenes = [scenes.opaque, scenes.transparent];
-    this.stampScenes = [...this.gbufferScenes, ...this.forwardScenes];
 
     this.buffers = options?.buffers ?? resolveGBufferOptions();
     this.sceneLit = options?.lit ?? true;
@@ -216,7 +215,6 @@ export class CustomRenderPass extends RenderPass {
     this.textureIndex = computeGBufferTextureIndex(buffers);
     this.gbufferDefines = computeGBufferDefines(buffers);
     this.gbufferDefinesStamped = new WeakSet();
-    this.stampDirty = true;
 
     // Must be a fresh target: splicing textures in place leaves the renderer's
     // cached GL state on a stale attachment, so writes land in the framebuffer
@@ -243,40 +241,29 @@ export class CustomRenderPass extends RenderPass {
     if (this.sceneLit === lit) return;
     this.sceneLit = lit;
     this.litStamped = new WeakSet();
-    this.stampDirty = true;
-  }
-
-  /**
-   * O(1) gate keeping the stamping traversal off the per-frame path. The
-   * program count catches deeply-nested async additions (a glTF populating a
-   * scene-resident group): a material must compile before it can render, so
-   * the traversal converges one frame later.
-   */
-  private shouldStampGBufferDefines(renderer: WebGLRenderer): boolean {
-    let dirty = this.stampDirty;
-    this.stampDirty = false;
-
-    const programCount = renderer.info.programs?.length ?? 0;
-    if (programCount !== this.lastProgramCount) {
-      this.lastProgramCount = programCount;
-      dirty = true;
-    }
-
-    for (let i = 0; i < this.stampScenes.length; i++) {
-      const count = this.stampScenes[i].children.length;
-      if (count !== this.lastSceneChildCounts[i]) {
-        this.lastSceneChildCounts[i] = count;
-        dirty = true;
-      }
-    }
-
-    return dirty;
   }
 
   // Materials reach the G-buffer from anywhere (built-ins, enhancers, user
   // ShaderMaterials), so they are stamped here rather than per-desc. `lit` is
   // a lighting define, not a G-buffer one, hence the forward scenes too.
+  //
+  // Runs every frame. A material can appear without any scene-level signal:
+  // added inside a group that is already in the scene (a glTF populating its
+  // group after load), swapped in place on a mesh (`mesh.material = ...`), or
+  // added in the same frame another mesh was removed. It may also compile to
+  // a program that is already cached, so the program count does not change
+  // either. An unstamped material declares no G-buffer outputs and renders
+  // without normal / effect-id / emissive data. The per-material work is
+  // WeakSet-gated, so the per-frame cost is the traversal alone.
+  //
+  // A mesh can also leave the G-buffer scenes (its last selective effect
+  // removed, see MeshDescWithSelectiveEffect.getPassKey); its material must
+  // then stop declaring outputs the forward target has no attachments for.
+  // G-buffer scenes are traversed first so a material shared by both sets
+  // keeps its outputs: the G-buffer needs them, the forward pass discards
+  // them.
   private stampGBufferDefines(): void {
+    this.gbufferVisited.clear();
     for (const scene of this.gbufferScenes) {
       scene.traverse((object) => {
         this.forEachMaterial(object, (m) => this.stampGBufferDefine(m));
@@ -284,9 +271,10 @@ export class CustomRenderPass extends RenderPass {
     }
     for (const scene of this.forwardScenes) {
       scene.traverse((object) => {
-        this.forEachMaterial(object, (m) => this.stampLitDefine(m));
+        this.forEachMaterial(object, (m) => this.stampForwardDefines(m));
       });
     }
+    this.gbufferVisited.clear();
     // Drape shading is opted into here rather than per-desc, so a mesh moved
     // into the draped scene picks it up wherever it came from.
     this._scenes.draped.traverse((object) => {
@@ -310,6 +298,7 @@ export class CustomRenderPass extends RenderPass {
   }
 
   private stampGBufferDefine(material: Material): void {
+    this.gbufferVisited.add(material);
     material.defines ??= {};
     let changed = false;
 
@@ -341,6 +330,38 @@ export class CustomRenderPass extends RenderPass {
     this.stampLitDefine(material);
   }
 
+  private stampForwardDefines(material: Material): void {
+    if (
+      this.gbufferDefinesStamped.has(material) &&
+      !this.gbufferVisited.has(material)
+    ) {
+      this.clearGBufferDefines(material);
+    }
+    this.stampLitDefine(material);
+  }
+
+  private clearGBufferDefines(material: Material): void {
+    this.gbufferDefinesStamped.delete(material);
+    const defines = material.defines;
+    if (!defines) return;
+    let changed = false;
+    for (const name of GBUFFER_DEFINE_NAMES) {
+      if (name in defines) {
+        // eslint-disable-next-line @typescript-eslint/no-dynamic-delete
+        delete defines[name];
+        changed = true;
+      }
+    }
+    if (NVR_BLENDED_DEFINE in defines) {
+      // eslint-disable-next-line @typescript-eslint/no-dynamic-delete
+      delete defines[NVR_BLENDED_DEFINE];
+      changed = true;
+    }
+    if (changed) {
+      material.needsUpdate = true;
+    }
+  }
+
   /** Per-material `lit` (NVR_LIT / NVR_UNLIT) wins over this in the shader. */
   private stampLitDefine(material: Material): void {
     if (this.litStamped.has(material)) return;
@@ -359,9 +380,7 @@ export class CustomRenderPass extends RenderPass {
     inputBuffer: WebGLRenderTarget | null,
     _outputBuffer: WebGLRenderTarget | null,
   ) {
-    if (this.shouldStampGBufferDefines(renderer)) {
-      this.stampGBufferDefines();
-    }
+    this.stampGBufferDefines();
 
     const shouldDrapeByStencilTest = this._scenes.draped.children.length !== 0;
 

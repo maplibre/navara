@@ -36,6 +36,7 @@
     "@maplibre/maplibre-gl-style-spec": "26.2.1",
     "@navaramap/core": "workspace:*",
     "@navaramap/engine": "workspace:*",
+    "@navaramap/three-plugins": "workspace:*",
     "@types/geojson": "7946.0.16"
   },
   "devDependencies": {

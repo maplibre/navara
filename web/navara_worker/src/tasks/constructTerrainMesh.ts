@@ -3,10 +3,7 @@ import type {
   TransferableRasterDEMDataLike,
   ReturnedConstructedTerrainMeshLike,
 } from "@navaramap/core";
-import {
-  constructTerrainMesh as constructTerrainMeshImpl,
-  TransferableMartini,
-} from "@navaramap/engine-worker";
+import { constructTerrainMesh as constructTerrainMeshImpl } from "@navaramap/engine-worker";
 
 import { transfer } from "..";
 import { transferReturnedConstructedTerrainMesh } from "../helpers/transferReturnedConstructedTerrainMesh";
@@ -29,14 +26,11 @@ export async function constructTerrainMesh(
 }> {
   await waitWasm();
 
-  const tileSizeWithBoundary = size + 1;
-  const martini = TransferableMartini.fromSize(tileSizeWithBoundary);
-
   const mesh = constructTerrainMeshImpl(
     bytes,
     toTransferableTile(tile),
     toTransferableRasterDEMDataLike(rasterDEMData),
-    martini,
+    size + 1,
     skirt,
     skirtExaggeration,
     poleNorth,

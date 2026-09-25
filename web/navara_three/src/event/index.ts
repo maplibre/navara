@@ -34,7 +34,11 @@ import {
   processHillshadeCanceled,
 } from "./hillshade";
 import { ABORTABLE_TEXTURE_LOADER } from "./loaders";
-import { processMeshAdded, processMeshChanged } from "./tile";
+import {
+  processMeshAdded,
+  processMeshChanged,
+  processMeshGeometryReplaced,
+} from "./tile";
 import {
   processWorkerTaskDelegatedEvent,
   processWorkerTaskRemovedEvent,
@@ -53,6 +57,13 @@ export type {
 } from "./context";
 export { EventContext } from "./context";
 export { HillshadeContext } from "./HillshadeContext";
+
+/** Browser fetch priority hint derived from the engine rank (0 = Extreme). */
+function fetchPriorityHint(rank: number): RequestPriority {
+  if (rank <= 1) return "high";
+  if (rank >= 3) return "low";
+  return "auto";
+}
 
 export function processEvent(ctx: EventContext, event: Events | undefined) {
   const {
@@ -80,6 +91,15 @@ export function processEvent(ctx: EventContext, event: Events | undefined) {
 
   eventManager.forEachStack("object_transform_updated", (ev) =>
     processObjectTransformUpdated(ctx, ev),
+  );
+
+  // Geometry-only swaps (an upsampled terrain mesh replaced by its real DEM)
+  // are applied synchronously here, alongside the transform update above, so
+  // the mesh never renders new geometry at an old RTC origin or vice versa.
+  eventManager.forEachStack(
+    "mesh_geometry_replaced",
+    (ev) => processMeshGeometryReplaced(ctx, ev),
+    Infinity,
   );
 
   eventManager.forEachStack("update_sample_terrain_height", (ev) =>
@@ -154,6 +174,9 @@ export function processEvent(ctx: EventContext, event: Events | undefined) {
     {
       add: {
         key: "worker_task_delegated",
+        // Most urgent first (0 = Extreme): a terrain mesh task queued this
+        // frame overtakes MVT parses still waiting for a free worker.
+        order: (a, b) => a.priority - b.priority,
       },
       remove: {
         key: "worker_task_removed",
@@ -280,6 +303,9 @@ export function processEvent(ctx: EventContext, event: Events | undefined) {
     {
       add: {
         key: "data_requested",
+        // Most urgent first (0 = Extreme): a terrain DEM queued this frame
+        // goes out before vector/raster tiles still waiting in the stack.
+        order: (a, b) => a.priority - b.priority,
       },
       remove: {
         key: "data_requester_removed",
@@ -427,6 +453,7 @@ function disposeObject3D(model: Object3D): void {
 async function processRequestedData(ctx: EventContext, req: DataRequestEvent) {
   const { buf, abortControllers } = ctx;
   const id = generate_id_from_entity(req);
+  const priority = fetchPriorityHint(req.priority);
 
   const abortController = (() => {
     const a = abortControllers.get(id);
@@ -445,7 +472,7 @@ async function processRequestedData(ctx: EventContext, req: DataRequestEvent) {
     // DEM tiles) entirely on the worker keeps the costly "Image Decode" off the
     // main thread — previously we decoded an HTMLImageElement and then
     // re-decoded it via createImageBitmap on the main thread.
-    await fetch(req.url, { signal: abortController.signal })
+    await fetch(req.url, { signal: abortController.signal, priority })
       .then((res) => {
         if (!res.ok) throw new Error();
         return res.blob();
@@ -539,7 +566,7 @@ async function processRequestedData(ctx: EventContext, req: DataRequestEvent) {
     return u.toString();
   })();
 
-  await fetch(fetchUrl, { signal: abortController.signal, headers })
+  await fetch(fetchUrl, { signal: abortController.signal, headers, priority })
     .then((res) => {
       // For range reads, require 206 so we don't silently accept a full-body 200
       // response and download an entire PMTiles archive.

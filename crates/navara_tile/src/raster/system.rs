@@ -270,7 +270,9 @@ pub fn update_raster_tiles(
         pressure.min,
         pressure.max,
     );
-    let dynamic_sse = dynamic_sse.term(camera_pos, camera.forward(), camera_height);
+    let dynamic_sse = dynamic_sse
+        .term(camera_pos, camera.forward(), camera_height)
+        .for_max_sse(globe.max_sse as f64);
 
     let terrain_present = terrain_layer.iter().next().is_some();
 

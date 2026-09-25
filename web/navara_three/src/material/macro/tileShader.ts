@@ -40,6 +40,9 @@ export function generateTileCommonInjection(numTextures: number): string {
   uniform sampler2D uColorAtlas;
   uniform sampler2D uAttrAtlas;
   uniform sampler2D uNormalAtlas;
+  // Child-quadrant bitmask to draw (0 = whole tile); bit i covers the child
+  // at (i % 2 east, i / 2 south). Tile UV has v = 0 at the south edge.
+  uniform int uFillQuadrants;
 
   // Per-slot uniforms retained because they need full float precision and are
   // indexed once per fragment by the winning slot from attr.a.
@@ -102,6 +105,10 @@ export function generateTileMapFragment(
   // edges decodes to batch ids that don't exist (a thin draped polyline is
   // almost all edge pixels). Snap to the texel center (nearest sampling)
   // while picking.
+  if (uFillQuadrants != 0) {
+    int nvr_quadrant = (vOrigUv.x >= 0.5 ? 1 : 0) + (vOrigUv.y >= 0.5 ? 0 : 2);
+    if ((uFillQuadrants & (1 << nvr_quadrant)) == 0) discard;
+  }
   vec2 nvr_atlasUv = vOrigUv;
   if (uPickable > 0.) {
     vec2 nvr_atlasSize = vec2(textureSize(uColorAtlas, 0));

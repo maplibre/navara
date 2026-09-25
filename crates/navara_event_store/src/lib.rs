@@ -15,6 +15,11 @@ pub struct EventStore {
     pub mesh_removed: Vec<Entity>,
     pub mesh_added: Vec<Entity>,
     pub mesh_updated: Vec<Entity>,
+    /// A live tile mesh whose geometry buffers were rewritten in place (an
+    /// upsampled terrain mesh replaced by its real DEM). Emitted instead of
+    /// `mesh_updated` so the platform swaps only the geometry and leaves the
+    /// material, textures and drape state untouched.
+    pub mesh_geometry_replaced: Vec<Entity>,
     pub data_requested: Vec<Entity>,
     pub data_requester_removed: Vec<Entity>,
     pub texture_fragment_reqested: Vec<Entity>,
@@ -38,6 +43,7 @@ impl EventStore {
         self.mesh_removed.clear();
         self.mesh_added.clear();
         self.mesh_updated.clear();
+        self.mesh_geometry_replaced.clear();
         self.data_requested.clear();
         self.data_requester_removed.clear();
         self.texture_fragment_reqested.clear();
