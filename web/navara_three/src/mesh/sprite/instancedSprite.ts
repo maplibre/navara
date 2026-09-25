@@ -422,6 +422,7 @@ export class InstancedSpriteMesh
 
     this._cacheDeclutterState(m);
     this._cacheAnchors(positionsInfo, m.transform);
+    this._orientation = spriteOrientation(m.material);
 
     // Create Geometry
     this.geometry = this._initGeometry(positionsInfo, m);
@@ -625,7 +626,6 @@ export class InstancedSpriteMesh
     // Create enhancer
     const enhancer = createInstancedSpriteMaterialEnhancer(material);
     this._enhancedMaterial = enhancer;
-    this._orientation = spriteOrientation(m.material);
 
     // Mount with initial props
     enhancer.mount({
