@@ -139,7 +139,7 @@ sidebar:
 - `text-font`
 
 **機能:**
-- スタイルオーバーライド経由でフォントを設定（[フォント設定](./font-configuration/) 参照）
+- スタイルオーバーライド経由でフォントを設定（[フォント設定](../maplibre-style-plugin/#with-font-configuration) 参照）
 - `text-font` が `font-faces` からフォントを選択（フォールバック用に文字列または配列をサポート）
 - `text-halo-color` と `text-halo-width` が Navara の `outlineColor` と `outlineWidth` にマッピング
 - テキストレンダリングは SDF（signed distance field）を使用
@@ -364,7 +364,7 @@ TileJSON URL:
 
 ## 式のサポート
 
-すべての [MapLibre 式演算子](https://maplibre.org/maplibre-style-spec/expressions/) がサポートされています：
+以下は、サポートされている主な [MapLibre 式演算子](https://maplibre.org/maplibre-style-spec/expressions/) です：
 
 ### 検索
 
@@ -470,7 +470,7 @@ raster-DEM ソースからの 3D 地形レンダリング。
 }
 ```
 
-詳細は [フォント設定](./font-configuration/) を参照してください。
+詳細は [フォント設定](../maplibre-style-plugin/#with-font-configuration) を参照してください。
 
 ### Attribution
 

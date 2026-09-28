@@ -139,7 +139,7 @@ Icons and text labels.
 - `text-font`
 
 **Features:**
-- Fonts configured via style overrides (see [Font Configuration](./font-configuration/))
+- Fonts configured via style overrides (see [Font Configuration](../maplibre-style-plugin/#with-font-configuration))
 - `text-font` selects font from `font-faces` (supports string or array for fallback)
 - `text-halo-color` and `text-halo-width` map to Navara's `outlineColor` and `outlineWidth`
 - Text rendering uses SDF (signed distance field)
@@ -364,7 +364,7 @@ TileJSON URL:
 
 ## Expression Support
 
-All [MapLibre expression operators](https://maplibre.org/maplibre-style-spec/expressions/) are supported:
+The following commonly used [MapLibre expression operators](https://maplibre.org/maplibre-style-spec/expressions/) are supported:
 
 ### Lookup
 
@@ -470,7 +470,7 @@ Font configuration for symbol layers.
 }
 ```
 
-See [Font Configuration](./font-configuration/) for details.
+See [Font Configuration](../maplibre-style-plugin/#with-font-configuration) for details.
 
 ### Attribution
 

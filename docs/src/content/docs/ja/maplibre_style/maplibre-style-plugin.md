@@ -313,7 +313,7 @@ type MapLibreStylePluginOptions = {
 
 | オプション | 型 | デフォルト | 説明 |
 |--------|------|---------|-------------|
-| `overrides` | `Partial<StyleSpecification>` | `undefined` | ベーススタイルとマージする部分的なスタイルオーバーライド。フォント設定やカスタムレイヤーの追加に使用します。 |
+| `overrides` | `Partial<StyleSpecification>` | `undefined` | 部分的なスタイルオーバーライド。現在、プラグインがマージするのは `font-faces` のみです。 |
 | `tileJsonPlugin` | `TileJsonPlugin` | `undefined` | カスタム TileJsonPlugin インスタンス。提供されない場合、新しいものが作成され内部で管理されます。 |
 
 ### 例
@@ -553,5 +553,5 @@ type FontFaceSpecification = {
 
 ## 関連リソース
 
-- [サポートされている機能](./supported-features/) - 完全な機能マトリックス
+- [サポートされている機能](../supported-features/) - 完全な機能マトリックス
 - [MapLibre Style Specification](https://maplibre.org/maplibre-style-spec/) - 公式仕様

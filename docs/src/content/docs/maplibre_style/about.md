@@ -83,7 +83,7 @@ Fonts can be loaded in multiple ways:
 - **Manual configuration** - `fontFamilyToStyleOverrides()` converts FontFamily objects
 - **Style overrides** - Fonts are passed via the `overrides` option
 
-See [Font Configuration](./font-configuration/) for details.
+See [Font Configuration](../maplibre-style-plugin/#with-font-configuration) for details.
 
 ## Relationship with Other Packages
 
@@ -104,7 +104,7 @@ The plugin supports a practical subset of the MapLibre Style Specification:
 
 **Expressions:** All operators including zoom-dependent expressions
 
-See [Supported Features](./supported-features/) for a complete list of implemented properties.
+See [Supported Features](../supported-features/) for a complete list of implemented properties.
 
 ## What's Not Supported
 
@@ -116,5 +116,5 @@ See [Supported Features](./supported-features/) for a complete list of implement
 
 ## Related Resources
 
-- [MapLibreStylePlugin](./maplibre-style-plugin/) - Usage guide, API reference, and font configuration
-- [Supported Features](./supported-features/) - Complete feature matrix
+- [MapLibreStylePlugin](../maplibre-style-plugin/) - Usage guide, API reference, and font configuration
+- [Supported Features](../supported-features/) - Complete feature matrix

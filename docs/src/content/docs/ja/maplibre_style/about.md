@@ -83,7 +83,7 @@ view.attribution?.add([
 - **手動設定** - `fontFamilyToStyleOverrides()` で FontFamily オブジェクトを変換
 - **スタイルオーバーライド** - `overrides` オプション経由でフォントを渡す
 
-詳細は [フォント設定](./font-configuration/) を参照してください。
+詳細は [フォント設定](../maplibre-style-plugin/#with-font-configuration) を参照してください。
 
 ## 他のパッケージとの関係
 
@@ -104,7 +104,7 @@ view.attribution?.add([
 
 **式:** zoom 依存式を含むすべての演算子
 
-実装されているプロパティの完全なリストは [サポートされている機能](./supported-features/) を参照してください。
+実装されているプロパティの完全なリストは [サポートされている機能](../supported-features/) を参照してください。
 
 ## サポートされていない機能
 
@@ -116,5 +116,5 @@ view.attribution?.add([
 
 ## 関連リソース
 
-- [MapLibreStylePlugin](./maplibre-style-plugin/) - 使い方ガイド、API リファレンス、フォント設定
-- [サポートされている機能](./supported-features/) - 完全な機能マトリックス
+- [MapLibreStylePlugin](../maplibre-style-plugin/) - 使い方ガイド、API リファレンス、フォント設定
+- [サポートされている機能](../supported-features/) - 完全な機能マトリックス

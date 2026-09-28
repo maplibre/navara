@@ -313,7 +313,7 @@ type MapLibreStylePluginOptions = {
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| `overrides` | `Partial<StyleSpecification>` | `undefined` | Partial style overrides to merge with the base style. Use for font configuration or adding custom layers. |
+| `overrides` | `Partial<StyleSpecification>` | `undefined` | Partial style overrides; currently the plugin merges only `font-faces`. |
 | `tileJsonPlugin` | `TileJsonPlugin` | `undefined` | Custom TileJsonPlugin instance. If not provided, a new one will be created and managed internally. |
 
 ### Example
@@ -553,5 +553,5 @@ The plugin follows the standard Navara plugin lifecycle:
 
 ## Related Resources
 
-- [Supported Features](./supported-features/) - Complete feature matrix
+- [Supported Features](../supported-features/) - Complete feature matrix
 - [MapLibre Style Specification](https://maplibre.org/maplibre-style-spec/) - Official spec
