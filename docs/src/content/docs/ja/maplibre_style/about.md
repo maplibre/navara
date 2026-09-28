@@ -10,11 +10,7 @@ sidebar:
 `@navaramap/maplibre-style` は `MapLibreStylePlugin` を提供します。これは [MapLibre Style](https://maplibre.org/maplibre-style-spec/) JSON 仕様を解析し、そのソースとレイヤーを Navara のレイヤー操作とフィーチャーごとの評価器に変換します。これにより、既存の MapLibre GL JS スタイルを最小限の変更で Navara の 3D 地球儀上にレンダリングできます。
 
 プラグインが処理するもの：
-- **式の評価** - すべての MapLibre 式（数学、決定、検索、zoom など）
-- **背景レイヤー** - インテリジェントなキャッシュを使用して地球の色/不透明度にマッピング
-- **複数のソースタイプ** - Vector、raster、raster-DEM、GeoJSON
-- **シンボルレイヤー** - SDF テキストと自動デクラッタリングを使用したテキストとアイコンのレンダリング
-- **フォント設定** - CSS または直接 font-faces からの柔軟なフォント読み込み
+- **式の評価** - サポートされている MapLibre 式（数学、決定、検索、zoom など）
 
 ## パッケージ概要
 
@@ -102,7 +98,7 @@ view.attribution?.add([
 
 **ソースタイプ:** `vector`, `raster`, `raster-dem`, `geojson`
 
-**式:** zoom 依存式を含むすべての演算子
+ **式:** zoom 依存式を含むサポート対象の演算子
 
 実装されているプロパティの完全なリストは [サポートされている機能](../supported-features/) を参照してください。
 

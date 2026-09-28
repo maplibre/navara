@@ -139,7 +139,7 @@ sidebar:
 - `text-font`
 
 **機能:**
-- スタイルオーバーライド経由でフォントを設定（[フォント設定](../maplibre-style-plugin/#with-font-configuration) 参照）
+- スタイルオーバーライド経由でフォントを設定（[フォント設定](../maplibre-style-plugin/#フォント設定を使用する) 参照）
 - `text-font` が `font-faces` からフォントを選択（フォールバック用に文字列または配列をサポート）
 - `text-halo-color` と `text-halo-width` が Navara の `outlineColor` と `outlineWidth` にマッピング
 - テキストレンダリングは SDF（signed distance field）を使用

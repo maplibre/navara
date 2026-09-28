@@ -10,11 +10,7 @@ sidebar:
 `@navaramap/maplibre-style` provides `MapLibreStylePlugin`, which parses a [MapLibre Style](https://maplibre.org/maplibre-style-spec/) JSON specification and translates its sources and layers into Navara layer operations and per-feature evaluators. This enables existing MapLibre GL JS styles to be rendered on Navara's 3D globe with minimal changes.
 
 The plugin handles:
-- **Expression evaluation** - All MapLibre expressions (math, decision, lookup, zoom, etc.)
-- **Background layers** - Mapped to globe color/opacity with intelligent caching
-- **Multiple source types** - Vector, raster, raster-DEM, and GeoJSON
-- **Symbol layers** - Text and icon rendering with SDF text and automatic decluttering
-- **Font configuration** - Flexible font loading from CSS or direct font-faces
+- **Expression evaluation** - Supported MapLibre expressions (math, decision, lookup, zoom, etc.)
 
 ## Package Overview
 
@@ -102,7 +98,7 @@ The plugin supports a practical subset of the MapLibre Style Specification:
 
 **Source types:** `vector`, `raster`, `raster-dem`, `geojson`
 
-**Expressions:** All operators including zoom-dependent expressions
+**Expressions:** Supported operators, including zoom-dependent expressions
 
 See [Supported Features](../supported-features/) for a complete list of implemented properties.
 
