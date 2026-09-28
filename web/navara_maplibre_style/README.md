@@ -56,7 +56,11 @@ Only the properties listed below are actually implemented and functional. Other 
 
 - **Paint:** `background-color`, `background-opacity`
 - **Layout:** `visibility`
-- **Note:** Background layers are mapped to `view.globe.color` and `view.globe.opacity`. No source required.
+- **Note:**
+  - Background layers are mapped to `view.globe.color` and `view.globe.opacity`. No source required.
+  - When multiple background layers are defined, the last applicable layer (respecting `minzoom`/`maxzoom` and `visibility`) is used
+  - Background evaluators are cached and only recompiled when the active layer changes
+  - Zoom-dependent backgrounds (using zoom expressions or zoom constraints) are automatically re-evaluated on zoom changes
 
 #### ❌ Not Supported
 
@@ -218,7 +222,28 @@ const fontFamily = await fetchFontFamilyFromCss(
 );
 
 const plugin = new MapLibreStylePlugin(style, {
-  overrides: fontFamilyToStyleOverrides(fontFamily),
+  overrides: fontFamilyToStyleOverrides([fontFamily]),
+});
+```
+
+For multiple fonts:
+
+```typescript
+import { fetchFontFamilyFromCss } from "@navaramap/three";
+import { fontFamilyToStyleOverrides } from "@navaramap/maplibre-style";
+
+const openSans = await fetchFontFamilyFromCss(
+  "Open Sans",
+  "https://fonts.googleapis.com/css2?family=Open+Sans:wght@600&display=swap",
+);
+
+const roboto = await fetchFontFamilyFromCss(
+  "Roboto",
+  "https://fonts.googleapis.com/css2?family=Roboto:wght@400&display=swap",
+);
+
+const plugin = new MapLibreStylePlugin(style, {
+  overrides: fontFamilyToStyleOverrides([openSans, roboto]),
 });
 ```
 
