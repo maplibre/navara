@@ -57,7 +57,7 @@ view.attribution?.add([
 
 ### 式のサポート
 
-すべての [MapLibre 式演算子](https://maplibre.org/maplibre-style-spec/expressions/) をサポート：
+以下の [MapLibre 式演算子](https://maplibre.org/maplibre-style-spec/expressions/) をサポートしています：
 
 - **検索:** `get`, `has`, `in`, `index-of`, `length`
 - **決定:** `case`, `match`, `coalesce`
@@ -83,7 +83,7 @@ view.attribution?.add([
 - **手動設定** - `fontFamilyToStyleOverrides()` で FontFamily オブジェクトを変換
 - **スタイルオーバーライド** - `overrides` オプション経由でフォントを渡す
 
-詳細は [フォント設定](../maplibre-style-plugin/#with-font-configuration) を参照してください。
+詳細は [フォント設定](../maplibre-style-plugin/#フォント設定を使用する) を参照してください。
 
 ## 他のパッケージとの関係
 

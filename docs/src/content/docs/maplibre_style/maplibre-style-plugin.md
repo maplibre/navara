@@ -10,7 +10,7 @@ sidebar:
 `MapLibreStylePlugin` parses a [MapLibre Style](https://maplibre.org/maplibre-style-spec/) JSON specification and translates its sources and layers into Navara layer operations. This enables existing MapLibre GL JS styles to be rendered on Navara's 3D globe with minimal changes.
 
 The plugin automatically handles:
-- Expression evaluation (all MapLibre operators including zoom-dependent expressions)
+- Expression evaluation (supported MapLibre operators, including zoom-dependent expressions)
 - Background layers with intelligent caching
 - Multiple source types (vector, raster, raster-DEM, GeoJSON)
 - Symbol layers with SDF text rendering and automatic decluttering
@@ -100,7 +100,7 @@ Symbol layers use `text-font` to select fonts:
 {
   "layout": {
     "text-field": ["get", "name"],
-    "text-font": ["Open Sans"]  // Must match font-faces key
+    "text-font": ["Open Sans"]
   }
 }
 ```
@@ -140,7 +140,7 @@ When `tileJsonPlugin` is provided, the plugin will not create its own instance a
 
 ### Style Overrides
 
-Style overrides let you modify or extend a style without editing the original JSON:
+Style overrides let you add font faces for text rendering without editing the original style JSON:
 
 ```typescript
 const plugin = new MapLibreStylePlugin(style, {
@@ -154,23 +154,11 @@ const plugin = new MapLibreStylePlugin(style, {
         },
       ],
     },
-    // Override or add layers
-    layers: [
-      ...style.layers,
-      {
-        id: "custom-layer",
-        type: "fill",
-        source: "custom-source",
-        paint: {
-          "fill-color": "#ff0000",
-        },
-      },
-    ],
   },
 });
 ```
 
-The `overrides` object is deep-merged with the base style, with override values taking precedence.
+**Note:** Currently, only `font-faces` overrides are supported. Other properties (like `layers` or `sources`) are not merged.
 
 ### Zoom-Dependent Styles
 

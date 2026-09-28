@@ -57,7 +57,7 @@ view.attribution?.add([
 
 ### Expression Support
 
-All [MapLibre expression operators](https://maplibre.org/maplibre-style-spec/expressions/) are supported:
+The supported [MapLibre expression operators](https://maplibre.org/maplibre-style-spec/expressions/) include:
 
 - **Lookup:** `get`, `has`, `in`, `index-of`, `length`
 - **Decision:** `case`, `match`, `coalesce`

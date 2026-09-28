@@ -10,7 +10,7 @@ sidebar:
 `MapLibreStylePlugin` は [MapLibre Style](https://maplibre.org/maplibre-style-spec/) JSON 仕様を解析し、そのソースとレイヤーを Navara のレイヤー操作に変換します。これにより、既存の MapLibre GL JS スタイルを最小限の変更で Navara の 3D 地球儀上にレンダリングできます。
 
 プラグインは自動的に以下を処理します：
-- 式の評価（zoom 依存式を含むすべての MapLibre 演算子）
+- 式の評価（サポートされている MapLibre 演算子。zoom 依存式を含む）
 - インテリジェントなキャッシュを使用した背景レイヤー
 - 複数のソースタイプ（vector、raster、raster-DEM、GeoJSON）
 - SDF テキストレンダリングと自動デクラッタリングを使用したシンボルレイヤー
@@ -100,7 +100,7 @@ const plugin = new MapLibreStylePlugin(style, {
 {
   "layout": {
     "text-field": ["get", "name"],
-    "text-font": ["Open Sans"]  // font-faces キーと一致する必要があります
+    "text-font": ["Open Sans"]
   }
 }
 ```
@@ -140,7 +140,7 @@ await view.init();
 
 ### スタイルオーバーライド
 
-スタイルオーバーライドを使用すると、元の JSON を編集せずにスタイルを変更または拡張できます：
+スタイルオーバーライドを使用すると、元のスタイル JSON を編集せずにテキストレンダリング用のフォントフェイスを追加できます：
 
 ```typescript
 const plugin = new MapLibreStylePlugin(style, {
@@ -154,23 +154,11 @@ const plugin = new MapLibreStylePlugin(style, {
         },
       ],
     },
-    // レイヤーをオーバーライドまたは追加
-    layers: [
-      ...style.layers,
-      {
-        id: "custom-layer",
-        type: "fill",
-        source: "custom-source",
-        paint: {
-          "fill-color": "#ff0000",
-        },
-      },
-    ],
   },
 });
 ```
 
-`overrides` オブジェクトはベーススタイルと深くマージされ、オーバーライド値が優先されます。
+**注:** 現在、`font-faces` オーバーライドのみがサポートされています。他のプロパティ（`layers` や `sources` など）はマージされません。
 
 ### Zoom 依存スタイル
 
