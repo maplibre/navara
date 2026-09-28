@@ -14,7 +14,7 @@ allowBuilds:
 # Overrides to patch transitive dependencies flagged by `pnpm audit`.
 # Each entry targets a specific vulnerable range so non-vulnerable majors
 # (e.g. minimatch@3, picomatch@4 ≥ 4.0.4) keep their original versions.
-# Replacement versions are exact pins (same policy as :pinVersions).
+# Replacement versions are exact pins (same policy as Dependabot `versioning-strategy: increase`).
 overrides:
   '@ungap/structured-clone@<1.3.1': 1.3.4
   brace-expansion@<1.1.18: 1.1.18
