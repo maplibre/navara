@@ -63,6 +63,12 @@ describe("instancedSpriteBaseEnhancer / state", () => {
       expect(state.depthTest).toBe(false);
     });
 
+    it("updates backfaceCulling, defaulting to off", () => {
+      expect(DEFAULT_BASE_STATE.backfaceCulling).toBe(false);
+      const state = updateState({ backfaceCulling: true }, DEFAULT_BASE_STATE);
+      expect(state.backfaceCulling).toBe(true);
+    });
+
     it("updates atlasSize", () => {
       const state = updateState({ atlasSize: [512, 256] }, DEFAULT_BASE_STATE);
       expect(state.atlasSize).toEqual([512, 256]);

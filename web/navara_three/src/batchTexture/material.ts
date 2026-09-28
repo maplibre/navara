@@ -15,6 +15,8 @@ export const SCALAR_DEFINE_SUFFIX: Record<BatchScalarSlotKey, string> = {
   extrudedHeight: "EXTRUDED_HEIGHT",
   lineWidth: "LINE_WIDTH",
   size: "SIZE",
+  rotation: "ROTATION",
+  orientation: "ORIENTATION",
   showOpacity: "SHOW_OPACITY",
   emissiveIntensity: "EMISSIVE_INTENSITY",
 };

@@ -1,0 +1,72 @@
+---
+// The site footer shared by the landing page and the brand assets page: the
+// link row (labels from src/data/lp-locales/<locale>.json, targets from
+// src/data/lp.json) and the license credit. Transparent by design — the LP
+// lays it over the closing globe still, the brand assets page paints it as a
+// primary band — and positioned by the page that places it.
+import lp from "../data/lp.json";
+import { docsHref, getLpLocale, siteHref } from "./lp-shared";
+
+interface Props {
+  locale: string;
+  // Stagger the children in with the LP's reveal-on-scroll (the LP only; the
+  // hidden states live in LandingPage.astro's styles).
+  reveal?: boolean;
+}
+
+const { locale, reveal = false } = Astro.props;
+const t = getLpLocale(locale);
+const { links } = lp;
+---
+
+<footer class="lp-footer" data-reveal-group={reveal ? "" : undefined}>
+  <div class="lp-footer-links">
+    <a href={docsHref(locale, links.docs)}>{t.footer.docs}</a>
+    <a href={links.github}>{t.footer.github}</a>
+    <a href={links.discord}>{t.footer.discord}</a>
+    <a href={siteHref(locale, links.brandAssets)}>{t.footer.brandAssets}</a>
+  </div>
+  <p class="lp-footer-credit">{t.footer.credit}</p>
+</footer>
+
+<style is:global>
+  .lp-footer {
+    padding: 56px 48px calc(48px + var(--lp-safe-b));
+    color: var(--on-dark);
+    text-align: center;
+  }
+  .lp-footer-links {
+    display: flex;
+    justify-content: center;
+    gap: 26px;
+    font-size: 14px;
+    font-weight: 500;
+  }
+  .lp .lp-footer-links a {
+    color: var(--on-dark);
+  }
+  .lp .lp-footer-links a:hover {
+    color: var(--acc);
+  }
+  .lp-footer-credit {
+    margin-top: 28px;
+    font-size: 12px;
+    color: var(--on-dark-soft);
+  }
+
+  @media (max-width: 960px) {
+    .lp-footer {
+      padding: 44px 32px calc(40px + var(--lp-safe-b));
+    }
+  }
+
+  @media (max-width: 640px) {
+    .lp-footer {
+      padding: 48px 20px calc(40px + var(--lp-safe-b));
+    }
+    .lp-footer-links {
+      flex-wrap: wrap;
+      gap: 18px 22px;
+    }
+  }
+</style>

@@ -51,6 +51,13 @@ export const localize = (text: Localized | undefined, lang: Lang): string => {
 export const DOCS_URL = "/docs";
 
 /**
+ * A site-root page that exists per language (the landing page is `""`, the
+ * brand assets page `"brand-assets/"`): served at / and /ja/ on navara.world.
+ */
+export const siteUrl = (lang: Lang, path = ""): string =>
+  (lang === "ja" ? "/ja/" : "/") + path;
+
+/**
  * Resolve an example's `docs` value to a full URL. An absolute URL passes
  * through unchanged; otherwise it is treated as a docs-site path and prefixed
  * with {@link DOCS_URL} and the language segment (docs are localized under /ja).

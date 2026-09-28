@@ -21,7 +21,7 @@ sidebar:
 
 **Type:** `ToneMappingMode | undefined`
 
-**Description:** トーンマッピングのモードを指定します。利用可能なモードには、AGX、ACES_FILMIC、LINEAR、REINHARD、REINHARD2、UNREALなどがあります。
+**Description:** トーンマッピングのモードを指定します。利用可能なモードには、AGX、ACES_FILMIC、NEUTRAL、LINEAR、REINHARD、REINHARD2、UNREALなどがあります。AGX と ACES_FILMIC はフィルム調のコントラストカーブになります。NEUTRAL はベースマップ本来の色を保ちハイライトだけを丸めるので、見た目を保ちたい画像タイルに向きます。
 
 **Default:** `ToneMappingMode.AGX`
 
@@ -137,6 +137,16 @@ view.addEffect<ToneMappingEffectDesc>({
 view.addEffect<SMAAEffectDesc>({
   smaa: {},
 });
+```
+
+## 露出の選び方
+
+`view.toneMappingExposure` はカーブを適用する前の HDR フレームを倍率で調整するため、適切な値はライティングだけでなくベースマップの明るさに依存します。衛星画像のような暗めのタイルなら `10` 前後、明るい地図スタイルのタイルなら `3` 前後が目安です。その露出を `NEUTRAL` のようなモードと組み合わせると、タイルの明るさが画面全体で均一に保たれ、フィルム調のカーブで暗いタイルが潰れたり明るいタイルが飛んだりせずに綺麗に見えます。
+
+```typescript
+const layers = plugin.addDefaultPhotorealScene({ deferredLighting: true });
+layers.toneMapping.update({ toneMapping: { mode: ToneMappingMode.NEUTRAL } });
+view.toneMappingExposure = 10; // 衛星画像の場合。明るいスタイルなら 3 前後
 ```
 
 ## 備考

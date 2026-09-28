@@ -83,7 +83,16 @@ pub fn traverse_tile(
     // tiles still relax a little). Strengths come from `TraversalConfig`
     // (content-based defaults, per-layer overridable). The `min_zoom` gate
     // below still bounds how far any of it can coarsen. (#697)
-    let dynamic_sse = dynamic_sse.scaled(traversal_config.dynamic_sse_scale() as f64);
+    //
+    // If it is texturized, max SSE need to be same with Globe.
+    let max_sse = if is_texturized {
+        globe.max_sse
+    } else {
+        traversal_config.max_sse()
+    } as f64;
+    let dynamic_sse = dynamic_sse
+        .scaled(traversal_config.dynamic_sse_scale() as f64)
+        .for_max_sse(max_sse);
 
     if tile.coords.z > traversal_config.max_zoom && !is_texturized {
         return TraversalResult::NotFound;
@@ -199,12 +208,6 @@ pub fn traverse_tile(
     let were_children_rendered = tile.were_children_rendered;
     tile.were_children_rendered = false;
 
-    // If it is texturized, max SSE need to be same with Globe.
-    let max_sse = if is_texturized {
-        globe.max_sse
-    } else {
-        traversal_config.max_sse()
-    } as f64;
     // Clamp LOD selection to the source's data-available floor: a tile below
     // `min_zoom` never counts as a leaf, so dynamic-SSE relaxation can coarsen
     // down to — but not past — where the source has data. Without this, a

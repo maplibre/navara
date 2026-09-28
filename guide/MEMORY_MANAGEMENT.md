@@ -331,6 +331,11 @@ unconditionally.
 
 Defaults follow CesiumJS (`enabled: true, density: 2.0e-4, sse_factor: 24.0,
 height_falloff: 0.25, min/max_height: 0/8000`), device-independent for now.
+`sse_factor` is expressed against `REFERENCE_MAX_SSE` (16 px, the CesiumJS
+3D Tiles threshold it was taken from); each traversal calls
+`DynamicSseTerm::for_max_sse(max_sse)` so the relaxation keeps the same ratio
+to its own threshold — at most 3 px for the globe's 2 px max SSE rather than
+24 px, which collapsed far terrain by several levels in any tilted view.
 Configured via `Core.setDynamicSse` (buffered in `DynamicSseConfig` when
 called before the `Startup` spawn, mirroring `LodFogConfig`); the TypeScript
 side exposes it as the `dynamicSse` constructor option / runtime property on

@@ -1,0 +1,80 @@
+/*
+ * Base layer shared by the landing page (LandingPage.astro) and the brand
+ * assets page (BrandAssets.astro): the theme-derived custom properties, the
+ * canvas, link defaults and the content container. The theme itself
+ * (--pri / --acc / --sub …) arrives as the inline style of <html>, built from
+ * src/data/lp.json by lpRootStyle in components/lp-shared.ts.
+ */
+:root {
+  /* Safe-area insets, named once so every edge-hugging rule reads the
+     same (and so they can be simulated in a browser without a notch).
+     Zero everywhere except on notched phones under viewport-fit=cover. */
+  /* Not a theme color: matched to the baked glow-globe screenshot's
+     own background (sampled pure black), so image and band are one. Also
+     the LP's canvas and browser-chrome tint — see body below. */
+  --outro-bg: #000;
+  --lp-safe-l: env(safe-area-inset-left, 0px);
+  --lp-safe-r: env(safe-area-inset-right, 0px);
+  --lp-safe-b: env(safe-area-inset-bottom, 0px);
+  /* --pri-ink is the always-dark side of the theme: normally --pri
+     itself (set inline with it), but the `?color` preview swaps it to
+     plain black when a candidate palette's primary is light, so ink,
+     hairlines and media scrims never go light. Bands keep --pri. */
+  --ink: color-mix(in oklab, var(--pri-ink), black 20%);
+  --ink-soft: color-mix(in oklab, var(--pri-ink), white 35%);
+  /* Pure white per the design handoff — dark-band text no longer takes
+     a primary tint. */
+  --on-dark: #fff;
+  /* Bright enough to read comfortably on the primary band — at lower
+     white shares this went muddy gray against the navy. */
+  --on-dark-soft: color-mix(in oklab, var(--pri-ink), white 85%);
+  --line: color-mix(in oklab, var(--pri-ink), white 85%);
+  --line-dark: color-mix(in oklab, var(--pri-ink), white 14%);
+  /* Text on --pri-painted bands / on --acc surfaces. The preview flips
+     these to the palette sheet's plain black or white when the band or
+     accent color needs it; defaults reproduce the shipped theme. */
+  --on-band: var(--on-dark);
+  --on-band-soft: var(--on-dark-soft);
+  --on-acc: var(--pri-ink);
+}
+html {
+  scroll-behavior: smooth;
+}
+body {
+  margin: 0;
+  /* html has no background, so this color is propagated to the document
+     canvas: it shows through the sub-pixel remainder at the page ends and
+     during mobile overscroll, and iOS Safari tints its toolbars with it
+     (see the theme-color meta, which pins the same value). The page can
+     never *draw* under those toolbars, so matching the closing band's
+     black is what makes it read as one surface at the bottom; the hero at
+     the top is dark enough for the same color to disappear there. Every
+     band paints its own background (.lp-main carries the light one). The
+     brand assets page, which closes on a primary band, overrides this. */
+  background: var(--outro-bg);
+  color: var(--ink);
+  font-family: "Arsenal", "Zen Kaku Gothic New", sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+.lp a {
+  color: color-mix(in oklab, var(--acc), black 25%);
+  text-decoration: none;
+}
+.lp a:hover {
+  color: var(--acc);
+}
+/* Zero-specificity reset so per-section margin rules always win. */
+:where(.lp h1, .lp h2, .lp h3, .lp p) {
+  margin: 0;
+}
+.lp img {
+  display: block;
+}
+.lp-container {
+  max-width: 1320px;
+  margin: 0 auto;
+  /* Landscape notch: content blocks step in, their section's full-bleed
+     background stays edge to edge. */
+  padding-left: var(--lp-safe-l);
+  padding-right: var(--lp-safe-r);
+}

@@ -191,7 +191,9 @@ impl App {
     }
 
     /// Sets the dynamic screen-space-error relaxation (CesiumJS
-    /// `dynamicScreenSpaceError` equivalent) applied by every tile traversal.
+    /// `dynamicScreenSpaceError` equivalent) applied by every tile traversal
+    /// (3D Tiles, terrain, raster, vector), each scaling it by its own max SSE
+    /// (`DynamicSseTerm::for_max_sse`).
     /// Buffered into [`DynamicSseConfig`] so a call before the first
     /// `App::update()` is honored, and applied to the live entity directly —
     /// same two-path shape as [`App::set_lod_fog`].

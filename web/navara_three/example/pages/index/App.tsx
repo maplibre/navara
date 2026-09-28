@@ -14,6 +14,7 @@ import {
 import { ExampleGrid } from "./ExampleGrid";
 
 import { useLang } from "@/components/hooks/useLang";
+import { SiteFooter } from "@/components/SiteFooter";
 import { SiteHeader } from "@/components/SiteHeader";
 import { Input } from "@/components/ui/input";
 
@@ -155,6 +156,7 @@ export const App = () => {
           </p>
         )}
       </div>
+      <SiteFooter lang={lang} />
     </div>
   );
 };

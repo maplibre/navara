@@ -148,8 +148,21 @@ export class DefaultPlugin extends Plugin<
   /**
    * Add default descriptors automatically to make the photorealistic scene.
    * This method must be invoked after `view.init()`.
+   *
+   * `deferredLighting` lights the scene from the atmosphere in post: it sets
+   * `aerialPerspective.irradiance` and `view.lit = false` together, since the
+   * forward pass would otherwise apply lighting as well. `shadow` and
+   * `specular` enable the sun's shadows and its specular highlight in that
+   * lighting through the aerial perspective's options of the same name. Both
+   * are off by default because either allocates the shadow G-buffer, and
+   * both are inert without `deferredLighting`. Toggle any of them later via
+   * the returned handle and `view.lit`.
    */
-  addDefaultPhotorealScene(): {
+  addDefaultPhotorealScene(options?: {
+    deferredLighting?: boolean;
+    shadow?: boolean;
+    specular?: boolean;
+  }): {
     sky: MeshHandle<SkyMeshDesc>;
     stars: MeshHandle<StarsDesc>;
     skyLightProbe: LightHandle<SkyLightProbeDesc>;
@@ -186,8 +199,15 @@ export class DefaultPlugin extends Plugin<
 
     // Effects
     const aerialPerspective = view.addEffect<AerialPerspectiveEffectDesc>({
-      aerialPerspective: {},
+      aerialPerspective: {
+        ...(options?.deferredLighting ? { irradiance: true } : {}),
+        ...(options?.shadow ? { shadow: true } : {}),
+        ...(options?.specular ? { specular: true } : {}),
+      },
     });
+    if (options?.deferredLighting) {
+      view.lit = false;
+    }
 
     // Skip lens flare on mobile - expensive effect with limited benefit
     const lensFlare = mobile

@@ -22,12 +22,12 @@ plugin/user-registered) and ordered declaratively via the descs' static
 `insertAfter` / `insertBefore` keys — there is no hardcoded pass list. The
 built-ins registered by `ThreeView` are:
 
-| key | pass | role |
-|---|---|---|
-| `skyEnvMap` | `SkyEnvMapPass` | renders the sky to a cube map for reflections (before `mrt`) |
-| `mrt` | `CustomRenderPass` | the G-buffer pass — everything in section 2 |
+| key           | pass                   | role                                                                                             |
+| ------------- | ---------------------- | ------------------------------------------------------------------------------------------------ |
+| `skyEnvMap`   | `SkyEnvMapPass`        | renders the sky to a cube map for reflections (before `mrt`)                                     |
+| `mrt`         | `CustomRenderPass`     | the G-buffer pass — everything in section 2                                                      |
 | `transparent` | transparent-scene pass | renders the `transparent` scene after every depth-based screen-space effect, before tone mapping |
-| `final` | `FinalCopyEffectDesc` | copies the result out |
+| `final`       | `FinalCopyEffectDesc`  | copies the result out                                                                            |
 
 `DefaultPlugin` inserts its effects (aerial perspective, clouds, SSAO, SSR,
 selective bloom/outline, tone mapping, SMAA/FXAA, …) into the same ordering
@@ -52,22 +52,22 @@ whole frame (vignette, color grading, AA) insert after it instead
 
 `Scenes` (`src/scene.ts`) splits renderables by pipeline role:
 
-| scene | rendered by | writes G-buffer? |
-|---|---|---|
-| `globe` | `CustomRenderPass` | **yes** — terrain/basemap tiles |
-| `mrt` | `CustomRenderPass` | **yes** — meshes participating in the G-buffer |
-| `draped` | `CustomRenderPass` (stencil draping) | **yes** |
-| `opaque` | `CustomRenderPass`, but *after* the G-buffer copy | no — composer input only |
-| `transparent` | the `transparent` pass, after depth-based effects | no |
-| `light` | added temporarily to whichever scene is being lit-rendered | — |
-| `skyEnvMap` | `SkyEnvMapPass` | no |
+| scene         | rendered by                                                | writes G-buffer?                               |
+| ------------- | ---------------------------------------------------------- | ---------------------------------------------- |
+| `globe`       | `CustomRenderPass`                                         | **yes** — terrain/basemap tiles                |
+| `mrt`         | `CustomRenderPass`                                         | **yes** — meshes participating in the G-buffer |
+| `draped`      | `CustomRenderPass` (stencil draping)                       | **yes**                                        |
+| `opaque`      | `CustomRenderPass`, but _after_ the G-buffer copy          | no — composer input only                       |
+| `transparent` | the `transparent` pass, after depth-based effects          | no                                             |
+| `light`       | added temporarily to whichever scene is being lit-rendered | —                                              |
+| `skyEnvMap`   | `SkyEnvMapPass`                                            | no                                             |
 
 A mesh desc chooses its scene via `MeshDesc.getPassKey()` (default
 `"opaque"`). `MeshDescWithSelectiveEffect` overrides it: SE-capable meshes go
 to `"mrt"` when **either** a selective effect is registered
 (`selectiveEffectRegistry.slotCount > 0`) **or** any optional G-buffer is
 allocated (`view.buffers`). The second condition matters: a mesh outside the
-MRT pass leaves the G-buffer holding whatever is *behind* it, so
+MRT pass leaves the G-buffer holding whatever is _behind_ it, so
 buffer-reading effects (deferred lighting, SSAO, …) would shade "through" the
 mesh. Placement is re-evaluated on the `effectSlotsChanged` and
 `gbufferChanged` ViewContext events.
@@ -84,8 +84,9 @@ Per frame, in order:
    `shadowScene` and rendered to a dummy target with
    `renderer.shadowMap.needsUpdate = true`, so CSM shadow maps include casters
    from all three scenes.
-2. **G-buffer defines stamping** — see section 5. Gated by O(1) change
-   signals; the scene traversal does not run on quiet frames.
+2. **G-buffer defines stamping** — see section 5. Runs every frame; the
+   per-material work is `WeakSet`-gated, so the steady-state cost is the
+   scene traversal alone.
 3. **Globe** — rendered into `gbufferRenderTarget` (with the `light` group
    temporarily attached). Globe-only normal and depth are then copied out
    (`globeNormalCopyPass`, `globeDepthCopyPass`) for effects that need
@@ -115,13 +116,13 @@ Attachment indices are **dynamic and packed** — three.js cannot express sparse
 MRT attachments, so enabled buffers are packed in a fixed order with no gaps
 and no placeholder textures:
 
-| attachment | content | type | when |
-|---|---|---|---|
-| 0 `color` | forward color (or albedo — see `lit`) | HalfFloat | always |
-| 1 `normal` | RG = octahedral view-space normal, B = metalness/reflectivity, A = roughness *(and blend factor!)* | HalfFloat | always |
-| packed next | `effectIds` — R = selective-effect bitmask | HalfFloat, Nearest | `buffers.selectiveEffect` |
-| packed next | `emissive` — RGB = HDR emissive | HalfFloat | `buffers.emissive` |
-| packed next | `shadow` — R = shadow amount (0 = lit .. 1 = shadowed), G = albedo-output flag | UnsignedByte | `buffers.shadow` |
+| attachment  | content                                                                                            | type               | when                      |
+| ----------- | -------------------------------------------------------------------------------------------------- | ------------------ | ------------------------- |
+| 0 `color`   | forward color (or albedo — see `lit`)                                                              | HalfFloat          | always                    |
+| 1 `normal`  | RG = octahedral view-space normal, B = metalness/reflectivity, A = roughness _(and blend factor!)_ | HalfFloat          | always                    |
+| packed next | `effectIds` — R = selective-effect bitmask                                                         | HalfFloat, Nearest | `buffers.selectiveEffect` |
+| packed next | `emissive` — RGB = HDR emissive                                                                    | HalfFloat          | `buffers.emissive`        |
+| packed next | `shadow` — R = shadow amount (0 = lit .. 1 = shadowed), G = albedo-output flag                     | UnsignedByte       | `buffers.shadow`          |
 
 Because indices shift, shader `layout(location = …)` values are delivered per
 material as defines (`GBUFFER_EFFECT_ID_LOCATION` etc.,
@@ -132,20 +133,55 @@ read `CustomRenderPass.textureIndex`, the `MRTPassEffectDesc` getters, or the
 disabled buffers. Fetch them **every frame** — a configuration change rebuilds
 the render target with new texture objects.
 
+**The normal buffer's B and A are not uniform quantities.** What lands there
+depends entirely on which material wrote the pixel, and nothing in the buffer
+says which:
+
+| writer                                                               | B                                           | A                                                                  |
+| -------------------------------------------------------------------- | ------------------------------------------- | ------------------------------------------------------------------ |
+| model / 3D Tiles glTF (`MeshStandard`/`Physical`)                    | real `metalnessFactor`                      | real `roughnessFactor`                                             |
+| polygon                                                              | `reflectivity` ref, **default 0**           | `roughness` ref, **default `GBUFFER_PHONG_ROUGHNESS`**             |
+| terrain tile, `useNormal` on                                         | `tileReflectivity`, **default 0**           | draped slot's roughness, **default `GBUFFER_PHONG_ROUGHNESS`**     |
+| terrain watermask ocean                                              | 0.02 (water's F0)                           | 0.4 (Cox-Munk wave slopes)                                         |
+| terrain tile, `useNormal` off (`MeshBasicMaterial`)                  | forced 0                                    | 1.0, and **RG is NaN** (no `normal` attribute)                     |
+| polyline, outline, sprite, SDF text, points, custom `ShaderMaterial` | 0                                           | 1.0                                                                |
+| any other Lambert/Basic/Phong                                        | `reflectivity` (three's default is **1.0**) | 1.0                                                                |
+| any `transparent` material                                           | unchanged                                   | **forced 1.0** (`NVR_BLENDED`)                                     |
+
+So B is readable only as _one reflectance_ behind a small "is this reflective
+at all" threshold, which is how `ssr.frag.glsl`, `coneTracing.frag.glsl` and
+the aerial perspective's specular term all use it.
+
+A can be read at face value, and 0 means a mirror. That holds only because
+every writer without a real roughness defaults to a meaningful one CPU-side:
+polygons and tile slots default to `GBUFFER_PHONG_ROUGHNESS`, the microfacet
+width matching the shininess 50 they actually shade with, so an explicit
+`roughness: 0` still reaches the buffer. The rest write 1.0, and `NVR_BLENDED`
+forces 1.0 on transparent materials because the slot doubles as the blend
+factor. **Resolve the default in TypeScript, not in the shader.** A shader
+branch on 0 cannot tell "unset" from "mirror", and a reader that patches the
+hole with its own floor only hides it from itself.
+
 ### Derived configuration
 
 There is no user-facing buffers option. The configuration is the **union of
-active effects' `static requiredBuffers`** (`selectiveBloom` →
-`["selectiveEffect", "emissive"]`, `selectiveOutline` → `["selectiveEffect"]`;
-`shadow` has no built-in consumer and is enabled by custom effects).
-`ThreeView._syncGBuffers()` re-derives on `addEffect` and on handle deletion
-and pushes the result to `CustomRenderPass.setBuffers()`, which rebuilds the
-render target **as a fresh object** (reconfiguring a live target in place
-leaves the renderer's cached GL state sampling a texture the framebuffer no
-longer writes) while keeping the color/normal/depth `Texture` identities
-(effects like SSR capture those references at creation). `addEffect` throws if
-the prospective attachment count would exceed the device's
-`gl.MAX_DRAW_BUFFERS`.
+active effects' `getRequiredBuffers()`** (`selectiveBloom` →
+`["selectiveEffect", "emissive"]`, `selectiveOutline` → `["selectiveEffect"]`,
+`aerialPerspective` with a lighting term → `["normal", "shadow"]`). The
+instance method defaults to the class's `static requiredBuffers`. A descriptor
+whose needs depend on its own configuration overrides it instead (the override
+shadows the static, so it declares no static) and emits
+`gbufferRequirementsChanged` on the `ViewContext` whenever an update changes
+the result.
+
+`ThreeView._syncGBuffers()` re-derives on `addEffect`, on handle deletion and
+on that event, then pushes the result to `CustomRenderPass.setBuffers()`. That
+rebuilds the render target **as a fresh object** (reconfiguring a live target
+in place leaves the renderer's cached GL state sampling a texture the
+framebuffer no longer writes) while keeping the color/normal/depth `Texture`
+identities, which effects like SSR capture at creation. Every derivation
+asserts the device's `gl.MAX_DRAW_BUFFERS`, so exceeding it throws from
+`addEffect` or from `update()` instead of producing an incomplete framebuffer.
 
 A configuration change reallocates attachments and recompiles shaders — add
 effects once and tune them via `update()`, don't add/remove per frame.
@@ -166,7 +202,7 @@ effects once and tune them via `update()`, don't add/remove per frame.
 ### The alpha-channel blending invariant
 
 Selective-effect-capable meshes render into the G-buffer **even when
-`transparent: true`** (for depth consistency), and WebGL2 blends *each*
+`transparent: true`** (for depth consistency), and WebGL2 blends _each_
 attachment with **that attachment's own output alpha**. Therefore, on every
 attachment, A is the blend factor, not a data channel:
 
@@ -174,7 +210,7 @@ attachment, A is the blend factor, not a data channel:
   what's behind"), non-selective writes use A = 0.0 ("keep what's behind").
   One attachment can carry at most three data channels (RGB). This is why
   emissive could not be merged into the effectIds attachment.
-- `normal`: A carries roughness *data*, which historically violated the
+- `normal`: A carries roughness _data_, which historically violated the
   invariant — a blended material with low roughness would keep (and leak) the
   normal of whatever lies behind it. Handled by `GBUFFER_NORMAL_ALPHA()`:
   materials stamped `NVR_BLENDED` (from `material.transparent`) write A = 1.0;
@@ -194,36 +230,40 @@ Materials can come from anywhere (built-ins, enhancers, user
 keep complete. Instead `CustomRenderPass.stampGBufferDefines()` traverses the
 scenes and stamps every material it finds. Two scene sets, two define sets:
 
-| Scenes | Stamped defines |
-| --- | --- |
-| `globe`, `mrt`, `draped` (G-buffer) | buffer enable/location (`USE_GBUFFER_*`, `*_LOCATION`), blended flag (`NVR_BLENDED`, synced from `material.transparent` on every visit), scene-level lit default (`NVR_UNLIT_SCENE`) |
-| `opaque`, `transparent` (forward-only) | scene-level lit default (`NVR_UNLIT_SCENE`) only |
+| Scenes                                 | Stamped defines                                                                                                                                                                      |
+| -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `globe`, `mrt`, `draped` (G-buffer)    | buffer enable/location (`USE_GBUFFER_*`, `*_LOCATION`), blended flag (`NVR_BLENDED`, synced from `material.transparent` on every visit), scene-level lit default (`NVR_UNLIT_SCENE`) |
+| `opaque`, `transparent` (forward-only) | scene-level lit default (`NVR_UNLIT_SCENE`) only                                                                                                                                     |
 
-`NVR_UNLIT_SCENE` is a *lighting* define, not a G-buffer one, so it must reach
+`NVR_UNLIT_SCENE` is a _lighting_ define, not a G-buffer one, so it must reach
 the forward-only scenes too — a mesh sits there whenever no selective effect
 and no optional buffer routes it to the MRT pass (see section 2), and
 `view.lit` has to apply to it all the same. The G-buffer defines must **not**
 be stamped there: those materials would declare outputs the single-attachment
 target has no room for. The two sets are tracked by separate `WeakSet`s, so a
 material first visited in `opaque` still receives the G-buffer defines when it
-later moves to `mrt`.
+later moves to `mrt`. The reverse move (a mesh re-routed to `opaque` once its
+last selective effect is gone) is reconciled by the forward traversal: a
+material that carries G-buffer defines but was not met in any G-buffer scene
+during the same traversal has them cleared. A material shared by both scene
+sets keeps them — the G-buffer needs the outputs, the forward pass merely
+discards them.
 
-Stale defines are set to `false` (three's sanctioned "absent" value — never
-`delete`). Changes flip `material.needsUpdate`, and three includes
-`material.defines` in the program cache key, so recompiles happen exactly when
-needed.
+Stale defines within the G-buffer set are set to `false` (three's sanctioned
+"absent" value). The defines of a material that left the G-buffer scenes are
+`delete`d instead: three keys its program cache on every define _name_, so a
+leftover `false` would compile a second, identical program rather than share
+the one the never-stamped forward materials use. Changes flip
+`material.needsUpdate`, and three includes `material.defines` in the program
+cache key, so recompiles happen exactly when needed.
 
-The traversal itself is **lazy** (`shouldStampGBufferDefines`): it only runs
-when an O(1) signal fires —
-
-1. explicit dirty flag (construction, `setBuffers`, `setLit`),
-2. a top-level `children.length` change on any of the five stamped scenes,
-3. a change in `renderer.info.programs.length` — a material must compile
-   before it can render, so even a deeply-nested async addition (a glTF
-   populating a scene-resident group) or a `transparent` flip that triggers a
-   recompile is caught one frame later; the system converges within a frame.
-
-Steady-state cost is a handful of integer compares per frame.
+The traversal runs **every frame**. There is no O(1) signal that catches
+every way a material can appear: added inside a group already in the scene (a
+glTF populating its group after load), swapped in place on a mesh
+(`mesh.material = ...`), or added in the same frame another mesh was removed —
+and it may compile to an already-cached program, so the program count does not
+move either. The per-material work is `WeakSet`-gated, so the steady-state
+cost is the traversal alone.
 
 ## 6. Material patching
 
@@ -248,7 +288,7 @@ Steady-state cost is a handful of integer compares per frame.
 Several systems wrap `material.onBeforeCompile`, and **they compete for the
 same anchors**. `navara_three_csm` replaces `#include <lights_fragment_begin>`
 with its cascaded-lights chunk (`createFragmentShader.ts`), so a handler that
-delegates to the previous one *before* looking for that anchor finds nothing
+delegates to the previous one _before_ looking for that anchor finds nothing
 and silently does nothing — no error, no warning, just unlit-looking output.
 
 When wrapping `onBeforeCompile`, do your own replacement **first**, then
@@ -300,7 +340,7 @@ Three-state lighting control, resolved per material by defines:
   on layer materials (terrain/rasterTile/polygon/model/polyline; Rust side is
   `Option<bool>` end-to-end so "unset" survives merging) and top-level on mesh
   configs (applied by the `MeshDesc` base via `applyLit()`). On mesh updates
-  the *presence* of the key decides, not its value — `update({ lit: undefined })`
+  the _presence_ of the key decides, not its value — `update({ lit: undefined })`
   resets a mesh to inheriting `view.lit`.
 - Shader resolution:
   `#if !defined(NVR_LIT) && (defined(NVR_UNLIT) || defined(NVR_UNLIT_SCENE))`

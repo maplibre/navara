@@ -8,6 +8,7 @@ import { degreeToRadian } from "@navaramap/three-api";
 import {
   Color,
   type PerspectiveCamera,
+  MathUtils,
   Object3D,
   ShaderMaterial,
   Vector2,
@@ -15,9 +16,11 @@ import {
 import invariant from "tiny-invariant";
 
 import {
+  hasBatchScalarSlot,
   registerBatchedMaterial,
   TEXT_BATCH_SUPPORT,
   updateBatchAttribute,
+  type BatchAttributeDefaults,
   type BatchedAttributeName,
   type BatchTextureSupport,
 } from "../../batchTexture";
@@ -39,7 +42,7 @@ import { GEOMETRY_TYPES } from "../constants";
 import { InstancedMesh, type InstancedMeshOptions } from "../instanced";
 import type { PickableMesh } from "../pickableMesh";
 
-import { GlyphBuffers } from "./glyphBuffers";
+import { backgroundSliceCount, GlyphBuffers } from "./glyphBuffers";
 import { GlyphSlotAllocator, type GlyphRun } from "./glyphSlots";
 import { LabelDataTexture, LabelRow } from "./labelData";
 import {
@@ -330,6 +333,9 @@ export class BatchedSdfTextMesh
         center: material.center
           ? [material.center.x, material.center.y]
           : undefined,
+        flatFacing: material.textFacing === "flat",
+        rotateWithCamera: material.rotateWithCamera ?? true,
+        rotation: material.rotation ?? 0,
         sizeInMeters: material.sizeInMeters ?? true,
         offsetDepth: material.offsetDepth ?? true,
         outlineWidth: material.outlineWidth ?? 0,
@@ -340,6 +346,7 @@ export class BatchedSdfTextMesh
         backgroundOutlineColor: material.borderColor ?? 0x000000,
         backgroundOutlineWidth: material.borderWidth ?? 0.1,
         depthTest: material.depthTest ?? true,
+        backfaceCulling: material.backfaceCulling ?? false,
         transparent: material.transparent ?? true,
         effectIdsMask: this._computeEffectIdsMask(material),
         emissiveColor: material.emissiveColor ?? 0,
@@ -539,13 +546,24 @@ export class BatchedSdfTextMesh
     batchIndex: number,
     attribute: BatchedAttributeName,
     value: number | number[] | boolean,
+    defaults?: Partial<BatchAttributeDefaults>,
   ): boolean {
     return updateBatchAttribute(
       this.material as ShaderMaterial,
       batchIndex,
       attribute,
       value,
+      defaults,
     );
+  }
+
+  /** The material's orientation/rotation, backfilled into a new batch slot. */
+  private _orientationDefaults(): BatchAttributeDefaults {
+    return {
+      rotation: (this._material.rotation ?? 0) * MathUtils.DEG2RAD,
+      flatFacing: this._material.textFacing === "flat",
+      rotateWithCamera: this._material.rotateWithCamera ?? true,
+    };
   }
 
   private _writeStyle(record: LabelRecord): void {
@@ -667,9 +685,10 @@ export class BatchedSdfTextMesh
       return;
     }
 
-    // One extra slot for the background quad, which always leads the run so it
-    // draws before the label's glyphs.
-    const needed = layout.quads.length + 1;
+    // Extra slots for the background strips, which always lead the run so they
+    // draw before the label's glyphs.
+    const needed =
+      layout.quads.length + backgroundSliceCount(layout.quads.length);
     const previous = record.run;
     const run = this._slots.realloc(previous, needed);
     record.run = run;
@@ -1170,6 +1189,9 @@ export class BatchedSdfTextMesh
         center: material.center
           ? [material.center.x, material.center.y]
           : [0.5, 0.0],
+        flatFacing: material.textFacing === "flat",
+        rotateWithCamera: material.rotateWithCamera ?? true,
+        rotation: material.rotation ?? 0,
         sizeInMeters: material.sizeInMeters ?? true,
         offsetDepth: material.offsetDepth ?? true,
         outlineWidth: material.outlineWidth ?? 0,
@@ -1180,6 +1202,7 @@ export class BatchedSdfTextMesh
         backgroundOutlineColor: material.borderColor ?? 0x000000,
         backgroundOutlineWidth: material.borderWidth ?? 0,
         depthTest: material.depthTest ?? true,
+        backfaceCulling: material.backfaceCulling ?? false,
         transparent: material.transparent ?? true,
         effectIdsMask: this._computeEffectIdsMask(material),
         emissiveColor: material.emissiveColor ?? 0,
@@ -1207,6 +1230,22 @@ export class BatchedSdfTextMesh
       opacity !== clamp01(prevMaterial.opacity ?? 1.0);
     const fontSizeChanged = fontSize !== (prevMaterial.size ?? 16.0);
     const addHeightChanged = addHeight !== (prevMaterial.height ?? 0);
+    const mat = this.material as ShaderMaterial;
+    const rotationDeg = material.rotation ?? 0;
+    const flatFacing = material.textFacing === "flat";
+    const followCamera = material.rotateWithCamera ?? true;
+    // Orientation/rotation are uniform-driven until some feature gets its own
+    // value. Once a slot exists every feature reads the texture, so a changed
+    // material value must be written through or evaluator overrides would
+    // outlive it — the same "a material update overwrites per-feature style"
+    // rule the style/size writes above follow.
+    const rotationChanged =
+      rotationDeg !== (prevMaterial.rotation ?? 0) &&
+      hasBatchScalarSlot(mat, "rotation");
+    const orientationChanged =
+      (flatFacing !== (prevMaterial.textFacing === "flat") ||
+        followCamera !== (prevMaterial.rotateWithCamera ?? true)) &&
+      hasBatchScalarSlot(mat, "orientation");
 
     // A changed material show clobbers evaluator overrides — including hide
     // intents parked on anchors that never got a label.
@@ -1225,6 +1264,19 @@ export class BatchedSdfTextMesh
       if (addHeightChanged) {
         record.addHeight = addHeight;
         this._writeAddHeight(record);
+      }
+      if (rotationChanged) {
+        this.setFeatureRotationByBatchIndex(record.batchIndex, rotationDeg);
+      }
+      if (orientationChanged) {
+        this.setFeatureFacingByBatchIndex(
+          record.batchIndex,
+          flatFacing ? "flat" : "upright",
+        );
+        this.setFeatureRotateWithCameraByBatchIndex(
+          record.batchIndex,
+          followCamera,
+        );
       }
 
       if (showChanged) record.requestedShow = materialShow;
@@ -1410,6 +1462,38 @@ export class BatchedSdfTextMesh
       this._writeAddHeight(record);
     }
     this._markDeclutterDirty();
+  }
+
+  /**
+   * Orientation and in-plane rotation for one feature, overriding the
+   * material's. `rotation` is in degrees, clockwise seen from the front; it is
+   * converted to the radians the shader wants here, matching the material path.
+   */
+  setFeatureFacingByBatchIndex(batchIndex: number, facing: "upright" | "flat") {
+    this._updateBatchAttribute(
+      batchIndex,
+      "flatFacing",
+      facing === "flat",
+      this._orientationDefaults(),
+    );
+  }
+
+  setFeatureRotateWithCameraByBatchIndex(batchIndex: number, follow: boolean) {
+    this._updateBatchAttribute(
+      batchIndex,
+      "rotateWithCamera",
+      follow,
+      this._orientationDefaults(),
+    );
+  }
+
+  setFeatureRotationByBatchIndex(batchIndex: number, degrees: number) {
+    this._updateBatchAttribute(
+      batchIndex,
+      "rotation",
+      degrees * MathUtils.DEG2RAD,
+      this._orientationDefaults(),
+    );
   }
 
   setFeatureSizeByBatchIndex(batchIndex: number, size: number) {

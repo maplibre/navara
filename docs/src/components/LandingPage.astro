@@ -12,13 +12,16 @@ import lp from "../data/lp.json";
 import ImageAttribution from "./ImageAttribution.astro";
 import GalleryTile from "./GalleryTile.astro";
 import LpHeader from "./LpHeader.astro";
+import LpFooter from "./LpFooter.astro";
+import { DOCS_BASE, docsHref, getLpLocale, lpRootStyle } from "./lp-shared";
+import { logoSvg } from "./brand-logo";
+import "../styles/lp-base.css";
 import googleMapsLogo from "../assets/lp/google-maps-logo.png";
 import archGlobe from "../assets/lp/arch-globe.svg?raw";
 import archTerrain from "../assets/lp/arch-terrain.svg?raw";
 import archBuildings from "../assets/lp/arch-buildings.svg?raw";
 import archMarker from "../assets/lp/arch-marker.svg?raw";
 import archArrow from "../assets/lp/arch-arrow.svg?raw";
-import logoVertical from "../../public/logo/black/black_Navara_Vertical_logo_260819.svg?raw";
 
 // Inline an arch SVG so the page CSS can re-theme its baked fills/strokes
 // (an <img> would seal them off). The classes land on the <svg> itself, so
@@ -27,48 +30,17 @@ import logoVertical from "../../public/logo/black/black_Navara_Vertical_logo_260
 const archSvg = (raw: string, className: string): string =>
   raw.replace("<svg ", `<svg class="${className}" aria-hidden="true" `);
 
-// Inline the brand logo (the black variant carries no fill attributes) so
-// `fill: currentColor` lets CSS hand it the on-dark / on-band ink that
-// matches whatever surface it sits on.
-const logoSvg = (raw: string, className: string): string =>
-  raw.replace("<svg ", `<svg class="${className}" role="img" aria-label="Navara" `);
-
 interface Props {
   locale: string;
 }
 
-// The root locale is served at "/" without a path prefix (matches Starlight).
-const ROOT_LOCALE = "en";
-
-// Locales the docs site is built in (see astro.config.mjs `locales`). The LP
-// can exist in more locales than the docs; LP-only locales link to the
-// root-locale docs instead of a /docs/<locale>/ tree that doesn't exist.
-const DOCS_LOCALES = new Set(["en", "ja"]);
-
-const localeModules = import.meta.glob<{ default: any }>("../data/lp-locales/*.json", {
-  eager: true,
-});
-const locales: Record<string, any> = {};
-for (const [path, mod] of Object.entries(localeModules)) {
-  const code = path.match(/([\w-]+)\.json$/)?.[1];
-  if (code) locales[code] = mod.default;
-}
-
 const { locale } = Astro.props;
-const t = locales[locale];
-if (!t) throw new Error(`LP locale strings not found: ${locale}`);
-
-// The docs deploy base ("/docs" on navara.world — see astro.config.mjs).
-const DOCS_BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
+const t = getLpLocale(locale);
 
 // Prefix docs-internal links with the deploy base and the locale path
 // segment (root and LP-only locales have none). Site-root links (/examples)
 // are used raw.
-function localizeHref(href: string): string {
-  if (!href.startsWith("/")) return href;
-  const localeSeg = locale === ROOT_LOCALE || !DOCS_LOCALES.has(locale) ? "" : `/${locale}`;
-  return `${DOCS_BASE}${localeSeg}${href}`;
-}
+const localizeHref = (href: string): string => docsHref(locale, href);
 const imageModules = import.meta.glob<{ default: ImageMetadata }>(
   [
     "../assets/**/*.{png,jpg,jpeg,gif,webp,avif,svg}",
@@ -107,8 +79,8 @@ const alt = (id: string): string => {
   return text;
 };
 
-const { colors, links } = lp;
-const rootStyle = `--pri:${colors.primary};--pri-ink:${colors.primary};--acc:${colors.accent};--sub:${colors.sub};--ml:${colors.maplibre};--acc-hero:${colors.heroAccent};--mark-why:${colors.whyUnderline}`;
+const { links } = lp;
+const rootStyle = lpRootStyle;
 
 // Attribution credits (text + link to each source's terms). The strings are
 // language-agnostic, so they live here rather than duplicated per locale; only
@@ -460,7 +432,7 @@ const heroScenes = [
           ></video>
           <!-- Brand lockup centered over the video; the intro panel slides up
                over it, at which point the header's own logo takes over. -->
-          <Fragment set:html={logoSvg(logoVertical, "lp-hero-logo")} />
+          <Fragment set:html={logoSvg("vertical", "lp-hero-logo")} />
           <button class="lp-hero-fs" type="button" aria-label={t.hero.fullscreen}>
             <Maximize2 size={18} stroke-width={2} aria-hidden="true" />
           </button>
@@ -981,15 +953,9 @@ const heroScenes = [
           </div>
         </section>
 
-        <!-- Get started (footer) -->
-        <footer class="lp-footer" data-reveal-group>
-          <div class="lp-footer-links">
-            <a href={localizeHref(links.docs)}>{t.footer.docs}</a>
-            <a href={links.github}>{t.footer.github}</a>
-            <a href={links.discord}>{t.footer.discord}</a>
-          </div>
-          <p class="lp-footer-credit">{t.footer.credit}</p>
-        </footer>
+        <!-- Footer (shared with the brand assets page — see LpFooter.astro),
+             laid over the bottom of the closing band. -->
+        <LpFooter locale={locale} reveal />
         <ImageAttribution
           items={outroAttrib}
           label={t.outro.mediaAttributionLabel}
@@ -1708,65 +1674,11 @@ const heroScenes = [
     </noscript>
 
     <style is:global>
-      :root {
-        /* Safe-area insets, named once so every edge-hugging rule reads the
-           same (and so they can be simulated in a browser without a notch).
-           Zero everywhere except on notched phones under viewport-fit=cover. */
-        /* Not a theme color: matched to the baked glow-globe screenshot's
-           own background (sampled pure black), so image and band are one. Also
-           the canvas and browser-chrome tint — see body below. */
-        --outro-bg: #000;
-        --lp-safe-l: env(safe-area-inset-left, 0px);
-        --lp-safe-r: env(safe-area-inset-right, 0px);
-        --lp-safe-b: env(safe-area-inset-bottom, 0px);
-        /* --pri-ink is the always-dark side of the theme: normally --pri
-           itself (set inline with it), but the `?color` preview swaps it to
-           plain black when a candidate palette's primary is light, so ink,
-           hairlines and media scrims never go light. Bands keep --pri. */
-        --ink: color-mix(in oklab, var(--pri-ink), black 20%);
-        --ink-soft: color-mix(in oklab, var(--pri-ink), white 35%);
-        /* Pure white per the design handoff — dark-band text no longer takes
-           a primary tint. */
-        --on-dark: #fff;
-        /* Bright enough to read comfortably on the primary band — at lower
-           white shares this went muddy gray against the navy. */
-        --on-dark-soft: color-mix(in oklab, var(--pri-ink), white 85%);
-        --line: color-mix(in oklab, var(--pri-ink), white 85%);
-        --line-dark: color-mix(in oklab, var(--pri-ink), white 14%);
-        /* Text on --pri-painted bands / on --acc surfaces. The preview flips
-           these to the palette sheet's plain black or white when the band or
-           accent color needs it; defaults reproduce the shipped theme. */
-        --on-band: var(--on-dark);
-        --on-band-soft: var(--on-dark-soft);
-        --on-acc: var(--pri-ink);
-      }
-      html {
-        scroll-behavior: smooth;
-      }
-      body {
-        margin: 0;
-        /* html has no background, so this color is propagated to the document
-           canvas: it shows through the sub-pixel remainder at the page ends and
-           during mobile overscroll, and iOS Safari tints its toolbars with it
-           (see the theme-color meta, which pins the same value). The page can
-           never *draw* under those toolbars, so matching the closing band's
-           black is what makes it read as one surface at the bottom; the hero at
-           the top is dark enough for the same color to disappear there. Every
-           band paints its own background (.lp-main carries the light one). */
-        background: var(--outro-bg);
-        color: var(--ink);
-        font-family: "Arsenal", "Zen Kaku Gothic New", sans-serif;
-        -webkit-font-smoothing: antialiased;
-      }
-      .lp a {
-        color: color-mix(in oklab, var(--acc), black 25%);
-        text-decoration: none;
-      }
-      .lp a:hover {
-        color: var(--acc);
-      }
+      /* The theme-derived custom properties, canvas, link defaults and
+         .lp-container live in styles/lp-base.css (shared with the brand assets
+         page). The LP's own bands start here. */
       /* Attribution credit links keep an underline — override the
-         accent-coloured, underline-less default LP link style above. */
+         accent-coloured, underline-less default LP link style (styles/lp-base.css). */
       .lp .nv-attrib-list a,
       .lp .nv-attrib-list a:hover {
         color: var(--on-dark);
@@ -1777,21 +1689,6 @@ const heroScenes = [
          luminance flip to theme ink stays, its selector is more specific). */
       .lp .nv-attrib-btn {
         color: var(--on-dark);
-      }
-      /* Zero-specificity reset so per-section margin rules always win. */
-      :where(.lp h1, .lp h2, .lp h3, .lp p) {
-        margin: 0;
-      }
-      .lp img {
-        display: block;
-      }
-      .lp-container {
-        max-width: 1320px;
-        margin: 0 auto;
-        /* Landscape notch: content blocks step in, their section's full-bleed
-           background stays edge to edge. */
-        padding-left: var(--lp-safe-l);
-        padding-right: var(--lp-safe-r);
       }
 
       /* Motion system — scroll-driven reveals.
@@ -3167,33 +3064,14 @@ const heroScenes = [
         color: var(--acc);
       }
 
-      .lp-footer {
+      /* The footer's own look lives in LpFooter.astro; here it sits over the
+         bottom of the closing band. */
+      .lp-close .lp-footer {
         position: absolute;
         left: 0;
         right: 0;
         bottom: 0;
         z-index: 1;
-        padding: 56px 48px calc(48px + var(--lp-safe-b));
-        color: var(--on-dark);
-        text-align: center;
-      }
-      .lp-footer-links {
-        display: flex;
-        justify-content: center;
-        gap: 26px;
-        font-size: 14px;
-        font-weight: 500;
-      }
-      .lp .lp-footer-links a {
-        color: var(--on-dark);
-      }
-      .lp .lp-footer-links a:hover {
-        color: var(--acc);
-      }
-      .lp-footer-credit {
-        margin-top: 28px;
-        font-size: 12px;
-        color: var(--on-dark-soft);
       }
 
       /* Responsive — the desktop composition is the reference; tablets tighten
@@ -3283,9 +3161,6 @@ const heroScenes = [
         /* Sized so the title holds one line on a 390px viewport. */
         .lp-outro-h2 {
           font-size: 24px;
-        }
-        .lp-footer {
-          padding: 44px 32px calc(40px + var(--lp-safe-b));
         }
       }
 
@@ -3508,14 +3383,6 @@ const heroScenes = [
         }
         .lp-maplibre-visual {
           min-height: 300px;
-        }
-
-        .lp-footer {
-          padding: 48px 20px calc(40px + var(--lp-safe-b));
-        }
-        .lp-footer-links {
-          flex-wrap: wrap;
-          gap: 18px 22px;
         }
       }
     </style>

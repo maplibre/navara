@@ -710,12 +710,17 @@ impl App {
         ))
     }
 
-    pub fn get_parent_tile(&mut self, handle: TileHandle) -> Option<&TerrainTile> {
+    /// Buffer handle of the tile's loaded raw DEM bytes, the height data a
+    /// descendant's upsample resamples from. `None` unless the DEM has landed.
+    pub fn get_terrain_dem_bytes(
+        &mut self,
+        handle: TileHandle,
+    ) -> Option<navara_buffer_store::Handle> {
         let world = self.app.world_mut();
         let qt = world.get_resource::<TerrainTileQuadtree>()?;
-
-        let tile = qt.qt.get(handle).unwrap();
-        tile.get_parent_tile(qt)
+        let terrain_data = qt.qt.get(handle)?.terrain_data.as_ref()?;
+        let requester = world.get::<DataRequester>(terrain_data.data_requester_entity_id()?)?;
+        requester.is_succeeded().then_some(requester.handle)
     }
 
     /// Resolve the WebMercator texturized-vector tiles to drape on a terrain tile,

@@ -115,6 +115,9 @@ export class SunLightDesc extends LightDesc<
       if (updates.sun.shadowNormalBias !== undefined) {
         this._instance.shadowNormalBias = updates.sun.shadowNormalBias;
       }
+      if (updates.sun.shadowRadius !== undefined) {
+        this._instance.shadowRadius = updates.sun.shadowRadius;
+      }
       if (updates.sun.debugCSMHelper !== undefined) {
         this._instance.debugCSMHelper = updates.sun.debugCSMHelper;
       }

@@ -105,6 +105,10 @@ const PAGE_CONFIGS: Record<string, PageConfig> = {
   "cloud-fog": {
     waitTime: 10000,
   },
+  "debug-deferred-lighting": {
+    // Quantized-mesh terrain plus the PLATEAU building tileset.
+    waitTime: 20000,
+  },
   "custom-shader": {
     waitTime: 10000,
   },

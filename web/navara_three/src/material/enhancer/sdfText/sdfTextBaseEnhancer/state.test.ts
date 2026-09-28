@@ -33,6 +33,27 @@ describe("sdfTextBaseEnhancer / state", () => {
       expect(state.offsetDepth).toBe(false);
     });
 
+    it("defaults orientation to the screen-aligned billboard", () => {
+      expect(DEFAULT_BASE_STATE.flatFacing).toBe(false);
+      expect(DEFAULT_BASE_STATE.rotateWithCamera).toBe(true);
+    });
+
+    it("converts rotation from degrees to radians", () => {
+      const state = updateState({ rotation: 90 }, DEFAULT_BASE_STATE);
+      expect(state.rotation).toBeCloseTo(Math.PI / 2);
+      expect(DEFAULT_BASE_STATE.rotation).toBe(0);
+    });
+
+    it("updates flatFacing and rotateWithCamera independently", () => {
+      const flat = updateState({ flatFacing: true }, DEFAULT_BASE_STATE);
+      expect(flat.flatFacing).toBe(true);
+      expect(flat.rotateWithCamera).toBe(true);
+
+      const pinned = updateState({ rotateWithCamera: false }, flat);
+      expect(pinned.flatFacing).toBe(true);
+      expect(pinned.rotateWithCamera).toBe(false);
+    });
+
     it("converts outlineWidth using the current quality's range (SDF default)", () => {
       const state = updateState({ outlineWidth: 2.0 }, DEFAULT_BASE_STATE);
       expect(state.outlineWidth).toBeCloseTo(
@@ -98,6 +119,12 @@ describe("sdfTextBaseEnhancer / state", () => {
     it("updates depthTest", () => {
       const state = updateState({ depthTest: false }, DEFAULT_BASE_STATE);
       expect(state.depthTest).toBe(false);
+    });
+
+    it("updates backfaceCulling, defaulting to off", () => {
+      expect(DEFAULT_BASE_STATE.backfaceCulling).toBe(false);
+      const state = updateState({ backfaceCulling: true }, DEFAULT_BASE_STATE);
+      expect(state.backfaceCulling).toBe(true);
     });
 
     it("falls back to currentState for missing props", () => {

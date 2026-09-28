@@ -30,6 +30,25 @@ export const GlyphKind = {
 /** Instance slots a freshly-created batch reserves. */
 const INITIAL_CAPACITY = 64;
 
+/** Upper bound on {@link backgroundSliceCount}. */
+const MAX_BACKGROUND_SLICES = 8;
+
+/**
+ * Instances a label's background is split into: vertical strips side by side,
+ * one per two glyphs, capped at {@link MAX_BACKGROUND_SLICES}.
+ *
+ * A flat label is wrapped onto the globe per vertex (`nvr_quadOffset` in
+ * `quad_orientation.glsl`), so a single background quad stays a straight
+ * chord between its four bent corners while the glyphs above it follow the
+ * curve, and at globe scale the text visibly rises out of its box. Strips
+ * about as wide as the glyphs bend the same way the glyphs do. The fragment
+ * shader draws a background purely from its UV, which each strip remaps to
+ * its span, so the split is pixel-identical for upright labels.
+ */
+export function backgroundSliceCount(quadCount: number): number {
+  return Math.min(MAX_BACKGROUND_SLICES, Math.max(1, Math.ceil(quadCount / 2)));
+}
+
 /** Attribute name and component count, in the order they are (re)created. */
 const INSTANCE_ATTRIBUTES = [
   ["glyphOffset", 2],
@@ -137,19 +156,26 @@ export class GlyphBuffers {
       labelIndex: label,
     } = this._arrays;
 
-    // The background occupies the run's first slot so it is drawn before the
+    // The background occupies the run's first slots so it is drawn before the
     // label's glyphs — the fragment shader's outline-seam fix depends on that
     // ordering (see sdfText.frag.glsl).
     let slot = start;
     if (withBackground) {
-      glyphKind[slot] = GlyphKind.BACKGROUND;
-      label[slot] = labelIndex;
-      // The background derives its quad from the label's box, not from these.
-      glyphOffset[slot * 2] = 0;
-      glyphOffset[slot * 2 + 1] = 0;
-      glyphSize[slot * 2] = 0;
-      glyphSize[slot * 2 + 1] = 0;
-      slot++;
+      const slices = backgroundSliceCount(quads.length);
+      for (let i = 0; i < slices; i++) {
+        glyphKind[slot] = GlyphKind.BACKGROUND;
+        label[slot] = labelIndex;
+        // The background derives its quad from the label's box. The glyph
+        // fields carry only this strip's horizontal span of it, as [0, 1]
+        // fractions: start in offset.x, end in size.x. Storing the end (not
+        // a width) makes neighbouring strips share bit-identical edges, so
+        // they meet without cracks.
+        glyphOffset[slot * 2] = i / slices;
+        glyphOffset[slot * 2 + 1] = 0;
+        glyphSize[slot * 2] = (i + 1) / slices;
+        glyphSize[slot * 2 + 1] = 0;
+        slot++;
+      }
     }
 
     for (const q of quads) {

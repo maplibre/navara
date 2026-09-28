@@ -4,6 +4,7 @@
 //
 //   site-dist/
 //     index.html, ja/index.html      <- LP, relocated from docs/dist/lp/
+//     brand-assets/index.html, ...   <- brand assets page, relocated likewise
 //     favicon.png, og.jpg, 404.html  <- copied from docs/dist for the site root
 //     docs/...                       <- docs/dist verbatim
 //     examples/...                   <- web/navara_three/dist-example verbatim
@@ -40,22 +41,35 @@ mkdirSync(out, { recursive: true });
 
 cpSync(docsDist, resolve(out, "docs"), { recursive: true });
 
-// Relocate the LP pages from /docs/lp/ (root locale) and /docs/<locale>/lp/
-// to the site root. Non-root locales are discovered from the docs build, so a
-// new LP locale (docs/src/pages/<locale>/lp.astro) needs no change here.
+// Relocate the site-root pages out of the docs build: the LP from /docs/lp/
+// (root locale) and /docs/<locale>/lp/ to / and /<locale>/, and the other
+// site pages (docs/src/pages/<name>.astro rendered per locale) from
+// /docs/<name>/ to /<name>/ likewise. Non-root locales are discovered from
+// the docs build, so a new LP locale (docs/src/pages/<locale>/lp.astro) needs
+// no change here.
+const SITE_PAGES = [
+  ["lp", ""],
+  ["brand-assets", "brand-assets"],
+];
 const lpLocales = readdirSync(resolve(out, "docs"), { withFileTypes: true })
   .filter((e) => e.isDirectory() && existsSync(resolve(out, "docs", e.name, "lp/index.html")))
   .map((e) => e.name)
   .sort();
-for (const [from, to] of [
-  ["docs/lp/index.html", "index.html"],
-  ...lpLocales.map((locale) => [`docs/${locale}/lp/index.html`, `${locale}/index.html`]),
-]) {
-  const src = resolve(out, from);
-  if (!existsSync(src)) throw new Error(`LP page not found in docs build: ${from}`);
-  mkdirSync(dirname(resolve(out, to)), { recursive: true });
-  renameSync(src, resolve(out, to));
-  rmSync(dirname(src), { recursive: true });
+for (const [name, dest] of SITE_PAGES) {
+  const destDir = dest ? `${dest}/` : "";
+  for (const [from, to] of [
+    [`docs/${name}/index.html`, `${destDir}index.html`],
+    ...lpLocales.map((locale) => [
+      `docs/${locale}/${name}/index.html`,
+      `${locale}/${destDir}index.html`,
+    ]),
+  ]) {
+    const src = resolve(out, from);
+    if (!existsSync(src)) throw new Error(`Site page not found in docs build: ${from}`);
+    mkdirSync(dirname(resolve(out, to)), { recursive: true });
+    renameSync(src, resolve(out, to));
+    rmSync(dirname(src), { recursive: true });
+  }
 }
 
 // Root-level shared files: default favicon requests and the site og image

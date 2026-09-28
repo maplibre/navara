@@ -35,7 +35,9 @@ pub struct DynamicSse {
     pub enabled: bool,
     /// Base fog density; scaled by the tilt/height factors per traversal.
     pub density: FloatType,
-    /// SSE pixels tolerated at full fog saturation (CesiumJS default: 24).
+    /// SSE pixels tolerated at full fog saturation for a layer whose max SSE
+    /// is [`REFERENCE_MAX_SSE`] (CesiumJS default: 24). Each traversal scales
+    /// it by its own max SSE via [`DynamicSseTerm::for_max_sse`].
     pub sse_factor: FloatType,
     /// Fraction of the `[min_height, max_height]` band below which the
     /// relaxation is at full strength (CesiumJS default: 0.25).
@@ -102,6 +104,15 @@ impl DynamicSse {
     }
 }
 
+/// Max SSE that [`DynamicSse::sse_factor`] is expressed against: the CesiumJS
+/// `Cesium3DTileset.maximumScreenSpaceError` default, where the 24 px factor
+/// originates. Terrain, imagery and vector tiles select LOD against a max SSE
+/// of 2 px, so the same absolute factor would relax them 8x harder than 3D
+/// Tiles and collapse far terrain to a few levels in any tilted view; scaling
+/// by `max_sse / REFERENCE_MAX_SSE` keeps the relaxation at the same ratio to
+/// the threshold (at most 1.5x) for every layer.
+pub const REFERENCE_MAX_SSE: FloatType = 16.0;
+
 /// Precomputed dynamic-SSE inputs for one traversal run. `NONE` (zero
 /// density) is a no-op since `fog(d, 0) == 0`, so callers apply it
 /// unconditionally.
@@ -132,6 +143,12 @@ impl DynamicSseTerm {
             density: self.density,
             sse_factor: self.sse_factor * scale,
         }
+    }
+
+    /// This term rescaled for a traversal that selects LOD against `max_sse`
+    /// pixels (see [`REFERENCE_MAX_SSE`]).
+    pub fn for_max_sse(&self, max_sse: FloatType) -> Self {
+        self.scaled(max_sse / REFERENCE_MAX_SSE)
     }
 }
 
@@ -193,6 +210,21 @@ mod dynamic_sse_tests {
         // Half strength halves the SSE pixels; zero disables it entirely.
         assert!((full.scaled(0.5).relaxation(50_000.) - base * 0.5).abs() < 1e-9);
         assert_eq!(full.scaled(0.0).relaxation(50_000.), 0.);
+    }
+
+    #[test]
+    fn for_max_sse_keeps_relaxation_proportional_to_the_threshold() {
+        let d = DynamicSse::default();
+        let full = term_at(&d, Vec3::new(0., 1., 0.), 100.);
+        // The reference threshold is unchanged; the globe's 2 px threshold
+        // gets the same 1.5x ratio (3 px at saturation) instead of 24 px.
+        assert_eq!(
+            full.for_max_sse(REFERENCE_MAX_SSE).relaxation(50_000.),
+            full.relaxation(50_000.)
+        );
+        let terrain = full.for_max_sse(2.0);
+        assert!((terrain.relaxation(50_000.) - full.relaxation(50_000.) / 8.).abs() < 1e-9);
+        assert!(terrain.relaxation(1e9) <= 3.0 + 1e-9);
     }
 }
 

@@ -60,6 +60,43 @@ impl SourceGeometryType {
     }
 }
 
+/// Plane a label or sprite quad lies in.
+///
+/// Orthogonal to the material's `rotate_with_camera`, which picks whether the
+/// quad follows the camera or stays frozen in the anchor's local frame.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Facing {
+    /// The label stands upright rather than lying on the ground. Combined
+    /// with `rotate_with_camera` it is either a screen-aligned billboard,
+    /// never foreshortened however the camera is pitched, or a signboard
+    /// planted on the surface at a fixed bearing.
+    #[default]
+    Upright,
+    /// The quad lies on the globe surface around the label's anchor,
+    /// following its curvature, so the label reads as painted onto the globe
+    /// and foreshortens with camera pitch.
+    Flat,
+}
+
+impl Facing {
+    /// Parse the JS-facing name (`"upright" | "flat"`).
+    pub fn parse(value: &str) -> Option<Self> {
+        match value {
+            "upright" => Some(Self::Upright),
+            "flat" => Some(Self::Flat),
+            _ => None,
+        }
+    }
+
+    /// JS-facing name of this facing mode.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Upright => "upright",
+            Self::Flat => "flat",
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum Appearance {
     Point(PointMaterial),
@@ -117,11 +154,24 @@ pub struct PointMaterial {
     pub show: bool,
     pub size: f32,
     pub color: u32,
+    /// Plane the point's quad lies in. See [`Facing`].
+    pub point_facing: Facing,
+    /// Whether the quad turns to follow the camera. See
+    /// [`TextMaterial::rotate_with_camera`] — the semantics are identical.
+    pub rotate_with_camera: bool,
+    /// Rotation of the point within its own plane, about its anchor point,
+    /// in degrees, clockwise seen from the front. `center` decides where
+    /// inside the quad the pivot sits. Default `0.0`.
+    pub rotation: f32,
     pub center: Vec2,
     pub height: f32,
     pub size_in_meters: bool,
     pub clamp_to_ground: bool,
     pub depth_test: bool,
+    /// Cull faces seen from behind. Off by default, since a quad frozen in
+    /// its anchor's frame (`rotate_with_camera: false`) can be viewed from
+    /// behind; a flat quad wrapped over the limb faces away past the horizon.
+    pub backface_culling: bool,
     pub offset_depth: bool,
     // Allow transparency and anti-aliasing.
     pub transparent: bool,
@@ -149,11 +199,15 @@ impl Default for PointMaterial {
             show: true,
             size: 0.1,
             color: 0xffffff,
+            point_facing: Facing::Upright,
+            rotate_with_camera: true,
+            rotation: 0.0,
             center: Vec2::new(0.0, 0.),
             clamp_to_ground: true,
             height: 1.,
             size_in_meters: true,
             depth_test: true,
+            backface_culling: false,
             offset_depth: true,
             transparent: true,
             opacity: 1.0,
@@ -182,12 +236,25 @@ pub struct BillboardMaterial {
     pub show: bool,
     pub size: f32,
     pub color: u32,
+    /// Plane the sprite's quad lies in. See [`Facing`].
+    pub billboard_facing: Facing,
+    /// Whether the quad turns to follow the camera. See
+    /// [`TextMaterial::rotate_with_camera`] — the semantics are identical.
+    pub rotate_with_camera: bool,
+    /// Rotation of the sprite within its own plane, about its anchor point,
+    /// in degrees, clockwise seen from the front. `center` decides where
+    /// inside the sprite the pivot sits. Default `0.0`.
+    pub rotation: f32,
     pub center: Vec2,
     pub height: f32,
     pub url: String,
     pub size_in_meters: bool,
     pub clamp_to_ground: bool,
     pub depth_test: bool,
+    /// Cull faces seen from behind. Off by default, since a quad frozen in
+    /// its anchor's frame (`rotate_with_camera: false`) can be viewed from
+    /// behind; a flat quad wrapped over the limb faces away past the horizon.
+    pub backface_culling: bool,
     pub offset_depth: bool,
     // Allow transparency and anti-aliasing.
     pub transparent: bool,
@@ -216,12 +283,16 @@ impl Default for BillboardMaterial {
             show: true,
             size: 0.1,
             color: 0xffffff,
+            billboard_facing: Facing::Upright,
+            rotate_with_camera: true,
+            rotation: 0.0,
             center: Vec2::new(0.0, 0.),
             clamp_to_ground: true,
             height: 1.,
             url: "".to_string(),
             size_in_meters: true,
             depth_test: true,
+            backface_culling: false,
             offset_depth: true,
             transparent: false,
             opacity: 1.0,
@@ -252,10 +323,35 @@ pub struct TextMaterial {
     pub size: f32,
     pub color: u32,
     pub center: Vec2,
+    /// Plane the label's quad lies in. See [`Facing`].
+    pub text_facing: Facing,
+    /// Rotation of the label within its own plane, about its anchor point, in
+    /// degrees, clockwise seen from the front. Applied on top of whatever
+    /// orientation `text_facing` and `rotate_with_camera` resolve to, so it
+    /// spins a billboard on screen and turns a surface label like a compass
+    /// bearing. `center` decides where inside the text the pivot sits.
+    /// Default `0.0`.
+    pub rotation: f32,
+    /// Whether the quad turns to follow the camera.
+    ///
+    /// `true` (the default) keeps the label facing the viewer: with
+    /// [`Facing::Upright`] that is the screen-aligned billboard, and with
+    /// [`Facing::Flat`] the quad yaws around the surface normal so the
+    /// text still reads left-to-right.
+    ///
+    /// `false` freezes the quad in the anchor's local east-north-up frame, so
+    /// moving the camera never reorients it: [`Facing::Upright`] becomes a
+    /// signboard standing on the surface, [`Facing::Flat`] a north-up
+    /// label painted on it.
+    pub rotate_with_camera: bool,
     pub height: f32,
     pub size_in_meters: bool,
     pub clamp_to_ground: bool,
     pub depth_test: bool,
+    /// Cull faces seen from behind. Off by default, since a quad frozen in
+    /// its anchor's frame (`rotate_with_camera: false`) can be viewed from
+    /// behind; a flat quad wrapped over the limb faces away past the horizon.
+    pub backface_culling: bool,
     pub offset_depth: bool,
     pub text: String,
     pub font: String,
@@ -319,10 +415,14 @@ impl Default for TextMaterial {
             size: 10.0,
             color: 0xffffff,
             center: Vec2::new(0.5, 0.),
+            text_facing: Facing::Upright,
+            rotate_with_camera: true,
+            rotation: 0.0,
             clamp_to_ground: true,
             height: 1.,
             size_in_meters: true,
             depth_test: true,
+            backface_culling: false,
             offset_depth: true,
             text: "".to_string(),
             font: "".to_string(),

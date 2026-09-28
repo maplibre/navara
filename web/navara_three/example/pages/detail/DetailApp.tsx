@@ -8,6 +8,7 @@ import { docsUrl, localize, SECTION_LABELS } from "../examples/sections";
 import type { ExampleMeta, Lang, Localized } from "../examples/sections";
 
 import { useLang } from "@/components/hooks/useLang";
+import { SiteFooter } from "@/components/SiteFooter";
 import { SiteHeader } from "@/components/SiteHeader";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -464,6 +465,7 @@ export const DetailApp = () => {
           </>
         )}
       </div>
+      <SiteFooter lang={lang} />
     </div>
   );
 };

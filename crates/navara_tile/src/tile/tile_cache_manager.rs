@@ -65,28 +65,59 @@ pub struct TileCacheManager {
 }
 
 impl TileCacheManager {
+    /// Show or hide the tile's mesh in full. Returns whether the mesh came
+    /// on screen in full — from hidden or from fill mode — so a caller can
+    /// react to a tile taking over its region.
     pub fn activate_rendered_tile(
         &self,
         handle: &TileHandle,
         meshes: &mut Query<&mut Mesh, (With<TileMeshMarker>, Without<Deleted>)>,
         active: bool,
-    ) {
-        let t = match self.rendered_tile_caches.get(handle) {
-            Some(t) => t,
-            None => return,
+    ) -> bool {
+        let Some(t) = self.rendered_tile_caches.get(handle) else {
+            return false;
         };
-        let mesh_entity = match t.mesh_entity {
-            Some(m) => m,
-            None => return,
+        let Some(mesh_entity) = t.mesh_entity else {
+            return false;
         };
-        let mesh = match meshes.get(mesh_entity) {
-            Ok(m) => m,
-            Err(_) => return,
+        let Ok(mesh) = meshes.get(mesh_entity) else {
+            return false;
         };
 
-        if mesh.active != active {
-            meshes.get_mut(mesh_entity).unwrap().active = active;
+        if mesh.active == active && mesh.fill_quadrants == 0 {
+            return false;
         }
+        let mut mesh = meshes.get_mut(mesh_entity).unwrap();
+        let shown = active && (!mesh.active || mesh.fill_quadrants != 0);
+        mesh.active = active;
+        mesh.fill_quadrants = 0;
+        shown
+    }
+
+    /// Show the tile's mesh restricted to `quadrants` (a `Mesh::fill_quadrants`
+    /// mask): the parent fills the quadrants of children that are not
+    /// prepared yet while the prepared children stay on screen.
+    pub fn fill_rendered_tile(
+        &self,
+        handle: &TileHandle,
+        meshes: &mut Query<&mut Mesh, (With<TileMeshMarker>, Without<Deleted>)>,
+        quadrants: u8,
+    ) {
+        let Some(t) = self.rendered_tile_caches.get(handle) else {
+            return;
+        };
+        let Some(mesh_entity) = t.mesh_entity else {
+            return;
+        };
+        let Ok(mesh) = meshes.get(mesh_entity) else {
+            return;
+        };
+        if mesh.active && mesh.fill_quadrants == quadrants {
+            return;
+        }
+        let mut mesh = meshes.get_mut(mesh_entity).unwrap();
+        mesh.active = true;
+        mesh.fill_quadrants = quadrants;
     }
 
     pub fn is_rendered_tile_activated(

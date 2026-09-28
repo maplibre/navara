@@ -9,11 +9,31 @@ export const BATCHED_ATTRIBUTE_NAMES = [
   "extrudedHeight",
   "lineWidth",
   "size",
+  "rotation",
+  "flatFacing",
+  "rotateWithCamera",
   "emissive",
   "emissiveIntensity",
 ] as const;
 
 export type BatchedAttributeName = (typeof BATCHED_ATTRIBUTE_NAMES)[number];
+
+/**
+ * Material-level values the mesh passes to `updateBatchAttribute`, used to
+ * backfill a slot for every feature when that slot is first allocated.
+ *
+ * Only attributes whose material value lives in a shader uniform need one:
+ * `USE_BATCH_*` is a material-wide define, so the moment one feature gets its
+ * own value every feature starts reading the slot, and features nobody styled
+ * must already hold what the uniform was giving them. Attributes left out fall
+ * back to the fixed defaults in `core.ts`.
+ */
+export type BatchAttributeDefaults = {
+  /** Radians, clockwise seen from the front. */
+  rotation: number;
+  flatFacing: boolean;
+  rotateWithCamera: boolean;
+};
 
 /** vec3 attributes: three components of a row (component 3 stays scalar-poolable). */
 export const BATCH_VEC3_KEYS = ["color", "emissive"] as const;
@@ -26,6 +46,15 @@ export const BATCH_SCALAR_KEYS = [
   "extrudedHeight",
   "lineWidth",
   "size",
+  "rotation",
+  /**
+   * Packed orientation: `facing` and `rotateWithCamera` share one component
+   * (see `packOrientation`). It is a slot key rather than a public attribute
+   * — callers write the two booleans by name — but it lives here so a mesh
+   * type can declare support for it, which gates allocation to the shaders
+   * that actually declare receivers.
+   */
+  "orientation",
 ] as const;
 
 export type BatchScalarKey = (typeof BATCH_SCALAR_KEYS)[number];

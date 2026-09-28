@@ -20,6 +20,9 @@ describe("sdfTextBaseEnhancer/mutates", () => {
       const state: SdfTextBaseState = {
         ...DEFAULT_BASE_STATE,
         center: [0.5, 0.5],
+        flatFacing: true,
+        rotateWithCamera: false,
+        rotation: Math.PI / 2,
         sizeInMeters: true,
         offsetDepth: false,
         outlineWidth: 0.1,
@@ -39,6 +42,9 @@ describe("sdfTextBaseEnhancer/mutates", () => {
 
       expect(uniforms.uCenter?.value.x).toBe(0.5);
       expect(uniforms.uCenter?.value.y).toBe(0.5);
+      expect(uniforms.uFlatFacing?.value).toBe(true);
+      expect(uniforms.uRotateWithCamera?.value).toBe(false);
+      expect(uniforms.uRotation?.value).toBeCloseTo(Math.PI / 2);
       expect(uniforms.uSizeInMeters?.value).toBe(true);
       expect(uniforms.uOffsetDepth?.value).toBe(false);
       expect(uniforms.uOutlineWidth?.value).toBe(0.1);

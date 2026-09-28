@@ -44,6 +44,40 @@ pub fn tile_triangles_with_terrain(
     parent_max_height: FloatType,
     mercator_v: bool,
 ) -> ReturnedConstructedTerrainMesh {
+    let read_height = |image_x: usize, image_y: usize| -> FloatType {
+        let i = image_y * terrain_w + image_x;
+        let r = terrain[i * 4] as i64;
+        let g = terrain[i * 4 + 1] as i64;
+        let b = terrain[i * 4 + 2] as i64;
+        decode_height_from_dem(r, g, b, geoid_height, decoder)
+    };
+    tile_triangles_with_heights(
+        ellipsoid,
+        extent,
+        segments,
+        &read_height,
+        terrain_w,
+        terrain_h,
+        parent_max_height,
+        mercator_v,
+    )
+}
+
+/// [`tile_triangles_with_terrain`] over any height source: `read_height`
+/// takes DEM image coordinates (row 0 = north) of a `terrain_w × terrain_h`
+/// grid, so a decoded or resampled height grid meshes the same way as raw
+/// DEM pixels.
+#[allow(clippy::too_many_arguments)]
+pub fn tile_triangles_with_heights<F: Fn(usize, usize) -> FloatType>(
+    ellipsoid: Ellipsoid<FloatType>,
+    extent: &Extent<FloatType, Radians>,
+    segments: usize,
+    read_height: &F,
+    terrain_w: usize,
+    terrain_h: usize,
+    parent_max_height: FloatType,
+    mercator_v: bool,
+) -> ReturnedConstructedTerrainMesh {
     let mut max_height: f64 = 0.0;
     let mut min_height: f64 = 9999.0;
     let mut heights = vec![];
@@ -51,12 +85,7 @@ pub fn tile_triangles_with_terrain(
         let image_x = x * (terrain_w - 1) / segments;
         let image_y = (terrain_h - 1) - y * (terrain_h - 1) / segments;
 
-        let i = image_y * terrain_w + image_x;
-        let r = terrain[i * 4] as i64;
-        let g = terrain[i * 4 + 1] as i64;
-        let b = terrain[i * 4 + 2] as i64;
-
-        let height = decode_height_from_dem(r, g, b, geoid_height, decoder);
+        let height = read_height(image_x, image_y);
 
         max_height = max_height.max(height);
         min_height = min_height.min(height);

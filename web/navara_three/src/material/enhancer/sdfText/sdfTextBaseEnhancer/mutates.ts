@@ -24,6 +24,9 @@ export const createBaseMutates = (
 ): SdfTextBaseMutates => {
   const refs: SdfTextBaseRefs = {
     uCenter: { value: new Vector2(0.5, 0.0) },
+    uFlatFacing: { value: false },
+    uRotateWithCamera: { value: true },
+    uRotation: { value: 0 },
     uSizeInMeters: { value: true },
     uOffsetDepth: { value: true },
     uSdfThreshold: { value: 0.5 },
@@ -66,6 +69,9 @@ export const createBaseMutates = (
   return {
     update: (state: SdfTextBaseState) => {
       refs.uCenter.value.set(state.center[0], state.center[1]);
+      refs.uFlatFacing.value = state.flatFacing;
+      refs.uRotateWithCamera.value = state.rotateWithCamera;
+      refs.uRotation.value = state.rotation;
       refs.uSizeInMeters.value = state.sizeInMeters;
       refs.uOffsetDepth.value = state.offsetDepth;
       refs.uOutlineWidth.value = state.outlineWidth;
@@ -83,6 +89,9 @@ export const createBaseMutates = (
 
     updateUniforms: (uniforms) => {
       uniforms.uCenter = refs.uCenter;
+      uniforms.uFlatFacing = refs.uFlatFacing;
+      uniforms.uRotateWithCamera = refs.uRotateWithCamera;
+      uniforms.uRotation = refs.uRotation;
       uniforms.uSizeInMeters = refs.uSizeInMeters;
       uniforms.uOffsetDepth = refs.uOffsetDepth;
       uniforms.uSdfThreshold = refs.uSdfThreshold;

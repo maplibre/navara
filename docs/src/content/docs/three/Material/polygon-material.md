@@ -361,9 +361,9 @@ import { Color } from "@navaramap/three";
 
 **Type:** `number | undefined`
 
-**Description:** Specifies the roughness for post-processing. Specified in the range of 0.0 to 1.0.
+**Description:** Specifies the roughness for post-processing such as SSR and the aerial perspective's specular term. Specified in the range of 0.0 to 1.0, where 0.0 is a mirror.
 
-**Default:** `undefined`
+**Default:** `0.44`
 
 **Example:**
 

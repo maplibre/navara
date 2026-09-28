@@ -124,7 +124,40 @@
     "docs": "Docs",
     "github": "GitHub",
     "discord": "Discord",
-    "credit": "Navara · MIT / Apache-2.0"
+    "credit": "Navara · MIT / Apache-2.0",
+    "brandAssets": "ブランドアセット"
+  },
+  "brand": {
+    "meta": {
+      "title": "Navara ブランドアセット",
+      "description": "Navara の公式ロゴ、書体、カラーの一覧です。ロゴファイルはダウンロードして利用できます。"
+    },
+    "h1": "ブランドアセット",
+    "lead": "Navara の公式ブランドアセットです。Navara を紹介する際にご利用ください。",
+    "logos": {
+      "h2": "ロゴ",
+      "horizontal": "横型ロゴ",
+      "vertical": "縦型ロゴ",
+      "formats": {
+        "svg": "SVG",
+        "png": "PNG"
+      }
+    },
+    "font": {
+      "h2": "書体",
+      "sample": {
+        "latin": "Navara, an open-source 3D map engine",
+        "japanese": "オープンソースの 3D 地図エンジン Navara"
+      }
+    },
+    "colors": {
+      "h2": "カラー",
+      "names": {
+        "primary": "Primary Color",
+        "secondary": "Secondary Color",
+        "accent": "Accent Color"
+      }
+    }
   },
   "imageAlts": {
     "hero": "Navara で描画した地球儀のメインビジュアル",

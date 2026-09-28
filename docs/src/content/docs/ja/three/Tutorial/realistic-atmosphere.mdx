@@ -64,15 +64,11 @@ const view = new ThreeView<DefaultDescriptions>({ shadow: true });
 view.addPlugin(plugin);
 await view.init();
 
-const layers = plugin.addDefaultPhotorealScene();
-
-layers.aerialPerspective.update({
-  aerialPerspective: {
-    irradiance: true,
-  },
+const layers = plugin.addDefaultPhotorealScene({
+  deferredLighting: true,
+  shadow: true,
+  specular: true,
 });
-
-view.lit = false;
 
 const photoSource = view.addSource({
   // Credit:
@@ -116,14 +112,14 @@ view.setCamera({ lng: 139.7511, lat: 35.6736, height: 4200, heading: -100, pitch
 layers.sun.update({ sun: { castShadow: true } });
 ```
 
-このチュートリアルのスクリーンショットに写っている影は**雲影**です。太陽のシャドウマップは描画され続けますが `view.lit = false` の間は適用されないため、他に必要がなければ `castShadow` はオフにしてください。
+`addDefaultPhotorealScene` の `shadow: true` がこの影を deferred lighting で適用し、`specular: true` が反射的なマテリアルに太陽のハイライトを加えます。このチュートリアルのスクリーンショットに写っている影は**雲影**です。
 
 :::caution[irradiance は deferred lighting なので `view.lit = false` とセットで使う]
-`irradiance` はライトを追加するものではありません。ジオメトリを描画した**後**に G-buffer を事前計算済み大気から再ライティングします。これはマテリアルがアルベドを書き出している場合にのみ成立し、それを行うのが [`view.lit = false`](../../../three/api/threeview-properties/#lit) です。既定の `true` のままだとフォワードパスと大気で二重にライティングされてしまいます。
+`deferredLighting: true` は `irradiance` と `view.lit = false` をまとめて設定します。`irradiance` はライトを追加するものではありません。ジオメトリを描画した**後**に G-buffer を事前計算済み大気から再ライティングします。これはマテリアルがアルベドを書き出している場合にのみ成立し、それを行うのが [`view.lit = false`](../../../three/api/threeview-properties/#lit) です。既定の `true` のままだとフォワードパスと大気で二重にライティングされてしまいます。
 
 deferred パスが扱わないものが 2 つあります。
 
-- **`sun.castShadow` によるキャストシャドウ。** フォワードパスで適用されるため消えます。雲影はエフェクトが大気側からサンプリングするため残ります（雲影に `irradiance` が必要なのはこのためです）。
+- **`sun.castShadow` によるキャストシャドウ。** 上記のように大気遠近法の `shadow` オプションを有効にした場合を除きます。雲影は大気側からサンプリングされるためオプションは不要ですが、`irradiance` は必要です。
 - **透明マテリアル。** すでにカラーバッファへ合成済みで再ライティングできません。
 
 どちらかに依存する近景シーンでは、`irradiance: false` と既定の `view.lit` のままにしてください。
@@ -316,15 +312,11 @@ const view = new ThreeView<DefaultDescriptions>({
 view.addPlugin(plugin);
 await view.init();
 
-const layers = plugin.addDefaultPhotorealScene();
-
-layers.aerialPerspective.update({
-  aerialPerspective: {
-    irradiance: true,
-  },
+const layers = plugin.addDefaultPhotorealScene({
+  deferredLighting: true,
+  shadow: true,
+  specular: true,
 });
-
-view.lit = false;
 
 const photoSource = view.addSource({
   // Credit:

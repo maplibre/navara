@@ -33,9 +33,11 @@ impl TerrainConstructContext {
 }
 
 pub trait TerrainData: Debug + Sync + Send {
+    /// Clip an ancestor's geometry down to this tile along `regions`, the
+    /// quadrant path from that ancestor (see `TerrainTile::region_path_from`).
     fn upsample(
         &self,
-        region: &TileRegion,
+        regions: &[TileRegion],
         upsamplable_geometry: UpsamplableTerrainGeometry,
     ) -> Option<UpsampledTerrainGeometry>;
     fn construct_terrain_mesh(

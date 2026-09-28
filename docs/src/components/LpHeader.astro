@@ -1,13 +1,17 @@
 ---
-// The Navara site header, shared between the landing page and the docs site.
-// Theme colors and external links come from src/data/lp.json; the nav labels
-// and locale names come from src/data/lp-locales/<locale>.json.
+// The Navara site header, shared between the landing page, the brand assets
+// page and the docs site. Theme colors and external links come from
+// src/data/lp.json; the nav labels and locale names come from
+// src/data/lp-locales/<locale>.json. The brand logo always links to the
+// landing page (in the current locale).
 //
-// Two variants:
+// Three variants:
 // - "lp":   fixed, transparent over the LP hero; frosts on scroll via the
 //           lp-header-solid class toggled by LandingPage.astro's script. Also
 //           carries the `?color` theme-preview switcher (its behavior lives in
 //           LandingPage.astro too — the switcher rewrites LP-only CSS vars).
+// - "site": the LP look for other site-root pages (the brand assets page):
+//           fixed and frosted from the start, over the page's own top band.
 // - "docs": rendered inside Starlight's fixed header shell (see the Header
 //           component override), which owns position, height, padding and
 //           background — the LP look reduces to the brand/nav row, always
@@ -15,64 +19,48 @@
 import { ChevronDown, Globe } from "@lucide/astro";
 import lp from "../data/lp.json";
 import githubIcon from "../assets/lp/github-invertocat.svg?raw";
-import logoHorizontal from "../../public/logo/black/black_Navara_Horizontal_logo_260819.svg?raw";
+import { logoSvg } from "./brand-logo";
+import {
+  DOCS_BASE,
+  DOCS_LOCALES,
+  ROOT_LOCALE,
+  docsHref,
+  getLpLocale,
+  lpLocales,
+  siteHref,
+} from "./lp-shared";
 
 interface Props {
   locale: string;
-  variant: "lp" | "docs";
+  variant: "lp" | "site" | "docs";
+  // "lp" / "site": the page's site-root-relative path ("" for the LP,
+  // "brand-assets/" for the brand assets page), so the language switcher
+  // lands on the same page in the chosen locale.
+  sitePath?: string;
 }
 
-const ROOT_LOCALE = "en";
-
-// Locales the docs site is built in (see astro.config.mjs `locales`). The LP
-// can exist in more locales than the docs; LP-only locales link to the
-// root-locale docs and are offered only by the LP's language switcher.
-const DOCS_LOCALES = new Set(["en", "ja"]);
-
-const localeModules = import.meta.glob<{ default: any }>("../data/lp-locales/*.json", {
-  eager: true,
-});
-const locales: Record<string, any> = {};
-for (const [path, mod] of Object.entries(localeModules)) {
-  const code = path.match(/([\w-]+)\.json$/)?.[1];
-  if (code) locales[code] = mod.default;
-}
-
-const { locale, variant } = Astro.props;
-const t = locales[locale];
-if (!t) throw new Error(`LP locale strings not found: ${locale}`);
+const { locale, variant, sitePath = "" } = Astro.props;
+const t = getLpLocale(locale);
 
 const { colors, links } = lp;
 
-// Inline the brand logo (the black variant carries no fill attributes) so
-// `fill: currentColor` lets CSS hand it the ink of whatever surface it sits on.
-const logoSvg = (raw: string, className: string): string =>
-  raw.replace("<svg ", `<svg class="${className}" role="img" aria-label="Navara" `);
-
-// The docs deploy base ("/docs" on navara.world — see astro.config.mjs).
-// Docs-internal links carry it; site-root links (the LP, /examples) do not.
-const DOCS_BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
-
 // Prefix docs-internal links with the deploy base and the locale path
 // segment (root and LP-only locales have none).
-function localizeHref(href: string): string {
-  if (!href.startsWith("/")) return href;
-  const localeSeg = locale === ROOT_LOCALE || !DOCS_LOCALES.has(locale) ? "" : `/${locale}`;
-  return `${DOCS_BASE}${localeSeg}${href}`;
-}
+const localizeHref = (href: string): string => docsHref(locale, href);
 
 // The docs switcher only offers locales the docs are built in; the LP
 // switcher offers every LP locale.
-const switcherLocales = Object.keys(locales).filter(
-  (code) => variant === "lp" || DOCS_LOCALES.has(code),
+const switcherLocales = Object.keys(lpLocales).filter(
+  (code) => variant !== "docs" || DOCS_LOCALES.has(code),
 );
 
-// Where the language switcher sends each locale. On the LP that is the
-// locale's landing page (served at the site root — see astro.config.mjs);
-// on docs it is the current page in the target locale (every docs page exists
-// in all docs locales, ja/ mirrors the root tree).
+// Where the language switcher sends each locale. On the LP and other
+// site-root pages that is the same page in the target locale (served at the
+// site root — see astro.config.mjs); on docs it is the current page in the
+// target locale (every docs page exists in all docs locales, ja/ mirrors the
+// root tree).
 const pathForLocale = (code: string): string => {
-  if (variant === "lp") return code === ROOT_LOCALE ? "/" : `/${code}/`;
+  if (variant !== "docs") return siteHref(code, sitePath);
   let path = Astro.url.pathname;
   if (path.startsWith(DOCS_BASE)) path = path.slice(DOCS_BASE.length) || "/";
   if (locale !== ROOT_LOCALE) {
@@ -102,16 +90,12 @@ const themeVariants: [string, ThemeVariant][] =
     : [];
 ---
 
-<header class:list={["lp-header", `lp-header--${variant}`]}>
-  {
-    variant === "docs" ? (
-      <a class="lp-brand-home" href={locale === ROOT_LOCALE ? `${DOCS_BASE}/` : `${DOCS_BASE}/${locale}/`}>
-        <Fragment set:html={logoSvg(logoHorizontal, "lp-brand")} />
-      </a>
-    ) : (
-      <Fragment set:html={logoSvg(logoHorizontal, "lp-brand")} />
-    )
-  }
+<header
+  class:list={["lp-header", `lp-header--${variant}`, { "lp-header-solid": variant === "site" }]}
+>
+  <a class="lp-brand-home" href={siteHref(locale)}>
+    <Fragment set:html={logoSvg("horizontal", "lp-brand")} />
+  </a>
   {
     variant === "docs" && (
       <div class="lp-header-search">
@@ -132,8 +116,8 @@ const themeVariants: [string, ThemeVariant][] =
       <select aria-label="Language" data-lp-lang>
         {
           switcherLocales.map((code) => (
-            <option value={pathForLocale(code)} selected={code === locale} lang={locales[code].htmlLang}>
-              {locales[code].short}
+            <option value={pathForLocale(code)} selected={code === locale} lang={lpLocales[code].htmlLang}>
+              {lpLocales[code].short}
             </option>
           ))
         }
@@ -191,8 +175,10 @@ const themeVariants: [string, ThemeVariant][] =
 
 <style is:global>
   /* LP variant: always fixed; gains a dark backdrop once the hero is gone
-     so the light sections keep it readable. */
-  .lp-header--lp {
+     so the light sections keep it readable. The site variant is the same
+     header with that backdrop from the start. */
+  .lp-header--lp,
+  .lp-header--site {
     position: fixed;
     top: 0;
     left: 0;
@@ -223,29 +209,34 @@ const themeVariants: [string, ThemeVariant][] =
   .lp-header-solid .lp-lang:hover {
     color: var(--acc);
   }
-  /* Brand logo. On the LP it starts invisible — the hero's centered logo
-     carries the branding — and fades in together with the frosted backdrop
-     once scrolled past the hero. visibility keeps the hidden copy out of the
-     accessibility tree while the hero logo is the one on screen. */
+  /* Brand logo, linking to the landing page. On the LP it starts invisible —
+     the hero's centered logo carries the branding — and fades in together
+     with the frosted backdrop once scrolled past the hero. visibility keeps
+     the hidden link out of the accessibility tree and tab order while the
+     hero logo is the one on screen. */
+  .lp-brand-home {
+    display: block;
+    flex: none;
+    transition:
+      opacity 0.3s ease,
+      visibility 0.3s ease;
+  }
+  .lp-header--lp .lp-brand-home {
+    opacity: 0;
+    visibility: hidden;
+  }
+  .lp-header--lp.lp-header-solid .lp-brand-home {
+    opacity: 1;
+    visibility: visible;
+  }
   .lp-brand {
     display: block;
     height: 24px;
     width: auto;
     color: var(--on-dark);
-    transition:
-      opacity 0.3s ease,
-      visibility 0.3s ease;
-  }
-  .lp-header--lp .lp-brand {
-    opacity: 0;
-    visibility: hidden;
   }
   .lp-brand path {
     fill: currentColor;
-  }
-  .lp-header-solid .lp-brand {
-    opacity: 1;
-    visibility: visible;
   }
   .lp-nav {
     display: flex;
@@ -356,10 +347,6 @@ const themeVariants: [string, ThemeVariant][] =
     --on-dark: #ffffff;
     --on-band: #ffffff;
   }
-  .lp-brand-home {
-    display: block;
-    flex: none;
-  }
   /* Starlight's search opens from here; keep it flexible between the brand
      and the nav so the button can breathe like the default header's. */
   .lp-header-search {
@@ -370,13 +357,15 @@ const themeVariants: [string, ThemeVariant][] =
   }
 
   @media (max-width: 960px) {
-    .lp-header--lp {
+    .lp-header--lp,
+    .lp-header--site {
       padding: 18px max(28px, var(--lp-safe-r, 0px)) 18px max(28px, var(--lp-safe-l, 0px));
     }
   }
 
   @media (max-width: 640px) {
-    .lp-header--lp {
+    .lp-header--lp,
+    .lp-header--site {
       padding: 14px max(20px, var(--lp-safe-r, 0px)) 14px max(20px, var(--lp-safe-l, 0px));
     }
     .lp-nav {

@@ -245,6 +245,35 @@ To read these buffers from a custom effect, use the [Buffer / Texture Access](#b
 
 The effectIds, emissive, shadow and globeNormal buffers are optional: they exist only while an active effect declares them in its `static requiredBuffers` (e.g. `["selectiveEffect", "emissive"]`, `["shadow"]` or `["globeNormal"]`), and the accessors return `undefined` otherwise.
 
+An effect whose needs depend on its own configuration overrides `getRequiredBuffers()` instead. The override replaces the static entirely, so declare one or the other. It is read before `onCreate()`, so derive the result from the constructor config, and emit `gbufferRequirementsChanged` on `ctx` when an `update()` changes it. The view then re-derives the buffers. The emit throws when the new attachment exceeds the device's `MAX_DRAW_BUFFERS`, so restore your previous state before letting that error propagate.
+
+```typescript
+import { type GBufferName } from "@navaramap/three";
+
+export class MyEffectDesc extends EffectDesc<MyEffectConfig, MyEffectUpdate, MyPostProcessingPass> {
+  static key = "myEffect";
+
+  private shadow: boolean;
+
+  constructor(view: ThreeView, ctx: ViewContext, config: MyEffectConfig) {
+    super(view, ctx, config);
+    this.shadow = config.myEffect?.shadow ?? false;
+  }
+
+  getRequiredBuffers(): readonly GBufferName[] {
+    return this.shadow ? ["normal", "shadow"] : ["normal"];
+  }
+
+  update(config: MyEffectUpdate) {
+    const shadow = config.myEffect?.shadow;
+    if (shadow !== undefined && shadow !== this.shadow) {
+      this.shadow = shadow;
+      this.ctx.emit("gbufferRequirementsChanged");
+    }
+  }
+}
+```
+
 `globeNormal` is the odd one out: it is a separate screen-space copy of the terrain normal rather than a G-buffer attachment, so it takes no attachment slot and does not count against the device's `MAX_DRAW_BUFFERS`. Undeclared, its target stays 1x1 and `ctx.getGlobeNormalTexture()` returns a texture you cannot sample meaningfully. A custom effect that reads them must declare `requiredBuffers` so the view allocates them. Note that changing the set of allocated buffers reallocates attachments and recompiles shaders, so effects should be added once and tuned via `update()` rather than added and removed repeatedly. Because a configuration change rebuilds the attachments, fetch these textures each frame (in `update()` or the pass's `render()`) instead of caching them at pass creation.
 
 Buffer encodings to be aware of when sampling:

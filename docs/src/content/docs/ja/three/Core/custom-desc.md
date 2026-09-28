@@ -241,6 +241,35 @@ view.addMesh<GlowSphereDesc>({
 
 エフェクト ID・エミッシブ・シャドウ・globeNormal のバッファはオプションです。アクティブなエフェクトが `static requiredBuffers` で宣言している間だけ存在し（例: `["selectiveEffect", "emissive"]` / `["shadow"]` / `["globeNormal"]`）、それ以外ではアクセサは `undefined` を返します。
 
+必要なバッファが自身の設定に依存するエフェクトは、代わりに `getRequiredBuffers()` をオーバーライドします。オーバーライドは static を完全に置き換えるので、どちらか一方だけを宣言してください。`onCreate()` より前に読まれるためコンストラクタの config から結果を導き、`update()` で結果が変わるときは `ctx` に `gbufferRequirementsChanged` を emit します。view はバッファを再導出します。新しいアタッチメントがデバイスの `MAX_DRAW_BUFFERS` を超える場合は emit が throw するので、そのエラーを伝播させる前に以前の状態へ戻してください。
+
+```typescript
+import { type GBufferName } from "@navaramap/three";
+
+export class MyEffectDesc extends EffectDesc<MyEffectConfig, MyEffectUpdate, MyPostProcessingPass> {
+  static key = "myEffect";
+
+  private shadow: boolean;
+
+  constructor(view: ThreeView, ctx: ViewContext, config: MyEffectConfig) {
+    super(view, ctx, config);
+    this.shadow = config.myEffect?.shadow ?? false;
+  }
+
+  getRequiredBuffers(): readonly GBufferName[] {
+    return this.shadow ? ["normal", "shadow"] : ["normal"];
+  }
+
+  update(config: MyEffectUpdate) {
+    const shadow = config.myEffect?.shadow;
+    if (shadow !== undefined && shadow !== this.shadow) {
+      this.shadow = shadow;
+      this.ctx.emit("gbufferRequirementsChanged");
+    }
+  }
+}
+```
+
 `globeNormal` だけは性質が異なり、G-buffer のアタッチメントではなく**地形法線の画面座標コピー**です。そのためアタッチメント枠を消費せず、デバイスの `MAX_DRAW_BUFFERS` にも数えられません。未宣言の場合はコピー先が 1x1 のままで、`ctx.getGlobeNormalTexture()` が返すテクスチャは意味のあるサンプリングができません。これらを読み取るカスタムエフェクトは、ビューにバッファを確保させるため `requiredBuffers` を宣言してください。なお、確保されるバッファ構成の変更はアタッチメントの再確保とシェーダーの再コンパイルを伴うため、エフェクトは一度追加したら削除・再追加を繰り返さず、`update()` で調整してください。また構成変更でアタッチメントは再構築されるため、これらのテクスチャはパス生成時にキャッシュせず、毎フレーム（`update()` やパスの `render()` で）取得してください。
 
 サンプリング時に注意すべきエンコーディング:

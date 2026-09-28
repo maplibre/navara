@@ -1555,6 +1555,7 @@ export default class ThreeView<
     );
     this.registries = new Registries(this, this.viewContext);
     this.viewContext.on("meshPassKeyChanged", this._syncGBuffers);
+    this.viewContext.on("gbufferRequirementsChanged", this._syncGBuffers);
     this.viewContext._setRegistries(this.registries);
     this.eventContext = new EventContext({
       eventManager: this._eventManager,
@@ -2291,13 +2292,17 @@ export default class ThreeView<
       throw new UnknownTypeError("effect", config);
     }
 
-    // Reject the effect while nothing is created yet if its required
-    // G-buffers would exceed the device's MRT attachment limit
-    // (gl.MAX_DRAW_BUFFERS – spec minimum 4, nearly all devices expose 8).
-    this._assertGBufferCapacity(effectType);
-
-    // Create effect descriptor instance
+    // Requirements can depend on the config, so the descriptor exists before
+    // the capacity check and is destroyed on rejection.
     const effectDesc = this.registries.effect.create(effectType, config);
+
+    // gl.MAX_DRAW_BUFFERS: spec minimum 4, nearly all devices expose 8.
+    try {
+      this._assertGBufferCapacity(effectDesc);
+    } catch (error) {
+      effectDesc.onDestroy();
+      throw error;
+    }
 
     const l = new EffectHandle(effectDesc);
 
@@ -2341,29 +2346,35 @@ export default class ThreeView<
   private _syncGBuffers = (): void => {
     const requirements: (readonly GBufferName[])[] = [];
     for (const handle of this.layersManager.getEffectDescs()) {
-      const EffectClass = handle.ref.constructor as {
-        requiredBuffers?: readonly GBufferName[];
-      };
-      if (EffectClass.requiredBuffers) {
-        requirements.push(EffectClass.requiredBuffers);
-      }
+      requirements.push(handle.ref.getRequiredBuffers());
     }
     // Draped meshes are not effects, so they cannot declare this themselves:
     // they read the terrain normal through the globe-normal copy.
     if (this._scenes.draped.children.length > 0) {
       requirements.push(["globeNormal"]);
     }
-    this._buffers = unionGBufferRequirements(requirements);
+    const buffers = unionGBufferRequirements(requirements);
+    // Runtime requirement changes bypass `addEffect`'s check; exceeding the
+    // limit at the GL level gives an incomplete framebuffer, not an error.
+    const attachmentCount = this._countGBufferAttachments(buffers);
+    const maxDrawBuffers = this._maxDrawBuffers();
+    if (attachmentCount > maxDrawBuffers) {
+      throw new Error(
+        `The required G-buffers demand ${attachmentCount} MRT attachments, ` +
+          `exceeding this device's MAX_DRAW_BUFFERS (${maxDrawBuffers}).`,
+      );
+    }
+    this._buffers = buffers;
     this.viewContext._setGBufferOptions(this._buffers);
   };
 
   /**
-   * Throws when enabling `effectType`'s required G-buffers would push the
-   * attachment count (color + normal + optional buffers) past the device's
+   * Throws when enabling the effect's required G-buffers would push the
+   * attachment count (color + enabled optional buffers) past the device's
    * `MAX_DRAW_BUFFERS` limit.
    */
-  private _assertGBufferCapacity(effectType: string): void {
-    const required = this.registries.effect.getRequiredBuffers(effectType);
+  private _assertGBufferCapacity(effectDesc: EffectDesc): void {
+    const required = effectDesc.getRequiredBuffers();
     if (required.length === 0) return;
     const prospective = unionGBufferRequirements([
       (Object.keys(this._buffers) as GBufferName[]).filter(
@@ -2371,20 +2382,29 @@ export default class ThreeView<
       ),
       required,
     ]);
-    const attachmentCount =
-      2 + GBUFFER_ATTACHMENT_NAMES.filter((name) => prospective[name]).length;
-    // Navara requires WebGL2 (MRT), so the context is always WebGL2.
-    const gl = this.viewContext
-      .getRenderer()
-      .getContext() as WebGL2RenderingContext;
-    const maxDrawBuffers = gl.getParameter(gl.MAX_DRAW_BUFFERS) as number;
+    const attachmentCount = this._countGBufferAttachments(prospective);
+    const maxDrawBuffers = this._maxDrawBuffers();
     if (attachmentCount > maxDrawBuffers) {
       throw new Error(
-        `The "${effectType}" effect requires G-buffers [${required.join(", ")}], ` +
+        `The "${effectDesc.getKey()}" effect requires G-buffers [${required.join(", ")}], ` +
           `but the resulting ${attachmentCount} MRT attachments exceed this ` +
           `device's MAX_DRAW_BUFFERS (${maxDrawBuffers}).`,
       );
     }
+  }
+
+  private _countGBufferAttachments(buffers: ResolvedGBufferOptions): number {
+    // Color is the only always-present draw buffer; depth takes no
+    // `MAX_DRAW_BUFFERS` slot.
+    return 1 + GBUFFER_ATTACHMENT_NAMES.filter((name) => buffers[name]).length;
+  }
+
+  private _maxDrawBuffers(): number {
+    // Navara requires WebGL2 (MRT), so the context is always WebGL2.
+    const gl = this.viewContext
+      .getRenderer()
+      .getContext() as WebGL2RenderingContext;
+    return gl.getParameter(gl.MAX_DRAW_BUFFERS) as number;
   }
 
   /**

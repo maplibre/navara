@@ -33,6 +33,11 @@ describe("generateTileCommonInjection", () => {
 describe("generateTileMapFragment", () => {
   const src = generateTileMapFragment(16, FEATURES_OFF);
 
+  it("discards fragments outside the fill quadrants", () => {
+    expect(src).toContain("if (uFillQuadrants != 0) {");
+    expect(src).toContain("discard;");
+  });
+
   it("samples each atlas exactly once", () => {
     const colorMatches = src.match(/texture2D\(uColorAtlas/g) ?? [];
     const attrMatches = src.match(/texture2D\(uAttrAtlas/g) ?? [];

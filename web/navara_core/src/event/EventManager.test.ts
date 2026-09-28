@@ -537,3 +537,99 @@ it("should keep in-flight add tracking isolated between transaction keys", async
   expect(aborted).toEqual([1]);
   releaseAdds();
 });
+
+it("should dispatch the pending stack in the given order across passes", async () => {
+  const eventManager = new EventManager();
+  const processedIds: number[] = [];
+
+  // gen doubles as the urgency rank here: lower is more urgent.
+  eventManager.pushEvents(
+    makeEvent({
+      renderable_feature_added: [
+        makeRenderableFeatures(1, 3),
+        makeRenderableFeatures(1, 2),
+      ],
+      renderable_feature_removed: [],
+      renderable_feature_changed: [],
+    }),
+  );
+  const byUrgency = (
+    a: RenderableFeatureAddedEvent,
+    b: RenderableFeatureAddedEvent,
+  ) => a.gen - b.gen;
+
+  // Only one slot free: the more urgent of the two goes first even though it
+  // was pushed second.
+  let slots = 1;
+  await eventManager.forEachStackAsync(
+    "renderable_feature_added",
+    async (event) => {
+      processedIds.push(event.gen);
+    },
+    10,
+    () => slots-- > 0,
+    byUrgency,
+  );
+  expect(processedIds).toEqual([2]);
+
+  // A more urgent event arriving later overtakes the one left behind.
+  eventManager.pushEvents(
+    makeEvent({
+      renderable_feature_added: [makeRenderableFeatures(1, 1)],
+      renderable_feature_removed: [],
+      renderable_feature_changed: [],
+    }),
+  );
+  slots = 1;
+  await eventManager.forEachStackAsync(
+    "renderable_feature_added",
+    async (event) => {
+      processedIds.push(event.gen);
+    },
+    10,
+    () => slots-- > 0,
+    byUrgency,
+  );
+  expect(processedIds).toEqual([2, 1]);
+  expect(eventManager.stacks.renderable_feature_added).toHaveLength(1);
+});
+
+it("should merge newly pushed events into the already ordered stack", async () => {
+  const eventManager = new EventManager();
+  const processed: number[] = [];
+  const byUrgency = (
+    a: RenderableFeatureAddedEvent,
+    b: RenderableFeatureAddedEvent,
+  ) => a.gen - b.gen;
+  const push = (...gens: number[]) =>
+    eventManager.pushEvents(
+      makeEvent({
+        renderable_feature_added: gens.map((g) => makeRenderableFeatures(1, g)),
+        renderable_feature_removed: [],
+        renderable_feature_changed: [],
+      }),
+    );
+  const pass = async (slots: number) => {
+    let left = slots;
+    await eventManager.forEachStackAsync(
+      "renderable_feature_added",
+      async (event) => {
+        processed.push(event.gen);
+      },
+      10,
+      () => left-- > 0,
+      byUrgency,
+    );
+  };
+
+  // Each pass leaves a sorted prefix behind; removals from it and later
+  // pushes after it must keep the dispatch order correct across passes.
+  push(5, 3, 8);
+  await pass(1);
+  push(4, 1);
+  await pass(2);
+  push(6, 2);
+  await pass(10);
+  expect(processed).toEqual([3, 1, 4, 2, 5, 6, 8]);
+  expect(eventManager.stacks.renderable_feature_added).toHaveLength(0);
+});

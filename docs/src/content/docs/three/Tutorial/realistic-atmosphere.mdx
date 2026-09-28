@@ -64,15 +64,11 @@ const view = new ThreeView<DefaultDescriptions>({ shadow: true });
 view.addPlugin(plugin);
 await view.init();
 
-const layers = plugin.addDefaultPhotorealScene();
-
-layers.aerialPerspective.update({
-  aerialPerspective: {
-    irradiance: true,
-  },
+const layers = plugin.addDefaultPhotorealScene({
+  deferredLighting: true,
+  shadow: true,
+  specular: true,
 });
-
-view.lit = false;
 
 const photoSource = view.addSource({
   // Credit:
@@ -117,14 +113,14 @@ Enable shadows on the sunlight:
 layers.sun.update({ sun: { castShadow: true } });
 ```
 
-The shadows in this tutorial's screenshots are **cloud** shadows. The sun's own shadow map keeps being rendered but is not applied while `view.lit = false`, so turn `castShadow` off if nothing else in the scene needs it.
+`shadow: true` in `addDefaultPhotorealScene` applies these shadows in the deferred lighting, and `specular: true` adds the sun's highlight on reflective materials. The shadows in this tutorial's screenshots are **cloud** shadows.
 
 :::caution[irradiance is deferred lighting, so pair it with `view.lit = false`]
-`irradiance` does not add a light. It re-lights the G-buffer from the precomputed atmosphere **after** the geometry is drawn, which only works if the materials wrote plain albedo. That is what [`view.lit = false`](../../../three/api/threeview-properties/#lit) does. Left at its default `true`, the scene is lit twice (forward pass + atmosphere) and washes out.
+`deferredLighting: true` sets `irradiance` and `view.lit = false` together. `irradiance` does not add a light. It re-lights the G-buffer from the precomputed atmosphere **after** the geometry is drawn, which only works if the materials wrote plain albedo. That is what [`view.lit = false`](../../../three/api/threeview-properties/#lit) does. Left at its default `true`, lighting is applied twice (forward pass + atmosphere).
 
 Two things the deferred pass does **not** cover:
 
-- **Cast shadows from `sun.castShadow`**, which the forward pass applies. Cloud shadows survive, because the effect samples those from the atmosphere. That is why `irradiance` is required for them.
+- **Cast shadows from `sun.castShadow`**, unless the aerial perspective's `shadow` option is on as above. Cloud shadows are sampled from the atmosphere and need no option, but they do need `irradiance`.
 - **Transparent materials**, already blended into the colour buffer and so impossible to re-light.
 
 Close-up scenes that depend on either should keep `irradiance: false` and the default `view.lit`.
@@ -317,15 +313,11 @@ const view = new ThreeView<DefaultDescriptions>({
 view.addPlugin(plugin);
 await view.init();
 
-const layers = plugin.addDefaultPhotorealScene();
-
-layers.aerialPerspective.update({
-  aerialPerspective: {
-    irradiance: true,
-  },
+const layers = plugin.addDefaultPhotorealScene({
+  deferredLighting: true,
+  shadow: true,
+  specular: true,
 });
-
-view.lit = false;
 
 const photoSource = view.addSource({
   // Credit:

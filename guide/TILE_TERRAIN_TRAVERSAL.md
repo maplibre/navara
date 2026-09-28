@@ -157,18 +157,97 @@ flowchart TD
   B -- no --> C["compute SSE, readiness"]
   C --> D{"SSE ≤ max_sse ?"}
   D -- "yes (tile is detailed enough)" --> E{renderable?}
-  E -- yes --> R["TileRendered"]
-  E -- "no" --> REQ["request terrain data → NotFound"]
+  E -- "yes (own DEM, or upsampled)" --> R["TileRendered<br/>on screen + still upsampled → fetch own DEM"]
+  E -- "no (nothing to upsample from)" --> REQ["request terrain data → NotFound"]
   D -- "no (need more detail)" --> F["recurse into 4 children"]
   F --> G{all children prepared?}
-  G -- yes --> CMP["ChildrenMeshesPrepared<br/>activate children, hide parent"]
-  G -- "no" --> H["keep parent visible<br/>(children fill in as ready)"]
+  G -- yes --> CMP["ChildrenMeshesPrepared<br/>record take-over masks, defer"]
+  G -- "no" --> H["keep parent visible<br/>apply: hide every finished subtree"]
 ```
 
-Two subtleties make terrain + imagery work together:
+The swap is applied top down, not by the tile whose group completed. A tile
+returning `ChildrenMeshesPrepared` only records which children hand off in
+turn and which stay hidden (`TerrainTile::children_take_over`); the nearest
+ancestor whose own group is still incomplete (or `update_terrain` at the
+root) walks those masks with `activate_selected_subtree`. This matters with
+upsample-first: grandchildren are upsampled from any ready ancestor and built
+nearest-first, so a near child's subtree routinely finishes before its
+far-away uncles. Activating it inside its own recursion would draw it on top
+of the still-visible grandparent (z-fighting flicker); deferring keeps exactly
+one surface per region until the whole group swaps in one frame. The same
+invariant holds in the other direction: a tile that comes on screen hides
+every rendered descendant in that frame (`show_tile_over_descendants`), so a
+zoom-out that makes an ancestor the SSE leaf never draws it over the finer
+tiles it replaces — the deeper ones are no longer visited by the traversal and
+would otherwise linger until `clear_caches` retires them. And a tile that
+cannot render yet while its children are on screen (the zoom-out hold: it
+waits for its own DEM rather than upsampling) reports `ChildrenRendered`, so
+its shown descendants stay as cover and no coarser ancestor takes over in the
+meantime; the take-over masks record such a child as `covered`, and
+`activate_selected_subtree` leaves its subtree alone. Likewise a group that is
+already on screen is never collapsed back to its parent because a member only
+now came into view without a prepared mesh (revealed past the horizon, never
+spawned): that member is held hidden until it is prepared while its siblings
+keep the screen — otherwise every reveal during a zoom-out would flash the
+whole region back to a z2/z3 ancestor for a frame. So that the held member
+leaves no hole, the parent is shown in *fill* mode: `Mesh::fill_quadrants`
+carries the held children's quadrant bits and the tile shader discards every
+fragment outside them (`uFillQuadrants`, quadrant from `vOrigUv`), so the
+parent's own mesh covers exactly the missing quadrants without overlapping the
+prepared children. The mask is recorded as `ChildrenTakeOver::held` and applied
+by `activate_selected_subtree` (`TileCacheManager::fill_rendered_tile`);
+`activate_rendered_tile` resets it. Held members only ever appear at the far
+edge of the view (they are revealed past the horizon), outside the shadow
+cascades, so the shadow/depth materials carry no matching cut — revisit this if
+shadows are ever extended to the horizon. The memory budget's
+prefetch eviction (`enforce_memory_budget`) respects the same idea from the other
+side: a `prefetched` tile is only speculative while the traversal no longer
+visits it, and the traversal clears the flag on every non-hidden child it
+touches — a hidden group member destroyed under the view comes back as a fresh
+node with no mesh and no DEM, and the group collapses to a coarse ancestor.
 
+Three subtleties make terrain + imagery work together:
+
+- **Upsample first, fetch later.** A tile that meets SSE but has no DEM of its
+  own does not wait for the network: if any ancestor holds a mesh built from
+  real heights it is **upsampled** from that ancestor immediately
+  (`UpsampleAncestors::source` picks the nearest real-data ancestor, falling
+  back to the nearest upsampled one; one task covers every level in between).
+  The traversal hands the nearest such ancestors down the recursion
+  (`UpsampleAncestors::extend_with`), so readiness costs O(1) per tile;
+  only the task dispatch walks the quadtree (`TerrainTile::find_upsample_source`),
+  and only it allocates the tile's terrain-data placeholder. A child is spawned
+  as soon as *some* ancestor holds a mesh with
+  real heights (not necessarily its parent), so one traversal spawns every
+  level below a shown tile and they all build in parallel, nearest first; the
+  swap still applies top down, group by group, so the coarse ancestor covering
+  a region revealed by a zoom-out is replaced after one round trip rather than
+  one per level. Every intermediate level briefly *is* the activated SSE leaf
+  while its own children are still building, so it issues its own DEM fetch
+  before they replace it. Quantized-mesh tiles clip the ancestor's TIN down along the quadrant
+  path (an upsampled ancestor works as a source too); raster-DEM tiles instead
+  resample a real-DEM ancestor's pixels bilinearly and mesh them with martini
+  at the tile's own level, so the upsampled tile looks like a lower-resolution
+  real tile rather than a copy of the ancestor's coarser simplification. A
+  rejected DEM request (rate limiter) only drops the requester; the tile keeps
+  its terrain data and upsampled mesh and retries next frame. The DEM fetch
+  is deferred until the upsampled tile is actually on screen (activated) and is
+  still the SSE leaf, so a fast zoom-in only fetches the level it settles on.
+  When the DEM lands, `transfer_mesh` rebuilds the mesh from real data and
+  rewrites the tile's `Mesh` in place, reported through the geometry-only
+  `mesh_geometry_replaced` event (not `mesh_updated`, whose handler rebinds
+  textures and drapes and would blank the tile for a few frames) — the web side
+  rebuilds the geometry under the same `TileMesh`, keeping its material and
+  handle-keyed drape state. The exception is
+  zoom-out: a tile whose children are on screen already shows finer data than
+  any ancestor could give, so it waits for its own DEM instead — unless that
+  request already failed (a failed request is never retried), in which case it
+  upsamples after all. Because the
+  terrain reaches its SSE level right away, clamp-to-ground vector layers can
+  be baked onto the right-sized terrain tiles from a parent vector tile without
+  ever showing a magnified parent.
 - **Upsampling to follow imagery.** A terrain tile keeps subdividing past its own
-  data's max zoom by **upsampling** the parent mesh (`overscaled_max_zoom`). This
+  data's max zoom by **upsampling** (`overscaled_max_zoom`). This
   is what lets fine raster (e.g. OSM z23) sit on coarse terrain (e.g.
   quantized-mesh z18): the terrain geometry is subdivided to z23 so there is a
   surface to drape the z23 texture onto. Keeping the terrain subdivided to the
@@ -180,19 +259,36 @@ Two subtleties make terrain + imagery work together:
   texture readiness (`is_texture_ready`) therefore only gates on **hillshade**,
   which is terrain-owned.
 
-The mesh itself is built off the main thread: `traverse_terrain` requests the DEM /
-quantized-mesh bytes, a worker constructs the mesh, and `transfer_mesh` moves the
-result onto a `TileMeshMarker` entity.
+The mesh itself is built off the main thread: `transfer_mesh` spawns a worker
+task for every newly selected tile — an upsample from the nearest ready
+ancestor when the tile has no DEM yet, a construct from the DEM bytes otherwise
+— and moves the result onto a `TileMeshMarker` entity. An upsampled tile that
+later receives its DEM is flagged `RemeshPending` by `mark_landed_dem_for_remesh`
+(the only way a `Rendered` tile re-enters `transfer_mesh`) and goes through the
+construct path a second time, with the result written into the existing `Mesh`
+instead of a new entity. That rewrite waits until the web side has reported the
+mesh prepared: until then its queued `mesh_added` still names the buffers the
+rewrite frees. A re-mesh whose task fails drops the flag and keeps the
+upsampled mesh; a lost upsample makes the tile fetch its own DEM instead
+(`upsample_failed`), except in the overscale band, where it is retried.
+Horizon-occluded prefetch only meshes tiles whose own DEM has landed (or that
+sit in the overscale band): upsampling a hidden tile would cost a second
+construct when its `Low`-priority DEM arrives.
 
 ```mermaid
 sequenceDiagram
   participant T as traverse_terrain
-  participant W as worker (navara_worker)
   participant TM as transfer_mesh
-  T->>T: request_terrain_data() (DEM / .terrain bytes)
-  T->>W: spawn ConstructTerrainMesh / UpsampleTerrainMesh task
+  participant W as worker (navara_worker)
+  T->>TM: tile selected (no own DEM, ancestor mesh available)
+  TM->>W: spawn UpsampleTerrainMesh task (source = ancestor)
   W-->>TM: task completed (geometry)
   TM->>TM: store buffers, spawn TileMeshMarker + Mesh + Material
+  T->>T: tile activated and still the SSE leaf → request_terrain_data()
+  T->>TM: DEM landed on an upsampled tile
+  TM->>W: spawn ConstructTerrainMesh task
+  W-->>TM: task completed (geometry)
+  TM->>TM: free old buffers, rewrite Mesh + transform in place, re-cost
 ```
 
 ## Raster traversal — lenient LOD

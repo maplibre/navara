@@ -148,6 +148,9 @@ evaluate(
 | `opacity` | `number` | 地物の不透明度、範囲 0.0-1.0（ポリゴン/ポイント/ビルボード/モデル/テキスト用） |
 | `declutterPriority` | `number` | デクラッターの配置優先度。値が大きいほど重なりの競合に勝ちます（[`declutter`](../../../three/material/text-material/#declutter) が有効なポイント/ビルボード/テキスト用）。レイヤーの `declutterPriority` を上書きします |
 | `image` | `string \| null` | 画像の URL（ビルボード地物用）。個別の URL ごとに一度だけ読み込まれ、レイヤーのテクスチャアトラスにパックされます。`null` を返すと以前に設定した地物ごとの画像がクリアされ、ビルボードマテリアルのデフォルト `url` に戻ります（マテリアルに `url` がない場合、その地物は非表示になります） |
+| `facing` | `"upright" \| "flat"` | ポイント、ビルボード、ラベルを立てるか、地球表面に寝かせるか（ポイント/ビルボード/テキスト用）。マテリアルの `pointFacing`/`billboardFacing`/`textFacing` を上書きします |
+| `rotateWithCamera` | `boolean` | ポイント、ビルボード、ラベルをカメラに追従して回転させるか（ポイント/ビルボード/テキスト用）。`false` でアンカーの東・北・上の座標系に固定されます。マテリアルの `rotateWithCamera` を上書きします |
+| `rotation` | `number` | アンカーを中心とした平面内の回転角。単位は度で、正面から見て時計回りです（ポイント/ビルボード/テキスト用）。レイヤー内の地物ごとに異なる向きにできます。マテリアルの `rotation` を上書きします |
 | `emissive` | `Color` | 発光色（バッチ化されたポリゴン/3D Tiles モデル/ポイント/ビルボード/テキスト用。batch/feature id を持たないモデルでは無視されます）。`emissiveIntensity` と組み合わせて Selective Bloom を駆動します。テキストではグリフの塗り部分のみが発光し、アウトラインと背景は発光しません |
 | `emissiveIntensity` | `number` | 発光強度の乗数（バッチ化されたポリゴン/3D Tiles モデル/ポイント/ビルボード/テキスト用） |
 
@@ -309,6 +312,15 @@ type EvaluatedValue = {
    * レイヤーのテクスチャアトラスにパックされます。`null` は以前に設定した
    * 地物ごとの画像をクリアし、ビルボードマテリアルのデフォルト url に戻します */
   image?: string | null;
+  /** ポイント、ビルボード、ラベルを立てるか、地球表面に寝かせるか
+   * （ポイント/ビルボード/テキスト用）。マテリアルの facing 設定を上書きします */
+  facing?: "upright" | "flat";
+  /** ポイント、ビルボード、ラベルをカメラに追従して回転させるか
+   * （ポイント/ビルボード/テキスト用） */
+  rotateWithCamera?: boolean;
+  /** アンカーを中心とした平面内の回転角。単位は度で、正面から見て時計回り
+   * （ポイント/ビルボード/テキスト用） */
+  rotation?: number;
   /** 発光色（バッチ化されたポリゴン/3D Tiles モデル/ポイント/ビルボード/
    * テキスト用。batch/feature id を持たないモデルでは無視されます）。
    * `emissiveIntensity` と組み合わせて Selective Bloom を駆動します。

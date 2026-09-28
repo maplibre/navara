@@ -261,10 +261,14 @@ async function processConstructTerrainMesh(
         return;
       }
 
+      // `getTile` hands out an owned wasm object; copy it into a plain Like
+      // and free it.
       const tile = tileHandler.getTile(params.tile_handle);
       if (!tile) {
         return;
       }
+      const tileLike = new TransferableTileLike(tile);
+      tile.free();
 
       let promise: ReturnType<
         typeof constructQuantizedMeshTerrainMesh | typeof constructTerrainMesh
@@ -272,7 +276,7 @@ async function processConstructTerrainMesh(
       if (params.isQuantizedMesh) {
         promise = constructQuantizedMeshTerrainMesh(
           bytes,
-          new TransferableTileLike(tile),
+          tileLike,
           params.skirt,
           params.skirtExaggeration,
           params.poleNorth,
@@ -289,7 +293,7 @@ async function processConstructTerrainMesh(
         }
         promise = constructTerrainMesh(
           bytes,
-          new TransferableTileLike(tile),
+          tileLike,
           new TransferableRasterDEMDataLike(elevationDecoder),
           params.tile_size,
           params.skirt,
@@ -336,6 +340,19 @@ async function processConstructTerrainMesh(
   );
 }
 
+/** Whether `ancestor` is a strict ancestor of `tile` in the quadtree. */
+function isStrictAncestor(
+  ancestor: { x: number; y: number; z: number },
+  tile: { x: number; y: number; z: number },
+): boolean {
+  const depth = tile.z - ancestor.z;
+  if (depth <= 0) return false;
+  return (
+    Math.floor(tile.x / 2 ** depth) === ancestor.x &&
+    Math.floor(tile.y / 2 ** depth) === ancestor.y
+  );
+}
+
 async function processUpsampleTerrainMesh(
   ctx: EventContext,
   id: string,
@@ -352,58 +369,70 @@ async function processUpsampleTerrainMesh(
     params,
     delegator_id,
     async (task) => {
+      // `getTile` hands out owned wasm objects; copy them into plain Likes
+      // and free them.
       const tile = tileHandler.getTile(params.tile_handle);
       if (!tile) {
         return;
       }
-      const parentTile = tileHandler.getParentTile(params.tile_handle);
-      if (!parentTile) {
+      const tileLike = new TransferableTileLike(tile);
+      tile.free();
+      // The source is the nearest ready ancestor (not necessarily the
+      // parent); Rust walks the quadrant path from it down to the tile.
+      const sourceTile = tileHandler.getTile(params.source_tile_handle);
+      if (!sourceTile) {
         return;
       }
-
-      const cachedMeshHandle = parentTile.cached_mesh_handle;
-      if (!cachedMeshHandle || !cachedMeshHandle.heights) {
+      const sourceLike = new TransferableTileLike(sourceTile);
+      sourceTile.free();
+      if (!isStrictAncestor(sourceLike.coords, tileLike.coords)) {
+        // The tiling was rebuilt after the task was queued (a terrain source
+        // switch): the handle now names some unrelated tile.
         return;
       }
-
-      // buf.* return short-lived views into WASM memory; copy them since the
-      // parent geometry is sent to the worker (a view's buffer is the whole
-      // WASM memory and is not transferable).
-      const parentUvs = bufHandler.f32(cachedMeshHandle.uvs)?.slice();
-      const parentIndices = bufHandler.u32(cachedMeshHandle.indices)?.slice();
-      const parentHeights = bufHandler.f32(cachedMeshHandle.heights)?.slice();
-      if (!parentUvs || !parentIndices || !parentHeights) {
-        return;
-      }
-
-      const parentNormalsHandle = cachedMeshHandle.normals;
-      const parentNormals =
-        parentNormalsHandle != null
-          ? bufHandler.f32(parentNormalsHandle)?.slice()
-          : undefined;
-
-      const parentWatermaskHandle = cachedMeshHandle.watermask;
-      const parentWatermask =
-        parentWatermaskHandle != null
-          ? bufHandler.u8(parentWatermaskHandle)?.slice()
-          : undefined;
-
-      const upsamplableTerrainGeometry = new UpsamplableTerrainGeometryLike(
-        parentUvs,
-        parentIndices,
-        parentHeights,
-        parentNormals,
-        parentWatermask,
-      );
 
       let promise: ReturnType<
         typeof upsampleQuantizedMeshTerrainMesh | typeof upsampleTerrainMesh
       >;
       if (params.isQuantizedMesh) {
+        // Quantized mesh: clip the source's TIN down to the tile.
+        const cachedMeshHandle = sourceLike.cached_mesh_handle;
+        if (!cachedMeshHandle || cachedMeshHandle.heights == null) {
+          return;
+        }
+
+        // buf.* return short-lived views into WASM memory; copy them since the
+        // source geometry is sent to the worker (a view's buffer is the whole
+        // WASM memory and is not transferable).
+        const sourceUvs = bufHandler.f32(cachedMeshHandle.uvs)?.slice();
+        const sourceIndices = bufHandler.u32(cachedMeshHandle.indices)?.slice();
+        const sourceHeights = bufHandler.f32(cachedMeshHandle.heights)?.slice();
+        if (!sourceUvs || !sourceIndices || !sourceHeights) {
+          return;
+        }
+
+        const sourceNormalsHandle = cachedMeshHandle.normals;
+        const sourceNormals =
+          sourceNormalsHandle != null
+            ? bufHandler.f32(sourceNormalsHandle)?.slice()
+            : undefined;
+
+        const sourceWatermaskHandle = cachedMeshHandle.watermask;
+        const sourceWatermask =
+          sourceWatermaskHandle != null
+            ? bufHandler.u8(sourceWatermaskHandle)?.slice()
+            : undefined;
+
         promise = upsampleQuantizedMeshTerrainMesh(
-          new TransferableTileLike(tile),
-          new TransferableTileLike(parentTile),
-          upsamplableTerrainGeometry,
+          tileLike,
+          sourceLike,
+          new UpsamplableTerrainGeometryLike(
+            sourceUvs,
+            sourceIndices,
+            sourceHeights,
+            sourceNormals,
+            sourceWatermask,
+          ),
           params.skirt,
           params.skirtExaggeration,
           params.poleNorth,
@@ -412,17 +441,33 @@ async function processUpsampleTerrainMesh(
           params.tms,
         );
       } else {
+        // Raster DEM: resample the source's DEM pixels instead of clipping
+        // its simplified mesh, so the tile meshes at its own error tolerance
+        // and looks like a lower-resolution real tile rather than a coarser
+        // one. The source is always a real-DEM ancestor (see
+        // `TerrainTile::find_upsample_source`).
         const elevationDecoder = tileHandler.getTileElevationDecoder(
           params.tile_handle,
         );
         if (!elevationDecoder) {
           return;
         }
+        const bytesHandle = tileHandler.getTerrainDemBytes(
+          params.source_tile_handle,
+        );
+        // buf.u8 is a short-lived view into WASM memory; copy it since the
+        // bytes are transferred to the worker.
+        const sourceBytes =
+          bytesHandle != null ? bufHandler.u8(bytesHandle)?.slice() : undefined;
+        if (!sourceBytes) {
+          return;
+        }
         promise = upsampleTerrainMesh(
-          new TransferableTileLike(tile),
-          new TransferableTileLike(parentTile),
+          tileLike,
+          sourceLike,
           new TransferableRasterDEMDataLike(elevationDecoder),
-          upsamplableTerrainGeometry,
+          sourceBytes,
+          params.tile_size,
           params.skirt,
           params.skirtExaggeration,
           params.poleNorth,
