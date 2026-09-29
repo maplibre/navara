@@ -24,7 +24,7 @@ describe("fontHelper", () => {
           ],
         };
 
-        const result = fontFamilyToStyleOverrides(fontFamily);
+        const result = fontFamilyToStyleOverrides([fontFamily]);
         const fontFace = result["font-faces"]?.["TestFont"];
 
         expect(fontFace).toEqual([
@@ -49,7 +49,7 @@ describe("fontHelper", () => {
           ],
         };
 
-        const result = fontFamilyToStyleOverrides(fontFamily);
+        const result = fontFamilyToStyleOverrides([fontFamily]);
         const fontFace = result["font-faces"]?.["TestFont"];
 
         expect(fontFace).toEqual([
@@ -75,7 +75,7 @@ describe("fontHelper", () => {
           ],
         };
 
-        const result = fontFamilyToStyleOverrides(fontFamily);
+        const result = fontFamilyToStyleOverrides([fontFamily]);
         const fontFace = result["font-faces"]?.["TestFont"];
 
         expect(fontFace).toEqual([
@@ -99,7 +99,7 @@ describe("fontHelper", () => {
           ],
         };
 
-        const result = fontFamilyToStyleOverrides(fontFamily);
+        const result = fontFamilyToStyleOverrides([fontFamily]);
 
         expect(result).toEqual({
           "font-faces": {
@@ -121,7 +121,7 @@ describe("fontHelper", () => {
           ],
         };
 
-        const result = fontFamilyToStyleOverrides(fontFamily);
+        const result = fontFamilyToStyleOverrides([fontFamily]);
 
         expect(result).toEqual({
           "font-faces": {
@@ -152,7 +152,7 @@ describe("fontHelper", () => {
           ],
         };
 
-        const result = fontFamilyToStyleOverrides(fontFamily);
+        const result = fontFamilyToStyleOverrides([fontFamily]);
 
         expect(result).toEqual({
           "font-faces": {
@@ -185,7 +185,7 @@ describe("fontHelper", () => {
           ],
         };
 
-        const result = fontFamilyToStyleOverrides(fontFamily);
+        const result = fontFamilyToStyleOverrides([fontFamily]);
         const fontFaces = result["font-faces"]?.["TestFont"];
 
         expect(Array.isArray(fontFaces)).toBe(true);
@@ -216,7 +216,7 @@ describe("fontHelper", () => {
           faces: [{ url: "font2.woff2", unicodeRanges: [] }],
         };
 
-        const result = fontFamilyToStyleOverrides(font1, font2);
+        const result = fontFamilyToStyleOverrides([font1, font2]);
 
         expect(result).toEqual({
           "font-faces": {
@@ -238,7 +238,7 @@ describe("fontHelper", () => {
           .spyOn(console, "warn")
           .mockImplementation(() => {});
 
-        const result = fontFamilyToStyleOverrides(fontFamily);
+        const result = fontFamilyToStyleOverrides([fontFamily]);
 
         expect(result).toEqual({
           "font-faces": {},
@@ -251,7 +251,7 @@ describe("fontHelper", () => {
       });
 
       it("should return empty font-faces when no valid families", () => {
-        const result = fontFamilyToStyleOverrides();
+        const result = fontFamilyToStyleOverrides([]);
 
         expect(result).toEqual({
           "font-faces": {},
@@ -388,7 +388,7 @@ describe("fontHelper", () => {
         ],
       };
 
-      const styleOverrides = fontFamilyToStyleOverrides(original);
+      const styleOverrides = fontFamilyToStyleOverrides([original]);
       expect(styleOverrides["font-faces"]).toBeDefined();
 
       const result = convertFontFacesToFontFamilies(
