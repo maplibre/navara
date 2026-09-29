@@ -7,7 +7,6 @@
 import type { StyleSpecification } from "@maplibre/maplibre-gl-style-spec";
 import { Plugin } from "@navaramap/core";
 import ThreeView, {
-  Color,
   type ViewContext,
   type Layer,
   type Source,
@@ -22,12 +21,13 @@ import {
   createLayoutEvaluators,
   createPaintEvaluators,
   toEvaluatedValue,
-  toNavaraColor,
 } from "./adapters/toEvaluatedValue";
 import { toLayerDescription } from "./adapters/toLayerDescription";
+import { BackgroundHandler } from "./BackgroundHandler";
 import { JsStyleEngine } from "./engine/JsStyleEngine";
 import type { ParsedStyle, StyleLayer } from "./engine/types";
 import { convertFontFacesToFontFamilies } from "./fontHelper";
+import { expressionUsesZoom } from "./utils/expressionHelpers";
 
 /**
  * Options for MapLibreStylePlugin constructor.
@@ -89,10 +89,9 @@ export class MapLibreStylePlugin extends Plugin<ThreeView, ViewContext> {
    */
   private zoomDependentLayers = new Set<Layer>();
   /**
-   * Whether any background layer has zoom-dependent expressions.
-   * If false, we can skip re-evaluating background color on zoom changes.
+   * Background layer handler for evaluating and applying background colors.
    */
-  private hasZoomDependentBackground = false;
+  private backgroundHandler?: BackgroundHandler;
 
   /**
    * Create a new MapLibre Style plugin.
@@ -100,14 +99,14 @@ export class MapLibreStylePlugin extends Plugin<ThreeView, ViewContext> {
    * @param style - MapLibre Style JSON specification or URL
    * @param options - Plugin options
    * @param options.overrides - Optional partial style overrides to merge with the base style.
-   *                            Use fontFamilyToStyleOverrides() or fetchFontStyleOverrides() to inject font configuration.
+   *                            Use fontFamilyToStyleOverrides([...fonts]) or fetchFontStyleOverrides() to inject font configuration.
    * @param options.tileJsonPlugin - Optional TileJsonPlugin instance. If not provided, a new one will be created internally and disposed when this plugin is disposed.
    *
    * @example
    * ```ts
    * // With font configuration
    * const plugin = new MapLibreStylePlugin(style, {
-   *   overrides: await fetchFontStyleOverrides("Open Sans", "https://fonts.googleapis.com/css2?family=Open+Sans"),
+   *   overrides: await fetchFontStyleOverrides("Open Sans", "https://fonts.googleapis.com/..."),
    * });
    * ```
    *
@@ -220,64 +219,18 @@ export class MapLibreStylePlugin extends Plugin<ThreeView, ViewContext> {
   }
 
   /**
-   * Check if an expression uses the zoom operator.
-   * Recursively searches for ["zoom"] in the expression tree.
-   * Also detects legacy function objects with stops (zoom-dependent).
-   */
-  private static expressionUsesZoom(expr: unknown): boolean {
-    // Check for legacy function objects with stops: { stops: [[zoom, value], ...] }
-    // These are zoom-dependent and will be converted to zoom expressions by the engine
-    if (expr && typeof expr === "object" && !Array.isArray(expr)) {
-      // Use safe property access with type guard
-      const obj = expr as Record<string, unknown>;
-      if ("stops" in obj && Array.isArray(obj.stops)) {
-        return true;
-      }
-      // Check nested objects recursively
-      for (const value of Object.values(obj)) {
-        if (this.expressionUsesZoom(value)) {
-          return true;
-        }
-      }
-      return false;
-    }
-
-    if (!Array.isArray(expr)) {
-      return false;
-    }
-
-    // Check if this is a zoom expression
-    if (expr[0] === "zoom") {
-      return true;
-    }
-
-    // Recursively check nested expressions
-    for (const item of expr) {
-      if (this.expressionUsesZoom(item)) {
-        return true;
-      }
-    }
-
-    return false;
-  }
-
-  /**
    * Check if a layer has any zoom-dependent expressions in filter, paint, or layout.
    */
   private static layerUsesZoom(layer: StyleLayer): boolean {
     // Check filter
-    if (
-      "filter" in layer &&
-      layer.filter &&
-      this.expressionUsesZoom(layer.filter)
-    ) {
+    if ("filter" in layer && layer.filter && expressionUsesZoom(layer.filter)) {
       return true;
     }
 
     // Check paint properties
     if ("paint" in layer && layer.paint) {
       for (const value of Object.values(layer.paint)) {
-        if (this.expressionUsesZoom(value)) {
+        if (expressionUsesZoom(value)) {
           return true;
         }
       }
@@ -286,7 +239,7 @@ export class MapLibreStylePlugin extends Plugin<ThreeView, ViewContext> {
     // Check layout properties
     if ("layout" in layer && layer.layout) {
       for (const value of Object.values(layer.layout)) {
-        if (this.expressionUsesZoom(value)) {
+        if (expressionUsesZoom(value)) {
           return true;
         }
       }
@@ -364,32 +317,22 @@ export class MapLibreStylePlugin extends Plugin<ThreeView, ViewContext> {
     // Register fonts from style font-faces
     this.registerFontsFromStyle(view);
 
-    // Set up zoom change detection for re-evaluating features
-    this.setupZoomChangeDetection(view);
-
-    // Step 1: Check for zoom-dependent background layers
-    // Background is zoom-dependent if:
-    // - Any background layer uses zoom expressions, OR
-    // - Any background layer has minzoom/maxzoom (changes which layer applies at different zooms), OR
-    // - Multiple background layers exist (last applicable layer may change with zoom)
-    const backgroundLayers = this.parsedStyle.layers.filter(
-      (layer) => layer.type === "background",
+    // Step 1: Initialize background handler
+    this.backgroundHandler = new BackgroundHandler(
+      this.engine,
+      this.parsedStyle,
     );
-    this.hasZoomDependentBackground =
-      backgroundLayers.length > 1 ||
-      backgroundLayers.some(
-        (layer) =>
-          MapLibreStylePlugin.layerUsesZoom(layer) ||
-          "minzoom" in layer ||
-          "maxzoom" in layer,
-      );
 
-    // Step 2: Handle background layer (set globe color)
+    // Step 2: Apply initial background (set globe color)
     // Use current camera zoom, or default to 0 if not yet available
     const initialZoom = view.camera.zoom ?? 0;
-    this.applyBackgroundColor(view, initialZoom);
+    this.backgroundHandler.apply(view, initialZoom);
 
-    // Step 3: Add all sources first
+    // Step 3: Set up zoom change detection for re-evaluating features
+    // IMPORTANT: Must be called AFTER backgroundHandler is initialized to avoid race conditions
+    this.setupZoomChangeDetection(view);
+
+    // Step 4: Add all sources first
     for (const [sourceId, sourceSpec] of Object.entries(
       this.parsedStyle.sources,
     )) {
@@ -401,7 +344,7 @@ export class MapLibreStylePlugin extends Plugin<ThreeView, ViewContext> {
       }
     }
 
-    // Step 4: Add layers that reference the sources
+    // Step 5: Add layers that reference the sources
     for (const styleLayer of this.parsedStyle.layers) {
       try {
         this.addStyleLayer(view, styleLayer);
@@ -411,7 +354,7 @@ export class MapLibreStylePlugin extends Plugin<ThreeView, ViewContext> {
       }
     }
 
-    // Step 5: Add terrain if specified
+    // Step 6: Add terrain if specified
     if (this.parsedStyle.terrain) {
       try {
         this.addStyleTerrain(view, this.parsedStyle.terrain);
@@ -510,110 +453,6 @@ export class MapLibreStylePlugin extends Plugin<ThreeView, ViewContext> {
   }
 
   /**
-   * Apply background layer color/opacity to the globe.
-   * Finds the last applicable background layer (respecting minzoom/maxzoom)
-   * and evaluates its properties at the given zoom level.
-   * Supports background-color, background-opacity, and visibility properties.
-   *
-   * @param view - ThreeView to apply background to
-   * @param zoom - Current camera zoom level for evaluating zoom-dependent expressions
-   */
-  private applyBackgroundColor(view: ThreeView, zoom: number): void {
-    if (!this.parsedStyle) return;
-
-    // Find the LAST applicable background layer (later layers override earlier ones)
-    // Scan from end to beginning and find the first one that matches zoom constraints
-    let backgroundLayer: StyleLayer | undefined;
-    for (let i = this.parsedStyle.layers.length - 1; i >= 0; i--) {
-      const layer = this.parsedStyle.layers[i];
-      if (layer.type !== "background") continue;
-
-      // Check visibility (from layout property)
-      const visibility = layer.layout?.visibility;
-      if (visibility === "none") continue;
-
-      // Check zoom constraints (minzoom/maxzoom)
-      if (layer.minzoom !== undefined && zoom < layer.minzoom) continue;
-      if (layer.maxzoom !== undefined && zoom >= layer.maxzoom) continue;
-
-      // Found the last applicable background layer
-      backgroundLayer = layer;
-      break;
-    }
-
-    // If no background layer applies, reset to MapLibre's default background (#000000)
-    if (!backgroundLayer) {
-      if (!view.globe.color) {
-        view.globe.color = new Color().setRGB(0, 0, 0);
-      } else {
-        view.globe.color.setRGB(0, 0, 0);
-      }
-      view.globe.opacity = 1.0;
-      view.globe.transparent = false;
-      return;
-    }
-
-    // Type guard: ensure this is actually a background layer with background paint
-    if (backgroundLayer.type !== "background") return;
-
-    // Evaluate background-color (always apply spec default if property is missing)
-    // This ensures predictable behavior when background-opacity is set without background-color
-    let colorAlpha = 1.0;
-    try {
-      // Get the official spec for background-color to access its default value
-      const bgColorSpec = this.engine.getPaintSpec(
-        "background",
-        "background-color",
-      );
-      // Cast to string since background-color default is always a color string in the spec
-      const specDefault =
-        (bgColorSpec?.default as string | undefined) ?? "#000000";
-
-      const bgColor = this.engine.createValueFn(
-        backgroundLayer.paint?.["background-color"] ?? specDefault,
-        bgColorSpec ?? { type: "color", default: specDefault },
-      );
-      // Evaluate with current zoom level for zoom-dependent expressions
-      const colorValue = bgColor({ properties: undefined, zoom });
-
-      // Convert to Navara Color and extract alpha using helper
-      const colorResult = toNavaraColor(colorValue);
-      if (colorResult) {
-        view.globe.color = colorResult.color;
-        colorAlpha = colorResult.alpha;
-      }
-    } catch (err) {
-      console.warn("Failed to apply background-color:", err);
-    }
-
-    // Evaluate background-opacity and combine with color alpha
-    let explicitOpacity: number | undefined;
-    if (backgroundLayer.paint?.["background-opacity"] !== undefined) {
-      try {
-        const bgOpacity = this.engine.createValueFn(
-          backgroundLayer.paint["background-opacity"],
-          { type: "number", default: 1 },
-        );
-        const opacityValue = bgOpacity({ properties: undefined, zoom });
-        if (typeof opacityValue === "number" && Number.isFinite(opacityValue)) {
-          explicitOpacity = opacityValue;
-        }
-      } catch (err) {
-        console.warn("Failed to apply background-opacity:", err);
-      }
-    }
-
-    // Combine color alpha with explicit opacity and clamp to [0, 1]
-    const finalOpacity =
-      explicitOpacity !== undefined ? colorAlpha * explicitOpacity : colorAlpha;
-    // Validate finalOpacity is finite, fall back to 1.0 if NaN/Infinity
-    const validOpacity = Number.isFinite(finalOpacity) ? finalOpacity : 1.0;
-    const clampedOpacity = Math.max(0, Math.min(1, validOpacity));
-    view.globe.transparent = clampedOpacity < 1;
-    view.globe.opacity = clampedOpacity;
-  }
-
-  /**
    * Set up zoom change detection to trigger feature re-evaluation.
    * When zoom changes significantly (> ZOOM_CHANGE_THRESHOLD), all layers are updated
    * to re-evaluate zoom-dependent expressions with the new zoom value.
@@ -629,8 +468,8 @@ export class MapLibreStylePlugin extends Plugin<ThreeView, ViewContext> {
       // Initialize lastZoom on first valid zoom value
       if (this.lastZoom === undefined) {
         this.lastZoom = currentZoom;
-        if (this.hasZoomDependentBackground) {
-          this.applyBackgroundColor(view, currentZoom);
+        if (this.backgroundHandler?.needsZoomUpdate()) {
+          this.backgroundHandler.apply(view, currentZoom);
         }
         return;
       }
@@ -641,8 +480,8 @@ export class MapLibreStylePlugin extends Plugin<ThreeView, ViewContext> {
       if (zoomDelta > MapLibreStylePlugin.ZOOM_CHANGE_THRESHOLD) {
         this.lastZoom = currentZoom;
 
-        if (this.hasZoomDependentBackground) {
-          this.applyBackgroundColor(view, currentZoom);
+        if (this.backgroundHandler?.needsZoomUpdate()) {
+          this.backgroundHandler.apply(view, currentZoom);
         }
 
         // Trigger re-evaluation only on layers with zoom-dependent expressions
@@ -1029,7 +868,8 @@ export class MapLibreStylePlugin extends Plugin<ThreeView, ViewContext> {
     this.warnedLayers.clear();
     this.warnedSources.clear();
     this.zoomDependentLayers.clear();
-    this.hasZoomDependentBackground = false;
+    this.backgroundHandler?.clearCache();
+    this.backgroundHandler = undefined;
     this.parsedStyle = null;
     this.view = undefined;
     this.lastZoom = undefined;
