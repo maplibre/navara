@@ -12,6 +12,11 @@ use crate::geometry::TransferableGeometry;
 pub struct UpsampleTerrainMeshParameters {
     #[wasm_bindgen(getter_with_clone)]
     pub tile_handle: TileHandle,
+    /// The ancestor tile whose mesh is clipped down to `tile_handle`.
+    #[wasm_bindgen(getter_with_clone)]
+    pub source_tile_handle: TileHandle,
+    /// DEM tile width in pixels (raster DEM only).
+    pub tile_size: u32,
     /// Whether to render skirts along tile boundaries.
     pub skirt: bool,
     #[wasm_bindgen(js_name = poleNorth)]
@@ -30,9 +35,17 @@ pub struct UpsampleTerrainMeshParameters {
 #[wasm_bindgen]
 impl UpsampleTerrainMeshParameters {
     #[wasm_bindgen(constructor)]
-    pub fn new(tile_handle: TileHandle, skirt: bool, skirt_exaggeration: f32) -> Self {
+    pub fn new(
+        tile_handle: TileHandle,
+        source_tile_handle: TileHandle,
+        tile_size: u32,
+        skirt: bool,
+        skirt_exaggeration: f32,
+    ) -> Self {
         Self {
             tile_handle,
+            source_tile_handle,
+            tile_size,
             skirt,
             pole_north: false,
             pole_south: false,
@@ -52,6 +65,8 @@ impl<'a> From<&'a navara_worker::upsample_terrain_mesh::UpsampleTerrainMeshParam
     ) -> UpsampleTerrainMeshParameters {
         UpsampleTerrainMeshParameters {
             tile_handle: val.tile_handle,
+            source_tile_handle: val.source_tile_handle,
+            tile_size: val.tile_size,
             skirt: val.skirt,
             pole_north: val.pole_sides.0,
             pole_south: val.pole_sides.1,

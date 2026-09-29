@@ -3,6 +3,14 @@ use bevy_ecs::{component::Component, entity::Entity, system::Commands};
 use navara_component::Deleted;
 use navara_tile_component::TileHandle;
 
+/// A `Rendered` tile whose own DEM has landed while it shows an upsampled (or
+/// not yet built) mesh: `transfer_mesh` revisits it to build the real-DEM
+/// mesh and clears the marker once the result is transferred. Keeps the
+/// per-frame `transfer_mesh` query narrow — every other `Rendered` tile is
+/// skipped by the query filter, not by a per-tile check.
+#[derive(Component)]
+pub struct RemeshPending;
+
 #[derive(Component, Default)]
 pub struct RenderedTile {
     pub(crate) tile_handle: TileHandle,
@@ -11,6 +19,9 @@ pub struct RenderedTile {
 }
 
 impl RenderedTile {
+    /// Cancel the tile's pending worker tasks. A task that already failed
+    /// was torn down by the worker plugin without this tile knowing, so the
+    /// referenced entity may be gone — never a hard error.
     pub fn destroy(&mut self, commands: &mut Commands) {
         for task in [
             self.terrain_mesh_constructor.take(),

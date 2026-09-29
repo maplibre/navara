@@ -124,7 +124,40 @@
     "docs": "Sənədlər",
     "github": "GitHub",
     "discord": "Discord",
-    "credit": "Navara · MIT / Apache-2.0"
+    "credit": "Navara · MIT / Apache-2.0",
+    "brandAssets": "Brend materialları"
+  },
+  "brand": {
+    "meta": {
+      "title": "Navara brend materialları",
+      "description": "Navaranın rəsmi loqoları, şriftləri və rəngləri, loqo faylları yükləmək üçün əlçatandır."
+    },
+    "h1": "Brend materialları",
+    "lead": "Navaranın rəsmi brend materialları. Navaranı təqdim edərkən onlardan istifadə edin.",
+    "logos": {
+      "h2": "Loqolar",
+      "horizontal": "Üfüqi loqo",
+      "vertical": "Şaquli loqo",
+      "formats": {
+        "svg": "SVG",
+        "png": "PNG"
+      }
+    },
+    "font": {
+      "h2": "Şrift",
+      "sample": {
+        "latin": "Navara, an open-source 3D map engine",
+        "japanese": "オープンソースの 3D 地図エンジン Navara"
+      }
+    },
+    "colors": {
+      "h2": "Rənglər",
+      "names": {
+        "primary": "Primary Color",
+        "secondary": "Secondary Color",
+        "accent": "Accent Color"
+      }
+    }
   },
   "imageAlts": {
     "hero": "Əsas təsvir: Navara ilə çəkilmiş qlobus",

@@ -12,6 +12,13 @@ pub enum Priority {
 }
 
 impl Priority {
+    /// Urgency as a small integer for the platform side: 0 (`Extreme`) is the
+    /// most urgent, 4 (`VeryLow`) the least. Sorting ascending by rank yields
+    /// the same order as [`Ord`].
+    pub fn rank(self) -> u8 {
+        self as u8
+    }
+
     /// One step lower, saturating at `VeryLow`. Used to demote requests for
     /// frustum-culled tiles so in-view tiles win the pending-request slots.
     pub fn demote(self) -> Self {

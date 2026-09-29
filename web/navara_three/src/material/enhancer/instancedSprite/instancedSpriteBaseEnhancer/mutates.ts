@@ -45,6 +45,9 @@ export const createBaseMutates = (
     uOpacity: { value: 1.0 },
     uAddHeight: { value: 0.0 },
     uCenter: { value: new ThreeVector2(0, 0) },
+    uFlatFacing: { value: false },
+    uRotateWithCamera: { value: true },
+    uRotation: { value: 0 },
     uSizeInMeters: { value: true },
     uOffsetDepth: { value: true },
     uAlphaTest: { value: 0.0 },
@@ -75,6 +78,9 @@ export const createBaseMutates = (
         : 1.0;
       refs.uAddHeight.value = state.addHeight;
       refs.uCenter.value.set(state.center[0], state.center[1]);
+      refs.uFlatFacing.value = state.flatFacing;
+      refs.uRotateWithCamera.value = state.rotateWithCamera;
+      refs.uRotation.value = state.rotation;
       refs.uSizeInMeters.value = state.sizeInMeters;
       refs.uOffsetDepth.value = state.offsetDepth;
       refs.uAlphaTest.value = state.alphaTest;
@@ -96,6 +102,9 @@ export const createBaseMutates = (
       uniforms.u_rteOne = RTE_ONE_UNIFORM;
       uniforms.uScale = refs.uScale;
       uniforms.uCenter = refs.uCenter;
+      uniforms.uFlatFacing = refs.uFlatFacing;
+      uniforms.uRotateWithCamera = refs.uRotateWithCamera;
+      uniforms.uRotation = refs.uRotation;
       uniforms.uSizeInMeters = refs.uSizeInMeters;
       uniforms.uOffsetDepth = refs.uOffsetDepth;
       uniforms.uAlphaTest = refs.uAlphaTest;

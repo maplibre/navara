@@ -55,6 +55,19 @@ export type SdfTextBaseProps = {
 
   // Mutable state
   center?: [number, number];
+  /** `false` (the default) stands the quad up; `true` lays it on the globe
+   *  surface around the anchor, wrapped to its curvature, so labels read as
+   *  painted on the globe. */
+  flatFacing?: boolean;
+  /** Whether the quad turns to follow the camera. `true` (the default) keeps
+   *  it facing the viewer — a screen-aligned billboard, or for `flatFacing` a
+   *  yaw around the surface normal that keeps text reading left-to-right.
+   *  `false` freezes it in the anchor's east-north-up frame, so the camera
+   *  never reorients it. */
+  rotateWithCamera?: boolean;
+  /** Spin of the quad inside its own plane about the anchor, in **degrees**,
+   *  clockwise seen from the front. Converted to radians in state. */
+  rotation?: number;
   sizeInMeters?: boolean;
   offsetDepth?: boolean;
   outlineWidth?: number; // raw width, converted in state via sdfRadiusFor(useMsdf)
@@ -74,6 +87,9 @@ export type SdfTextBaseProps = {
   // Material properties (set directly on material, not via uniforms)
   depthTest?: boolean;
   transparent?: boolean;
+  /** Cull faces seen from behind (`FrontSide`); `false` (the default) draws
+   *  both sides (`DoubleSide`). */
+  backfaceCulling?: boolean;
 
   // External uniform refs / values (may change over time)
   rtcCenter?: [number, number, number];
@@ -90,6 +106,9 @@ export type SdfTextBaseState = Readonly<{
 
   // Mutable
   center: [number, number];
+  flatFacing: boolean;
+  rotateWithCamera: boolean;
+  rotation: number; // pre-converted: degrees -> radians
   sizeInMeters: boolean;
   offsetDepth: boolean;
   outlineWidth: number; // pre-converted: raw / sdfRadiusFor(useMsdf)
@@ -107,6 +126,7 @@ export type SdfTextBaseState = Readonly<{
   // Material properties
   depthTest: boolean;
   transparent: boolean;
+  backfaceCulling: boolean;
 }>;
 
 /**
@@ -116,6 +136,9 @@ export type SdfTextBaseState = Readonly<{
  */
 export type SdfTextBaseRefs = {
   uCenter: UniformValue<Vector2>;
+  uFlatFacing: UniformValue<boolean>;
+  uRotateWithCamera: UniformValue<boolean>;
+  uRotation: UniformValue<number>;
   uSizeInMeters: UniformValue<boolean>;
   uOffsetDepth: UniformValue<boolean>;
   uSdfThreshold: UniformValue<number>;

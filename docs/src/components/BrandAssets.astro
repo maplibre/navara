@@ -1,0 +1,420 @@
+---
+// Brand assets page: the official logos (downloadable), typefaces and colors.
+// Built with the landing page's chrome (LpHeader / LpFooter, styles/lp-base.css)
+// and theme, on a single primary-colored canvas (the LP's hero-band look, so
+// every text role is an on-band one): the palette and font list live in
+// src/data/lp.json (`brand`), all
+// copy in src/data/lp-locales/<locale>.json (`brand`). Rendered per locale by
+// pages that do <BrandAssets locale="..." />, built at /docs/brand-assets/ and
+// relocated to /brand-assets/ (and /<locale>/brand-assets/) by
+// scripts/assemble-site.mjs, like the LP.
+import lp from "../data/lp.json";
+import LpHeader from "./LpHeader.astro";
+import LpFooter from "./LpFooter.astro";
+import { DOCS_BASE, getLpLocale, lpRootStyle } from "./lp-shared";
+import "../styles/lp-base.css";
+
+interface Props {
+  locale: string;
+}
+
+const { locale } = Astro.props;
+const t = getLpLocale(locale);
+const b = t.brand;
+const { colors, links, brand } = lp;
+
+// The delivered logo exports under public/logo/<format>/<ink>/ (the SVGs
+// with their Illustrator metadata stripped, see components/brand-logo.ts).
+// Both formats keep the clear space around the mark.
+type Ink = "black" | "white";
+type Kind = "Horizontal" | "Vertical";
+const logoFile = (format: "svg" | "png", ink: Ink, kind: Kind): string =>
+  `${DOCS_BASE}/logo/${format}/${ink}/${ink}_Navara_${kind}_logo.${format}`;
+
+// Each lockup is shown on the primary color and on white, with the ink
+// variant that reads on it.
+const paletteHex = (id: string): string => {
+  const entry = brand.palette.find((c) => c.id === id);
+  if (!entry) throw new Error(`Brand palette color not defined in lp.json: ${id}`);
+  return entry.hex;
+};
+const surfaces: { id: string; bg: string; ink: Ink }[] = [
+  { id: "primary", bg: paletteHex("primary"), ink: "white" },
+  { id: "white", bg: "#ffffff", ink: "black" },
+];
+// The two lockups are shown as two rows of tiles under one heading; the
+// per-lockup name only serves as the tiles' alt text.
+const lockups: { id: string; kind: Kind; alt: string }[] = [
+  { id: "horizontal", kind: "Horizontal", alt: b.logos.horizontal },
+  { id: "vertical", kind: "Vertical", alt: b.logos.vertical },
+];
+
+// Palette swatches pick their caption ink from the swatch's luminance.
+const rgb = (hex: string): [number, number, number] => {
+  const n = parseInt(hex.slice(1), 16);
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+};
+const isDark = (hex: string): boolean => {
+  const [r, g, bl] = rgb(hex).map((c) => {
+    const s = c / 255;
+    return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
+  });
+  return 0.2126 * r + 0.7152 * g + 0.0722 * bl < 0.35;
+};
+const colorName = (id: string): string => {
+  const name = b.colors.names?.[id];
+  if (!name) throw new Error(`Brand color name not defined for locale "${locale}": ${id}`);
+  return name;
+};
+const fontSample = (id: string): string => {
+  const sample = b.font.sample?.[id];
+  if (!sample) throw new Error(`Brand font sample not defined for locale "${locale}": ${id}`);
+  return sample;
+};
+---
+
+<html lang={t.htmlLang} style={lpRootStyle}>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>{b.meta.title}</title>
+    <meta name="description" content={b.meta.description} />
+    <meta property="og:site_name" content="Navara" />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content={b.meta.title} />
+    <meta property="og:description" content={b.meta.description} />
+    <meta property="og:image" content="https://navara.world/og.jpg" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:image" content="https://navara.world/og.jpg" />
+    {/* The whole page sits on the primary color; iOS Safari tints its
+        toolbars with this (see body's background below). */}
+    <meta name="theme-color" content={colors.primary} />
+    {/* TODO: Remove when Navara is released. */}
+    <meta name="robots" content="noindex,nofollow" />
+    <link rel="icon" href={`${DOCS_BASE}/favicon.png`} type="image/png" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Arsenal:wght@400;700&family=Zen+Kaku+Gothic+New:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+  </head>
+  <body class="lp-ba-body">
+    <div class="lp lp-ba" style={`--acc:${paletteHex("accent")};--sec:${paletteHex("secondary")}`}>
+      <LpHeader locale={locale} variant="site" sitePath={links.brandAssets} />
+
+      <main>
+        <!-- Title band, under the fixed header. -->
+        <section class="lp-ba-hero">
+          <div class="lp-container lp-ba-hero-inner">
+            <h1 class="lp-ba-h1">{b.h1}</h1>
+            <p class="lp-ba-lead">{b.lead}</p>
+          </div>
+        </section>
+
+        <div class="lp-ba-main">
+          <div class="lp-container lp-ba-content">
+            <section class="lp-ba-section">
+              <h2 class="lp-ba-h2">{b.logos.h2}</h2>
+              {
+                lockups.map((lockup) => (
+                  <ul class="lp-ba-tiles" data-lockup={lockup.id}>
+                    {surfaces.map((surface) => (
+                      <li>
+                        <div class="lp-ba-tile" style={`--tile-bg:${surface.bg}`}>
+                          <img
+                            src={logoFile("svg", surface.ink, lockup.kind)}
+                            alt={`Navara ${lockup.alt}`}
+                            loading="lazy"
+                            decoding="async"
+                          />
+                        </div>
+                        <p class="lp-ba-tile-links">
+                          <a href={logoFile("svg", surface.ink, lockup.kind)} download>
+                            {b.logos.formats.svg}
+                          </a>
+                          <a href={logoFile("png", surface.ink, lockup.kind)} download>
+                            {b.logos.formats.png}
+                          </a>
+                        </p>
+                      </li>
+                    ))}
+                  </ul>
+                ))
+              }
+            </section>
+
+            <section class="lp-ba-section">
+              <h2 class="lp-ba-h2">{b.font.h2}</h2>
+              <ul class="lp-ba-fonts">
+                {
+                  brand.fonts.map((font) => (
+                    <li class="lp-ba-font" data-font={font.id}>
+                      <p class="lp-ba-font-sample" lang={font.id === "japanese" ? "ja" : "en"}>
+                        {fontSample(font.id)}
+                      </p>
+                      <p class="lp-ba-font-meta">
+                        <a href={font.href}>{font.name}</a>
+                      </p>
+                    </li>
+                  ))
+                }
+              </ul>
+            </section>
+
+            <section class="lp-ba-section">
+              <h2 class="lp-ba-h2">{b.colors.h2}</h2>
+              <ul class="lp-ba-swatches">
+                {
+                  brand.palette.map((color) => (
+                    <li
+                      class="lp-ba-swatch"
+                      style={`--swatch:${color.hex}`}
+                      data-ink={isDark(color.hex) ? "light" : "dark"}
+                    >
+                      <p class="lp-ba-swatch-name">{colorName(color.id)}</p>
+                      <p class="lp-ba-swatch-hex">{color.hex}</p>
+                    </li>
+                  ))
+                }
+              </ul>
+            </section>
+          </div>
+        </div>
+      </main>
+
+      <LpFooter locale={locale} />
+    </div>
+
+    <style is:global>
+      /* One primary canvas for the whole page (the shared base sets the LP's
+         black), so everything below uses the on-band inks. --sec / --acc are
+         the brand secondary and accent (set inline from lp.json's brand
+         palette): links rest in secondary and light up in accent. */
+      body.lp-ba-body {
+        background: var(--pri);
+      }
+      .lp-ba {
+        color: var(--on-band);
+      }
+      .lp.lp-ba a {
+        color: var(--sec);
+      }
+      .lp.lp-ba a:hover {
+        color: var(--acc);
+      }
+
+      /* Type: the LP's heading scale, one step smaller than the LP's section
+         headings (no label rows above the headings on this page). */
+      .lp-ba-h1 {
+        font: 700 56px/1.12 "Arsenal", "Zen Kaku Gothic New", sans-serif;
+        letter-spacing: -0.01em;
+      }
+      .lp-ba-h2 {
+        font: 700 40px/1.2 "Arsenal", "Zen Kaku Gothic New", sans-serif;
+      }
+
+      /* Title block: centered, clearing the fixed header. */
+      .lp-ba-hero {
+        padding: 164px 48px 40px;
+        text-align: center;
+      }
+      .lp-ba-lead {
+        max-width: 640px;
+        margin: 22px auto 0;
+        font-size: 16px;
+        line-height: 1.8;
+        color: var(--on-band-soft);
+      }
+
+      /* Content. */
+      .lp-ba-main {
+        padding: 96px 48px 128px;
+      }
+      .lp-ba-content {
+        max-width: 1080px;
+      }
+      .lp-ba-section + .lp-ba-section {
+        margin-top: 104px;
+      }
+      .lp-ba-tiles,
+      .lp-ba-fonts,
+      .lp-ba-swatches {
+        list-style: none;
+        margin: 36px 0 0;
+        padding: 0;
+        display: grid;
+        gap: 24px;
+      }
+      /* The second lockup row follows the first at the grid gap. */
+      .lp-ba-tiles + .lp-ba-tiles {
+        margin-top: 24px;
+      }
+      .lp-ba-swatches {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+      }
+      .lp-ba-tiles,
+      .lp-ba-fonts {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      /* Hairline for cards on the primary canvas (the LP's dark-band line). */
+      .lp-ba-tile,
+      .lp-ba-font,
+      .lp-ba-swatch {
+        border: 1px solid var(--line-dark);
+      }
+
+      /* Logo tiles: the lockup on a brand surface, the tile shaped after the
+         lockup (wide for the horizontal one, closer to square for the
+         vertical one). The SVGs carry their own clear space, so the tile only
+         adds a little breathing room. */
+      .lp-ba-tile {
+        border-radius: 14px;
+        background: var(--tile-bg);
+        overflow: hidden;
+      }
+      [data-lockup="horizontal"] .lp-ba-tile {
+        aspect-ratio: 5 / 2;
+      }
+      [data-lockup="vertical"] .lp-ba-tile {
+        aspect-ratio: 3 / 2;
+      }
+      .lp-ba-tile img {
+        width: 100%;
+        height: 100%;
+        padding: 6%;
+        box-sizing: border-box;
+        object-fit: contain;
+      }
+      .lp-ba-tile-links {
+        display: flex;
+        justify-content: flex-end;
+        gap: 14px;
+        margin-top: 12px;
+        font-size: 15px;
+        font-weight: 700;
+      }
+
+      /* Type specimens. */
+      .lp-ba-font {
+        padding: 32px 32px 28px;
+        border-radius: 14px;
+        /* A step lighter than the canvas, like the LP's panels on --pri. */
+        background: color-mix(in oklab, var(--pri), white 5%);
+      }
+      .lp-ba-font-sample {
+        font-size: 30px;
+        font-weight: 700;
+        line-height: 1.3;
+      }
+      .lp-ba-font[data-font="latin"] .lp-ba-font-sample {
+        font-family: "Arsenal", sans-serif;
+      }
+      .lp-ba-font[data-font="japanese"] .lp-ba-font-sample {
+        font-family: "Zen Kaku Gothic New", sans-serif;
+      }
+      .lp-ba-font-meta {
+        margin-top: 22px;
+        font-size: 15px;
+        font-weight: 700;
+      }
+
+      /* Palette swatches, captioned like the brand sheet. */
+      .lp-ba-swatch {
+        display: flex;
+        flex-direction: column;
+        justify-content: flex-end;
+        aspect-ratio: 4 / 3;
+        padding: 28px;
+        box-sizing: border-box;
+        border-radius: 14px;
+        background: var(--swatch);
+      }
+      .lp-ba-swatch[data-ink="light"] {
+        color: var(--on-dark);
+      }
+      .lp-ba-swatch[data-ink="dark"] {
+        color: var(--ink);
+      }
+      .lp-ba-swatch-name {
+        font-size: 18px;
+        font-weight: 700;
+      }
+      .lp-ba-swatch-hex {
+        margin-top: 6px;
+        font: 500 14px "IBM Plex Mono", monospace;
+      }
+
+      /* The footer is set off from the content by a hairline (the LP lays the
+         same footer over its closing image, without one). */
+      .lp-ba .lp-footer {
+        border-top: 1px solid var(--line-dark);
+      }
+
+      @media (max-width: 960px) {
+        .lp-ba-hero {
+          padding: 140px 28px 32px;
+        }
+        .lp-ba-h1 {
+          font-size: 44px;
+        }
+        .lp-ba-main {
+          padding: 72px 28px 96px;
+        }
+        .lp-ba-h2 {
+          font-size: 34px;
+        }
+        .lp-ba-section + .lp-ba-section {
+          margin-top: 80px;
+        }
+        .lp-ba-tiles,
+        .lp-ba-fonts,
+        .lp-ba-swatches {
+          gap: 18px;
+        }
+        .lp-ba-tiles + .lp-ba-tiles {
+          margin-top: 18px;
+        }
+        .lp-ba-font {
+          padding: 26px 24px 22px;
+        }
+        .lp-ba-font-sample {
+          font-size: 24px;
+        }
+        .lp-ba-swatch {
+          padding: 22px;
+        }
+      }
+
+      @media (max-width: 640px) {
+        .lp-ba-hero {
+          padding: 112px 20px 24px;
+        }
+        .lp-ba-h1 {
+          font-size: 36px;
+        }
+        .lp-ba-lead {
+          font-size: 15px;
+        }
+        .lp-ba-main {
+          padding: 56px 20px 72px;
+        }
+        .lp-ba-h2 {
+          font-size: 30px;
+        }
+        .lp-ba-section + .lp-ba-section {
+          margin-top: 64px;
+        }
+        .lp-ba-tiles,
+        .lp-ba-fonts,
+        .lp-ba-swatches {
+          grid-template-columns: minmax(0, 1fr);
+        }
+        .lp-ba-swatch {
+          aspect-ratio: 16 / 9;
+        }
+      }
+    </style>
+  </body>
+</html>

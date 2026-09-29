@@ -13,17 +13,20 @@ import {
   type BufferGeometry,
   Color,
   type Material,
+  MathUtils,
   PerspectiveCamera,
   Vector2,
 } from "three";
 import invariant from "tiny-invariant";
 
 import {
+  hasBatchScalarSlot,
   readBatchScalar,
   readBatchShowOpacity,
   registerBatchedMaterial,
   SPRITE_BATCH_SUPPORT,
   updateBatchAttribute,
+  type BatchAttributeDefaults,
   type BatchedAttributeName,
   type BatchTextureSupport,
 } from "../../batchTexture";
@@ -67,6 +70,79 @@ type PositionsInfo = {
   RTE: boolean;
 };
 
+type SpriteMaterial = (NavaraPointMesh | NavaraBillboardMesh)["material"];
+
+/** A sprite material's orientation options, with their defaults resolved. */
+type SpriteOrientation = {
+  /** Degrees, as the material gives it. */
+  rotation: number;
+  facing: "upright" | "flat";
+  follow: boolean;
+};
+
+function spriteOrientation(material: SpriteMaterial): SpriteOrientation {
+  const facing =
+    "billboardFacing" in material
+      ? material.billboardFacing
+      : material.pointFacing;
+  return {
+    rotation: material.rotation ?? 0,
+    facing: facing === "flat" ? "flat" : "upright",
+    follow: material.rotateWithCamera ?? true,
+  };
+}
+
+/**
+ * Grid resolution of the sprite quad while any feature can be flat.
+ *
+ * A flat sprite is wrapped onto the globe per vertex (`nvr_quadOffset` in
+ * `quad_orientation.glsl`), and a plain two-triangle quad has only its four
+ * corners to bend: it stays one flat plane, a tangent plane lowered onto the
+ * surface, and a large sprite at globe scale visibly fails to follow the
+ * curvature. A grid bends across its whole area. Upright sprites keep the
+ * plain quad, since a planar grid would only cost vertices.
+ */
+const FLAT_QUAD_SEGMENTS = 4;
+
+/**
+ * Set the per-vertex attributes of a unit quad (`[-0.5, 0.5]²`, uv `[0, 1]²`)
+ * split into `segments × segments` cells. Every cell is triangulated along the
+ * same diagonal as the one-cell quad, so a planar grid draws the same pixels.
+ * The shaders read only `position.xy` and `uv`, so the grid resolution is
+ * invisible to them.
+ */
+function setQuadGrid(geometry: BufferGeometry, segments: number): void {
+  const side = segments + 1;
+  const positions = new Float32Array(side * side * 3);
+  const uvs = new Float32Array(side * side * 2);
+  for (let j = 0; j < side; j++) {
+    for (let i = 0; i < side; i++) {
+      const v = j * side + i;
+      const u = i / segments;
+      const w = j / segments;
+      positions[v * 3] = u - 0.5;
+      positions[v * 3 + 1] = w - 0.5;
+      uvs[v * 2] = u;
+      uvs[v * 2 + 1] = w;
+    }
+  }
+  const index = new Uint16Array(segments * segments * 6);
+  let k = 0;
+  for (let j = 0; j < segments; j++) {
+    for (let i = 0; i < segments; i++) {
+      const bl = j * side + i;
+      const br = bl + 1;
+      const tl = bl + side;
+      const tr = tl + 1;
+      index.set([bl, br, tr, bl, tr, tl], k);
+      k += 6;
+    }
+  }
+  geometry.setAttribute("position", new BufferAttribute(positions, 3));
+  geometry.setAttribute("uv", new BufferAttribute(uvs, 2));
+  geometry.setIndex(new BufferAttribute(index, 1));
+}
+
 /** Reusable Vector2 to avoid per-frame allocations in onBeforeRender. */
 const _tmpSize = new Vector2();
 
@@ -93,6 +169,13 @@ export class InstancedSpriteMesh
   private _instanceBatchIndex: Float32Array | null = null;
   /** Feature count — the batch data texture's column count. */
   private _batchLength = 0;
+  /**
+   * The material's current orientation/rotation: change detection for the
+   * write-through, and the backfill for a freshly allocated batch slot.
+   */
+  private _orientation?: SpriteOrientation;
+  /** Current grid resolution of the sprite quad (see {@link FLAT_QUAD_SEGMENTS}). */
+  private _quadSegments = 1;
   /** Instance count of the current geometry; bounds the identity fallback. */
   private _instanceCount = 0;
   private _atlas?: BillboardAtlas;
@@ -339,6 +422,7 @@ export class InstancedSpriteMesh
 
     this._cacheDeclutterState(m);
     this._cacheAnchors(positionsInfo, m.transform);
+    this._orientation = spriteOrientation(m.material);
 
     // Create Geometry
     this.geometry = this._initGeometry(positionsInfo, m);
@@ -374,10 +458,17 @@ export class InstancedSpriteMesh
       base: {
         scale: m.material.size ?? 100.0,
         center: [m.material.center?.x ?? 0.0, m.material.center?.y ?? 0.0],
+        flatFacing:
+          ("billboardFacing" in m.material
+            ? m.material.billboardFacing
+            : m.material.pointFacing) === "flat",
+        rotateWithCamera: m.material.rotateWithCamera ?? true,
+        rotation: m.material.rotation ?? 0,
         sizeInMeters: m.material.sizeInMeters ?? true,
         offsetDepth: m.material.offsetDepth ?? true,
         transparent: m.material.transparent ?? true,
         depthTest: m.material.depthTest ?? true,
+        backfaceCulling: m.material.backfaceCulling ?? false,
         color: batchColorEnabled ? undefined : (m.material.color ?? 0xffffff),
         opacity: m.material.opacity ?? 1.0,
         addHeight: m.material.height ?? 0.0,
@@ -389,6 +480,12 @@ export class InstancedSpriteMesh
         emissiveIntensity: m.material.emissiveIntensity ?? 0,
       },
     });
+
+    // Orientation/rotation are uniform-driven until some feature gets its own
+    // value. Once a slot exists every feature reads the texture, so a material
+    // change has to be written through or evaluator overrides would outlive
+    // it. Mirrors BatchedSdfTextMesh._applyUpdate.
+    this._writeThroughOrientation(m.material);
 
     // Position updates (per-instance attributes)
     {
@@ -442,36 +539,13 @@ export class InstancedSpriteMesh
   ) {
     invariant(positionsInfo.batchIDs, "Batch IDs not found!");
 
-    // prettier-ignore
-    const vertices = new Float32Array([
-      -0.5, -0.5, 0.0, // v0
-       0.5, -0.5, 0.0, // v1
-       0.5,  0.5, 0.0, // v2
-      -0.5, -0.5, 0.0, // v3
-       0.5,  0.5, 0.0, // v4
-      -0.5,  0.5, 0.0, // v5
-    ]);
-
-    // prettier-ignore
-    const uvs = new Float32Array([
-      0.0, 0.0, // v0
-      1.0, 0.0, // v1
-      1.0, 1.0, // v2
-      0.0, 0.0, // v3
-      1.0, 1.0, // v4
-      0.0, 1.0, // v5
-    ]);
-
     const instanceCount = positionsInfo.nPositions;
 
     // Create the Instanced Mesh
     // We use InstancedBufferGeometry to inject our custom attributes
     const instancedGeometry = new InstancedBufferGeometry();
-    instancedGeometry.setAttribute(
-      "position",
-      new BufferAttribute(vertices, 3),
-    );
-    instancedGeometry.setAttribute("uv", new BufferAttribute(uvs, 2));
+    this._quadSegments = this._neededQuadSegments();
+    setQuadGrid(instancedGeometry, this._quadSegments);
     instancedGeometry.instanceCount = instanceCount;
 
     this._instanceCount = instanceCount;
@@ -546,6 +620,7 @@ export class InstancedSpriteMesh
     m: NavaraPointMesh | NavaraBillboardMesh,
   ) {
     const isBillboard = m instanceof NavaraBillboardMesh;
+    // Face culling (`side`) is set by the enhancer from `backfaceCulling`.
     const material = new ShaderMaterial();
 
     // Create enhancer
@@ -559,12 +634,19 @@ export class InstancedSpriteMesh
         billboard: isBillboard,
         scale: m.material.size ?? 100.0,
         center: [m.material.center?.x ?? 0.0, m.material.center?.y ?? 0.0],
+        flatFacing:
+          ("billboardFacing" in m.material
+            ? m.material.billboardFacing
+            : m.material.pointFacing) === "flat",
+        rotateWithCamera: m.material.rotateWithCamera ?? true,
+        rotation: m.material.rotation ?? 0,
         sizeInMeters: m.material.sizeInMeters ?? true,
         offsetDepth: m.material.offsetDepth ?? true,
         alphaTest: isBillboard ? (m.material.alphaTest ?? 0.0) : 0.0,
         pickable: false,
         transparent: m.material.transparent ?? true,
         depthTest: m.material.depthTest ?? true,
+        backfaceCulling: m.material.backfaceCulling ?? false,
         color: m.material.color ?? 0xffffff,
         opacity: m.material.opacity ?? 1.0,
         addHeight: m.material.height ?? 0.0,
@@ -846,12 +928,14 @@ export class InstancedSpriteMesh
     batchIndex: number,
     attribute: BatchedAttributeName,
     value: number | number[] | boolean,
+    defaults?: Partial<BatchAttributeDefaults>,
   ): boolean {
     return updateBatchAttribute(
       this.material as ShaderMaterial,
       batchIndex,
       attribute,
       value,
+      defaults,
     );
   }
 
@@ -945,6 +1029,110 @@ export class InstancedSpriteMesh
   setFeatureSizeByBatchIndex(batchIndex: number, size: number) {
     if (this._updateBatchAttribute(batchIndex, "size", size)) {
       this.ctx.declutter?.markDirty();
+    }
+  }
+
+  /**
+   * Orientation and in-plane rotation for one feature, overriding the
+   * material's. `rotation` is in degrees, clockwise seen from the front; it is
+   * converted to the radians the shader wants here, matching the material path.
+   */
+  setFeatureFacingByBatchIndex(batchIndex: number, facing: "upright" | "flat") {
+    this._updateBatchAttribute(
+      batchIndex,
+      "flatFacing",
+      facing === "flat",
+      this._orientationDefaults(),
+    );
+    // The first per-feature facing allocates the orientation slot, from which
+    // point any feature may be flat.
+    this._syncQuadGrid();
+  }
+
+  setFeatureRotateWithCameraByBatchIndex(batchIndex: number, follow: boolean) {
+    this._updateBatchAttribute(
+      batchIndex,
+      "rotateWithCamera",
+      follow,
+      this._orientationDefaults(),
+    );
+  }
+
+  setFeatureRotationByBatchIndex(batchIndex: number, degrees: number) {
+    this._updateBatchAttribute(
+      batchIndex,
+      "rotation",
+      degrees * MathUtils.DEG2RAD,
+      this._orientationDefaults(),
+    );
+  }
+
+  /**
+   * Grid resolution the quad needs: the curved grid while any feature can be
+   * flat (the material says so, or the evaluator has given some feature its
+   * own facing), the plain quad otherwise.
+   */
+  private _neededQuadSegments(): number {
+    const anyFlat =
+      this._orientation?.facing === "flat" ||
+      hasBatchScalarSlot(this.material as Material, "orientation");
+    return anyFlat ? FLAT_QUAD_SEGMENTS : 1;
+  }
+
+  /** Swap the quad's vertex attributes when the needed resolution changed. */
+  private _syncQuadGrid(): void {
+    const segments = this._neededQuadSegments();
+    if (segments === this._quadSegments || !this.geometry) return;
+    this._quadSegments = segments;
+    setQuadGrid(this.geometry, segments);
+  }
+
+  /** The material's orientation/rotation, backfilled into a new batch slot. */
+  private _orientationDefaults(): BatchAttributeDefaults | undefined {
+    if (!this._orientation) return undefined;
+    const { rotation, facing, follow } = this._orientation;
+    return {
+      rotation: rotation * MathUtils.DEG2RAD,
+      flatFacing: facing === "flat",
+      rotateWithCamera: follow,
+    };
+  }
+
+  /**
+   * Push the material's orientation/rotation onto every feature when the
+   * material value actually **changed**, and only once a slot exists.
+   *
+   * Both guards matter. Without a slot the shader's uniform is still
+   * governing, so writing would allocate a row the layer never needed.
+   * Without the change check, the engine re-sending an unchanged material —
+   * which it does for geometry and activation updates too — would stomp
+   * evaluator overrides on every terrain tick. Mirrors the style/size writes
+   * in `BatchedSdfTextMesh._applyUpdate`.
+   */
+  private _writeThroughOrientation(material: SpriteMaterial): void {
+    const next = spriteOrientation(material);
+    const prev = this._orientation;
+    this._orientation = next;
+    // A material switched to (or away from) flat changes the quad it needs.
+    this._syncQuadGrid();
+    if (!prev) return;
+
+    const mat = this.material as Material;
+    const rotationChanged =
+      next.rotation !== prev.rotation && hasBatchScalarSlot(mat, "rotation");
+    const orientationChanged =
+      (next.facing !== prev.facing || next.follow !== prev.follow) &&
+      hasBatchScalarSlot(mat, "orientation");
+    if (!rotationChanged && !orientationChanged) return;
+
+    for (let i = 0; i < this._batchLength; i++) {
+      if (rotationChanged) {
+        this.setFeatureRotationByBatchIndex(i, next.rotation);
+      }
+      if (orientationChanged) {
+        this.setFeatureFacingByBatchIndex(i, next.facing);
+        this.setFeatureRotateWithCameraByBatchIndex(i, next.follow);
+      }
     }
   }
 

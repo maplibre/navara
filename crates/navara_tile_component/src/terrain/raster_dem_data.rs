@@ -7,7 +7,7 @@ use navara_core::{
 use navara_geometry::{
     Geometry, ReturnedConstructedTerrainMesh, UpsamplableTerrainGeometry, UpsampledTerrainGeometry,
     decode_height_from_dem, mercator_y, mercator_y_to_lat, sample_dem_grid_height,
-    tile_triangles_with_terrain,
+    tile_triangles_with_heights,
 };
 use navara_math::FloatType;
 
@@ -105,24 +105,72 @@ impl TerrainData for RasterDEMData {
         martini: Option<&mut Martini>,
     ) -> ReturnedConstructedTerrainMesh {
         let martini = martini.expect("RasterDEM requires a Martini instance");
+        let width = martini.size as usize - 1;
+        let read_height = |x: usize, y: usize| {
+            let i = y.min(width - 1) * width + x.min(width - 1);
+            let r = bytes[i * 4] as i64;
+            let g = bytes[i * 4 + 1] as i64;
+            let b = bytes[i * 4 + 2] as i64;
+            decode_height_from_dem(r, g, b, geoid_height, &self.decoder)
+        };
+        self.construct_with(ellipsoid, ctx, martini, &read_height)
+    }
+
+    fn upsample(
+        &self,
+        regions: &[TileRegion],
+        upsamplable_geometry: UpsamplableTerrainGeometry,
+    ) -> Option<UpsampledTerrainGeometry> {
+        UpsampledTerrainGeometry::new_from_path(upsamplable_geometry, regions)
+    }
+
+    fn destroy(&mut self, buf: &mut BufferStore) {
+        if let Some(handle) = self.heights_handle.take() {
+            buf.remove(&handle);
+            self.heights_handle = None;
+        }
+    }
+
+    fn box_clone(&self) -> Box<dyn TerrainData> {
+        Box::new(self.clone())
+    }
+
+    fn decoder(&self) -> Option<&ElevationDecoder> {
+        Some(&self.decoder)
+    }
+}
+
+impl RasterDEMData {
+    /// Mesh a decoded height grid (row 0 = north, `(martini.size - 1)²`
+    /// samples) exactly like [`TerrainData::construct_terrain_mesh`] meshes raw
+    /// DEM pixels. Used for upsampled tiles, whose grid is resampled from a
+    /// real-DEM ancestor, so they simplify at their own level's error tolerance.
+    pub fn construct_terrain_mesh_from_grid(
+        &self,
+        ellipsoid: Ellipsoid<FloatType>,
+        ctx: &TerrainConstructContext,
+        grid: &[f32],
+        martini: &mut Martini,
+    ) -> ReturnedConstructedTerrainMesh {
+        let width = martini.size as usize - 1;
+        let read_height =
+            |x: usize, y: usize| grid[y.min(width - 1) * width + x.min(width - 1)] as FloatType;
+        self.construct_with(ellipsoid, ctx, martini, &read_height)
+    }
+
+    fn construct_with<F: Fn(usize, usize) -> FloatType>(
+        &self,
+        ellipsoid: Ellipsoid<FloatType>,
+        ctx: &TerrainConstructContext,
+        martini: &mut Martini,
+        read_height: &F,
+    ) -> ReturnedConstructedTerrainMesh {
         let extent = &ctx.extent;
         let martini_size = martini.size as usize;
 
         let mut heights = vec![];
         let mut max_height: f64 = 0.0;
         let mut min_height: f64 = 9999.0;
-
-        let read_height = |x: usize, y: usize| {
-            let x = x.min(martini_size - 2);
-            let y = y.min(martini_size - 2);
-            let i = y * (martini_size - 1) + x;
-
-            let r = bytes[i * 4] as i64;
-            let g = bytes[i * 4 + 1] as i64;
-            let b = bytes[i * 4 + 2] as i64;
-
-            decode_height_from_dem(r, g, b, geoid_height, &self.decoder)
-        };
 
         // RTC origin only: the pole extension is excluded so the origin stays on
         // the terrain grid it makes precise. Cap vertices are placed from
@@ -179,16 +227,14 @@ impl TerrainData for RasterDEMData {
 
         // This is just a plane, so increase the number of vertices to make a smooth ellipsoidal surface.
         if indices.len() <= 6 {
-            // tile_triangles_with_terrain already includes RTC translation
-            return tile_triangles_with_terrain(
+            // tile_triangles_with_heights already includes RTC translation
+            return tile_triangles_with_heights(
                 ellipsoid,
                 extent,
                 16,
-                0.,
-                bytes,
+                read_height,
                 martini_size - 1,
                 martini_size - 1,
-                &self.decoder,
                 ctx.max_height,
                 true,
             );
@@ -208,38 +254,77 @@ impl TerrainData for RasterDEMData {
             watermask: None,
         }
     }
-
-    fn upsample(
-        &self,
-        region: &TileRegion,
-        upsamplable_geometry: UpsamplableTerrainGeometry,
-    ) -> Option<UpsampledTerrainGeometry> {
-        Some(UpsampledTerrainGeometry::new(upsamplable_geometry, region))
-    }
-
-    fn destroy(&mut self, buf: &mut BufferStore) {
-        if let Some(handle) = self.heights_handle.take() {
-            buf.remove(&handle);
-            self.heights_handle = None;
-        }
-    }
-
-    fn box_clone(&self) -> Box<dyn TerrainData> {
-        Box::new(self.clone())
-    }
-
-    fn decoder(&self) -> Option<&ElevationDecoder> {
-        Some(&self.decoder)
-    }
 }
 
 #[cfg(test)]
 mod test {
-    use navara_core::{Angle, LngLat, TileXYZ};
+    use martini::Martini;
+    use navara_core::{Angle, LngLat, MAPBOX_ELEVATION_DECODER, TileXYZ, WGS84_64};
 
-    use crate::TerrainTile;
+    use crate::{TerrainConstructContext, TerrainTile};
 
-    use super::sample_dem_grid_height;
+    use super::{RasterDEMData, TerrainData, decode_height_from_dem, sample_dem_grid_height};
+
+    /// Meshing a decoded height grid must produce the same mesh as meshing
+    /// the DEM pixels it was decoded from: that is what makes an upsampled
+    /// tile (built from a resampled grid) look like a real tile.
+    #[test]
+    fn grid_and_pixel_meshes_agree() {
+        let decoder = MAPBOX_ELEVATION_DECODER;
+        let width = 16usize;
+        let mut bytes = Vec::with_capacity(width * width * 4);
+        for y in 0..width {
+            for x in 0..width {
+                let height = 120.0 + (x as f64 * 0.7).sin() * 80.0 + (y as f64 * 0.4).cos() * 50.0;
+                let h = ((height - decoder.offset) / decoder.epsilon) as i64;
+                bytes.extend_from_slice(&[
+                    ((h >> 16) & 255) as u8,
+                    ((h >> 8) & 255) as u8,
+                    (h & 255) as u8,
+                    255,
+                ]);
+            }
+        }
+        let grid: Vec<f32> = (0..width * width)
+            .map(|i| {
+                decode_height_from_dem(
+                    bytes[i * 4] as i64,
+                    bytes[i * 4 + 1] as i64,
+                    bytes[i * 4 + 2] as i64,
+                    0.,
+                    &decoder,
+                ) as f32
+            })
+            .collect();
+
+        let tile = TerrainTile::new(TileXYZ { x: 3, y: 1, z: 2 }, 300., 0.);
+        let ctx = TerrainConstructContext {
+            coords: tile.coords,
+            extent: tile.extent,
+            max_height: tile.max_height,
+        };
+        let data = RasterDEMData::new(decoder);
+
+        let mut martini = Martini::new(width as u32 + 1);
+        let from_pixels =
+            data.construct_terrain_mesh(WGS84_64, &ctx, &bytes, 0., Some(&mut martini));
+        let mut martini = Martini::new(width as u32 + 1);
+        let from_grid = data.construct_terrain_mesh_from_grid(WGS84_64, &ctx, &grid, &mut martini);
+
+        assert_eq!(from_pixels.geometry.indices, from_grid.geometry.indices);
+        assert_eq!(from_pixels.heights.len(), from_grid.heights.len());
+        for (a, b) in from_pixels.heights.iter().zip(&from_grid.heights) {
+            assert!((a - b).abs() < 1e-3, "{a} vs {b}");
+        }
+        for (a, b) in from_pixels
+            .geometry
+            .vertices
+            .iter()
+            .zip(&from_grid.geometry.vertices)
+        {
+            assert!((a - b).abs() < 1e-2, "{a} vs {b}");
+        }
+    }
 
     #[test]
     fn it_should_sample_dem_grid_height() {

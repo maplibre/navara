@@ -124,7 +124,40 @@
     "docs": "Docs",
     "github": "GitHub",
     "discord": "Discord",
-    "credit": "Navara · MIT / Apache-2.0"
+    "credit": "Navara · MIT / Apache-2.0",
+    "brandAssets": "Brand Assets"
+  },
+  "brand": {
+    "meta": {
+      "title": "Navara brand assets",
+      "description": "The official Navara logos, typefaces and colors, with the logo files available for download."
+    },
+    "h1": "Brand Assets",
+    "lead": "The official Navara brand assets. Use them when you present Navara.",
+    "logos": {
+      "h2": "Logos",
+      "horizontal": "Horizontal logo",
+      "vertical": "Vertical logo",
+      "formats": {
+        "svg": "SVG",
+        "png": "PNG"
+      }
+    },
+    "font": {
+      "h2": "Typeface",
+      "sample": {
+        "latin": "Navara, an open-source 3D map engine",
+        "japanese": "オープンソースの 3D 地図エンジン Navara"
+      }
+    },
+    "colors": {
+      "h2": "Colors",
+      "names": {
+        "primary": "Primary Color",
+        "secondary": "Secondary Color",
+        "accent": "Accent Color"
+      }
+    }
   },
   "imageAlts": {
     "hero": "Main visual: a globe rendered with Navara",

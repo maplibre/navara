@@ -150,6 +150,13 @@ impl<'a, T: Component, U: Component, V: Component>
     }
 }
 
+impl<'a, T: Component, U: Component> ReconstructableComponentEvent<(&'a T, Option<&'a U>)> {
+    pub fn from_world_and_option(e: Entity, world: &'a World) -> Option<Self> {
+        let a = world.get::<T>(e)?;
+        Some(Self::new(e, (a, world.get::<U>(e))))
+    }
+}
+
 impl<'a, T: Component, U: Component, V: Component>
     ReconstructableComponentEvent<(&'a T, &'a U, Option<&'a V>)>
 {

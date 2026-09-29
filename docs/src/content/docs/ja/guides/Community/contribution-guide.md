@@ -1,54 +1,16 @@
 ---
 title: Contribution Guide
-description: A reference page in my new Starlight docs site.
+description: Navara への貢献方法。
 sidebar:
   order: 4
 ---
 
-## Introduction
+## Navara への貢献
 
-navara プロジェクトへの貢献に興味を持っていただき、ありがとうございます。このガイドでは、プロジェクトに貢献するための方法と手順について説明します。
+Navara への貢献に興味を持っていただき、ありがとうございます。バグ報告、機能提案、コード、ドキュメント、翻訳など、あらゆる形の貢献を歓迎します。
 
-## Development Setup
+開発環境のセットアップ、コーディング規約、Pull Request の手順など、貢献に関する詳細はリポジトリのコントリビューションガイドにまとめています。Issue や Pull Request を作成する前にご一読ください。
 
-各ライブラリの開発環境をセットアップするには、対応する GitHub リポジトリの README を参照してください。
-各リポジトリには詳細なセットアップ手順とローカル開発の方法が記載されています。
+**コントリビューションガイド**: [https://github.com/maplibre/navara/blob/main/CONTRIBUTING.md](https://github.com/maplibre/navara/blob/main/CONTRIBUTING.md)
 
-## Pull Request Process
-
-### 事前準備
-
-- 関連する Issue が存在するか確認し、なければ新しい Issue を作成してください
-- テンプレートに沿って必要な情報を Issue に記入してください
-- 変更内容について事前に議論することで、効率的な開発が可能になります
-
-### 開発手順
-
-1. リポジトリをフォークし、新しいブランチを作成
-2. 変更を実装し、適切なテストを追加
-3. コードスタイルと linting ルールに従っているか確認
-4. コミットメッセージは明確で説明的に記述
-
-### プルリクエスト作成
-
-- 変更内容の概要と目的を明確に記述
-- 関連する Issue 番号を参照
-- テスト結果とスクリーンショット（該当する場合）を添付
-- レビューアーからのフィードバックに迅速に対応
-
-## Documentation Contributions
-
-このドキュメントサイトの改善も大歓迎です：
-
-### 貢献方法
-
-- **誤字・脱字の修正**: 小さな修正でも大変助かります
-- **内容の追加・更新**: 新しい情報や詳細な説明の追加
-- **翻訳**: 英語版から日本語版への翻訳、またはその逆
-- **例示の追加**: コードサンプルや使用例の追加
-
-### 手順
-
-1. [ドキュメントリポジトリ](https://github.com/reearth/navara)に Issue または PR を作成
-2. 変更内容を明確に説明
-3. 可能であれば、変更前後のスクリーンショットを添付
+Issue と Pull Request は同じリポジトリで管理しています: [https://github.com/maplibre/navara](https://github.com/maplibre/navara)。誤字の修正から翻訳や例の追加まで、このドキュメントサイトの改善も同じ手順で受け付けています。

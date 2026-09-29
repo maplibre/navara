@@ -1,3 +1,5 @@
+import { GBUFFER_PHONG_ROUGHNESS } from "../../../gbufferLayout";
+
 import type { PolygonBaseProps, PolygonBaseState } from "./types";
 
 export const DEFAULT_BASE_PROPS: Required<
@@ -14,7 +16,7 @@ export const DEFAULT_BASE_PROPS: Required<
   pickable: false,
   effectIdsMask: 0,
   reflectivity: 0,
-  roughness: 0,
+  roughness: GBUFFER_PHONG_ROUGHNESS,
   emissiveColor: 0,
   emissiveIntensity: 0,
   useRTE: false,

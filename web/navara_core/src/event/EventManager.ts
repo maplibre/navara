@@ -32,6 +32,10 @@ type TransactionProcessOption<
   add: {
     key: AddKey;
     max?: number;
+    /** Dispatch order for the pending stack. Events a `shouldProcess` gate
+     * leaves behind are re-sorted against newer ones every pass, so this turns
+     * the FIFO stack into a priority queue (stable: equal keys stay FIFO). */
+    order?: (a: GetJsEventValue<AddKey>, b: GetJsEventValue<AddKey>) => number;
   };
   remove: {
     key: RemoveKey;
@@ -83,6 +87,7 @@ export class EventManager {
     data_requester_removed: [],
     mesh_added: [],
     mesh_updated: [],
+    mesh_geometry_replaced: [],
     mesh_removed: [],
     object_transform_updated: [],
     renderable_feature_added: [],
@@ -100,6 +105,8 @@ export class EventManager {
   // matching remove arrives while they are still pending. Keyed by transaction
   // so one transaction's remove phase cannot wipe another's tracking.
   addedEventIds = new Map<string, Set<unknown>>();
+  // Length of each stack's already-sorted prefix (see `sortPending`).
+  private sortedLengths: Partial<Record<JsEventsKey, number>> = {};
   private transactionManager = new TransactionManager();
 
   needsUpdate() {
@@ -143,6 +150,42 @@ export class EventManager {
 
     // Remove processed events
     this.stacks[key].splice(0, idx);
+    const sorted = this.sortedLengths[key];
+    if (sorted !== undefined) {
+      this.sortedLengths[key] = Math.max(0, sorted - idx);
+    }
+  }
+
+  /** Order the stack for dispatch. Pushes only append, so only the events
+   * added since the last pass are sorted and merged into the already sorted
+   * prefix (the prefix wins ties, keeping equal keys FIFO). */
+  private sortPending<Key extends JsEventsKey>(
+    key: Key,
+    order: (a: GetJsEventValue<Key>, b: GetJsEventValue<Key>) => number,
+  ) {
+    const stack = this.stacks[key] as GetJsEventValue<Key>[];
+    const sortedLength = Math.min(this.sortedLengths[key] ?? 0, stack.length);
+    if (sortedLength < stack.length) {
+      const added = stack.splice(sortedLength).sort(order);
+      const merged: GetJsEventValue<Key>[] = [];
+      let i = 0;
+      let j = 0;
+      while (i < stack.length && j < added.length) {
+        merged.push(order(stack[i], added[j]) <= 0 ? stack[i++] : added[j++]);
+      }
+      for (; i < stack.length; i++) merged.push(stack[i]);
+      for (; j < added.length; j++) merged.push(added[j]);
+      this.stacks[key] = merged as EventsStacks[Key];
+    }
+    this.sortedLengths[key] = this.stacks[key].length;
+  }
+
+  private removeAt(key: JsEventsKey, index: number) {
+    this.stacks[key].splice(index, 1);
+    const sorted = this.sortedLengths[key];
+    if (sorted !== undefined && index < sorted) {
+      this.sortedLengths[key] = sorted - 1;
+    }
   }
 
   async forEachStackAsync<Key extends JsEventsKey>(
@@ -150,8 +193,13 @@ export class EventManager {
     cb: (value: GetJsEventValue<Key>) => Promise<void>,
     max = 100,
     shouldProcess?: (value: GetJsEventValue<Key>) => boolean,
+    order?: (a: GetJsEventValue<Key>, b: GetJsEventValue<Key>) => number,
   ) {
     const promises = [];
+
+    if (order) {
+      this.sortPending(key, order);
+    }
 
     let idx = 0;
     const removedIndices = [];
@@ -181,7 +229,7 @@ export class EventManager {
       // Remove processed events
       const i = idx - offset;
       removedEvs.push(this.stacks[key][i]);
-      this.stacks[key].splice(i, 1);
+      this.removeAt(key, i);
       offset++;
     }
 
@@ -273,7 +321,7 @@ export class EventManager {
     const sortedIndices = [...removedIndices].sort((a, b) => b - a);
     for (const idx of sortedIndices) {
       maybeFree(this.stacks[key][idx]);
-      this.stacks[key].splice(idx, 1);
+      this.removeAt(key, idx);
     }
   }
 
@@ -323,6 +371,7 @@ export class EventManager {
           shouldProcess
             ? (event) => shouldProcess({ type: "add", event })
             : undefined,
+          options.add.order,
         ),
       )
       .then(() => {

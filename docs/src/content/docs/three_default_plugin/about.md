@@ -60,15 +60,31 @@ const layers = plugin.addDefaultPhotorealScene();
 
 Descriptors added:
 
-| Descriptor | Type | Description |
-|---------|------|------|
-| `sky` | mesh | Sky rendering |
-| `stars` | mesh | Star rendering |
-| `skyLightProbe` | light | Environment light based on the sky |
-| `sun` | light | Sunlight |
-| `aerialPerspective` | effect | Aerial perspective effect |
-| `lensFlare` | effect | Lens flare (desktop only) |
-| `toneMapping` | effect | Tone mapping |
-| `antialiasing` | effect | SMAA (desktop) / FXAA (mobile) |
+| Descriptor          | Type   | Description                        |
+| ------------------- | ------ | ---------------------------------- |
+| `sky`               | mesh   | Sky rendering                      |
+| `stars`             | mesh   | Star rendering                     |
+| `skyLightProbe`     | light  | Environment light based on the sky |
+| `sun`               | light  | Sunlight                           |
+| `aerialPerspective` | effect | Aerial perspective effect          |
+| `lensFlare`         | effect | Lens flare (desktop only)          |
+| `toneMapping`       | effect | Tone mapping                       |
+| `antialiasing`      | effect | SMAA (desktop) / FXAA (mobile)     |
 
 On mobile environments, lens flare is skipped for performance, and the lightweight FXAA is used for antialiasing.
+
+### Deferred lighting
+
+`deferredLighting: true` lets the atmosphere light the scene in post instead of the forward pass. It enables the aerial perspective's [`irradiance`](../../three_default_descs/effect-desc/aerial-perspective-effect-desc/#irradiance) option and sets [`view.lit = false`](../../three/api/threeview-properties/#lit) together, because otherwise the forward pass and the atmosphere both apply lighting. Cloud shadows need this path. It does not reach transparent materials, and any mesh or material with `lit: true` keeps its forward shading.
+
+`shadow: true` and `specular: true` enable the sun's shadows and its specular highlight in that lighting, through the aerial perspective's [`shadow`](../../three_default_descs/effect-desc/aerial-perspective-effect-desc/#shadow) and [`specular`](../../three_default_descs/effect-desc/aerial-perspective-effect-desc/#specular) options. Both do nothing without `deferredLighting`. Tune them later through the returned `aerialPerspective` handle.
+
+```typescript
+const layers = plugin.addDefaultPhotorealScene({
+  deferredLighting: true,
+  shadow: true,
+  specular: true,
+});
+```
+
+The exposure that suits this scene depends on the basemap. See [choosing the exposure](../../three_default_descs/effect-desc/tone-mapping-effect-desc/#choosing-the-exposure) on the tone mapping page.

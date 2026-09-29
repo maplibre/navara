@@ -36,6 +36,7 @@ navara_feature_component.workspace = true
 navara_geometry.workspace = true
 navara_buffer_store.workspace = true
 navara_tile_component.workspace = true
+navara_component.workspace = true
 navara_worker.workspace = true
 navara_wasm_types.workspace = true
 navara_wasm_utils.workspace = true

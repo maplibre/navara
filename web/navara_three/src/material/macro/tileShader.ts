@@ -15,6 +15,8 @@
  * existing `createReplacer` machinery in mesh/tile.ts.
  */
 
+import { GBUFFER_PHONG_ROUGHNESS } from "../gbufferLayout";
+
 export type TileShaderFeatures = {
   /** Atlas has a hillshade normal that should override the default normal. */
   hasHillshade: boolean;
@@ -27,8 +29,15 @@ export type TileShaderFeatures = {
   hasWatermask: boolean;
 };
 
+/** Water's reflectance at normal incidence, i.e. `IorToFresnel0(1.333)`. */
 export const WATERMASK_OCEAN_REFLECTIVITY = 0.02;
-export const WATERMASK_OCEAN_ROUGHNESS = 0.2;
+
+/**
+ * Carries the wave slopes, since nothing puts waves in the watermask normal:
+ * Cox-Munk mean square slope for a gentle breeze, `roughness = mss^(1/4)`.
+ * ref: https://oceanopticsbook.info/view/surfaces/cox-munk-sea-surface-slope-statistics
+ */
+export const WATERMASK_OCEAN_ROUGHNESS = 0.4;
 
 /**
  * Goes after `#include <common>` in the fragment shader. Declares the three
@@ -40,6 +49,9 @@ export function generateTileCommonInjection(numTextures: number): string {
   uniform sampler2D uColorAtlas;
   uniform sampler2D uAttrAtlas;
   uniform sampler2D uNormalAtlas;
+  // Child-quadrant bitmask to draw (0 = whole tile); bit i covers the child
+  // at (i % 2 east, i / 2 south). Tile UV has v = 0 at the south edge.
+  uniform int uFillQuadrants;
 
   // Per-slot uniforms retained because they need full float precision and are
   // indexed once per fragment by the winning slot from attr.a.
@@ -86,8 +98,8 @@ export function generateTileMapFragment(
   // Watermask ocean pixels: `useWater` fired from the tile-wide watermask but
   // the winning slot (raster imagery, or none on open ocean) carries zeroed
   // reflectivity/roughness – override them with the default ocean appearance
-  // so SSR and envmap reflections apply to the sea automatically. Mirrors the
-  // shininess/specularStrength fallback above. A texturized winner keeps its
+  // so the deferred specular term, SSR and the envmap apply to the sea. Mirrors
+  // the shininess/specularStrength fallback above. A texturized winner keeps its
   // own params: a vector layer drawn over water should not turn reflective.
   const watermaskReflectivityFallback = features.hasWatermask
     ? `
@@ -102,6 +114,10 @@ export function generateTileMapFragment(
   // edges decodes to batch ids that don't exist (a thin draped polyline is
   // almost all edge pixels). Snap to the texel center (nearest sampling)
   // while picking.
+  if (uFillQuadrants != 0) {
+    int nvr_quadrant = (vOrigUv.x >= 0.5 ? 1 : 0) + (vOrigUv.y >= 0.5 ? 0 : 2);
+    if ((uFillQuadrants & (1 << nvr_quadrant)) == 0) discard;
+  }
   vec2 nvr_atlasUv = vOrigUv;
   if (uPickable > 0.) {
     vec2 nvr_atlasSize = vec2(textureSize(uColorAtlas, 0));
@@ -148,7 +164,7 @@ export function generateTileMapFragment(
   // arrays is well-defined in GLSL ES 3.00. Fallbacks keep the default
   // lighting reasonable for fully-transparent pixels.
   float tileReflectivity      = hasWinner ? uReflectivities[winIdx]      : 0.0;
-  float tileRoughness         = hasWinner ? uRoughnesses[winIdx]         : 0.0;
+  float tileRoughness         = hasWinner ? uRoughnesses[winIdx]         : ${GBUFFER_PHONG_ROUGHNESS.toFixed(4)};
 
   // TODO: Support water material
   float waterScaleNormal      = hasWinner ? uWaterScaleNormals[winIdx]   : 0.0;

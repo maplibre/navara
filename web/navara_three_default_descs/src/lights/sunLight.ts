@@ -95,6 +95,12 @@ export type SunLightOptions = {
    */
   shadowNormalBias?: number;
   /**
+   * PCF kernel width in shadow-map texels (`LightShadow.radius`). The 3x3
+   * kernel shows its taps above about 4.
+   * @default 1
+   */
+  shadowRadius?: number;
+  /**
    * Whether to show debug visualization of shadow cascades.
    * @default false
    */
@@ -117,6 +123,7 @@ const DEFAULT_SUN_LIGHT_OPTIONS: Required<SunLightOptions> = {
   shadowIntensity: 1,
   shadowBias: 0.0001,
   shadowNormalBias: 0,
+  shadowRadius: 1,
   debugCSMHelper: false,
 };
 
@@ -215,6 +222,14 @@ export class SunLight extends EventHandler<SunLightEvents> {
       this.options.intensity ?? DEFAULT_SUN_LIGHT_OPTIONS.intensity;
     this.csm.shadowIntensity =
       this.options.shadowIntensity ?? DEFAULT_SUN_LIGHT_OPTIONS.shadowIntensity;
+    // CascadedShadowMaps takes none of these in its constructor.
+    this.csm.bias =
+      this.options.shadowBias ?? DEFAULT_SUN_LIGHT_OPTIONS.shadowBias;
+    this.csm.normalBias =
+      this.options.shadowNormalBias ??
+      DEFAULT_SUN_LIGHT_OPTIONS.shadowNormalBias;
+    this.csm.radius =
+      this.options.shadowRadius ?? DEFAULT_SUN_LIGHT_OPTIONS.shadowRadius;
     this.csm.color.copy(this.options.color ?? DEFAULT_SUN_LIGHT_OPTIONS.color);
 
     // Setup CSM helper for debug visualization
@@ -440,6 +455,15 @@ export class SunLight extends EventHandler<SunLightEvents> {
   set shadowNormalBias(v: number) {
     this.options.shadowNormalBias = v;
     this.csm.normalBias = v;
+
+    this.emit("needsUpdate");
+  }
+  get shadowRadius() {
+    return this.options.shadowRadius ?? DEFAULT_SUN_LIGHT_OPTIONS.shadowRadius;
+  }
+  set shadowRadius(v: number) {
+    this.options.shadowRadius = v;
+    this.csm.radius = v;
 
     this.emit("needsUpdate");
   }

@@ -64,6 +64,7 @@ impl Plugin for TilePlugin {
                         raster::system::enforce_memory_budget,
                         raster::system::attach_texture_fragment_cost,
                         tile::system::update_terrain,
+                        tile::system::mark_landed_dem_for_remesh,
                         tile::system::transfer_mesh,
                         tile::system::attach_terrain_mesh_cost,
                     )

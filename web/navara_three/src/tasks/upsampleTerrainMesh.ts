@@ -2,7 +2,6 @@ import {
   ReturnedConstructedTerrainMeshLike,
   TransferableRasterDEMDataLike,
   TransferableTileLike,
-  UpsamplableTerrainGeometryLike,
 } from "@navaramap/core";
 import type { Promise } from "@navaramap/worker";
 
@@ -10,9 +9,10 @@ import { queueTask } from "./queueTask";
 
 export function upsampleTerrainMesh(
   tileLike: TransferableTileLike,
-  parentTileLike: TransferableTileLike,
+  sourceTileLike: TransferableTileLike,
   rasterDEMDataLike: TransferableRasterDEMDataLike,
-  upsamplableGeometryLike: UpsamplableTerrainGeometryLike,
+  sourceBytes: Uint8Array,
+  size: number,
   skirt: boolean,
   skirtExaggeration: number,
   poleNorth: boolean,
@@ -23,21 +23,16 @@ export function upsampleTerrainMesh(
     "upsampleTerrainMesh",
     [
       tileLike,
-      parentTileLike,
+      sourceTileLike,
       rasterDEMDataLike,
-      upsamplableGeometryLike,
+      sourceBytes,
+      size,
       skirt,
       skirtExaggeration,
       poleNorth,
       poleSouth,
       tms,
     ],
-    {
-      transfer: [
-        upsamplableGeometryLike.uvs.buffer,
-        upsamplableGeometryLike.heights.buffer,
-        upsamplableGeometryLike.indices.buffer,
-      ],
-    },
+    { transfer: [sourceBytes.buffer] },
   );
 }

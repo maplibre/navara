@@ -1,11 +1,11 @@
 import { withBase } from "../helpers/base";
-import { DOCS_URL } from "../pages/examples/sections";
+import { DOCS_URL, siteUrl } from "../pages/examples/sections";
 import type { Lang } from "../pages/examples/sections";
 
 import { LangSelect } from "@/components/LangSelect";
 
 /** GitHub link — same target as the landing page header. */
-const GITHUB_URL = "https://github.com/eukarya-inc/navara";
+export const GITHUB_URL = "https://github.com/eukarya-inc/navara";
 
 type SiteHeaderProps = {
   lang: Lang;
@@ -16,9 +16,9 @@ type SiteHeaderProps = {
 
 /**
  * The Navara site header, mirroring the landing page / docs header
- * (docs/src/components/LpHeader.astro): brand logo on the left, Docs /
- * GitHub / language picker on the right, on the navy band with the same
- * frosted backdrop as the LP's scrolled state.
+ * (docs/src/components/LpHeader.astro): brand logo (linking to the landing
+ * page) on the left, Docs / GitHub / language picker on the right, on the
+ * navy band with the same frosted backdrop as the LP's scrolled state.
  */
 export const SiteHeader = ({ lang, setLang, langLabel }: SiteHeaderProps) => {
   return (
@@ -27,11 +27,16 @@ export const SiteHeader = ({ lang, setLang, langLabel }: SiteHeaderProps) => {
           the right, with the LP's 48/28/20px gutters — no centered
           max-width container. */}
       <div className="flex items-center justify-between px-12 py-5 max-[960px]:px-7 max-[960px]:py-[18px] max-[640px]:px-5 max-[640px]:py-3.5">
-        <a href={withBase("/")} className="block">
+        <a href={siteUrl(lang)} className="block">
+          {/* The delivered white export, used as shipped. Its viewBox reserves
+              the brand's clear space — a uniform half of the mark's height on
+              every side — so the image is drawn at twice the 24/21px mark
+              height and the surplus is pulled back with a matching negative
+              margin, leaving the mark itself flush with the header gutter. */}
           <img
-            src={withBase("logo/white/white_Navara_Horizontal_logo_260819.svg")}
+            src={withBase("/logo/svg/white/white_Navara_Horizontal_logo.svg")}
             alt="Navara"
-            className="block h-6 w-auto max-[640px]:h-[21px]"
+            className="-m-3 block h-12 w-auto max-w-none max-[640px]:-m-[10.5px] max-[640px]:h-[42px]"
           />
         </a>
         <nav className="flex items-center gap-7 text-sm font-medium max-[640px]:gap-[18px]">

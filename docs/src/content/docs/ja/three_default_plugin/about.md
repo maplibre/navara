@@ -72,3 +72,19 @@ const layers = plugin.addDefaultPhotorealScene();
 | `antialiasing`      | effect | SMAA（デスクトップ）/ FXAA（モバイル） |
 
 モバイル環境では、パフォーマンスのためにレンズフレアがスキップされ、アンチエイリアスに軽量な FXAA が使用されます。
+
+### ディファードライティング
+
+`deferredLighting: true` を渡すと、フォワードパスの代わりに大気がポストプロセスでシーンをライティングします。大気遠近法の [`irradiance`](../../three_default_descs/effect-desc/aerial-perspective-effect-desc/#irradiance) オプションを有効にし、同時に [`view.lit = false`](../../three/api/threeview-properties/#lit) を設定します。そうしないとフォワードパスと大気でライティングが二重に適用されてしまうためです。雲の影にはこの経路が必要です。透明なマテリアルには届かず、`lit: true` を指定したメッシュやマテリアルはフォワードのシェーディングを保ちます。
+
+`shadow: true` と `specular: true` は、大気遠近法の [`shadow`](../../three_default_descs/effect-desc/aerial-perspective-effect-desc/#shadow) と [`specular`](../../three_default_descs/effect-desc/aerial-perspective-effect-desc/#specular) オプションを通して、このライティングでの太陽の影と鏡面ハイライトを有効にします。どちらも `deferredLighting` なしでは何もしません。調整は戻り値の `aerialPerspective` ハンドルから行えます。
+
+```typescript
+const layers = plugin.addDefaultPhotorealScene({
+  deferredLighting: true,
+  shadow: true,
+  specular: true,
+});
+```
+
+このシーンに合う露出はベースマップに依存します。トーンマッピングのページの[露出の選び方](../../three_default_descs/effect-desc/tone-mapping-effect-desc/#露出の選び方)を参照してください。

@@ -18,7 +18,7 @@ use crate::{
     terrain_data_requester::TileTerrainDataRequesterQuery,
 };
 
-use navara_layer::{TerrainLayer, TilesLayer};
+use navara_layer::{TerrainDataType, TerrainLayer, TilesLayer};
 use navara_math::FloatType;
 
 use super::tile_bounding_region::TileBoundingRegion;
@@ -46,6 +46,11 @@ pub struct TerrainTile {
     pub sse_bounding_region: Option<TileBoundingRegion<FloatType>>,
     pub children: Vec<TileHandle>,
     pub were_children_rendered: bool,
+    /// Set by the terrain traversal in the frame this tile's children group
+    /// became complete: the tile hands the screen to that group once the
+    /// nearest ancestor whose own group is still incomplete (or the root)
+    /// applies the swap. Cleared when the tile is traversed again.
+    pub children_take_over: Option<ChildrenTakeOver>,
     pub rendered_at: usize,
     pub visited_at: usize,
     pub terrain_data: Option<Box<dyn TerrainData>>,
@@ -54,6 +59,10 @@ pub struct TerrainTile {
     pub cached_mesh_handle: Option<CachedMeshHandle>,
     /// Whether it's upsampled tile or not.
     pub upsampled: bool,
+    /// The last upsample task for this tile failed (its source vanished mid
+    /// flight, typically after a tiling rebuild). The tile stops counting as
+    /// upsamplable and fetches its own DEM instead of retrying forever.
+    pub upsample_failed: bool,
     pub max_height: f64,
     pub min_height: f64,
     pub distance_from_camera: FloatType,
@@ -72,6 +81,7 @@ impl Clone for TerrainTile {
             // Note: `children` needs to be updated dynamically.
             children: vec![],
             were_children_rendered: false,
+            children_take_over: None,
             rendered_at: self.rendered_at,
             visited_at: self.visited_at,
             terrain_data: self.terrain_data.as_ref().map(|t| t.box_clone()),
@@ -79,11 +89,106 @@ impl Clone for TerrainTile {
             occludee_point_in_scaled_space: self.occludee_point_in_scaled_space,
             cached_mesh_handle: self.cached_mesh_handle.clone(),
             upsampled: self.upsampled,
+            upsample_failed: self.upsample_failed,
             max_height: self.max_height,
             min_height: self.min_height,
             distance_from_camera: 0.,
             sse: 0.,
             tiling_scheme: self.tiling_scheme.clone(),
+        }
+    }
+}
+
+/// Per-child-slot bitmasks (bit `i` is `children[i]`) recorded by the terrain
+/// traversal for a tile whose children take over the screen.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct ChildrenTakeOver {
+    /// Children that in turn hand off to their own children.
+    pub activated: u8,
+    /// Children that stay hidden (culled or not renderable).
+    pub hidden: u8,
+    /// Children of an on-screen group that came into view without a prepared
+    /// mesh yet: hidden until prepared, and the parent fills their quadrants
+    /// (`Mesh::fill_quadrants`) in the meantime.
+    pub held: u8,
+    /// Children whose own descendants are on screen and cover them (a
+    /// zoom-out waiting for the child's DEM): the child stays hidden and its
+    /// subtree is left as it is — its own traversal manages it.
+    pub covered: u8,
+}
+
+/// How many levels above a tile its upsample source may sit. Upsampling
+/// clips (quantized mesh) or resamples (raster DEM) the ancestor's data down
+/// to the tile, so a source many levels up yields a near-flat patch at an
+/// interpolated height: a ground-level camera then sees the terrain float
+/// above or sink below the real surface until the tile's own DEM lands. With
+/// this bound a tile whose nearest real-data ancestor is farther up is not
+/// renderable, which lets the traversal's ladder
+/// (`MAX_LEVELS_WITHOUT_RENDERABLE_ANCESTOR`) fetch real DEMs on the way down
+/// instead of upsampling every level from a z1 tile. The bound does not apply
+/// where no DEM of the tile's own will ever land: the overscale band and
+/// tiles whose DEM request failed (see
+/// `TerrainTile::is_upsample_depth_bounded`).
+pub const MAX_UPSAMPLE_DEPTH: usize = 2;
+
+/// The nearest ancestors a tile can be upsampled from, each with its zoom
+/// level. The terrain traversal hands this down and extends it by one level
+/// per recursion (`extend_with`), so every traversed tile resolves its source
+/// in O(1) instead of walking the quadtree; `TerrainTile::upsample_ancestors`
+/// is the walking equivalent for callers outside the traversal.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct UpsampleAncestors {
+    /// Nearest ancestor whose mesh was built from real terrain data, with its
+    /// zoom level.
+    pub real: Option<(TileHandle, usize)>,
+    /// Nearest ancestor whose mesh carries heights but was itself upsampled,
+    /// with its zoom level.
+    pub upsampled: Option<(TileHandle, usize)>,
+}
+
+impl UpsampleAncestors {
+    /// The ancestors for the children of `tile`: `tile` itself when its mesh
+    /// carries heights, the inherited ones otherwise.
+    pub fn extend_with(self, tile: &TerrainTile, handle: TileHandle) -> Self {
+        if !tile
+            .cached_mesh_handle
+            .as_ref()
+            .is_some_and(|m| m.heights.is_some())
+        {
+            return self;
+        }
+        if tile.upsampled {
+            Self {
+                upsampled: Some((handle, tile.coords.z)),
+                ..self
+            }
+        } else {
+            Self {
+                real: Some((handle, tile.coords.z)),
+                ..self
+            }
+        }
+    }
+
+    /// The ancestor a tile at `tile_z` should upsample from: the nearest one
+    /// with real terrain data, or — when `allow_upsampled` and no real one is
+    /// on the path — the nearest upsampled one. Only meshes carrying heights
+    /// qualify (flat ellipsoid tiles do not). Quantized mesh clips the
+    /// source's TIN, so an upsampled source works; raster DEM resamples the
+    /// source's DEM pixels, which only a real tile has.
+    ///
+    /// When `bounded`, a source more than [`MAX_UPSAMPLE_DEPTH`] levels up is
+    /// rejected and the tile waits for real data. A real ancestor that is too
+    /// far up never falls back to a nearer upsampled one: that mesh derives
+    /// from the same (or a farther) real ancestor, so it is no better.
+    pub fn source(self, allow_upsampled: bool, tile_z: usize, bounded: bool) -> Option<TileHandle> {
+        let within_bound = |(_, z): &(TileHandle, usize)| {
+            !bounded || tile_z.saturating_sub(*z) <= MAX_UPSAMPLE_DEPTH
+        };
+        match self.real {
+            Some(real) => within_bound(&real).then_some(real.0),
+            None if allow_upsampled => self.upsampled.filter(within_bound).map(|(h, _)| h),
+            None => None,
         }
     }
 }
@@ -142,8 +247,10 @@ impl TerrainTile {
             occludee_point_in_scaled_space: None,
             cached_mesh_handle: None,
             upsampled: false,
+            upsample_failed: false,
             children: Vec::with_capacity(4),
             were_children_rendered: false,
+            children_take_over: None,
             max_height,
             min_height,
             distance_from_camera: 0.,
@@ -155,7 +262,7 @@ impl TerrainTile {
     #[allow(clippy::too_many_arguments)]
     pub fn is_ready(
         &self,
-        qt: &TerrainTileQuadtree,
+        upsample_ancestors: UpsampleAncestors,
         data_requesters: &Query<&navara_data_requester::DataRequester>,
         terrain_data_requester: &TileTerrainDataRequesterQuery,
         terrain_layer: &Option<&TerrainLayer>,
@@ -201,28 +308,34 @@ impl TerrainTile {
             self.is_terrain_ready(terrain_data_requester)
         };
 
-        let should_upsample = terrain_source.is_some_and(|s| s.should_overscale(self.coords.z));
-        let is_upsamplable = self.is_upsamplable(qt, terrain_data_requester, terrain_layer);
-        let is_in_upsample_band = should_upsample && is_upsamplable;
-
-        let is_terrain_failed = matches!(
-            self.get_terrain_data_requester(terrain_data_requester)
-                .map(|t| t.status),
-            Some(DataRequesterStatus::Fail)
+        let is_terrain_failed = self.is_terrain_failed(terrain_data_requester);
+        let in_overscale_band = terrain_source.is_some_and(|s| s.should_overscale(self.coords.z));
+        // The depth bound is lifted exactly where no DEM of the tile's own will
+        // ever land (see `is_upsample_depth_bounded`).
+        let has_upsample_source = self.is_upsamplable(
+            upsample_ancestors,
+            terrain_layer,
+            !in_overscale_band && !is_terrain_failed,
         );
-        // Fail + parent ready: upsample from parent instead of rendering flat.
-        let can_upsample_failed = is_terrain_failed && is_upsamplable;
-        // Last-resort flat fallback: failed and no parent terrain to upsample from.
-        let should_be_rendered_without_terrain = is_terrain_failed && !is_upsamplable;
+
+        // Upsample-first: a tile without its own DEM renders from the nearest
+        // ready ancestor right away (fetch pending, never fetched, or failed),
+        // and the real DEM replaces it later. The one hold-out is zoom-out: a
+        // tile whose children are on screen already shows finer data than any
+        // ancestor could give, so it waits for its own DEM instead — unless
+        // no DEM will ever come, because it sits in the overscale band or its
+        // request failed.
+        let can_upsample = has_upsample_source
+            && !is_terrain_ready
+            && (in_overscale_band || is_terrain_failed || !self.were_children_rendered);
+        // Last-resort flat fallback: failed and no ancestor terrain to upsample from.
+        let should_be_rendered_without_terrain = is_terrain_failed && !has_upsample_source;
 
         ReadyState {
-            is_tile_ready: is_terrain_ready
-                || is_in_upsample_band
-                || can_upsample_failed
-                || should_be_rendered_without_terrain,
+            is_tile_ready: is_terrain_ready || can_upsample || should_be_rendered_without_terrain,
             is_texture_ready: is_texture_loaded,
             is_terrain_ready,
-            is_upsamplable: is_in_upsample_band || can_upsample_failed,
+            is_upsamplable: can_upsample,
             use_terrain,
         }
     }
@@ -265,24 +378,89 @@ impl TerrainTile {
         terrain_data_requester.is_some_and(|s| matches!(s.status, DataRequesterStatus::Success))
     }
 
-    pub fn is_parent_ready(
+    /// Whether this tile's own DEM request failed. A failed request is never
+    /// retried, so no DEM will land on the tile.
+    pub fn is_terrain_failed(
         &self,
-        qt: &TerrainTileQuadtree,
         terrain_data_requesters: &TileTerrainDataRequesterQuery,
     ) -> bool {
-        self.get_parent_tile(qt).is_some_and(|p| {
-            (p.is_terrain_ready(terrain_data_requesters) || p.upsampled)
-                && p.cached_mesh_handle.is_some()
-        })
+        self.get_terrain_data_requester(terrain_data_requesters)
+            .is_some_and(|s| matches!(s.status, DataRequesterStatus::Fail))
     }
 
-    pub fn is_upsamplable(
+    /// Walk the quadtree from the root down to this tile's parent, building
+    /// the `UpsampleAncestors` the traversal would hand down. This is a
+    /// quadtree lookup per level, so it is for per-event callers (starting an
+    /// upsample task), not for the per-frame traversal. Ancestors on the
+    /// traversal path keep their cached mesh, so a hit is the usual case for
+    /// any tile whose region has terrain on screen.
+    pub fn upsample_ancestors(&self, qt: &TerrainTileQuadtree) -> UpsampleAncestors {
+        let mut ancestors = UpsampleAncestors::default();
+        for z in 0..self.coords.z {
+            let Some(ancestor) = qt
+                .qt
+                .ancestor((self.coords.x, self.coords.y, self.coords.z), z)
+            else {
+                continue;
+            };
+            let handle = ancestor.handle();
+            let Some(tile) = qt.qt.get(handle) else {
+                continue;
+            };
+            ancestors = ancestors.extend_with(tile, handle);
+        }
+        ancestors
+    }
+
+    /// The ancestor this tile should be upsampled from (see
+    /// `UpsampleAncestors::source`), resolved by walking the quadtree.
+    /// `bounded` applies the [`MAX_UPSAMPLE_DEPTH`] bound (see
+    /// [`Self::is_upsample_depth_bounded`]).
+    pub fn find_upsample_source(
         &self,
         qt: &TerrainTileQuadtree,
-        terrain_data_requester: &TileTerrainDataRequesterQuery,
+        allow_upsampled: bool,
+        bounded: bool,
+    ) -> Option<TileHandle> {
+        self.upsample_ancestors(qt)
+            .source(allow_upsampled, self.coords.z, bounded)
+    }
+
+    /// Whether the tile can be upsampled: a terrain layer exists, an ancestor
+    /// holds a mesh with heights within the depth bound (when `bounded`, see
+    /// [`Self::is_upsample_depth_bounded`]), and the last upsample did not
+    /// fail.
+    pub fn is_upsamplable(
+        &self,
+        upsample_ancestors: UpsampleAncestors,
         terrain_layer: &Option<&TerrainLayer>,
+        bounded: bool,
     ) -> bool {
-        terrain_layer.is_some() && self.is_parent_ready(qt, terrain_data_requester)
+        let Some(layer) = terrain_layer else {
+            return false;
+        };
+        let allow_upsampled = matches!(layer.terrain_type, TerrainDataType::QuantizedMesh);
+        !self.upsample_failed
+            && upsample_ancestors
+                .source(allow_upsampled, self.coords.z, bounded)
+                .is_some()
+    }
+
+    /// Whether [`MAX_UPSAMPLE_DEPTH`] applies to this tile. It is lifted where
+    /// no DEM of the tile's own will ever land, so upsampling from any depth
+    /// is the only way to render it: the overscale band (past the source's
+    /// `max_zoom`) and a tile whose DEM request failed (never retried).
+    pub fn is_upsample_depth_bounded(
+        &self,
+        terrain_layer: &Option<&TerrainLayer>,
+        source_store: &navara_source::SourceStore,
+        terrain_data_requester: &TileTerrainDataRequesterQuery,
+    ) -> bool {
+        let in_overscale_band = terrain_layer
+            .and_then(|l| l.source_id.as_deref())
+            .and_then(|id| source_store.get(id))
+            .is_some_and(|s| s.should_overscale(self.coords.z));
+        !in_overscale_band && !self.is_terrain_failed(terrain_data_requester)
     }
 
     /// Terrain-side texture readiness. Regular raster textures are owned by the
@@ -333,49 +511,58 @@ impl TerrainTile {
         })
     }
 
-    pub fn get_parent_tile<'a>(&self, qt: &'a TerrainTileQuadtree) -> Option<&'a Self> {
-        qt.qt
-            .parent((self.coords.x, self.coords.y, self.coords.z))
-            .and_then(|p| qt.qt.get(p.handle()))
+    /// Quadrant path from `ancestor` down to this tile, one region per level:
+    /// the first entry is the ancestor's child on the way, the last this tile.
+    /// `None` unless `ancestor` is a strict ancestor of this tile.
+    ///
+    /// Uses tile coordinates rather than extents to detect each quadrant. Both
+    /// WebMercator and Geographic schemes share XYZ-style y (y=0 at the north
+    /// edge), so the relationship between parent and child indices is
+    /// identical: `(2x, 2y)` is the NW child, `(2x+1, 2y+1)` the SE, etc. An
+    /// extent-based check using the arithmetic midpoint of latitude is
+    /// incorrect for WebMercator: the projection is non-linear in lat, so the
+    /// boundary between north and south children does not sit at
+    /// `(south + north) / 2` (visible in the southern hemisphere, where the
+    /// north child was misidentified as a south one).
+    pub fn region_path_from(&self, ancestor: &TerrainTile) -> Option<Vec<TileRegion>> {
+        if ancestor.coords.z >= self.coords.z {
+            return None;
+        }
+        let depth = self.coords.z - ancestor.coords.z;
+        if (self.coords.x >> depth) != ancestor.coords.x
+            || (self.coords.y >> depth) != ancestor.coords.y
+        {
+            return None;
+        }
+        let mut path = Vec::with_capacity(depth);
+        for level in (0..depth).rev() {
+            let is_east = (self.coords.x >> level) % 2 == 1;
+            let is_north = (self.coords.y >> level).is_multiple_of(2);
+            path.push(match (is_east, is_north) {
+                (false, true) => TileRegion::NorthWest,
+                (true, true) => TileRegion::NorthEast,
+                (false, false) => TileRegion::SouthWest,
+                (true, false) => TileRegion::SouthEast,
+            });
+        }
+        Some(path)
     }
 
-    fn get_region(&self, parent: &TerrainTile) -> Option<TileRegion> {
-        // Use tile coordinates rather than extents to detect the quadrant.
-        // Both WebMercator and Geographic schemes share XYZ-style y (y=0 at the
-        // north edge), so the relationship between parent and child indices is
-        // identical: `(2x, 2y)` is the NW child, `(2x+1, 2y+1)` the SE, etc.
-        // An extent-based check using the arithmetic midpoint of latitude is
-        // incorrect for WebMercator: the projection is non-linear in lat, so
-        // the actual boundary between north and south children does not sit at
-        // `(south + north) / 2`. This was particularly visible in the southern
-        // hemisphere, where the north child was misidentified as a south one.
-        let is_east = self.coords.x == parent.coords.x * 2 + 1;
-        let is_north = self.coords.y == parent.coords.y * 2;
-        Some(match (is_east, is_north) {
-            (false, true) => TileRegion::NorthWest,
-            (true, true) => TileRegion::NorthEast,
-            (false, false) => TileRegion::SouthWest,
-            (true, false) => TileRegion::SouthEast,
-        })
-    }
-
-    // Steps of upsampling for the raster DEM.
-    // 1. If the status of the request for the terrain is failed, check if the parent is succeeded or upsampled.
-    // 2. If the tile has already been upsampled, use it
-    // 3. Find a grid that matches with tile's extent. And get a binary from the grid area of the height-map.
-    // 4. Store the binary into the BufferStore, and store the handle in the tile.
+    /// Build this tile's mesh from the mesh of `source`, any strict ancestor:
+    /// the ancestor geometry is clipped quadrant by quadrant along
+    /// [`Self::region_path_from`] and re-projected onto this tile's extent.
     pub fn upsample(
         &self,
         ellipsoid: Ellipsoid<FloatType>,
-        parent: &TerrainTile,
+        source: &TerrainTile,
         upsamplable_geometry: UpsamplableTerrainGeometry,
     ) -> Option<ReturnedConstructedTerrainMesh> {
-        let region = self.get_region(parent)?;
+        let regions = self.region_path_from(source)?;
 
         let mut upsampled_mesh = self
             .terrain_data
             .as_ref()
-            .and_then(|t| t.upsample(&region, upsamplable_geometry))?;
+            .and_then(|t| t.upsample(&regions, upsamplable_geometry))?;
 
         // RTC origin only: the pole extension is excluded so the origin stays on
         // the terrain grid it makes precise. Cap vertices are placed from
@@ -405,9 +592,11 @@ impl TerrainTile {
         })
     }
 
-    // This function will be invoked before this tile is destroyed.
-    pub fn destroy(&mut self, commands: &mut Commands, buf: &mut BufferStore) {
-        if let Some(cached_mesh) = &self.cached_mesh_handle {
+    /// Free the cached mesh buffers (shared with the tile's `Mesh` component)
+    /// and forget them. Called on destroy and when a real-DEM mesh replaces an
+    /// upsampled one.
+    pub fn release_cached_mesh(&mut self, buf: &mut BufferStore) {
+        if let Some(cached_mesh) = self.cached_mesh_handle.take() {
             buf.remove(&cached_mesh.vertices);
             buf.remove(&cached_mesh.indices);
             buf.remove(&cached_mesh.uvs);
@@ -420,8 +609,12 @@ impl TerrainTile {
             if let Some(h) = &cached_mesh.watermask {
                 buf.remove(h);
             }
-            self.cached_mesh_handle = None;
         }
+    }
+
+    // This function will be invoked before this tile is destroyed.
+    pub fn destroy(&mut self, commands: &mut Commands, buf: &mut BufferStore) {
+        self.release_cached_mesh(buf);
 
         if let Some(hillshade_entities) = self.hillshade_entity_ids.take() {
             for hillshade_entity in hillshade_entities.into_iter().flatten() {
@@ -442,6 +635,7 @@ impl TerrainTile {
             t.destroy(buf);
         }
         self.upsampled = false;
+        self.upsample_failed = false;
     }
 }
 
@@ -874,7 +1068,9 @@ mod test {
 
     use super::TerrainTileQuadtree;
 
-    use super::{TerrainTile, find_contained_child};
+    use super::{
+        MAX_UPSAMPLE_DEPTH, TerrainTile, TileHandle, UpsampleAncestors, find_contained_child,
+    };
 
     #[test]
     fn get_region_handles_floating_point_drift_on_mid_boundary() {
@@ -937,22 +1133,22 @@ mod test {
             scheme,
         );
 
-        assert!(matches!(
-            nw.get_region(&parent),
-            Some(TileRegion::NorthWest)
-        ));
-        assert!(matches!(
-            ne.get_region(&parent),
-            Some(TileRegion::NorthEast)
-        ));
-        assert!(matches!(
-            sw.get_region(&parent),
-            Some(TileRegion::SouthWest)
-        ));
-        assert!(matches!(
-            se.get_region(&parent),
-            Some(TileRegion::SouthEast)
-        ));
+        assert_eq!(
+            nw.region_path_from(&parent),
+            Some(vec![TileRegion::NorthWest])
+        );
+        assert_eq!(
+            ne.region_path_from(&parent),
+            Some(vec![TileRegion::NorthEast])
+        );
+        assert_eq!(
+            sw.region_path_from(&parent),
+            Some(vec![TileRegion::SouthWest])
+        );
+        assert_eq!(
+            se.region_path_from(&parent),
+            Some(vec![TileRegion::SouthEast])
+        );
     }
 
     #[test]
@@ -970,22 +1166,22 @@ mod test {
         let sw = TerrainTile::new_with_scheme(TileXYZ { x: 2, y: 5, z: 3 }, 0., 0., scheme.clone());
         let se = TerrainTile::new_with_scheme(TileXYZ { x: 3, y: 5, z: 3 }, 0., 0., scheme);
 
-        assert!(matches!(
-            nw.get_region(&parent),
-            Some(TileRegion::NorthWest)
-        ));
-        assert!(matches!(
-            ne.get_region(&parent),
-            Some(TileRegion::NorthEast)
-        ));
-        assert!(matches!(
-            sw.get_region(&parent),
-            Some(TileRegion::SouthWest)
-        ));
-        assert!(matches!(
-            se.get_region(&parent),
-            Some(TileRegion::SouthEast)
-        ));
+        assert_eq!(
+            nw.region_path_from(&parent),
+            Some(vec![TileRegion::NorthWest])
+        );
+        assert_eq!(
+            ne.region_path_from(&parent),
+            Some(vec![TileRegion::NorthEast])
+        );
+        assert_eq!(
+            sw.region_path_from(&parent),
+            Some(vec![TileRegion::SouthWest])
+        );
+        assert_eq!(
+            se.region_path_from(&parent),
+            Some(vec![TileRegion::SouthEast])
+        );
     }
 
     fn setup_tile(qt: &mut TerrainTileQuadtree, coords: Coords<usize>) {
@@ -1034,6 +1230,187 @@ mod test {
         });
         let child = qt.qt.get(h.unwrap());
         assert_eq!(child.unwrap().coords, TileXYZ { x: 3, y: 1, z: 2 });
+    }
+
+    #[test]
+    fn region_path_walks_every_level_from_the_ancestor() {
+        let ancestor = TerrainTile::new(TileXYZ { x: 1, y: 2, z: 2 }, 0., 0.);
+        // z=4 tile inside (1,2,2): (1,2)->(3,4) NE child at z=3 -> (6,9) SW child at z=4.
+        let tile = TerrainTile::new(TileXYZ { x: 6, y: 9, z: 4 }, 0., 0.);
+        assert_eq!(
+            tile.region_path_from(&ancestor),
+            Some(vec![TileRegion::NorthEast, TileRegion::SouthWest])
+        );
+    }
+
+    #[test]
+    fn region_path_rejects_non_ancestors() {
+        let tile = TerrainTile::new(TileXYZ { x: 6, y: 9, z: 4 }, 0., 0.);
+        let same_level = TerrainTile::new(TileXYZ { x: 7, y: 9, z: 4 }, 0., 0.);
+        let unrelated = TerrainTile::new(TileXYZ { x: 0, y: 0, z: 2 }, 0., 0.);
+        let deeper = TerrainTile::new(TileXYZ { x: 12, y: 18, z: 5 }, 0., 0.);
+        assert_eq!(tile.region_path_from(&same_level), None);
+        assert_eq!(tile.region_path_from(&unrelated), None);
+        assert_eq!(tile.region_path_from(&deeper), None);
+    }
+
+    fn cached_mesh(with_heights: bool) -> CachedMeshHandle {
+        CachedMeshHandle {
+            vertices: 0,
+            indices: 0,
+            uvs: 0,
+            heights: with_heights.then_some(0),
+            normals: None,
+            watermask: None,
+        }
+    }
+
+    /// z0 root with the whole chain down to (3, 5, 3) initialized.
+    /// A tile at `coords` with an empty height range, for the quadtree
+    /// initializers.
+    fn new_tile((x, y, z): (usize, usize, usize)) -> TerrainTile {
+        TerrainTile::new(TileXYZ { x, y, z }, 0., 0.)
+    }
+
+    /// A quadtree holding the root and the ancestor chain down to each of
+    /// `leaves` (every ancestor on the way is created too).
+    fn chain_qt_to(leaves: &[Coords<usize>]) -> TerrainTileQuadtree {
+        let mut qt = TerrainTileQuadtree::new_with_linear_qt();
+        qt.qt.initialize_zero(&new_tile);
+        for &coords in leaves {
+            qt.qt.initialize_leaf(coords, &new_tile);
+        }
+        qt
+    }
+
+    /// The root → (0,1,1) → (1,2,2) → (3,5,3) chain the source tests walk.
+    fn chain_qt() -> TerrainTileQuadtree {
+        chain_qt_to(&[(0, 1, 1), (1, 2, 2), (3, 5, 3)])
+    }
+
+    /// The straight (0,0,z) chain from the root down to `leaf_z`.
+    fn straight_chain_qt(leaf_z: usize) -> TerrainTileQuadtree {
+        let leaves: Vec<Coords<usize>> = (1..=leaf_z).map(|z| (0, 0, z)).collect();
+        chain_qt_to(&leaves)
+    }
+
+    fn set_mesh(
+        qt: &mut TerrainTileQuadtree,
+        coords: Coords<usize>,
+        heights: bool,
+        upsampled: bool,
+    ) {
+        let handle = qt.qt.leaf(coords).unwrap().handle();
+        let tile = qt.qt.get_mut(handle).unwrap();
+        tile.cached_mesh_handle = Some(cached_mesh(heights));
+        tile.upsampled = upsampled;
+    }
+
+    fn handle_of(qt: &TerrainTileQuadtree, coords: Coords<usize>) -> TileHandle {
+        qt.qt.leaf(coords).unwrap().handle()
+    }
+
+    #[test]
+    fn upsample_source_prefers_nearest_real_mesh_over_nearer_upsampled_one() {
+        let mut qt = chain_qt();
+        set_mesh(&mut qt, (0, 0, 0), true, false);
+        set_mesh(&mut qt, (0, 1, 1), true, false);
+        set_mesh(&mut qt, (1, 2, 2), true, true);
+        let leaf = qt.qt.get(handle_of(&qt, (3, 5, 3))).unwrap();
+        assert_eq!(
+            leaf.find_upsample_source(&qt, true, true),
+            Some(handle_of(&qt, (0, 1, 1)))
+        );
+    }
+
+    #[test]
+    fn upsample_source_falls_back_to_upsampled_ancestor_only_when_allowed() {
+        let mut qt = chain_qt();
+        set_mesh(&mut qt, (1, 2, 2), true, true);
+        let leaf = qt.qt.get(handle_of(&qt, (3, 5, 3))).unwrap();
+        assert_eq!(
+            leaf.find_upsample_source(&qt, true, true),
+            Some(handle_of(&qt, (1, 2, 2)))
+        );
+        assert_eq!(leaf.find_upsample_source(&qt, false, true), None);
+    }
+
+    /// A real ancestor exactly `MAX_UPSAMPLE_DEPTH` levels up is a source;
+    /// one level farther is not while bounded, and is again when the bound is
+    /// lifted (overscale band, failed DEM).
+    #[test]
+    fn upsample_source_is_bounded_by_max_upsample_depth() {
+        let leaf_z = MAX_UPSAMPLE_DEPTH + 1;
+        let mut qt = straight_chain_qt(leaf_z);
+        let leaf_handle = handle_of(&qt, (0, 0, leaf_z));
+
+        set_mesh(&mut qt, (0, 0, 0), true, false);
+        let leaf = qt.qt.get(leaf_handle).unwrap();
+        assert_eq!(
+            leaf.find_upsample_source(&qt, true, true),
+            None,
+            "a real ancestor {} levels up is too far while bounded",
+            leaf_z
+        );
+        assert_eq!(
+            leaf.find_upsample_source(&qt, true, false),
+            Some(handle_of(&qt, (0, 0, 0))),
+            "the bound is lifted where no own DEM will ever land"
+        );
+
+        set_mesh(&mut qt, (0, 0, 1), true, false);
+        let leaf = qt.qt.get(leaf_handle).unwrap();
+        assert_eq!(
+            leaf.find_upsample_source(&qt, true, true),
+            Some(handle_of(&qt, (0, 0, 1))),
+            "a real ancestor exactly MAX_UPSAMPLE_DEPTH levels up qualifies"
+        );
+    }
+
+    /// A nearer upsampled ancestor never stands in for a real one that is out
+    /// of bound: its mesh derives from that same real ancestor.
+    #[test]
+    fn upsample_source_does_not_fall_back_to_upsampled_when_real_is_out_of_bound() {
+        let leaf_z = MAX_UPSAMPLE_DEPTH + 1;
+        let mut qt = straight_chain_qt(leaf_z);
+        set_mesh(&mut qt, (0, 0, 0), true, false);
+        set_mesh(&mut qt, (0, 0, leaf_z - 1), true, true);
+        let leaf = qt.qt.get(handle_of(&qt, (0, 0, leaf_z))).unwrap();
+        assert_eq!(leaf.find_upsample_source(&qt, true, true), None);
+        assert_eq!(
+            leaf.find_upsample_source(&qt, true, false),
+            Some(handle_of(&qt, (0, 0, 0)))
+        );
+    }
+
+    /// Extending level by level along the path must resolve exactly what the
+    /// quadtree walk resolves, at every level.
+    #[test]
+    fn upsample_ancestors_extended_along_the_path_match_the_walk() {
+        let mut qt = chain_qt();
+        set_mesh(&mut qt, (0, 0, 0), true, false);
+        set_mesh(&mut qt, (0, 1, 1), false, false);
+        set_mesh(&mut qt, (1, 2, 2), true, true);
+        let path = [(0, 0, 0), (0, 1, 1), (1, 2, 2), (3, 5, 3)];
+        let mut handed_down = UpsampleAncestors::default();
+        for coords in path {
+            let handle = handle_of(&qt, coords);
+            let tile = qt.qt.get(handle).unwrap();
+            assert_eq!(handed_down, tile.upsample_ancestors(&qt), "at {coords:?}");
+            handed_down = handed_down.extend_with(tile, handle);
+        }
+        assert_eq!(handed_down.real, Some((handle_of(&qt, (0, 0, 0)), 0)));
+        assert_eq!(handed_down.upsampled, Some((handle_of(&qt, (1, 2, 2)), 2)));
+    }
+
+    #[test]
+    fn upsample_source_ignores_meshes_without_heights() {
+        let mut qt = chain_qt();
+        // A flat (ellipsoid / failed-without-parent) mesh carries no heights.
+        set_mesh(&mut qt, (0, 0, 0), false, false);
+        set_mesh(&mut qt, (1, 2, 2), false, false);
+        let leaf = qt.qt.get(handle_of(&qt, (3, 5, 3))).unwrap();
+        assert_eq!(leaf.find_upsample_source(&qt, true, true), None);
     }
 
     #[test]
@@ -1591,6 +1968,8 @@ mod terrain_tile_tests {
             /// Terrain layer config.
             terrain_max_zoom: usize,
             terrain_overscaled_max_zoom: usize,
+            /// The child's own children were activated last frame (zoom-out).
+            were_children_rendered: bool,
         }
 
         fn terrain_layer_with() -> TerrainLayer {
@@ -1669,6 +2048,7 @@ mod terrain_tile_tests {
 
             // Build the child tile (standalone — is_ready doesn't require it in qt).
             let mut child = TerrainTile::new(TileXYZ { x: 0, y: 0, z: 1 }, 0., 0.);
+            child.were_children_rendered = scenario.were_children_rendered;
             if let Some(status) = scenario.self_dem_status {
                 // child_handle is irrelevant; we just need an entity carrying the
                 // marker + DataRequester components.
@@ -1706,7 +2086,7 @@ mod terrain_tile_tests {
                     let source_store = source_store.lock().unwrap().take().unwrap();
                     let sorted_layers: Vec<_> = tiles.iter().sort::<&Order>().collect();
                     let rs = child.is_ready(
-                        &qt,
+                        child.upsample_ancestors(&qt),
                         &data_requesters,
                         &terrain_data_requester,
                         &terrain_layer,
@@ -1733,6 +2113,7 @@ mod terrain_tile_tests {
                 parent_terrain_ready: true,
                 terrain_max_zoom: 20,
                 terrain_overscaled_max_zoom: 24,
+                were_children_rendered: false,
             });
             assert!(rs.is_tile_ready, "Fail with ready parent must be ready");
             assert!(
@@ -1745,6 +2126,21 @@ mod terrain_tile_tests {
             );
         }
 
+        /// Own DEM loaded: never routed through the upsample path.
+        #[test]
+        fn success_is_terrain_ready_not_upsamplable() {
+            let rs = run(Scenario {
+                self_dem_status: Some(DataRequesterStatus::Success),
+                parent_terrain_ready: true,
+                terrain_max_zoom: 20,
+                terrain_overscaled_max_zoom: 24,
+                were_children_rendered: false,
+            });
+            assert!(rs.is_tile_ready);
+            assert!(rs.is_terrain_ready);
+            assert!(!rs.is_upsamplable);
+        }
+
         /// Fail with no parent terrain: last-resort flat fallback (own ready but not
         /// upsamplable).
         #[test]
@@ -1754,6 +2150,7 @@ mod terrain_tile_tests {
                 parent_terrain_ready: false,
                 terrain_max_zoom: 20,
                 terrain_overscaled_max_zoom: 24,
+                were_children_rendered: false,
             });
             assert!(
                 rs.is_tile_ready,
@@ -1775,6 +2172,7 @@ mod terrain_tile_tests {
                 parent_terrain_ready: true,
                 terrain_max_zoom: 0,
                 terrain_overscaled_max_zoom: 5,
+                were_children_rendered: false,
             });
             assert!(
                 rs.is_tile_ready,
@@ -1783,17 +2181,100 @@ mod terrain_tile_tests {
             assert!(rs.is_upsamplable, "Upsample band must take upsample path");
         }
 
-        /// Pending request (no Success, no Fail yet) must not be ready: waiting on the
-        /// fetch — the traversal parent-fallback handles visibility.
+        /// Pending request with a ready ancestor: upsample-first renders the
+        /// ancestor's data now and swaps in the real DEM when it lands.
         #[test]
-        fn pending_is_not_ready() {
+        fn pending_with_ready_ancestor_upsamples() {
             let rs = run(Scenario {
                 self_dem_status: Some(DataRequesterStatus::Pending),
                 parent_terrain_ready: true,
                 terrain_max_zoom: 20,
                 terrain_overscaled_max_zoom: 24,
+                were_children_rendered: false,
+            });
+            assert!(
+                rs.is_tile_ready,
+                "Pending with ready ancestor renders upsampled"
+            );
+            assert!(rs.is_upsamplable);
+            assert!(!rs.is_terrain_ready);
+        }
+
+        /// Pending with nothing to upsample from: still waiting on the fetch.
+        #[test]
+        fn pending_without_ancestor_is_not_ready() {
+            let rs = run(Scenario {
+                self_dem_status: Some(DataRequesterStatus::Pending),
+                parent_terrain_ready: false,
+                terrain_max_zoom: 20,
+                terrain_overscaled_max_zoom: 24,
+                were_children_rendered: false,
             });
             assert!(!rs.is_tile_ready, "Pending must not be marked ready");
+            assert!(!rs.is_upsamplable);
+        }
+
+        /// Never requested yet, ancestor ready: the tile renders upsampled first
+        /// and the traversal defers the fetch until it settles as the SSE leaf.
+        #[test]
+        fn unrequested_with_ready_ancestor_upsamples() {
+            let rs = run(Scenario {
+                self_dem_status: None,
+                parent_terrain_ready: true,
+                terrain_max_zoom: 20,
+                terrain_overscaled_max_zoom: 24,
+                were_children_rendered: false,
+            });
+            assert!(rs.is_tile_ready);
+            assert!(rs.is_upsamplable);
+        }
+
+        /// Zoom-out: the tile's children are on screen with finer data than any
+        /// ancestor, so it does not upsample and waits for its own DEM instead.
+        #[test]
+        fn zoom_out_waits_for_own_dem_instead_of_upsampling() {
+            let rs = run(Scenario {
+                self_dem_status: Some(DataRequesterStatus::Pending),
+                parent_terrain_ready: true,
+                terrain_max_zoom: 20,
+                terrain_overscaled_max_zoom: 24,
+                were_children_rendered: true,
+            });
+            assert!(
+                !rs.is_tile_ready,
+                "children on screen: wait for the real DEM"
+            );
+            assert!(!rs.is_upsamplable);
+        }
+
+        /// In the overscale band no DEM will ever arrive, so zoom-out still
+        /// upsamples rather than waiting forever.
+        #[test]
+        fn zoom_out_in_overscale_band_still_upsamples() {
+            let rs = run(Scenario {
+                self_dem_status: None,
+                parent_terrain_ready: true,
+                terrain_max_zoom: 0,
+                terrain_overscaled_max_zoom: 5,
+                were_children_rendered: true,
+            });
+            assert!(rs.is_tile_ready);
+            assert!(rs.is_upsamplable);
+        }
+
+        /// A failed request is never retried, so zoom-out onto a Fail tile
+        /// upsamples too instead of waiting for a DEM that will never land.
+        #[test]
+        fn zoom_out_on_failed_dem_still_upsamples() {
+            let rs = run(Scenario {
+                self_dem_status: Some(DataRequesterStatus::Fail),
+                parent_terrain_ready: true,
+                terrain_max_zoom: 20,
+                terrain_overscaled_max_zoom: 24,
+                were_children_rendered: true,
+            });
+            assert!(rs.is_tile_ready);
+            assert!(rs.is_upsamplable);
         }
     }
 }

@@ -23,7 +23,23 @@
     "examples": "/examples/",
     "github": "https://github.com/maplibre/navara",
     "discord": "#",
-    "roadmap": "https://github.com/maplibre/navara/issues/757"
+    "roadmap": "https://github.com/maplibre/navara/issues/757",
+    "brandAssets": "brand-assets/"
+  },
+  "brand": {
+    "palette": [
+      { "id": "primary", "hex": "#143c6e" },
+      { "id": "secondary", "hex": "#c8ebfa" },
+      { "id": "accent", "hex": "#faf0c8" }
+    ],
+    "fonts": [
+      { "id": "latin", "name": "Arsenal", "href": "https://fonts.google.com/specimen/Arsenal" },
+      {
+        "id": "japanese",
+        "name": "Zen Kaku Gothic New",
+        "href": "https://fonts.google.com/specimen/Zen+Kaku+Gothic+New"
+      }
+    ]
   },
   "images": {
     "hero": {

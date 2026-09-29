@@ -28,6 +28,7 @@ pub struct Events {
     mesh_removed: Vec<EntityEvent>,
     mesh_added: Vec<MeshAdded>,
     mesh_updated: Vec<MeshChanged>,
+    mesh_geometry_replaced: Vec<MeshGeometryReplaced>,
     data_requested: Vec<DataRequestEvent>,
     data_requester_removed: Vec<DataRequesterRemovedEvent>,
     texture_fragment_requested: Vec<TextureFragmentRequestedEvent>,
@@ -68,6 +69,9 @@ impl Events {
     }
     pub fn take_mesh_updated(&mut self) -> Vec<MeshChanged> {
         std::mem::take(&mut self.mesh_updated)
+    }
+    pub fn take_mesh_geometry_replaced(&mut self) -> Vec<MeshGeometryReplaced> {
+        std::mem::take(&mut self.mesh_geometry_replaced)
     }
     pub fn take_data_requested(&mut self) -> Vec<DataRequestEvent> {
         std::mem::take(&mut self.data_requested)
@@ -130,6 +134,26 @@ pub struct MeshAdded {
     pub globe: Globe,
 }
 
+/// A live tile mesh whose geometry buffers were rewritten in place (see
+/// `EventStore::mesh_geometry_replaced`): only the geometry changes.
+#[wasm_bindgen]
+#[derive(Debug, Clone, Serialize)]
+pub struct MeshGeometryReplaced {
+    pub ind: u32,
+    pub r#gen: u32,
+    pub mesh: Mesh,
+}
+
+impl<'a> From<navara_event_store::ComponentEvent<&'a navara_mesh::Mesh>> for MeshGeometryReplaced {
+    fn from(ev: navara_event_store::ComponentEvent<&'a navara_mesh::Mesh>) -> Self {
+        Self {
+            ind: ev.ind,
+            r#gen: ev.r#gen,
+            mesh: ev.comp.into(),
+        }
+    }
+}
+
 #[wasm_bindgen]
 #[derive(Debug, Clone, Serialize)]
 pub struct MeshChanged {
@@ -150,6 +174,8 @@ pub struct Mesh {
     pub uvs: i32,      // handle
     pub indices: i32,  // handle
     pub active: bool,
+    /// Quadrant bitmask to draw (`0` = whole tile); see `navara_mesh::Mesh`.
+    pub fill_quadrants: u8,
     pub render_order: i32,
     pub aabb: navara_wasm_types::Aabb,
     /// Per-vertex normals handle (terrain only).
@@ -173,6 +199,13 @@ pub struct DataRequestEvent {
     pub ind: u32,
     pub r#gen: u32,
     pub bits: u64,
+
+    /// Fetch urgency: 0 is the most urgent (see `Priority::rank`). The web
+    /// side keeps its pending fetch queue sorted by this. Requests without an
+    /// ECS `Priority` (tileset / PMTiles bootstrap reads, 3D Tiles content)
+    /// rank as `Extreme`, matching the engine sender that dispatches them
+    /// ahead of the prioritized ones.
+    pub priority: u8,
 
     pub handle: i32, // handle
     #[wasm_bindgen(getter_with_clone)]
@@ -287,6 +320,11 @@ impl From<navara_event::Events<'_>> for Events {
             mesh_removed: ev.mesh_removed.into_iter().map(|ev| ev.into()).collect(),
             mesh_added: ev.mesh_added.into_iter().map(|ev| ev.into()).collect(),
             mesh_updated: ev.mesh_updated.into_iter().map(|ev| ev.into()).collect(),
+            mesh_geometry_replaced: ev
+                .mesh_geometry_replaced
+                .into_iter()
+                .map(|ev| ev.into())
+                .collect(),
             data_requested: ev.data_requested.into_iter().map(|ev| ev.into()).collect(),
             data_requester_removed: ev
                 .data_requester_removed
@@ -467,6 +505,7 @@ impl<'a> From<&'a navara_mesh::Mesh> for Mesh {
             uvs: m.uvs,
             indices: m.indices,
             active: m.active,
+            fill_quadrants: m.fill_quadrants,
             render_order: m.render_order,
             aabb: m.aabb.clone().into(),
             normals: m.normals,
@@ -481,15 +520,20 @@ impl<'a> From<&'a navara_mesh::Mesh> for Mesh {
 
 impl<'a>
     From<
-        navara_event_store::ReconstructableComponentEvent<&'a navara_data_requester::DataRequester>,
+        navara_event_store::ReconstructableComponentEvent<(
+            &'a navara_data_requester::DataRequester,
+            Option<&'a navara_component::Priority>,
+        )>,
     > for DataRequestEvent
 {
     fn from(
-        ev: navara_event_store::ReconstructableComponentEvent<
+        ev: navara_event_store::ReconstructableComponentEvent<(
             &'a navara_data_requester::DataRequester,
-        >,
+            Option<&'a navara_component::Priority>,
+        )>,
     ) -> Self {
-        let (offset, length) = match ev.comp.byte_range {
+        let (req, priority) = ev.comp;
+        let (offset, length) = match req.byte_range {
             Some((offset, length)) => (Some(offset), Some(length)),
             None => (None, None),
         };
@@ -497,14 +541,15 @@ impl<'a>
             ind: ev.ind,
             r#gen: ev.r#gen,
             bits: ev.bits,
-            handle: ev.comp.handle,
-            extension: ev.comp.extension.to_string(),
-            url: ev.comp.url.clone(),
+            priority: priority.map_or(navara_component::Priority::Extreme.rank(), |p| p.rank()),
+            handle: req.handle,
+            extension: req.extension.to_string(),
+            url: req.url.clone(),
             offset,
             length,
-            request_vertex_normals: ev.comp.request_vertex_normals,
-            request_water_mask: ev.comp.request_water_mask,
-            token: ev.comp.token.clone(),
+            request_vertex_normals: req.request_vertex_normals,
+            request_water_mask: req.request_water_mask,
+            token: req.token.clone(),
         }
     }
 }

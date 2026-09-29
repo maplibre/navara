@@ -322,6 +322,24 @@ import { Color } from "@navaramap/three";
 }
 ```
 
+### shadowRadius
+
+**Type:** `number | undefined`
+
+**Description:** Width of the shadow map filter kernel, in shadow map texels. The kernel takes a fixed nine samples, so above about `4` the samples show up individually instead of forming a soft edge. Where the [AerialPerspectiveEffectDesc](../../../three_default_descs/effect-desc/aerial-perspective-effect-desc/) re-applies these shadows, its `shadowSoftness` option widens the edge in screen space instead.
+
+**Default:** `1`
+
+**Example:**
+
+```typescript
+{
+  sun: {
+    shadowRadius: 2,
+  }
+}
+```
+
 ### debugCSMHelper
 
 **Type:** `boolean | undefined`
@@ -384,7 +402,8 @@ const sun = view.addLight<SunLightDesc>({
     shadowFade: true,
     shadowIntensity: 1.0,
     shadowBias: 0.0001,
-    shadowNormalBias: 0
+    shadowNormalBias: 0,
+    shadowRadius: 1
   }
 });
 ```

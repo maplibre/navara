@@ -92,6 +92,70 @@ describe("stampGBufferDefines", () => {
     expect(material.defines?.[USE_GBUFFER_SHADOW_DEFINE]).toBe(1);
   });
 
+  it("clears the G-buffer defines when a material moves from mrt to opaque", () => {
+    const scenes = createScenes();
+    const material = new MeshStandardMaterial();
+    const mesh = new Mesh(undefined, material);
+    scenes.mrt.add(mesh);
+
+    const pass = createPass(scenes, true);
+    pass["stampGBufferDefines"]();
+    expect(material.defines?.[USE_GBUFFER_SHADOW_DEFINE]).toBe(1);
+
+    scenes.mrt.remove(mesh);
+    scenes.opaque.add(mesh);
+    pass["stampGBufferDefines"]();
+
+    expect(material.defines).not.toHaveProperty(USE_GBUFFER_SHADOW_DEFINE);
+
+    // And back again: the cleared material is stamped afresh.
+    scenes.opaque.remove(mesh);
+    scenes.mrt.add(mesh);
+    pass["stampGBufferDefines"]();
+
+    expect(material.defines?.[USE_GBUFFER_SHADOW_DEFINE]).toBe(1);
+  });
+
+  it("keeps the G-buffer defines on a material shared by both scene sets", () => {
+    const scenes = createScenes();
+    const material = new MeshStandardMaterial();
+    scenes.mrt.add(new Mesh(undefined, material));
+    scenes.opaque.add(new Mesh(undefined, material));
+
+    const pass = createPass(scenes, true);
+    pass["stampGBufferDefines"]();
+
+    expect(material.defines?.[USE_GBUFFER_SHADOW_DEFINE]).toBe(1);
+  });
+
+  it("stamps a material added inside a scene-resident group", () => {
+    const scenes = createScenes();
+    const group = new Group();
+    scenes.mrt.add(group);
+    const pass = createPass(scenes, true);
+    pass["stampGBufferDefines"]();
+
+    const added = new MeshStandardMaterial();
+    group.add(new Mesh(undefined, added));
+    pass["stampGBufferDefines"]();
+
+    expect(added.defines?.[USE_GBUFFER_SHADOW_DEFINE]).toBe(1);
+  });
+
+  it("stamps a material swapped in place on a mesh already in the scene", () => {
+    const scenes = createScenes();
+    const mesh = new Mesh(undefined, new MeshStandardMaterial());
+    scenes.mrt.add(mesh);
+    const pass = createPass(scenes, true);
+    pass["stampGBufferDefines"]();
+
+    const replaced = new MeshStandardMaterial();
+    mesh.material = replaced;
+    pass["stampGBufferDefines"]();
+
+    expect(replaced.defines?.[USE_GBUFFER_SHADOW_DEFINE]).toBe(1);
+  });
+
   it("restamps every material after setLit", () => {
     const scenes = createScenes();
     const opaqueMaterial = addMesh(scenes.opaque);

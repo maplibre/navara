@@ -21,7 +21,7 @@ The `ToneMappingEffectDesc` class is a Descriptor that applies a tone mapping ef
 
 **Type:** `ToneMappingMode | undefined`
 
-**Description:** Specifies the tone mapping mode. Available modes include AGX, ACES_FILMIC, LINEAR, REINHARD, REINHARD2, UNREAL, and more.
+**Description:** Specifies the tone mapping mode. Available modes include AGX, ACES_FILMIC, NEUTRAL, LINEAR, REINHARD, REINHARD2, UNREAL, and more. AGX and ACES_FILMIC give a filmic contrast curve. NEUTRAL keeps the basemap's own colors and only rolls off the highlights, which suits imagery that should stay recognizable.
 
 **Default:** `ToneMappingMode.AGX`
 
@@ -137,6 +137,16 @@ view.addEffect<ToneMappingEffectDesc>({
 view.addEffect<SMAAEffectDesc>({
   smaa: {},
 });
+```
+
+## Choosing the exposure
+
+`view.toneMappingExposure` scales the HDR frame before the curve is applied, so the right value depends on how bright the basemap is, not only on the lighting. Dark tiles such as satellite imagery sit around `10`. Bright tiles such as a light map style sit around `3`. Pairing that exposure with a mode like `NEUTRAL` keeps the tiles' brightness even across the frame, so the scene reads cleanly without a filmic curve crushing the darker tiles or clipping the brighter ones.
+
+```typescript
+const layers = plugin.addDefaultPhotorealScene({ deferredLighting: true });
+layers.toneMapping.update({ toneMapping: { mode: ToneMappingMode.NEUTRAL } });
+view.toneMappingExposure = 10; // satellite imagery; around 3 for a bright style
 ```
 
 ## Notes

@@ -9,7 +9,7 @@ import { queueTask } from "./queueTask";
 
 export function upsampleQuantizedMeshTerrainMesh(
   tileLike: TransferableTileLike,
-  parentTileLike: TransferableTileLike,
+  sourceTileLike: TransferableTileLike,
   upsamplableGeometryLike: UpsamplableTerrainGeometryLike,
   skirt: boolean,
   skirtExaggeration: number,
@@ -22,7 +22,7 @@ export function upsampleQuantizedMeshTerrainMesh(
     "upsampleQuantizedMeshTerrainMesh",
     [
       tileLike,
-      parentTileLike,
+      sourceTileLike,
       upsamplableGeometryLike,
       skirt,
       skirtExaggeration,

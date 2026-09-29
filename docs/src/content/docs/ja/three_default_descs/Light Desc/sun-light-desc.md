@@ -322,6 +322,24 @@ import { Color } from "@navaramap/three";
 }
 ```
 
+### shadowRadius
+
+**Type:** `number | undefined`
+
+**Description:** シャドウマップのフィルタカーネルの幅を、シャドウマップのテクセル単位で指定します。カーネルのサンプル数は 9 で固定されているため、`4` を超えるとエッジが滑らかにならず個々のサンプルが点として見えます。[AerialPerspectiveEffectDesc](../../../three_default_descs/effect-desc/aerial-perspective-effect-desc/) がこの影を再適用する場面では、代わりにその `shadowSoftness` オプションがスクリーンスペースでエッジを広げます。
+
+**Default:** `1`
+
+**Example:**
+
+```typescript
+{
+  sun: {
+    shadowRadius: 2,
+  }
+}
+```
+
 ### debugCSMHelper
 
 **Type:** `boolean | undefined`
@@ -384,7 +402,8 @@ const sun = view.addLight<SunLightDesc>({
     shadowFade: true,
     shadowIntensity: 1.0,
     shadowBias: 0.0001,
-    shadowNormalBias: 0
+    shadowNormalBias: 0,
+    shadowRadius: 1
   }
 });
 ```

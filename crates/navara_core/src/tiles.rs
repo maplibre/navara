@@ -232,7 +232,7 @@ pub struct TileXYZ {
     pub z: usize,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TileRegion {
     NorthWest,
     NorthEast,

@@ -48,6 +48,11 @@ type ViewContextEvents = {
    * not being effects, cannot declare `requiredBuffers` themselves.
    */
   meshPassKeyChanged: () => void;
+  /**
+   * Emitted by an effect descriptor whose `getRequiredBuffers()` result
+   * changed after creation. The view re-derives the G-buffer configuration.
+   */
+  gbufferRequirementsChanged: () => void;
 };
 
 /**

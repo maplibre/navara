@@ -104,8 +104,10 @@ export type WorkerTaskHandler = {
 export type TileHandler = {
   getMartini: (bits: ReconstructableEntity) => TransferableMartini | undefined;
   getTile: (handle: bigint) => TransferableTile | undefined;
-  getParentTile: (handle: bigint) => TransferableTile | undefined;
   getTileElevationDecoder: (handle: bigint) => ElevationDecoder | undefined;
+  /** Buffer handle of a tile's loaded raw DEM bytes, the data a raster-DEM
+   * upsample of a descendant resamples from. */
+  getTerrainDemBytes: (handle: bigint) => number | undefined;
   getVectorTileStates: (handle: bigint) => VectorTileState[] | undefined;
   vectorRevision: () => number;
   /** The WM raster tiles to bake into per-layer drape render targets for a

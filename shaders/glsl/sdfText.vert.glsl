@@ -1,6 +1,7 @@
 #include "chunks/horizon_culling_pars_vertex.glsl"
 #include "chunks/sprite_height_pars_vertex.glsl"
 #include "chunks/pixelToWorld.glsl"
+#include "chunks/quad_orientation.glsl"
 
 // Glyph instances have no `_batchid` attribute; the feature index rides in
 // the label data texture's STATE row instead (read into this local before
@@ -64,6 +65,14 @@ vec4 nvr_readLabel(int slot, int row) {
 uniform vec2 uSdfAtlasSize;
 uniform vec2 uColorAtlasSize;
 uniform bool uSizeInMeters;
+// Material-level orientation defaults. Per-feature overrides arrive through
+// the batch data texture (USE_BATCH_ORIENTATION / USE_BATCH_ROTATION), so
+// these are what a label uses until something writes its own value.
+uniform bool uFlatFacing;
+uniform bool uRotateWithCamera;
+// Radians, clockwise seen from the front; converted from the material's
+// degrees on the CPU.
+uniform float uRotation;
 uniform float uFovRad;
 uniform float uScreenHeightPx;
 uniform vec2 uCenter;
@@ -124,6 +133,9 @@ void main() {
     float batchSize = -1.0;
     float nvr_vShow = 1.0;
     float nvr_vOpacity = 1.0;
+    float nvr_batchRotation = uRotation;
+    bool nvr_batchFlatFacing = uFlatFacing;
+    bool nvr_batchRotateWithCamera = uRotateWithCamera;
     vColor = vec3(1.0);
     #include "chunks/batch_texture_vertex.glsl"
 
@@ -174,23 +186,65 @@ void main() {
         scaleFactor = nvr_pxToWorld(fontSize, uFovRad, uScreenHeightPx, vec3(0.0, 0.0, mvPosition.z), vec3(0.0, 0.0, 0.0));
     }
 
+    vec3 axisRight;
+    vec3 axisUp;
+    nvr_quadBasis(
+        absTransformed,
+        nvr_batchFlatFacing,
+        nvr_batchRotateWithCamera,
+        nvr_batchRotation,
+        axisRight,
+        axisUp
+    );
+
     vec2 center = clamp(uCenter, vec2(-0.5), vec2(0.5)); // Ensure center is within the bounds of the sprite
 
     vIsColor = glyphKind == GLYPH_KIND_COLOR ? 1 : 0;
+    // Meters to push a background strip away from the camera (below).
+    float bgDepthPush = 0.0;
 
     if (isBackground) {
         vBackGroundSprite = 1;
 
         float bgHeight = bgYBounds.y - bgYBounds.x;
-        vec2 bgLocalPos = (position.xy + vec2(0.5)) * vec2(textWidth, bgHeight) + vec2(0.0, bgYBounds.x);
+        // The background is drawn as side-by-side strips so a flat label's
+        // box bends with the globe like its glyphs do (see
+        // backgroundSliceCount in glyphBuffers.ts). A strip's span of the box
+        // rides in glyphOffset.x (start) / glyphSize.x (end); mix() returns
+        // exactly those at the corners, so neighbouring strips share edges.
+        float bgU = mix(glyphOffset.x, glyphSize.x, position.x + 0.5);
+        vec2 bgLocalPos = vec2(bgU, position.y + 0.5) * vec2(textWidth, bgHeight) + vec2(0.0, bgYBounds.x);
         bgLocalPos.x -= center.x * textWidth;
         bgLocalPos.y -= center.y * textHeight;
 
-        vec4 newMvPosition = mvPosition + vec4(bgLocalPos * scaleFactor, 0.0, 0.0);
+        vec4 newMvPosition = mvPosition + vec4(nvr_quadOffset(
+            bgLocalPos * scaleFactor,
+            axisRight,
+            axisUp,
+            nvr_batchFlatFacing,
+            absTransformed,
+            addHeight
+        ), 0.0);
 
         gl_Position = projectionMatrix * newMvPosition;
 
-        vAtlasUv = uv;
+        // Glyph outlines draw over the background only because they sit at
+        // the same depth (see the depth notes in sdfText.frag.glsl). Once a
+        // flat label is wrapped onto the globe, a glyph and the strip under it
+        // are chords with different endpoints, and wherever the glyph dips
+        // below the strip its outline loses the depth test. Push the strip
+        // back by twice its chord's sagitta, s^2 / 8R, which bounds that
+        // mismatch (a strip is about two glyphs wide). It is zero for an
+        // upright label and vanishes at street scale.
+        if (nvr_batchFlatFacing) {
+            float stripWidth = (glyphSize.x - glyphOffset.x) * textWidth * scaleFactor;
+            float radius = max(length(absTransformed) + addHeight, 1.0);
+            bgDepthPush = stripWidth * stripWidth / (4.0 * radius);
+        }
+
+        // The fragment shader draws fill and border from this UV alone, so
+        // remapping it to the strip's span keeps the split pixel-identical.
+        vAtlasUv = vec2(bgU, uv.y);
         vBackGroundRatio = textWidth / bgHeight; // Pass the aspect ratio of the background sprite to the fragment shader for proper corner radius scaling
     } else {
         vBackGroundSprite = 0;
@@ -204,9 +258,16 @@ void main() {
         localPos.x -= center.x * textWidth;
         localPos.y -= center.y * textHeight;
 
-        // Apply billboard transform (screen-aligned, scaled)
-        vec4 delta = vec4(localPos * scaleFactor, 0.0, 0.0);
-        vec4 newMvPosition = mvPosition + delta;
+        // Lay the glyph out in the label's basis (see nvr_quadBasis), scaled,
+        // and wrapped onto the globe when flat (see nvr_quadOffset).
+        vec4 newMvPosition = mvPosition + vec4(nvr_quadOffset(
+            localPos * scaleFactor,
+            axisRight,
+            axisUp,
+            nvr_batchFlatFacing,
+            absTransformed,
+            addHeight
+        ), 0.0);
 
         gl_Position = projectionMatrix * newMvPosition;
 
@@ -219,5 +280,7 @@ void main() {
         vAtlasUv = mix(vAtlasUvMin, vAtlasUvMax, uv);
     }
 
-    vFragDepth = gl_Position.w + 1.0;
+    // vFragDepth is view distance in meters (log-encoded in the fragment
+    // shader), so the push is a plain distance along the view ray.
+    vFragDepth = gl_Position.w + 1.0 + bgDepthPush;
 }

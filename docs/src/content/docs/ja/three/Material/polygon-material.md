@@ -361,9 +361,9 @@ import { Color } from "@navaramap/three";
 
 **Type:** `number | undefined`
 
-**Description:** ポストプロセス用の反射率（粗さ）を指定します。0.0 から 1.0 の範囲で指定します。
+**Description:** SSR や大気遠近法の鏡面反射項などのポストプロセスで使う粗さを指定します。0.0 から 1.0 の範囲で指定し、0.0 は鏡面です。
 
-**Default:** `undefined`
+**Default:** `0.44`
 
 **Example:**
 

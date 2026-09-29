@@ -43,8 +43,8 @@ export type GBufferOptions = {
   /**
    * The view-space normal buffer (RG=octahedral normal, B=metalness or
    * reflectivity, A=roughness *and* the blend factor). Required by every
-   * normal-reading effect (aerial perspective, SSR, fog light) and, via
-   * {@link globeNormal}, by draped meshes.
+   * normal-reading effect (aerial perspective, SSR, fog light) and,
+   * via {@link globeNormal}, by draped meshes.
    */
   normal?: boolean;
   /**
@@ -59,8 +59,9 @@ export type GBufferOptions = {
   emissive?: boolean;
   /**
    * The shadow buffer (R=directional/CSM shadow amount, 0=lit,
-   * 1=fully shadowed). No built-in effect requires it – declare it from a
-   * custom effect's `requiredBuffers` to read per-pixel shadowing.
+   * 1=fully shadowed). Required by the aerial perspective's `shadow`
+   * option; a custom effect reads per-pixel shadowing by declaring it in
+   * `requiredBuffers`.
    */
   shadow?: boolean;
   /**
@@ -207,6 +208,14 @@ export function computeGBufferDefines(
   }
   return defines;
 }
+
+/**
+ * Default `roughness` of materials without a PBR roughness of their own
+ * (polygons, tile slots). They shade with Phong at shininess 50; inverting
+ * `roughnessToSpecularPower` (`shininess = 2 / roughness^4 - 2`) gives
+ * `sqrt(sqrt(2 / 52))`.
+ */
+export const GBUFFER_PHONG_ROUGHNESS = Math.sqrt(Math.sqrt(2 / 52));
 
 // Write snippets. Exported rather than inlined at the injection sites because
 // enhancers and the tile mesh locate the injected code by exact string match,

@@ -85,15 +85,29 @@ type WithColorSupport<T> = ConvertColorFields<T>;
 export type SourceGeometryType = "point" | "line" | "polygon";
 
 /**
- * Helper type to narrow the generated `geometryTypes?: string[]` material
- * fields to the {@link SourceGeometryType} literal union.
+ * Whether a label or sprite stands up (`"upright"`, the default) or lies on
+ * the globe surface around its anchor (`"flat"`), following its curvature so
+ * it reads as painted on the surface. The value of `textFacing` / `billboardFacing` / `pointFacing`.
+ * Pair with `rotateWithCamera`, which chooses whether the quad turns to
+ * follow the camera or stays frozen in the anchor's east-north-up frame.
  */
-type ConvertGeometryTypeFields<T> = {
+export type Facing = "upright" | "flat";
+
+/** @deprecated Use {@link Facing}, which covers all three material types. */
+export type TextFacing = Facing;
+
+/**
+ * Helper type to narrow the material fields that wasm-bindgen generates as
+ * bare `string`s to their literal unions. One recursive pass covers them all.
+ */
+type ConvertStringUnionFields<T> = {
   [K in keyof T]: K extends "geometryTypes"
     ? SourceGeometryType[] | Extract<T[K], undefined>
-    : T[K] extends object | undefined
-      ? ConvertGeometryTypeFields<T[K]> | Extract<T[K], undefined>
-      : T[K];
+    : K extends "textFacing" | "billboardFacing" | "pointFacing"
+      ? Facing | Extract<T[K], undefined>
+      : T[K] extends object | undefined
+        ? ConvertStringUnionFields<T[K]> | Extract<T[K], undefined>
+        : T[K];
 };
 
 /**
@@ -108,7 +122,7 @@ export type SourceLayerBase<Layer extends { source?: string | undefined }> =
   };
 
 type VectorLayerBase = WithColorSupport<
-  ConvertGeometryTypeFields<Layer<VectorLayerDescription & { type: "vector" }>>
+  ConvertStringUnionFields<Layer<VectorLayerDescription & { type: "vector" }>>
 >;
 
 /**
