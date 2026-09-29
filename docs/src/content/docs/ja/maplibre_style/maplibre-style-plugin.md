@@ -1,5 +1,5 @@
 ---
-title: MapLibreStylePlugin
+title: Usage
 description: Navara の 3D 地球儀上で MapLibre Style 仕様を解析してレンダリング
 sidebar:
   order: 2
@@ -43,9 +43,12 @@ view.attribution?.add([
 静的な JSON ではなく、リモート URL からスタイルを読み込みます：
 
 ```typescript
+import ThreeView from "@navaramap/three";
+import { MapLibreStylePlugin } from "@navaramap/maplibre-style";
+
+const view = new ThreeView({ container });
 const styleUrl = "https://example.com/style.json";
-const plugin = new MapLibreStylePlugin(styleUrl);
-view.addPlugin(plugin);
+view.addPlugin(new MapLibreStylePlugin(styleUrl));
 await view.init();
 ```
 
@@ -72,11 +75,11 @@ view.addPlugin(plugin);
 await view.init();
 ```
 
-#### 複数のフォント
-
-異なるシンボルレイヤー用に複数のフォントを読み込みます：
+複数のフォントの場合：
 
 ```typescript
+import { MapLibreStylePlugin, fetchFontStyleOverrides } from "@navaramap/maplibre-style";
+
 const [openSans, roboto] = await Promise.all([
   fetchFontStyleOverrides("Open Sans", googleFontsUrl1),
   fetchFontStyleOverrides("Roboto", googleFontsUrl2),
@@ -90,53 +93,9 @@ const plugin = new MapLibreStylePlugin(style, {
     },
   },
 });
-```
-
-#### レイヤーでのフォント選択
-
-シンボルレイヤーは `text-font` を使用してフォントを選択します：
-
-```json
-{
-  "layout": {
-    "text-field": ["get", "name"],
-    "text-font": ["Open Sans"]
-  }
-}
-```
-
-フォールバックフォントの場合、複数のオプションを提供します：
-
-```json
-{
-  "layout": {
-    "text-font": ["Noto Sans CJK", "Open Sans", "Arial"]
-  }
-}
-```
-
-**注:** `glyphs` プロパティはサポートされていません。代わりにスタイルオーバーライド経由で `font-faces` を使用してください。
-
-### カスタム TileJsonPlugin を使用する
-
-`TileJsonPlugin` インスタンスを複数のプラグイン間で共有します：
-
-```typescript
-import { TileJsonPlugin } from "@navaramap/three-plugins";
-import { MapLibreStylePlugin } from "@navaramap/maplibre-style";
-
-const tileJsonPlugin = new TileJsonPlugin();
-
-const plugin = new MapLibreStylePlugin(style, {
-  tileJsonPlugin,
-});
-
-view.addPlugin(tileJsonPlugin);
 view.addPlugin(plugin);
 await view.init();
 ```
-
-`tileJsonPlugin` を提供すると、プラグインは独自のインスタンスを作成せず、破棄もしません。
 
 ### スタイルオーバーライド
 
@@ -160,75 +119,7 @@ const plugin = new MapLibreStylePlugin(style, {
 
 **注:** 現在、`font-faces` オーバーライドのみがサポートされています。他のプロパティ（`layers` や `sources` など）はマージされません。
 
-### Zoom 依存スタイル
-
-プラグインは zoom 依存式を自動的に処理し、zoom 変更時にフィーチャーを再評価します：
-
-```typescript
-const style = {
-  version: 8,
-  sources: {
-    // ... ソース
-  },
-  layers: [
-    {
-      id: "buildings",
-      type: "fill-extrusion",
-      source: "vector-source",
-      "source-layer": "buildings",
-      paint: {
-        // 高さは zoom に応じて増加
-        "fill-extrusion-height": [
-          "interpolate",
-          ["linear"],
-          ["zoom"],
-          15,
-          0,
-          16,
-          ["get", "height"],
-        ],
-        // 色は zoom に応じて変化
-        "fill-extrusion-color": [
-          "interpolate",
-          ["linear"],
-          ["zoom"],
-          14,
-          "#cccccc",
-          16,
-          "#888888",
-        ],
-      },
-    },
-  ],
-};
-```
-
-フィーチャーは zoom が 0.1 以上変化すると自動的に再評価され、スムーズなフェードトランジションが適用されます。
-
-### 背景レイヤー
-
-背景レイヤーは地球の色と不透明度にマッピングされます：
-
-```typescript
-const style = {
-  version: 8,
-  sources: {},
-  layers: [
-    {
-      id: "background",
-      type: "background",
-      paint: {
-        "background-color": "#000033",
-        "background-opacity": 0.8,
-      },
-    },
-  ],
-};
-```
-
-複数の背景レイヤーが存在する場合、最後に適用可能なレイヤー（`minzoom`/`maxzoom` と `visibility` を考慮）が使用されます。背景は式を使用して zoom レベルに応じて変化できます。
-
-### 完全な例
+## 完全な例
 
 ```typescript
 import ThreeView from "@navaramap/three";
@@ -519,25 +410,49 @@ type FontFaceSpecification = {
 4. **使用** - プラグインがアクティブになりスタイルを管理
 5. **破棄** - `plugin.dispose()` がリソースをクリーンアップ
 
-## パフォーマンス
+## 完全な例
 
-### 背景レイヤーのキャッシュ
+```typescript
+import ThreeView from "@navaramap/three";
+import { DefaultPlugin } from "@navaramap/three-default-plugin";
+import { TileJsonPlugin } from "@navaramap/three-plugins";
+import {
+  MapLibreStylePlugin,
+  fetchFontStyleOverrides,
+} from "@navaramap/maplibre-style";
 
-- 評価器は一度コンパイルされキャッシュされます
-- アクティブレイヤーまたはペイントが変更されたときのみ再コンパイル
-- Zoom 依存性の検出により不要な再評価をスキップ
+// フォントを読み込む
+const fontOverrides = await fetchFontStyleOverrides(
+  "Open Sans",
+  "https://fonts.googleapis.com/css2?family=Open+Sans:wght@600&display=swap",
+);
 
-### Zoom 変更検出
+// スタイルを読み込む
+const style = await fetch("https://example.com/style.json").then(r => r.json());
 
-- フィーチャーは zoom が 0.1 以上変化したときのみ再評価
-- Zoom 依存性のないレイヤーは再評価をスキップ
-- スムーズなフェードトランジションにより視覚的な不連続性を最小化
+// プラグインを作成
+const view = new ThreeView({ container });
+const tileJsonPlugin = new TileJsonPlugin();
+const maplibrePlugin = new MapLibreStylePlugin(style, {
+  overrides: fontOverrides,
+  tileJsonPlugin,
+});
 
-### 式のコンパイル
+// プラグインを追加
+view.addPlugin(new DefaultPlugin());
+view.addPlugin(tileJsonPlugin);
+view.addPlugin(maplibrePlugin);
 
-- 式は初期化時にレイヤーごとに一度コンパイル
-- 評価器はレイヤー内のすべてのフィーチャーで再利用
-- キャッシュされた評価器はペイントプロパティが変更されるまで持続
+await view.init();
+
+// アトリビューションを追加
+view.attribution?.add([
+  {
+    attribution: "© OpenStreetMap contributors",
+    attributionUrl: "https://www.openstreetmap.org/copyright",
+  },
+]);
+```
 
 ## 関連リソース
 

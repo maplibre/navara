@@ -1,0 +1,51 @@
+---
+import supportedStyles from "../content/docs/maplibre_style/supported.json";
+
+interface Props {
+  category: "layer" | "source" | "expression" | "root";
+}
+
+const { category } = Astro.props;
+
+const MAPLIBRE_SPEC_BASE = "https://maplibre.org/maplibre-style-spec";
+
+// Category-specific URL paths
+const categoryPaths: Record<string, string> = {
+  layer: "layers",
+  source: "sources",
+  expression: "expressions",
+  root: "root",
+};
+
+const categoryPath = categoryPaths[category];
+const items = supportedStyles[category] || {};
+---
+
+<table>
+  <thead>
+    <tr>
+      <th>Name</th>
+      <th>Status</th>
+      <th>Note</th>
+    </tr>
+  </thead>
+  <tbody>
+    {Object.entries(items).map(([name, config]) => {
+      const status = typeof config === "string" ? config : (config as any).status;
+      const note = typeof config === "object" ? (config as any).note : "";
+      const url = `${MAPLIBRE_SPEC_BASE}/${categoryPath}/#${name}`;
+
+      return (
+        <tr>
+          <td>
+            <a href={url} target="_blank" rel="noopener noreferrer">
+              {name}
+            </a>
+          </td>
+          <td>{status}</td>
+          <td>{note}</td>
+        </tr>
+      );
+    })}
+  </tbody>
+</table>

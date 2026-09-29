@@ -1,0 +1,114 @@
+---
+title: Supported Features
+description: Complete list of supported MapLibre Style features and properties.
+sidebar:
+  order: 4
+---
+
+import MapLibreSupportTable from "@components/MapLibreSupportTable.astro";
+
+This page lists all MapLibre Style Spec features supported by `@navaramap/maplibre-style`.
+
+For complete API documentation of each feature, see the [MapLibre Style Specification](https://maplibre.org/maplibre-style-spec/).
+
+## Layer Types
+
+<MapLibreSupportTable category="layer" />
+
+**Legend:**
+- ✅ Supported
+- ⚠️ Partial support (basic functionality only)
+- ❌ Not supported
+
+### Property-Level Support
+
+For detailed property support within each layer type, see the [supported.json](https://github.com/navaramap/navara/blob/main/docs/src/content/docs/maplibre_style/supported.json) file.
+
+**Common limitations:**
+- Pattern properties (`fill-pattern`, `line-pattern`) are not supported
+- Translation properties are not supported
+- Many advanced styling properties are parsed but not applied
+
+## Source Types
+
+<MapLibreSupportTable category="source" />
+
+**Notes:**
+- Vector and raster sources support both direct `tiles` URLs and TileJSON `url` references
+- Raster-DEM supports `terrarium` and `mapbox` encodings
+
+## Expression Support
+
+<MapLibreSupportTable category="expression" />
+
+For complete expression documentation, see [MapLibre Expressions](https://maplibre.org/maplibre-style-spec/expressions/).
+
+**Features:**
+- Uses current camera zoom for all features
+- Features automatically re-evaluated when zoom changes > 0.1
+- Smooth fade transitions for show/hide on zoom changes
+
+**Not supported:**
+- Camera expressions (`pitch`, `distance-from-center`)
+
+## Other Features
+
+<MapLibreSupportTable category="root" />
+
+**Terrain:**
+- 3D terrain rendering from raster-DEM sources
+- Supports `source` and `exaggeration` properties
+
+**Font Faces:**
+- Font configuration for symbol layers
+- See [Font Configuration](../maplibre-style-plugin/#with-font-configuration) for details
+
+## Performance Optimizations
+
+### Background Layer Caching
+
+- Evaluators are compiled once and cached
+- Only recompiled when the active layer or paint changes
+- Zoom dependency detection skips unnecessary re-evaluations
+
+### Zoom Change Detection
+
+- Features only re-evaluated when zoom changes > 0.1
+- Layers without zoom dependencies skip re-evaluation
+- Smooth fade transitions minimize visual discontinuities
+
+### Expression Compilation
+
+- Expressions compiled once per layer at initialization
+- Evaluators reused for all features in the layer
+- Cached evaluators persist until paint properties change
+
+## Known Limitations
+
+### Sources
+
+- Multiple tile URLs: Only the first URL in a `tiles` array is used (load spreading not supported)
+
+### Layers
+
+- Limited property support: Many MapLibre Style Spec properties not implemented
+- No patterns or sprites: `fill-pattern`, `line-pattern`, sprite-based icons not supported
+- No advanced line styling: Dasharray, gradient, caps, joins not implemented
+- Limited raster support: Basic display only, no paint properties
+- No heatmap layers: Not yet implemented
+- No sky layers: Not implemented
+
+### Expressions
+
+- Camera expressions: `pitch`, `distance-from-center`, etc. not available
+
+### Symbol Layers
+
+- Text halo limitations: `text-halo-color` and `text-halo-width` evaluated once at layer construction, not per-feature or zoom-reactive
+- No text rotation: Limited support for rotated text
+- No symbol sorting: z-order not controlled by `symbol-sort-key`
+- Text rendering differences: SDF text may differ slightly from MapLibre GL JS
+
+### Performance
+
+- Large feature counts: Symbol layers with thousands of features may impact performance on lower-end devices

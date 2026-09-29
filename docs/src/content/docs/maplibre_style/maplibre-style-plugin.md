@@ -1,5 +1,5 @@
 ---
-title: MapLibreStylePlugin
+title: Usage
 description: Parse and render MapLibre Style specifications on Navara's 3D globe.
 sidebar:
   order: 2
@@ -43,9 +43,12 @@ view.attribution?.add([
 Load a style from a remote URL instead of a static JSON:
 
 ```typescript
+import ThreeView from "@navaramap/three";
+import { MapLibreStylePlugin } from "@navaramap/maplibre-style";
+
+const view = new ThreeView({ container });
 const styleUrl = "https://example.com/style.json";
-const plugin = new MapLibreStylePlugin(styleUrl);
-view.addPlugin(plugin);
+view.addPlugin(new MapLibreStylePlugin(styleUrl));
 await view.init();
 ```
 
@@ -72,11 +75,11 @@ view.addPlugin(plugin);
 await view.init();
 ```
 
-#### Multiple Fonts
-
-Load multiple fonts for different symbol layers:
+For multiple fonts:
 
 ```typescript
+import { MapLibreStylePlugin, fetchFontStyleOverrides } from "@navaramap/maplibre-style";
+
 const [openSans, roboto] = await Promise.all([
   fetchFontStyleOverrides("Open Sans", googleFontsUrl1),
   fetchFontStyleOverrides("Roboto", googleFontsUrl2),
@@ -90,53 +93,9 @@ const plugin = new MapLibreStylePlugin(style, {
     },
   },
 });
-```
-
-#### Font Selection in Layers
-
-Symbol layers use `text-font` to select fonts:
-
-```json
-{
-  "layout": {
-    "text-field": ["get", "name"],
-    "text-font": ["Open Sans"]
-  }
-}
-```
-
-For fallback fonts, provide multiple options:
-
-```json
-{
-  "layout": {
-    "text-font": ["Noto Sans CJK", "Open Sans", "Arial"]
-  }
-}
-```
-
-**Note:** The `glyphs` property is not supported. Use `font-faces` via style overrides instead.
-
-### With Custom TileJsonPlugin
-
-Share a `TileJsonPlugin` instance across multiple plugins:
-
-```typescript
-import { TileJsonPlugin } from "@navaramap/three-plugins";
-import { MapLibreStylePlugin } from "@navaramap/maplibre-style";
-
-const tileJsonPlugin = new TileJsonPlugin();
-
-const plugin = new MapLibreStylePlugin(style, {
-  tileJsonPlugin,
-});
-
-view.addPlugin(tileJsonPlugin);
 view.addPlugin(plugin);
 await view.init();
 ```
-
-When `tileJsonPlugin` is provided, the plugin will not create its own instance and will not dispose it.
 
 ### Style Overrides
 
@@ -159,118 +118,6 @@ const plugin = new MapLibreStylePlugin(style, {
 ```
 
 **Note:** Currently, only `font-faces` overrides are supported. Other properties (like `layers` or `sources`) are not merged.
-
-### Zoom-Dependent Styles
-
-The plugin automatically handles zoom-dependent expressions and re-evaluates features when zoom changes:
-
-```typescript
-const style = {
-  version: 8,
-  sources: {
-    // ... sources
-  },
-  layers: [
-    {
-      id: "buildings",
-      type: "fill-extrusion",
-      source: "vector-source",
-      "source-layer": "buildings",
-      paint: {
-        // Height grows with zoom
-        "fill-extrusion-height": [
-          "interpolate",
-          ["linear"],
-          ["zoom"],
-          15,
-          0,
-          16,
-          ["get", "height"],
-        ],
-        // Color changes with zoom
-        "fill-extrusion-color": [
-          "interpolate",
-          ["linear"],
-          ["zoom"],
-          14,
-          "#cccccc",
-          16,
-          "#888888",
-        ],
-      },
-    },
-  ],
-};
-```
-
-Features are automatically re-evaluated when zoom changes by more than 0.1, with smooth fade transitions.
-
-### Background Layers
-
-Background layers are mapped to the globe's color and opacity:
-
-```typescript
-const style = {
-  version: 8,
-  sources: {},
-  layers: [
-    {
-      id: "background",
-      type: "background",
-      paint: {
-        "background-color": "#000033",
-        "background-opacity": 0.8,
-      },
-    },
-  ],
-};
-```
-
-When multiple background layers exist, the last applicable layer (respecting `minzoom`/`maxzoom` and `visibility`) is used. Background can vary with zoom level using expressions.
-
-### Complete Example
-
-```typescript
-import ThreeView from "@navaramap/three";
-import { DefaultPlugin } from "@navaramap/three-default-plugin";
-import { TileJsonPlugin } from "@navaramap/three-plugins";
-import {
-  MapLibreStylePlugin,
-  fetchFontStyleOverrides,
-} from "@navaramap/maplibre-style";
-
-// Load fonts
-const fontOverrides = await fetchFontStyleOverrides(
-  "Open Sans",
-  "https://fonts.googleapis.com/css2?family=Open+Sans:wght@600&display=swap",
-);
-
-// Load style
-const style = await fetch("https://example.com/style.json").then(r => r.json());
-
-// Create plugins
-const view = new ThreeView({ container });
-const tileJsonPlugin = new TileJsonPlugin();
-const maplibrePlugin = new MapLibreStylePlugin(style, {
-  overrides: fontOverrides,
-  tileJsonPlugin,
-});
-
-// Add plugins
-view.addPlugin(new DefaultPlugin());
-view.addPlugin(tileJsonPlugin);
-view.addPlugin(maplibrePlugin);
-
-await view.init();
-
-// Add attribution
-view.attribution?.add([
-  {
-    attribution: "© OpenStreetMap contributors",
-    attributionUrl: "https://www.openstreetmap.org/copyright",
-  },
-]);
-```
 
 ## Constructor
 
@@ -519,25 +366,49 @@ The plugin follows the standard Navara plugin lifecycle:
 4. **Usage** - The plugin is now active and managing the style
 5. **Disposal** - `plugin.dispose()` cleans up resources
 
-## Performance
+## Complete Example
 
-### Background Layer Caching
+```typescript
+import ThreeView from "@navaramap/three";
+import { DefaultPlugin } from "@navaramap/three-default-plugin";
+import { TileJsonPlugin } from "@navaramap/three-plugins";
+import {
+  MapLibreStylePlugin,
+  fetchFontStyleOverrides,
+} from "@navaramap/maplibre-style";
 
-- Evaluators are compiled once and cached
-- Only recompiled when the active layer or paint changes
-- Zoom dependency detection skips unnecessary re-evaluations
+// Load fonts
+const fontOverrides = await fetchFontStyleOverrides(
+  "Open Sans",
+  "https://fonts.googleapis.com/css2?family=Open+Sans:wght@600&display=swap",
+);
 
-### Zoom Change Detection
+// Load style
+const style = await fetch("https://example.com/style.json").then(r => r.json());
 
-- Features only re-evaluated when zoom changes > 0.1
-- Layers without zoom dependencies skip re-evaluation
-- Smooth fade transitions minimize visual discontinuities
+// Create plugins
+const view = new ThreeView({ container });
+const tileJsonPlugin = new TileJsonPlugin();
+const maplibrePlugin = new MapLibreStylePlugin(style, {
+  overrides: fontOverrides,
+  tileJsonPlugin,
+});
 
-### Expression Compilation
+// Add plugins
+view.addPlugin(new DefaultPlugin());
+view.addPlugin(tileJsonPlugin);
+view.addPlugin(maplibrePlugin);
 
-- Expressions compiled once per layer at initialization
-- Evaluators reused for all features in the layer
-- Cached evaluators persist until paint properties change
+await view.init();
+
+// Add attribution
+view.attribution?.add([
+  {
+    attribution: "© OpenStreetMap contributors",
+    attributionUrl: "https://www.openstreetmap.org/copyright",
+  },
+]);
+```
 
 ## Related Resources
 

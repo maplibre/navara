@@ -1,0 +1,233 @@
+{
+  "layer": {
+    "fill": {
+      "status": "✅",
+      "note": "Partial support",
+      "paint": {
+        "fill-color": "✅",
+        "fill-opacity": "✅",
+        "fill-antialias": "❌",
+        "fill-outline-color": "❌",
+        "fill-translate": "❌",
+        "fill-translate-anchor": "❌",
+        "fill-pattern": "❌"
+      }
+    },
+    "fill-extrusion": {
+      "status": "✅",
+      "note": "Partial support",
+      "paint": {
+        "fill-extrusion-color": "✅",
+        "fill-extrusion-opacity": "✅",
+        "fill-extrusion-height": "✅",
+        "fill-extrusion-base": "✅",
+        "fill-extrusion-translate": "❌",
+        "fill-extrusion-translate-anchor": "❌",
+        "fill-extrusion-pattern": "❌",
+        "fill-extrusion-vertical-gradient": "❌"
+      }
+    },
+    "line": {
+      "status": "✅",
+      "note": "Partial support",
+      "paint": {
+        "line-color": "✅",
+        "line-opacity": "✅",
+        "line-width": "✅",
+        "line-gap-width": "❌",
+        "line-offset": "❌",
+        "line-blur": "❌",
+        "line-dasharray": "❌",
+        "line-pattern": "❌",
+        "line-gradient": "❌"
+      },
+      "layout": {
+        "line-cap": "❌",
+        "line-join": "❌",
+        "line-miter-limit": "❌",
+        "line-round-limit": "❌"
+      }
+    },
+    "circle": {
+      "status": "✅",
+      "note": "Partial support",
+      "paint": {
+        "circle-color": "✅",
+        "circle-opacity": "✅",
+        "circle-radius": "✅",
+        "circle-blur": "❌",
+        "circle-stroke-color": "❌",
+        "circle-stroke-opacity": "❌",
+        "circle-stroke-width": "❌",
+        "circle-translate": "❌",
+        "circle-translate-anchor": "❌",
+        "circle-pitch-scale": "❌",
+        "circle-pitch-alignment": "❌"
+      }
+    },
+    "symbol": {
+      "status": "✅",
+      "note": "Partial support",
+      "paint": {
+        "icon-color": "✅",
+        "icon-opacity": "✅",
+        "text-color": "✅",
+        "text-opacity": "✅",
+        "text-halo-color": "⚠️",
+        "text-halo-width": "⚠️",
+        "text-halo-blur": "❌",
+        "icon-halo-color": "❌",
+        "icon-halo-width": "❌",
+        "icon-halo-blur": "❌",
+        "icon-translate": "❌",
+        "text-translate": "❌"
+      },
+      "layout": {
+        "icon-image": "✅",
+        "icon-size": "✅",
+        "text-field": "✅",
+        "text-size": "✅",
+        "text-font": "✅",
+        "text-anchor": "❌",
+        "icon-anchor": "❌",
+        "text-offset": "❌",
+        "icon-offset": "❌",
+        "text-rotate": "❌",
+        "icon-rotate": "❌",
+        "symbol-sort-key": "❌"
+      }
+    },
+    "raster": {
+      "status": "⚠️",
+      "note": "Basic display only",
+      "paint": {
+        "raster-opacity": "❌",
+        "raster-brightness-min": "❌",
+        "raster-brightness-max": "❌",
+        "raster-contrast": "❌",
+        "raster-saturation": "❌",
+        "raster-fade-duration": "❌",
+        "raster-hue-rotate": "❌",
+        "raster-resampling": "❌"
+      }
+    },
+    "hillshade": {
+      "status": "⚠️",
+      "note": "Basic rendering only",
+      "paint": {
+        "hillshade-illumination-direction": "❌",
+        "hillshade-illumination-anchor": "❌",
+        "hillshade-exaggeration": "❌",
+        "hillshade-shadow-color": "❌",
+        "hillshade-highlight-color": "❌",
+        "hillshade-accent-color": "❌"
+      }
+    },
+    "background": {
+      "status": "✅",
+      "paint": {
+        "background-color": "✅",
+        "background-opacity": "✅",
+        "background-pattern": "❌"
+      },
+      "layout": {
+        "visibility": "✅"
+      }
+    },
+    "sky": {
+      "status": "❌"
+    },
+    "heatmap": {
+      "status": "❌"
+    }
+  },
+  "source": {
+    "geojson": {
+      "status": "✅"
+    },
+    "vector": {
+      "status": "✅"
+    },
+    "raster": {
+      "status": "✅"
+    },
+    "raster-dem": {
+      "status": "✅",
+      "encoding": {
+        "terrarium": "✅",
+        "mapbox": "✅"
+      }
+    },
+    "image": {
+      "status": "❌"
+    },
+    "video": {
+      "status": "❌"
+    },
+    "canvas": {
+      "status": "❌"
+    }
+  },
+  "expression": {
+    "get": "✅",
+    "has": "✅",
+    "in": "✅",
+    "index-of": "✅",
+    "length": "✅",
+    "case": "✅",
+    "match": "✅",
+    "coalesce": "✅",
+    "to-boolean": "✅",
+    "to-number": "✅",
+    "to-string": "✅",
+    "to-color": "✅",
+    "array": "✅",
+    "literal": "✅",
+    "typeof": "✅",
+    "concat": "✅",
+    "upcase": "✅",
+    "downcase": "✅",
+    "+": "✅",
+    "-": "✅",
+    "*": "✅",
+    "/": "✅",
+    "%": "✅",
+    "^": "✅",
+    "sqrt": "✅",
+    "log10": "✅",
+    "ln": "✅",
+    "abs": "✅",
+    "ceil": "✅",
+    "floor": "✅",
+    "round": "✅",
+    "min": "✅",
+    "max": "✅",
+    "==": "✅",
+    "!=": "✅",
+    ">": "✅",
+    ">=": "✅",
+    "<": "✅",
+    "<=": "✅",
+    "!": "✅",
+    "all": "✅",
+    "any": "✅",
+    "zoom": "✅",
+    "geometry-type": "✅",
+    "id": "✅",
+    "properties": "✅",
+    "pitch": "❌",
+    "distance-from-center": "❌"
+  },
+  "root": {
+    "terrain": {
+      "status": "✅",
+      "properties": {
+        "source": "✅",
+        "exaggeration": "✅"
+      }
+    },
+    "font-faces": {
+      "status": "✅"
+    }
+  }
+}
