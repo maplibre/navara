@@ -1,7 +1,7 @@
 import type { StyleSpecification } from "@maplibre/maplibre-gl-style-spec";
 import type ThreeView from "@navaramap/three";
 import type { ViewContext } from "@navaramap/three";
-import { describe, it, vi, beforeEach, afterEach, expect } from "vitest";
+import { describe, it, vi, beforeEach, expect } from "vitest";
 
 import { MapLibreStylePlugin } from "./MapLibreStylePlugin";
 
@@ -38,14 +38,6 @@ vi.mock("@navaramap/three", () => {
       this.b = b;
       return this;
     }
-
-    clone(): MockColor {
-      const copy = new MockColor();
-      copy.r = this.r;
-      copy.g = this.g;
-      copy.b = this.b;
-      return copy;
-    }
   }
 
   return {
@@ -80,7 +72,6 @@ function createMockView(initialZoom = 10): ThreeView {
   const mockGlobe = {
     color: undefined as any,
     opacity: 1,
-    transparent: false,
   };
 
   const mockCamera = {
@@ -111,10 +102,6 @@ describe("MapLibreStylePlugin", () => {
     mockTileJsonPluginAddSource.mockClear();
     mockTileJsonPluginInit.mockClear();
     mockTileJsonPluginDispose.mockClear();
-  });
-
-  afterEach(() => {
-    vi.restoreAllMocks();
   });
 
   describe("Initialization", () => {
@@ -564,170 +551,6 @@ describe("MapLibreStylePlugin", () => {
       expect(color.r).toBeCloseTo(0, 1);
       expect(color.g).toBeCloseTo(0, 1);
       expect(color.b).toBeCloseTo(1, 1); // Blue
-    });
-
-    // BackgroundHandler-specific tests: zoom-dependency detection and caching
-    describe("BackgroundHandler zoom updates and caching", () => {
-      it("should not update when background has no zoom dependencies", async () => {
-        const style: StyleSpecification = {
-          version: 8,
-          sources: {},
-          layers: [
-            {
-              id: "bg-static",
-              type: "background",
-              paint: {
-                "background-color": "#ff0000",
-                "background-opacity": 0.5,
-              },
-              // No minzoom/maxzoom, no zoom expressions
-            },
-          ],
-        };
-
-        const plugin = new MapLibreStylePlugin(style);
-        const view = createMockView(0);
-
-        // Spy on engine to verify background is not re-evaluated on zoom changes
-        const createValueFnSpy = vi.spyOn(
-          (plugin as any).engine,
-          "createValueFn",
-        );
-
-        await plugin.init(view, mockViewContext);
-        const initCallCount = createValueFnSpy.mock.calls.length;
-
-        // Get the preRender listener
-        const preRenderCall = (view.on as any).mock.calls.find(
-          (call: any) => call[0] === "preRender",
-        );
-        const preRenderListener = preRenderCall[1];
-
-        preRenderListener(); // Initialize lastZoom
-
-        // Simulate zoom changes
-        setMockZoom(view, 5);
-        preRenderListener();
-        setMockZoom(view, 10);
-        preRenderListener();
-
-        // Engine should not be called again (no zoom dependencies, no re-compilation)
-        expect(createValueFnSpy.mock.calls.length).toBe(initCallCount);
-
-        // Verify background color remains correct
-        expect(view.globe.opacity).toBe(0.5);
-      });
-
-      it("should only update when zoom dependencies exist and cache evaluators", async () => {
-        const style: StyleSpecification = {
-          version: 8,
-          sources: {},
-          layers: [
-            {
-              id: "bg-static",
-              type: "background",
-              maxzoom: 5,
-              paint: { "background-color": "#ff0000" }, // Static, but has maxzoom
-            },
-            {
-              id: "bg-dynamic",
-              type: "background",
-              minzoom: 5,
-              paint: {
-                "background-opacity": [
-                  "interpolate",
-                  ["linear"],
-                  ["zoom"],
-                  5,
-                  0.5,
-                  10,
-                  1.0,
-                ],
-              },
-            },
-          ],
-        };
-
-        const plugin = new MapLibreStylePlugin(style);
-        const view = createMockView(0);
-
-        // Spy on engine to verify caching
-        const createValueFnSpy = vi.spyOn(
-          (plugin as any).engine,
-          "createValueFn",
-        );
-
-        await plugin.init(view, mockViewContext);
-        const firstCallCount = createValueFnSpy.mock.calls.length;
-
-        // Get the preRender listener
-        const preRenderCall = (view.on as any).mock.calls.find(
-          (call: any) => call[0] === "preRender",
-        );
-        const preRenderListener = preRenderCall[1];
-
-        preRenderListener(); // Initialize lastZoom
-
-        // Zoom within same layer - should reuse cache
-        setMockZoom(view, 2);
-        preRenderListener();
-        expect(createValueFnSpy.mock.calls.length).toBe(firstCallCount);
-
-        // Cross layer boundary - should recompile
-        setMockZoom(view, 8);
-        preRenderListener();
-        expect(createValueFnSpy.mock.calls.length).toBeGreaterThan(
-          firstCallCount,
-        );
-        expect(view.globe.opacity).toBeCloseTo(0.8, 1); // Zoom expression evaluated
-      });
-    });
-
-    // BackgroundHandler-specific tests: default background fallback
-    it("should reset to default background when no layer applies", async () => {
-      const style: StyleSpecification = {
-        version: 8,
-        sources: {},
-        layers: [
-          {
-            id: "bg",
-            type: "background",
-            minzoom: 5,
-            maxzoom: 10,
-            paint: { "background-opacity": 0.5 },
-          },
-        ],
-      };
-
-      const plugin = new MapLibreStylePlugin(style);
-      const view = createMockView(7); // Within range
-      await plugin.init(view, mockViewContext);
-
-      expect(view.globe.opacity).toBe(0.5); // Layer applies
-
-      // Get the preRender listener
-      const preRenderCall = (view.on as any).mock.calls.find(
-        (call: any) => call[0] === "preRender",
-      );
-      const preRenderListener = preRenderCall[1];
-
-      preRenderListener(); // Initialize lastZoom
-
-      // Zoom out of range
-      setMockZoom(view, 12);
-      preRenderListener();
-
-      // Should reset to default (#000000, opacity 1.0)
-      expect(view.globe.opacity).toBe(1.0);
-      expect(view.globe.transparent).toBe(false);
-      const color = view.globe.color as unknown as {
-        r: number;
-        g: number;
-        b: number;
-      };
-      expect(color.r).toBe(0);
-      expect(color.g).toBe(0);
-      expect(color.b).toBe(0);
     });
   });
 

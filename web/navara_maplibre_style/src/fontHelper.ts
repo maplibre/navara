@@ -237,16 +237,16 @@ export function convertFontFacesToFontFamilies(
 }
 
 /**
- * Convert Navara FontFamily objects to MapLibre Style font-faces format.
+ * Convert Navara FontFamily to MapLibre Style font-faces format.
  * This uses the standard MapLibre `font-faces` field.
  *
  * MapLibre supports multiple font files per family (for different unicode ranges),
  * which maps perfectly to Navara's FontFamily.faces array.
  *
- * @param fontFamilies - Array of FontFamily objects to include in the style
+ * @param fontFamilies - One or more FontFamily objects to include in the style
  * @returns StyleSpecification overrides with font-faces
  *
- * @example Single font family
+ * @example
  * ```ts
  * const fontFamily = await fetchFontFamilyFromCss(
  *   "Open Sans",
@@ -254,18 +254,12 @@ export function convertFontFacesToFontFamilies(
  * );
  * const plugin = new MapLibreStylePlugin(
  *   style,
- *   { overrides: fontFamilyToStyleOverrides([fontFamily]) }
+ *   fontFamilyToStyleOverrides(fontFamily)
  * );
- * ```
- *
- * @example Multiple font families
- * ```ts
- * const overrides = fontFamilyToStyleOverrides([font1, font2, font3]);
- * const plugin = new MapLibreStylePlugin(style, { overrides });
  * ```
  */
 export function fontFamilyToStyleOverrides(
-  fontFamilies: FontFamily[],
+  ...fontFamilies: FontFamily[]
 ): Partial<StyleSpecification> {
   const fontFaces: FontFacesSpecification = {};
 
@@ -325,5 +319,5 @@ export async function fetchFontStyleOverrides(
   cssUrl: string | string[],
 ): Promise<Partial<StyleSpecification>> {
   const fontFamily = await fetchFontFamilyFromCss(familyName, cssUrl);
-  return fontFamilyToStyleOverrides([fontFamily]);
+  return fontFamilyToStyleOverrides(fontFamily);
 }
