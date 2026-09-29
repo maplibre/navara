@@ -3,6 +3,9 @@ title: Supported Features
 description: Complete list of supported MapLibre Style features and properties.
 sidebar:
   order: 4
+tableOfContents:
+  minHeadingLevel: 2
+  maxHeadingLevel: 3
 ---
 
 import MapLibreSupportTable from "@components/MapLibreSupportTable.astro";
@@ -11,14 +14,9 @@ This page lists all MapLibre Style Spec features supported by `@navaramap/maplib
 
 For complete API documentation of each feature, see the [MapLibre Style Specification](https://maplibre.org/maplibre-style-spec/).
 
-**Legend:**
-- ✅ Supported
-- ⚠️ Partial support
-- ❌ Not supported
-
 ## Layer Types
 
-<MapLibreSupportTable category="layer" />
+<MapLibreSupportTable category="layer" showLegend={true} />
 
 ## Source Types
 
@@ -35,9 +33,3 @@ See [MapLibre Expressions](https://maplibre.org/maplibre-style-spec/expressions/
 <MapLibreSupportTable category="root" />
 
 For font configuration, see [Font Configuration](../maplibre-style-plugin/#with-font-configuration).
-
-## Known Limitations
-
-- Only the first URL in a `tiles` array is used (load spreading not supported)
-- Text halo (`text-halo-color`, `text-halo-width`) evaluated once at layer construction, not per-feature
-- Large symbol layers may impact performance on lower-end devices

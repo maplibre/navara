@@ -3,6 +3,9 @@ title: Supported Features
 description: サポートされている MapLibre Style 機能とプロパティの完全なリスト
 sidebar:
   order: 4
+tableOfContents:
+  minHeadingLevel: 2
+  maxHeadingLevel: 3
 ---
 
 import MapLibreSupportTable from "@components/MapLibreSupportTable.astro";
@@ -11,14 +14,9 @@ import MapLibreSupportTable from "@components/MapLibreSupportTable.astro";
 
 各機能の完全な API ドキュメントについては、[MapLibre Style Specification](https://maplibre.org/maplibre-style-spec/) を参照してください。
 
-**凡例:**
-- ✅ サポート
-- ⚠️ 部分的サポート
-- ❌ 未サポート
-
 ## レイヤータイプ
 
-<MapLibreSupportTable category="layer" />
+<MapLibreSupportTable category="layer" showLegend={true} />
 
 ## ソースタイプ
 
@@ -35,9 +33,3 @@ import MapLibreSupportTable from "@components/MapLibreSupportTable.astro";
 <MapLibreSupportTable category="root" />
 
 フォント設定については [フォント設定](../maplibre-style-plugin/#フォント設定を使用する) を参照してください。
-
-## 既知の制限
-
-- `tiles` 配列の最初の URL のみが使用されます（負荷分散は未サポート）
-- テキストハロー（`text-halo-color`、`text-halo-width`）はレイヤー構築時に一度評価され、フィーチャーごとの評価ではありません
-- 大量のシンボルレイヤーはローエンドデバイスでパフォーマンスに影響する可能性があります

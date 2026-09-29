@@ -3,9 +3,10 @@ import supportedStyles from "../content/docs/maplibre_style/supported.json";
 
 interface Props {
   category: "layer" | "source" | "expression" | "root";
+  showLegend?: boolean;
 }
 
-const { category } = Astro.props;
+const { category, showLegend = false } = Astro.props;
 
 const MAPLIBRE_SPEC_BASE = "https://maplibre.org/maplibre-style-spec";
 
@@ -17,9 +18,158 @@ const categoryPaths: Record<string, string> = {
   root: "root",
 };
 
+// Fetch MapLibre Style Spec reference
+const response = await fetch(
+  "https://raw.githubusercontent.com/maplibre/maplibre-style-spec/refs/heads/main/src/reference/v8.json"
+);
+const maplibreReference = await response.json();
+
+// Build rows based on category
+type Row = {
+  name: string;
+  url: string;
+  status: string;
+  isHeader?: boolean;
+};
+
 const categoryPath = categoryPaths[category];
-const items = supportedStyles[category] || {};
+const supportedItems = supportedStyles[category] || {};
+let rows: Row[] = [];
+
+switch (category) {
+  case "layer": {
+    // For layers, show layer types and their paint/layout properties
+    const layerTypes = Object.keys(maplibreReference.layer.type.values);
+
+    for (const layerType of layerTypes.sort()) {
+      // Add layer type as header
+      const layerSupported = supportedItems[layerType];
+      const layerStatus = layerSupported
+        ? typeof layerSupported === "string"
+          ? layerSupported
+          : (layerSupported as any).status
+        : "❌";
+
+      rows.push({
+        name: layerType,
+        url: `${MAPLIBRE_SPEC_BASE}/${categoryPath}/#${layerType}`,
+        status: layerStatus,
+        isHeader: true,
+      });
+
+      // Add paint properties
+      const paintKey = `paint_${layerType}`;
+      if (maplibreReference[paintKey]) {
+        const paintProps = Object.keys(maplibreReference[paintKey]).filter(
+          key => !key.startsWith('*')
+        );
+        for (const propName of paintProps.sort()) {
+          const propSupported = layerSupported?.paint?.[propName];
+          const propStatus = propSupported
+            ? typeof propSupported === "string"
+              ? propSupported
+              : propSupported.status
+            : "❌";
+
+          rows.push({
+            name: `  ${propName}`,
+            url: `${MAPLIBRE_SPEC_BASE}/${categoryPath}/#${layerType}-${propName}`,
+            status: propStatus,
+          });
+        }
+      }
+
+      // Add layout properties
+      const layoutKey = `layout_${layerType}`;
+      if (maplibreReference[layoutKey]) {
+        const layoutProps = Object.keys(maplibreReference[layoutKey]).filter(
+          key => !key.startsWith('*')
+        );
+        for (const propName of layoutProps.sort()) {
+          const propSupported = layerSupported?.layout?.[propName];
+          const propStatus = propSupported
+            ? typeof propSupported === "string"
+              ? propSupported
+              : propSupported.status
+            : "❌";
+
+          rows.push({
+            name: `  ${propName}`,
+            url: `${MAPLIBRE_SPEC_BASE}/${categoryPath}/#${layerType}-${propName}`,
+            status: propStatus,
+          });
+        }
+      }
+    }
+    break;
+  }
+  case "source": {
+    // Source types
+    const sourceTypes = maplibreReference.source.flatMap((sourceKey: string) =>
+      Object.keys(maplibreReference[sourceKey]?.type?.values || {})
+    );
+    rows = sourceTypes.sort().map((name: string) => {
+      const supported = supportedItems[name];
+      const status = supported
+        ? typeof supported === "string"
+          ? supported
+          : (supported as any).status
+        : "❌";
+      return {
+        name,
+        url: `${MAPLIBRE_SPEC_BASE}/${categoryPath}/#${name}`,
+        status,
+      };
+    });
+    break;
+  }
+  case "expression": {
+    // Expression operators
+    const operators = Object.keys(maplibreReference.expression_name.values);
+    rows = operators.sort().map((name) => {
+      const supported = supportedItems[name];
+      const status = supported
+        ? typeof supported === "string"
+          ? supported
+          : (supported as any).status
+        : "❌";
+      return {
+        name,
+        url: `${MAPLIBRE_SPEC_BASE}/${categoryPath}/#${name}`,
+        status,
+      };
+    });
+    break;
+  }
+  case "root": {
+    // Root features
+    const features = Object.keys(supportedItems);
+    rows = features.sort().map((name) => {
+      const supported = supportedItems[name];
+      const status = supported
+        ? typeof supported === "string"
+          ? supported
+          : (supported as any).status
+        : "❌";
+      return {
+        name,
+        url: `${MAPLIBRE_SPEC_BASE}/${categoryPath}/#${name}`,
+        status,
+      };
+    });
+    break;
+  }
+}
 ---
+
+{showLegend && (
+  <p><strong>Legend:</strong></p>
+  <ul>
+    <li>✅ Supported</li>
+    <li>⚠️ Partial support</li>
+    <li>❌ Not supported</li>
+  </ul>
+)}
 
 <table>
   <thead>
@@ -29,20 +179,22 @@ const items = supportedStyles[category] || {};
     </tr>
   </thead>
   <tbody>
-    {Object.entries(items).map(([name, config]) => {
-      const status = typeof config === "string" ? config : (config as any).status;
-      const url = `${MAPLIBRE_SPEC_BASE}/${categoryPath}/#${name}`;
-
-      return (
-        <tr>
-          <td>
-            <a href={url} target="_blank" rel="noopener noreferrer">
-              {name}
-            </a>
-          </td>
-          <td>{status}</td>
-        </tr>
-      );
-    })}
+    {rows.map((row) => (
+      <tr class={row.isHeader ? "header-row" : ""}>
+        <td>
+          <a href={row.url} target="_blank" rel="noopener noreferrer">
+            {row.name}
+          </a>
+        </td>
+        <td>{row.status}</td>
+      </tr>
+    ))}
   </tbody>
 </table>
+
+<style>
+  .header-row {
+    font-weight: bold;
+    background-color: var(--sl-color-gray-6);
+  }
+</style>
