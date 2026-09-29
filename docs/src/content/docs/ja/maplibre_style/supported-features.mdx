@@ -11,100 +11,33 @@ import MapLibreSupportTable from "@components/MapLibreSupportTable.astro";
 
 各機能の完全な API ドキュメントについては、[MapLibre Style Specification](https://maplibre.org/maplibre-style-spec/) を参照してください。
 
+**凡例:**
+- ✅ サポート
+- ⚠️ 部分的サポート
+- ❌ 未サポート
+
 ## レイヤータイプ
 
 <MapLibreSupportTable category="layer" />
-
-**凡例:**
-- ✅ サポート
-- ⚠️ 部分的サポート（基本機能のみ）
-- ❌ 未サポート
-
-**一般的な制限:**
-- パターンプロパティ（`fill-pattern`、`line-pattern`）はサポートされていません
-- トランスレーションプロパティはサポートされていません
-- 多くの高度なスタイリングプロパティは解析されますが適用されません
 
 ## ソースタイプ
 
 <MapLibreSupportTable category="source" />
 
-**注:**
-- Vector と raster ソースは、直接 `tiles` URL と TileJSON `url` 参照の両方をサポート
-- Raster-DEM は `terrarium` と `mapbox` エンコーディングをサポート
-
 ## 式のサポート
 
 <MapLibreSupportTable category="expression" />
 
-完全な式のドキュメントについては、[MapLibre Expressions](https://maplibre.org/maplibre-style-spec/expressions/) を参照してください。
-
-**機能:**
-- すべてのフィーチャーに現在のカメラズームを使用
-- zoom が 0.1 以上変化したときにフィーチャーを自動的に再評価
-- zoom 変更時の表示/非表示のためのスムーズなフェードトランジション
-
-**未サポート:**
-- カメラ式（`pitch`、`distance-from-center`）
+完全なドキュメントについては [MapLibre Expressions](https://maplibre.org/maplibre-style-spec/expressions/) を参照してください。
 
 ## その他の機能
 
 <MapLibreSupportTable category="root" />
 
-**Terrain:**
-- raster-DEM ソースからの 3D 地形レンダリング
-- `source` と `exaggeration` プロパティをサポート
-
-**Font Faces:**
-- シンボルレイヤー用のフォント設定
-- 詳細は [フォント設定](../maplibre-style-plugin/#フォント設定を使用する) を参照
-
-## パフォーマンス最適化
-
-### 背景レイヤーのキャッシュ
-
-- 評価器は一度コンパイルされキャッシュされます
-- アクティブレイヤーまたはペイントが変更されたときのみ再コンパイル
-- Zoom 依存性の検出により不要な再評価をスキップ
-
-### Zoom 変更検出
-
-- フィーチャーは zoom が 0.1 以上変化したときのみ再評価
-- Zoom 依存性のないレイヤーは再評価をスキップ
-- スムーズなフェードトランジションにより視覚的な不連続性を最小化
-
-### 式のコンパイル
-
-- 式は初期化時にレイヤーごとに一度コンパイル
-- 評価器はレイヤー内のすべてのフィーチャーで再利用
-- キャッシュされた評価器はペイントプロパティが変更されるまで持続
+フォント設定については [フォント設定](../maplibre-style-plugin/#フォント設定を使用する) を参照してください。
 
 ## 既知の制限
 
-### ソース
-
-- 複数のタイル URL: `tiles` 配列の最初の URL のみが使用されます（負荷分散は未サポート）
-
-### レイヤー
-
-- 限定的なプロパティサポート: 多くの MapLibre Style 仕様プロパティは未実装
-- パターンやスプライトなし: `fill-pattern`、`line-pattern`、スプライトベースのアイコンは未サポート
-- 高度なラインスタイリングなし: Dasharray、gradient、caps、joins は未実装
-- 限定的なラスターサポート: 基本的な表示のみ、ペイントプロパティなし
-- ヒートマップレイヤーなし: 未実装
-- Sky レイヤーなし: 未実装
-
-### 式
-
-- カメラ式: `pitch`、`distance-from-center` などは利用不可
-
-### シンボルレイヤー
-
-- テキストハローの制限: `text-halo-color` と `text-halo-width` はレイヤー構築時に一度評価され、フィーチャーごとや zoom への反応はしません
-- テキストの回転なし: 回転テキストのサポートは限定的
-- シンボルソートなし: z-order は `symbol-sort-key` で制御されません
-- テキストレンダリングの違い: SDF テキストは MapLibre GL JS と若干異なる場合があります
-
-### パフォーマンス
-
-- 大量のフィーチャー数: 数千のフィーチャーを持つシンボルレイヤーは、ローエンドデバイスでパフォーマンスに影響を与える可能性があります
+- `tiles` 配列の最初の URL のみが使用されます（負荷分散は未サポート）
+- テキストハロー（`text-halo-color`、`text-halo-width`）はレイヤー構築時に一度評価され、フィーチャーごとの評価ではありません
+- 大量のシンボルレイヤーはローエンドデバイスでパフォーマンスに影響する可能性があります

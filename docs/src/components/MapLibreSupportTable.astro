@@ -26,13 +26,11 @@ const items = supportedStyles[category] || {};
     <tr>
       <th>Name</th>
       <th>Status</th>
-      <th>Note</th>
     </tr>
   </thead>
   <tbody>
     {Object.entries(items).map(([name, config]) => {
       const status = typeof config === "string" ? config : (config as any).status;
-      const note = typeof config === "object" ? (config as any).note : "";
       const url = `${MAPLIBRE_SPEC_BASE}/${categoryPath}/#${name}`;
 
       return (
@@ -43,7 +41,6 @@ const items = supportedStyles[category] || {};
             </a>
           </td>
           <td>{status}</td>
-          <td>{note}</td>
         </tr>
       );
     })}

@@ -1,137 +1,292 @@
 {
   "layer": {
     "fill": {
-      "status": "✅",
-      "note": "Partial support",
+      "status": "⚠️ Partial support",
       "paint": {
-        "fill-color": "✅",
-        "fill-opacity": "✅",
-        "fill-antialias": "❌",
-        "fill-outline-color": "❌",
-        "fill-translate": "❌",
-        "fill-translate-anchor": "❌",
-        "fill-pattern": "❌"
+        "fill-color": {
+          "status": "✅"
+        },
+        "fill-opacity": {
+          "status": "✅"
+        },
+        "fill-antialias": {
+          "status": "❌"
+        },
+        "fill-outline-color": {
+          "status": "❌"
+        },
+        "fill-translate": {
+          "status": "❌"
+        },
+        "fill-translate-anchor": {
+          "status": "❌"
+        },
+        "fill-pattern": {
+          "status": "❌"
+        }
       }
     },
     "fill-extrusion": {
-      "status": "✅",
-      "note": "Partial support",
+      "status": "⚠️ Partial support",
       "paint": {
-        "fill-extrusion-color": "✅",
-        "fill-extrusion-opacity": "✅",
-        "fill-extrusion-height": "✅",
-        "fill-extrusion-base": "✅",
-        "fill-extrusion-translate": "❌",
-        "fill-extrusion-translate-anchor": "❌",
-        "fill-extrusion-pattern": "❌",
-        "fill-extrusion-vertical-gradient": "❌"
+        "fill-extrusion-color": {
+          "status": "✅"
+        },
+        "fill-extrusion-opacity": {
+          "status": "✅"
+        },
+        "fill-extrusion-height": {
+          "status": "✅"
+        },
+        "fill-extrusion-base": {
+          "status": "✅"
+        },
+        "fill-extrusion-translate": {
+          "status": "❌"
+        },
+        "fill-extrusion-translate-anchor": {
+          "status": "❌"
+        },
+        "fill-extrusion-pattern": {
+          "status": "❌"
+        },
+        "fill-extrusion-vertical-gradient": {
+          "status": "❌"
+        }
       }
     },
     "line": {
-      "status": "✅",
-      "note": "Partial support",
+      "status": "⚠️ Partial support",
       "paint": {
-        "line-color": "✅",
-        "line-opacity": "✅",
-        "line-width": "✅",
-        "line-gap-width": "❌",
-        "line-offset": "❌",
-        "line-blur": "❌",
-        "line-dasharray": "❌",
-        "line-pattern": "❌",
-        "line-gradient": "❌"
+        "line-color": {
+          "status": "✅"
+        },
+        "line-opacity": {
+          "status": "✅"
+        },
+        "line-width": {
+          "status": "✅"
+        },
+        "line-gap-width": {
+          "status": "❌"
+        },
+        "line-offset": {
+          "status": "❌"
+        },
+        "line-blur": {
+          "status": "❌"
+        },
+        "line-dasharray": {
+          "status": "❌"
+        },
+        "line-pattern": {
+          "status": "❌"
+        },
+        "line-gradient": {
+          "status": "❌"
+        }
       },
       "layout": {
-        "line-cap": "❌",
-        "line-join": "❌",
-        "line-miter-limit": "❌",
-        "line-round-limit": "❌"
+        "line-cap": {
+          "status": "❌"
+        },
+        "line-join": {
+          "status": "❌"
+        },
+        "line-miter-limit": {
+          "status": "❌"
+        },
+        "line-round-limit": {
+          "status": "❌"
+        }
       }
     },
     "circle": {
-      "status": "✅",
-      "note": "Partial support",
+      "status": "⚠️ Partial support",
       "paint": {
-        "circle-color": "✅",
-        "circle-opacity": "✅",
-        "circle-radius": "✅",
-        "circle-blur": "❌",
-        "circle-stroke-color": "❌",
-        "circle-stroke-opacity": "❌",
-        "circle-stroke-width": "❌",
-        "circle-translate": "❌",
-        "circle-translate-anchor": "❌",
-        "circle-pitch-scale": "❌",
-        "circle-pitch-alignment": "❌"
+        "circle-color": {
+          "status": "✅"
+        },
+        "circle-opacity": {
+          "status": "✅"
+        },
+        "circle-radius": {
+          "status": "✅"
+        },
+        "circle-blur": {
+          "status": "❌"
+        },
+        "circle-stroke-color": {
+          "status": "❌"
+        },
+        "circle-stroke-opacity": {
+          "status": "❌"
+        },
+        "circle-stroke-width": {
+          "status": "❌"
+        },
+        "circle-translate": {
+          "status": "❌"
+        },
+        "circle-translate-anchor": {
+          "status": "❌"
+        },
+        "circle-pitch-scale": {
+          "status": "❌"
+        },
+        "circle-pitch-alignment": {
+          "status": "❌"
+        }
       }
     },
     "symbol": {
-      "status": "✅",
-      "note": "Partial support",
+      "status": "⚠️ Partial support",
       "paint": {
-        "icon-color": "✅",
-        "icon-opacity": "✅",
-        "text-color": "✅",
-        "text-opacity": "✅",
-        "text-halo-color": "⚠️",
-        "text-halo-width": "⚠️",
-        "text-halo-blur": "❌",
-        "icon-halo-color": "❌",
-        "icon-halo-width": "❌",
-        "icon-halo-blur": "❌",
-        "icon-translate": "❌",
-        "text-translate": "❌"
+        "icon-color": {
+          "status": "✅"
+        },
+        "icon-opacity": {
+          "status": "✅"
+        },
+        "text-color": {
+          "status": "✅"
+        },
+        "text-opacity": {
+          "status": "✅"
+        },
+        "text-halo-color": {
+          "status": "⚠️ Evaluated once at layer construction"
+        },
+        "text-halo-width": {
+          "status": "⚠️ Evaluated once at layer construction"
+        },
+        "text-halo-blur": {
+          "status": "❌"
+        },
+        "icon-halo-color": {
+          "status": "❌"
+        },
+        "icon-halo-width": {
+          "status": "❌"
+        },
+        "icon-halo-blur": {
+          "status": "❌"
+        },
+        "icon-translate": {
+          "status": "❌"
+        },
+        "text-translate": {
+          "status": "❌"
+        }
       },
       "layout": {
-        "icon-image": "✅",
-        "icon-size": "✅",
-        "text-field": "✅",
-        "text-size": "✅",
-        "text-font": "✅",
-        "text-anchor": "❌",
-        "icon-anchor": "❌",
-        "text-offset": "❌",
-        "icon-offset": "❌",
-        "text-rotate": "❌",
-        "icon-rotate": "❌",
-        "symbol-sort-key": "❌"
+        "icon-image": {
+          "status": "✅"
+        },
+        "icon-size": {
+          "status": "✅"
+        },
+        "text-field": {
+          "status": "✅"
+        },
+        "text-size": {
+          "status": "✅"
+        },
+        "text-font": {
+          "status": "✅"
+        },
+        "text-anchor": {
+          "status": "❌"
+        },
+        "icon-anchor": {
+          "status": "❌"
+        },
+        "text-offset": {
+          "status": "❌"
+        },
+        "icon-offset": {
+          "status": "❌"
+        },
+        "text-rotate": {
+          "status": "❌"
+        },
+        "icon-rotate": {
+          "status": "❌"
+        },
+        "symbol-sort-key": {
+          "status": "❌"
+        }
       }
     },
     "raster": {
-      "status": "⚠️",
-      "note": "Basic display only",
+      "status": "⚠️ Partial support",
       "paint": {
-        "raster-opacity": "❌",
-        "raster-brightness-min": "❌",
-        "raster-brightness-max": "❌",
-        "raster-contrast": "❌",
-        "raster-saturation": "❌",
-        "raster-fade-duration": "❌",
-        "raster-hue-rotate": "❌",
-        "raster-resampling": "❌"
+        "raster-opacity": {
+          "status": "❌"
+        },
+        "raster-brightness-min": {
+          "status": "❌"
+        },
+        "raster-brightness-max": {
+          "status": "❌"
+        },
+        "raster-contrast": {
+          "status": "❌"
+        },
+        "raster-saturation": {
+          "status": "❌"
+        },
+        "raster-fade-duration": {
+          "status": "❌"
+        },
+        "raster-hue-rotate": {
+          "status": "❌"
+        },
+        "raster-resampling": {
+          "status": "❌"
+        }
       }
     },
     "hillshade": {
-      "status": "⚠️",
-      "note": "Basic rendering only",
+      "status": "⚠️ Partial support",
       "paint": {
-        "hillshade-illumination-direction": "❌",
-        "hillshade-illumination-anchor": "❌",
-        "hillshade-exaggeration": "❌",
-        "hillshade-shadow-color": "❌",
-        "hillshade-highlight-color": "❌",
-        "hillshade-accent-color": "❌"
+        "hillshade-illumination-direction": {
+          "status": "❌"
+        },
+        "hillshade-illumination-anchor": {
+          "status": "❌"
+        },
+        "hillshade-exaggeration": {
+          "status": "❌"
+        },
+        "hillshade-shadow-color": {
+          "status": "❌"
+        },
+        "hillshade-highlight-color": {
+          "status": "❌"
+        },
+        "hillshade-accent-color": {
+          "status": "❌"
+        }
       }
     },
     "background": {
-      "status": "✅",
+      "status": "⚠️ Partial support",
       "paint": {
-        "background-color": "✅",
-        "background-opacity": "✅",
-        "background-pattern": "❌"
+        "background-color": {
+          "status": "✅"
+        },
+        "background-opacity": {
+          "status": "✅"
+        },
+        "background-pattern": {
+          "status": "❌"
+        }
       },
       "layout": {
-        "visibility": "✅"
+        "visibility": {
+          "status": "✅"
+        }
       }
     },
     "sky": {
@@ -154,8 +309,12 @@
     "raster-dem": {
       "status": "✅",
       "encoding": {
-        "terrarium": "✅",
-        "mapbox": "✅"
+        "terrarium": {
+          "status": "✅"
+        },
+        "mapbox": {
+          "status": "✅"
+        }
       }
     },
     "image": {
@@ -169,61 +328,161 @@
     }
   },
   "expression": {
-    "get": "✅",
-    "has": "✅",
-    "in": "✅",
-    "index-of": "✅",
-    "length": "✅",
-    "case": "✅",
-    "match": "✅",
-    "coalesce": "✅",
-    "to-boolean": "✅",
-    "to-number": "✅",
-    "to-string": "✅",
-    "to-color": "✅",
-    "array": "✅",
-    "literal": "✅",
-    "typeof": "✅",
-    "concat": "✅",
-    "upcase": "✅",
-    "downcase": "✅",
-    "+": "✅",
-    "-": "✅",
-    "*": "✅",
-    "/": "✅",
-    "%": "✅",
-    "^": "✅",
-    "sqrt": "✅",
-    "log10": "✅",
-    "ln": "✅",
-    "abs": "✅",
-    "ceil": "✅",
-    "floor": "✅",
-    "round": "✅",
-    "min": "✅",
-    "max": "✅",
-    "==": "✅",
-    "!=": "✅",
-    ">": "✅",
-    ">=": "✅",
-    "<": "✅",
-    "<=": "✅",
-    "!": "✅",
-    "all": "✅",
-    "any": "✅",
-    "zoom": "✅",
-    "geometry-type": "✅",
-    "id": "✅",
-    "properties": "✅",
-    "pitch": "❌",
-    "distance-from-center": "❌"
+    "get": {
+      "status": "✅"
+    },
+    "has": {
+      "status": "✅"
+    },
+    "in": {
+      "status": "✅"
+    },
+    "index-of": {
+      "status": "✅"
+    },
+    "length": {
+      "status": "✅"
+    },
+    "case": {
+      "status": "✅"
+    },
+    "match": {
+      "status": "✅"
+    },
+    "coalesce": {
+      "status": "✅"
+    },
+    "to-boolean": {
+      "status": "✅"
+    },
+    "to-number": {
+      "status": "✅"
+    },
+    "to-string": {
+      "status": "✅"
+    },
+    "to-color": {
+      "status": "✅"
+    },
+    "array": {
+      "status": "✅"
+    },
+    "literal": {
+      "status": "✅"
+    },
+    "typeof": {
+      "status": "✅"
+    },
+    "concat": {
+      "status": "✅"
+    },
+    "upcase": {
+      "status": "✅"
+    },
+    "downcase": {
+      "status": "✅"
+    },
+    "+": {
+      "status": "✅"
+    },
+    "-": {
+      "status": "✅"
+    },
+    "*": {
+      "status": "✅"
+    },
+    "/": {
+      "status": "✅"
+    },
+    "%": {
+      "status": "✅"
+    },
+    "^": {
+      "status": "✅"
+    },
+    "sqrt": {
+      "status": "✅"
+    },
+    "log10": {
+      "status": "✅"
+    },
+    "ln": {
+      "status": "✅"
+    },
+    "abs": {
+      "status": "✅"
+    },
+    "ceil": {
+      "status": "✅"
+    },
+    "floor": {
+      "status": "✅"
+    },
+    "round": {
+      "status": "✅"
+    },
+    "min": {
+      "status": "✅"
+    },
+    "max": {
+      "status": "✅"
+    },
+    "==": {
+      "status": "✅"
+    },
+    "!=": {
+      "status": "✅"
+    },
+    ">": {
+      "status": "✅"
+    },
+    ">=": {
+      "status": "✅"
+    },
+    "<": {
+      "status": "✅"
+    },
+    "<=": {
+      "status": "✅"
+    },
+    "!": {
+      "status": "✅"
+    },
+    "all": {
+      "status": "✅"
+    },
+    "any": {
+      "status": "✅"
+    },
+    "zoom": {
+      "status": "✅"
+    },
+    "geometry-type": {
+      "status": "✅"
+    },
+    "id": {
+      "status": "✅"
+    },
+    "properties": {
+      "status": "✅"
+    },
+    "pitch": {
+      "status": "❌"
+    },
+    "distance-from-center": {
+      "status": "❌"
+    }
   },
   "root": {
     "terrain": {
       "status": "✅",
       "properties": {
-        "source": "✅",
-        "exaggeration": "✅"
+        "source": {
+          "status": "✅"
+        },
+        "exaggeration": {
+          "status": "✅"
+        }
       }
     },
     "font-faces": {

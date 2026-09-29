@@ -9,13 +9,6 @@ sidebar:
 
 `MapLibreStylePlugin` は [MapLibre Style](https://maplibre.org/maplibre-style-spec/) JSON 仕様を解析し、そのソースとレイヤーを Navara のレイヤー操作に変換します。これにより、既存の MapLibre GL JS スタイルを最小限の変更で Navara の 3D 地球儀上にレンダリングできます。
 
-プラグインは自動的に以下を処理します：
-- 式の評価（サポートされている MapLibre 演算子。zoom 依存式を含む）
-- インテリジェントなキャッシュを使用した背景レイヤー
-- 複数のソースタイプ（vector、raster、raster-DEM、GeoJSON）
-- SDF テキストレンダリングと自動デクラッタリングを使用したシンボルレイヤー
-- CSS または直接 font-faces からのフォント設定
-
 ## 基本的な使い方
 
 MapLibre Style JSON をプラグインに渡し、`view.init()` の前に追加します：

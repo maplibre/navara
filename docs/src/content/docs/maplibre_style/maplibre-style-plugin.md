@@ -9,13 +9,6 @@ sidebar:
 
 `MapLibreStylePlugin` parses a [MapLibre Style](https://maplibre.org/maplibre-style-spec/) JSON specification and translates its sources and layers into Navara layer operations. This enables existing MapLibre GL JS styles to be rendered on Navara's 3D globe with minimal changes.
 
-The plugin automatically handles:
-- Expression evaluation (supported MapLibre operators, including zoom-dependent expressions)
-- Background layers with intelligent caching
-- Multiple source types (vector, raster, raster-DEM, GeoJSON)
-- Symbol layers with SDF text rendering and automatic decluttering
-- Font configuration from CSS or direct font-faces
-
 ## Basic Usage
 
 Pass a MapLibre Style JSON to the plugin and add it before `view.init()`:
