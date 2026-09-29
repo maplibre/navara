@@ -5,7 +5,7 @@ sidebar:
   order: 1
 ---
 
-:::warning[Experimental Feature]
+:::caution[Experimental Feature]
 The MapLibre Style plugin is currently experimental. APIs may change, and some features are not yet fully implemented. See [Supported Features](../supported-features/) for details on current limitations.
 :::
 

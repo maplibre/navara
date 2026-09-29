@@ -5,7 +5,7 @@ sidebar:
   order: 1
 ---
 
-:::warning[実験的機能]
+:::caution[実験的機能]
 MapLibre Style プラグインは現在実験的です。API は変更される可能性があり、一部の機能はまだ完全には実装されていません。現在の制限の詳細については [サポートされている機能](../supported-features/) を参照してください。
 :::
 
