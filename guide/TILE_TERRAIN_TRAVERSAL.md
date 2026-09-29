@@ -157,7 +157,7 @@ flowchart TD
   B -- no --> C["compute SSE, readiness"]
   C --> D{"SSE ≤ max_sse ?"}
   D -- "yes (tile is detailed enough)" --> E{renderable?}
-  E -- "yes (own DEM, or upsampled)" --> R["TileRendered<br/>on screen + still upsampled → fetch own DEM"]
+  E -- "yes (own DEM, or upsampled)" --> R["TileRendered<br/>still upsampled → fetch own DEM now"]
   E -- "no (nothing to upsample from)" --> REQ["request terrain data → NotFound"]
   D -- "no (need more detail)" --> F["recurse into 4 children"]
   F --> G{all children prepared?}
@@ -213,6 +213,14 @@ Three subtleties make terrain + imagery work together:
   real heights it is **upsampled** from that ancestor immediately
   (`UpsampleAncestors::source` picks the nearest real-data ancestor, falling
   back to the nearest upsampled one; one task covers every level in between).
+  The source may sit at most `MAX_UPSAMPLE_DEPTH` (2) levels up: clipping or
+  resampling an ancestor many levels up yields a near-flat patch at an
+  interpolated height, which a ground-level camera sees as terrain floating
+  above (or sunk below) the real surface until the tile's own DEM lands. A
+  tile whose nearest real-data ancestor is farther up is not renderable, so
+  the ladder below fetches real DEMs on the way down; the bound is lifted
+  only where no DEM of the tile's own will ever land — the overscale band and
+  a failed DEM request (`TerrainTile::is_upsample_depth_bounded`).
   The traversal hands the nearest such ancestors down the recursion
   (`UpsampleAncestors::extend_with`), so readiness costs O(1) per tile;
   only the task dispatch walks the quadtree (`TerrainTile::find_upsample_source`),
@@ -230,9 +238,13 @@ Three subtleties make terrain + imagery work together:
   at the tile's own level, so the upsampled tile looks like a lower-resolution
   real tile rather than a copy of the ancestor's coarser simplification. A
   rejected DEM request (rate limiter) only drops the requester; the tile keeps
-  its terrain data and upsampled mesh and retries next frame. The DEM fetch
-  is deferred until the upsampled tile is actually on screen (activated) and is
-  still the SSE leaf, so a fast zoom-in only fetches the level it settles on.
+  its terrain data and upsampled mesh and retries next frame. The SSE leaf
+  fetches its own DEM in the same traversal that selects it, in parallel with
+  its upsample: the upsampled mesh is only a stand-in, and waiting for the
+  leaf to be activated (every group above it swapped in first) would just
+  delay the replacement. Intermediate levels never meet SSE and fetch only
+  once they are actually on screen (activated) with their children still
+  building, so an upsample chain does not fetch every level it passes.
   When the DEM lands, `transfer_mesh` rebuilds the mesh from real data and
   rewrites the tile's `Mesh` in place, reported through the geometry-only
   `mesh_geometry_replaced` event (not `mesh_updated`, whose handler rebinds
@@ -284,7 +296,7 @@ sequenceDiagram
   TM->>W: spawn UpsampleTerrainMesh task (source = ancestor)
   W-->>TM: task completed (geometry)
   TM->>TM: store buffers, spawn TileMeshMarker + Mesh + Material
-  T->>T: tile activated and still the SSE leaf → request_terrain_data()
+  T->>T: tile is the SSE leaf → request_terrain_data() (no wait for activation)
   T->>TM: DEM landed on an upsampled tile
   TM->>W: spawn ConstructTerrainMesh task
   W-->>TM: task completed (geometry)

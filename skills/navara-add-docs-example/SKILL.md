@@ -11,7 +11,7 @@ description: >
 **First read [.claude/skills/navara-usage/SKILL.md](../navara-usage/SKILL.md)** (and the reference matching the topic) so the snippet demonstrates correct, idiomatic API usage. The authoritative process docs live in the repo — read them before writing:
 
 - `docs/AGENTS.md` — entry point and key principles
-- `docs/guide/WRITING_RULES.md` — terminology and link rules
+- `docs/guide/WRITING_RULES.md` — prose rules (one property per section, behavior over implementation, what an option does rather than what it restores, facts over impressions), terminology, and link rules
 - `docs/guide/NAVARA_THREE_INSTRUCTIONS.md` — update workflow, package→section map, WASM `.d.ts` handling
 - `docs/guide/NAVARA_THREE_UPDATE_CHECKLIST.md` — scenario checklists
 - `docs/guide/TRANSLATION_GUIDE.md` — when touching `ja/`

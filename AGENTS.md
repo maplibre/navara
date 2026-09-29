@@ -26,6 +26,7 @@ If a change touches only `web/`, the pnpm equivalents are faster: `pnpm run buil
 - [guide/CRATES.md](guide/CRATES.md) — reference for the 40+ Rust crates
 - [guide/WASM_API_POLICY.md](guide/WASM_API_POLICY.md) — read before designing TypeScript APIs that wrap WASM
 - [guide/RELEASE.md](guide/RELEASE.md) — release flow (changelog generation, tagging, npm/GitHub Release)
+- [guide/HOW_TO_WRITE_DOCUMENT.md](guide/HOW_TO_WRITE_DOCUMENT.md) — which layer a piece of knowledge belongs to (guide vs docs vs skills) and how to write it
 - [docs/AGENTS.md](docs/AGENTS.md) — when working in `docs/` (user-facing documentation site)
 
 ## Skills

@@ -676,11 +676,17 @@ pub fn transfer_mesh(
         // mesh is always better than none (e.g. the result of an upsample
         // started before the tile's children were activated).
         let dem_ready = terrain_req.as_ref().is_some_and(|r| r.is_succeeded());
+        // Same depth bound as the traversal (`TerrainTile::is_upsample_depth_bounded`):
+        // lifted only where no DEM of the tile's own will ever land.
+        let upsample_depth_bounded = !is_terrain_failed
+            && !terrain_source.is_some_and(|s| s.should_overscale(tile.coords.z));
         let should_upsample_terrain = terrain_layer.is_some()
             && !dem_ready
             && !tile.upsample_failed
             && (rendered_tile.terrain_mesh_upsampler.is_some()
-                || tile.find_upsample_source(&qt, is_quantized_mesh).is_some());
+                || tile
+                    .find_upsample_source(&qt, is_quantized_mesh, upsample_depth_bounded)
+                    .is_some());
 
         if !should_render_terrain
             || is_ellipsoid_terrain
@@ -817,7 +823,7 @@ pub fn transfer_mesh(
                 Some(e) => e,
                 None => {
                     let Some(source_tile_handle) =
-                        tile.find_upsample_source(&qt, is_quantized_mesh)
+                        tile.find_upsample_source(&qt, is_quantized_mesh, upsample_depth_bounded)
                     else {
                         continue;
                     };
@@ -3464,6 +3470,37 @@ mod remesh_tests {
     use navara_source::SourceStore;
     use navara_tile_component::{RasterDEMData, TerrainDataRequesterMarker};
 
+    /// Register the raster-DEM terrain source `"dem"` with the given zoom
+    /// bounds (`max_zoom` is exclusive for fetches; the band up to
+    /// `overscaled_max_zoom` is upsampled).
+    fn add_raster_dem_source(app: &mut App, max_zoom: usize, overscaled_max_zoom: usize) {
+        app.world_mut().resource_mut::<SourceStore>().add(
+            "dem".to_string(),
+            navara_source::Source::RasterDem(navara_source::RasterDemSource {
+                source_id: "dem".to_string(),
+                url: "https://example.com/{z}/{x}/{y}.png".to_string(),
+                tms: false,
+                elevation_decoder: navara_core::ElevationDecoder::default(),
+                tile_size: 256,
+                min_zoom: 0,
+                max_zoom,
+                overscaled_max_zoom,
+            }),
+        );
+    }
+
+    /// A raster-DEM terrain fetchable up to `max_zoom` with no overscale band,
+    /// plus the terrain layer that uses it.
+    fn spawn_raster_dem_terrain(app: &mut App, max_zoom: usize) {
+        add_raster_dem_source(app, max_zoom, max_zoom);
+        app.world_mut().spawn(TerrainLayer {
+            layer_id: "terrain".to_string(),
+            source_id: Some("dem".to_string()),
+            terrain_type: navara_layer::TerrainDataType::RasterDEM,
+            appearance: None,
+        });
+    }
+
     struct Setup {
         rendered_tile_entity: Entity,
         mesh_entity: Entity,
@@ -3474,25 +3511,7 @@ mod remesh_tests {
     /// A tile that already renders an UPSAMPLED mesh (`Rendered`, mesh entity
     /// live) whose own DEM request has just succeeded.
     fn setup_upsampled_tile_with_landed_dem(app: &mut App) -> Setup {
-        app.world_mut().resource_mut::<SourceStore>().add(
-            "dem".to_string(),
-            navara_source::Source::RasterDem(navara_source::RasterDemSource {
-                source_id: "dem".to_string(),
-                url: "https://example.com/{z}/{x}/{y}.png".to_string(),
-                tms: false,
-                elevation_decoder: navara_core::ElevationDecoder::default(),
-                tile_size: 256,
-                min_zoom: 0,
-                max_zoom: 8,
-                overscaled_max_zoom: 8,
-            }),
-        );
-        app.world_mut().spawn(TerrainLayer {
-            layer_id: "terrain".to_string(),
-            source_id: Some("dem".to_string()),
-            terrain_type: navara_layer::TerrainDataType::RasterDEM,
-            appearance: None,
-        });
+        spawn_raster_dem_terrain(app, 8);
 
         let mut qt = TerrainTileQuadtree::new_with_linear_qt();
         qt.qt
@@ -3915,20 +3934,8 @@ mod remesh_tests {
     fn transfer_mesh_retries_a_lost_upsample_in_the_overscale_band() {
         let mut app = new_app();
         let setup = setup_upsampled_tile_with_landed_dem(&mut app);
-        app.world_mut().resource_mut::<SourceStore>().add(
-            "dem".to_string(),
-            navara_source::Source::RasterDem(navara_source::RasterDemSource {
-                source_id: "dem".to_string(),
-                url: "https://example.com/{z}/{x}/{y}.png".to_string(),
-                tms: false,
-                elevation_decoder: navara_core::ElevationDecoder::default(),
-                tile_size: 256,
-                min_zoom: 0,
-                // The root (z=0) sits in the overscale band.
-                max_zoom: 0,
-                overscaled_max_zoom: 8,
-            }),
-        );
+        // The root (z=0) sits in the overscale band.
+        add_raster_dem_source(&mut app, 0, 8);
         {
             let mut qt = app.world_mut().resource_mut::<TerrainTileQuadtree>();
             let tile = qt.qt.get_mut(setup.handle).unwrap();
@@ -3955,6 +3962,142 @@ mod remesh_tests {
             !qt.qt.get(setup.handle).unwrap().upsample_failed,
             "no DEM exists in the overscale band: the upsample is retried"
         );
+    }
+
+    /// Upsample-first, first half: a newly selected tile whose own DEM fetch
+    /// is still in flight (the SSE leaf requests it in the same traversal
+    /// that selects it) is upsampled from its ready ancestor right away. The
+    /// pending fetch neither blocks the upsample nor starts a construct: the
+    /// two run in parallel, and the real mesh replaces the stand-in when it
+    /// lands.
+    #[test]
+    fn transfer_mesh_upsamples_a_selected_tile_while_its_own_dem_fetch_is_pending() {
+        let mut app = new_app();
+        spawn_raster_dem_terrain(&mut app, 8);
+
+        // The root holds a mesh built from real terrain; its z=1 child was
+        // just selected and has a DEM request in flight.
+        let mut qt = TerrainTileQuadtree::new_with_linear_qt();
+        qt.qt
+            .initialize_zero(&|(x, y, z)| TerrainTile::new(TileXYZ { x, y, z }, 0., 0.));
+        let root = qt.qt.zero().unwrap().handle();
+        let child = qt
+            .qt
+            .initialize_leaf((0, 0, 1), &|(x, y, z)| {
+                TerrainTile::new(TileXYZ { x, y, z }, 0., 0.)
+            })
+            .unwrap();
+
+        let (vertices, indices, uvs, heights) = {
+            let mut buf = app.world_mut().resource_mut::<BufferStore>();
+            (
+                buf.new_f32(vec![0.; 9]),
+                buf.new_u32(vec![0, 1, 2]),
+                buf.new_f32(vec![0.; 6]),
+                buf.new_f32(vec![0.; 3]),
+            )
+        };
+        {
+            let tile = qt.qt.get_mut(root).unwrap();
+            tile.upsampled = false;
+            tile.cached_mesh_handle = Some(CachedMeshHandle {
+                vertices,
+                indices,
+                uvs,
+                heights: Some(heights),
+                normals: None,
+                watermask: None,
+            });
+        }
+
+        let pending_requester = app
+            .world_mut()
+            .spawn((
+                TerrainDataRequesterMarker(child),
+                DataRequester::new(
+                    0,
+                    "https://example.com/1/0/0.png".to_string(),
+                    DataRequesterExtension::Png,
+                ),
+            ))
+            .id();
+        assert_eq!(
+            app.world()
+                .get::<DataRequester>(pending_requester)
+                .unwrap()
+                .status,
+            DataRequesterStatus::Pending
+        );
+        qt.qt.get_mut(child).unwrap().terrain_data = Some(Box::new(RasterDEMData {
+            data_requester_entity_id: Some(pending_requester),
+            ..Default::default()
+        }));
+
+        let rendered_tile_entity = app
+            .world_mut()
+            .spawn((
+                RenderedTile {
+                    tile_handle: child,
+                    terrain_mesh_constructor: None,
+                    terrain_mesh_upsampler: None,
+                },
+                OrderByDistance {
+                    sse: 0.,
+                    distance: 0.,
+                },
+            ))
+            .id();
+        let mut tc = TileCacheManager::default();
+        tc.rendered_tile_caches.insert(
+            child,
+            RenderedTileCache {
+                mesh_entity: None,
+                ready_parent_tile_handle: Some(root),
+                layer_parents: None,
+                rendered_tile_entity,
+                mesh_prepared: false,
+                needs_material_update: false,
+                prefetched: false,
+            },
+        );
+        tc.is_updated_in_this_frame = true;
+        app.insert_resource(tc);
+        app.insert_resource(qt);
+        app.add_systems(Update, transfer_mesh);
+
+        app.update();
+
+        let rendered = app
+            .world()
+            .get::<RenderedTile>(rendered_tile_entity)
+            .unwrap();
+        let upsampler = rendered
+            .terrain_mesh_upsampler
+            .expect("the pending DEM fetch does not block the upsample");
+        let params = app
+            .world()
+            .get::<UpsampleTerrainMeshParameters>(upsampler)
+            .expect("an upsample task was spawned");
+        assert_eq!(params.tile_handle, child);
+        assert_eq!(
+            params.source_tile_handle, root,
+            "upsampled from the ready real-data ancestor"
+        );
+        assert_eq!(
+            rendered.terrain_mesh_constructor, None,
+            "nothing to construct from until the DEM lands"
+        );
+        assert!(constructor_entities(&mut app).is_empty());
+        assert_eq!(
+            app.world()
+                .get::<DataRequester>(pending_requester)
+                .unwrap()
+                .status,
+            DataRequesterStatus::Pending,
+            "the fetch keeps running alongside the upsample"
+        );
+        let qt = app.world().resource::<TerrainTileQuadtree>();
+        assert!(!qt.qt.get(child).unwrap().upsample_failed);
     }
 
     /// A `Rendered` tile that already holds a real-DEM mesh is never revisited:
