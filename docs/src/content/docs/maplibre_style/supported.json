@@ -471,9 +471,150 @@
     },
     "distance-from-center": {
       "status": "❌"
+    },
+    "let": {
+      "status": "✅"
+    },
+    "var": {
+      "status": "✅"
+    },
+    "semiliteral": {
+      "status": "✅"
+    },
+    "number": {
+      "status": "✅"
+    },
+    "boolean": {
+      "status": "✅"
+    },
+    "string": {
+      "status": "✅"
+    },
+    "object": {
+      "status": "✅"
+    },
+    "collator": {
+      "status": "✅"
+    },
+    "format": {
+      "status": "❌"
+    },
+    "image": {
+      "status": "❌"
+    },
+    "number-format": {
+      "status": "✅"
+    },
+    "at": {
+      "status": "✅"
+    },
+    "slice": {
+      "status": "✅"
+    },
+    "global-state": {
+      "status": "✅"
+    },
+    "within": {
+      "status": "✅"
+    },
+    "step": {
+      "status": "✅"
+    },
+    "interpolate": {
+      "status": "✅"
+    },
+    "interpolate-hcl": {
+      "status": "✅"
+    },
+    "interpolate-lab": {
+      "status": "✅"
+    },
+    "ln2": {
+      "status": "✅"
+    },
+    "pi": {
+      "status": "✅"
+    },
+    "e": {
+      "status": "✅"
+    },
+    "log2": {
+      "status": "✅"
+    },
+    "sin": {
+      "status": "✅"
+    },
+    "cos": {
+      "status": "✅"
+    },
+    "tan": {
+      "status": "✅"
+    },
+    "asin": {
+      "status": "✅"
+    },
+    "acos": {
+      "status": "✅"
+    },
+    "atan": {
+      "status": "✅"
+    },
+    "distance": {
+      "status": "✅"
+    },
+    "to-rgba": {
+      "status": "✅"
+    },
+    "rgb": {
+      "status": "✅"
+    },
+    "rgba": {
+      "status": "✅"
+    },
+    "feature-state": {
+      "status": "❌"
+    },
+    "line-progress": {
+      "status": "❌"
+    },
+    "accumulated": {
+      "status": "❌"
+    },
+    "heatmap-density": {
+      "status": "❌"
+    },
+    "elevation": {
+      "status": "❌"
+    },
+    "is-supported-script": {
+      "status": "✅"
+    },
+    "resolved-locale": {
+      "status": "✅"
+    },
+    "split": {
+      "status": "✅"
+    },
+    "join": {
+      "status": "✅"
     }
   },
   "root": {
+    "version": {
+      "status": "✅"
+    },
+    "name": {
+      "status": "✅"
+    },
+    "sources": {
+      "status": "⚠️ Partial support"
+    },
+    "layers": {
+      "status": "⚠️ Partial support"
+    },
+    "state": {
+      "status": "✅"
+    },
     "terrain": {
       "status": "✅",
       "properties": {

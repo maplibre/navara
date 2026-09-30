@@ -24,6 +24,114 @@ const response = await fetch(
 );
 const maplibreReference = await response.json();
 
+// Decode HTML entities
+function decodeHtmlEntities(text: string): string {
+  const entities: Record<string, string> = {
+    '&lt;': '<',
+    '&gt;': '>',
+    '&le;': '≤',
+    '&ge;': '≥',
+    '&amp;': '&',
+    '&quot;': '"',
+    '&apos;': "'",
+    '&nbsp;': ' ',
+  };
+
+  return text.replace(/&[a-z]+;/gi, (match) => entities[match.toLowerCase()] || '');
+}
+
+// Fetch and parse real anchors from MapLibre documentation
+async function fetchRealAnchors(category: string): Promise<Map<string, string>> {
+  const anchorMap = new Map<string, string>();
+
+  try {
+    const categoryUrls: Record<string, string> = {
+      layer: "https://maplibre.org/maplibre-style-spec/layers/",
+      source: "https://maplibre.org/maplibre-style-spec/sources/",
+      expression: "https://maplibre.org/maplibre-style-spec/expressions/",
+      root: "https://maplibre.org/maplibre-style-spec/root/",
+    };
+
+    const url = categoryUrls[category];
+    if (!url) return anchorMap;
+
+    const htmlResponse = await fetch(url);
+    const html = await htmlResponse.text();
+
+    if (category === "layer") {
+      // For layers, we need to track which layer type each property belongs to
+      // Parse the HTML structure to find headings and their anchors
+      const headingRegex = /<h([23])[^>]*id=["']([^"']+)["'][^>]*>(.*?)<\/h\1>/gs;
+      let match;
+      let currentLayerType: string | null = null;
+
+      while ((match = headingRegex.exec(html)) !== null) {
+        const level = match[1]; // "2" or "3"
+        const anchorId = match[2];
+        // Clean heading text: remove HTML tags, decode entities, remove special chars
+        const headingText = match[3]
+          .replace(/<[^>]+>/g, '') // Remove HTML tags
+          .replace(/&para;/gi, '') // Remove paragraph symbol
+          .trim();
+        const decodedText = decodeHtmlEntities(headingText);
+
+        if (level === "2") {
+          // h2 is a layer type
+          currentLayerType = anchorId;
+          anchorMap.set(anchorId, anchorId);
+        } else if (level === "3" && currentLayerType) {
+          // h3 is a property under the current layer type
+          const propertyName = decodedText;
+
+          // Store mapping: anchorId -> anchorId for direct lookup
+          anchorMap.set(anchorId, anchorId);
+
+          // Store mapping: propertyName -> anchorId (for properties like circle-radius)
+          anchorMap.set(propertyName, anchorId);
+
+          // Store mapping: layer-property -> anchorId (for properties like visibility)
+          const compositeKey = `${currentLayerType}-${propertyName}`;
+          anchorMap.set(compositeKey, anchorId);
+        }
+      }
+    } else if (category === "expression" || category === "source" || category === "root") {
+      // For expressions, sources, and root: parse headings to map names to anchor IDs
+      const headingRegex = /<h[23][^>]*id=["']([^"']+)["'][^>]*>(.*?)<\/h[23]>/gs;
+      let match;
+
+      while ((match = headingRegex.exec(html)) !== null) {
+        const anchorId = match[1];
+        // Clean heading text: remove HTML tags and paragraph symbol
+        const headingText = match[2]
+          .replace(/<[^>]+>/g, '') // Remove HTML tags
+          .replace(/&para;/gi, '') // Remove paragraph symbol
+          .trim();
+        // Decode HTML entities like &lt; &gt; &le;
+        const decodedText = decodeHtmlEntities(headingText);
+
+        // Store both the anchor ID and the heading text mapping
+        anchorMap.set(anchorId, anchorId);
+        anchorMap.set(decodedText, anchorId);
+      }
+    } else {
+      // Fallback: simple anchor mapping
+      const anchorRegex = /id=["']([^"']+)["']/g;
+      let match;
+
+      while ((match = anchorRegex.exec(html)) !== null) {
+        const anchorId = match[1];
+        anchorMap.set(anchorId, anchorId);
+      }
+    }
+  } catch (error) {
+    console.warn(`Failed to fetch anchors for ${category}:`, error);
+  }
+
+  return anchorMap;
+}
+
+const realAnchors = await fetchRealAnchors(category);
+
 // Build rows based on category
 type Row = {
   name: string;
@@ -52,7 +160,7 @@ switch (category) {
 
       rows.push({
         name: layerType,
-        url: `${MAPLIBRE_SPEC_BASE}/${categoryPath}/#${layerType}`,
+        url: `${MAPLIBRE_SPEC_BASE}/${categoryPath}/#${realAnchors.get(layerType) || layerType}`,
         status: layerStatus,
         isHeader: true,
       });
@@ -71,9 +179,18 @@ switch (category) {
               : propSupported.status
             : "❌";
 
+          // Try to find the real anchor using multiple strategies:
+          // 1. Try layer-property composite key (for shared properties like visibility)
+          // 2. Try property name directly (for properties like circle-radius)
+          // 3. Fall back to property name
+          const anchor =
+            realAnchors.get(`${layerType}-${propName}`) ||
+            realAnchors.get(propName) ||
+            propName;
+
           rows.push({
             name: `  ${propName}`,
-            url: `${MAPLIBRE_SPEC_BASE}/${categoryPath}/#${layerType}-${propName}`,
+            url: `${MAPLIBRE_SPEC_BASE}/${categoryPath}/#${anchor}`,
             status: propStatus,
           });
         }
@@ -93,9 +210,18 @@ switch (category) {
               : propSupported.status
             : "❌";
 
+          // Try to find the real anchor using multiple strategies:
+          // 1. Try layer-property composite key (for shared properties like visibility)
+          // 2. Try property name directly (for properties like circle-radius)
+          // 3. Fall back to property name
+          const anchor =
+            realAnchors.get(`${layerType}-${propName}`) ||
+            realAnchors.get(propName) ||
+            propName;
+
           rows.push({
             name: `  ${propName}`,
-            url: `${MAPLIBRE_SPEC_BASE}/${categoryPath}/#${layerType}-${propName}`,
+            url: `${MAPLIBRE_SPEC_BASE}/${categoryPath}/#${anchor}`,
             status: propStatus,
           });
         }
@@ -117,7 +243,7 @@ switch (category) {
         : "❌";
       return {
         name,
-        url: `${MAPLIBRE_SPEC_BASE}/${categoryPath}/#${name}`,
+        url: `${MAPLIBRE_SPEC_BASE}/${categoryPath}/#${realAnchors.get(name) || name}`,
         status,
       };
     });
@@ -135,16 +261,18 @@ switch (category) {
         : "❌";
       return {
         name,
-        url: `${MAPLIBRE_SPEC_BASE}/${categoryPath}/#${name}`,
+        url: `${MAPLIBRE_SPEC_BASE}/${categoryPath}/#${realAnchors.get(name) || name}`,
         status,
       };
     });
     break;
   }
   case "root": {
-    // Root features
-    const features = Object.keys(supportedItems);
-    rows = features.sort().map((name) => {
+    // Root features - extract from $root in the spec
+    const rootProps = Object.keys(maplibreReference.$root).filter(
+      key => !key.startsWith('*') && key !== 'required'
+    );
+    rows = rootProps.sort().map((name) => {
       const supported = supportedItems[name];
       const status = supported
         ? typeof supported === "string"
@@ -153,7 +281,7 @@ switch (category) {
         : "❌";
       return {
         name,
-        url: `${MAPLIBRE_SPEC_BASE}/${categoryPath}/#${name}`,
+        url: `${MAPLIBRE_SPEC_BASE}/root/#${realAnchors.get(name) || name}`,
         status,
       };
     });
