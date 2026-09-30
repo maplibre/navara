@@ -1,5 +1,5 @@
 ---
-name: navara-supported-status
+name: supported-maplibre-status
 description: >
   Universal rules for documenting feature support status across all Navara
   documentation. Use when documenting what features are supported, partially

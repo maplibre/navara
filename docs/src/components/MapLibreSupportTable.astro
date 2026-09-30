@@ -18,11 +18,21 @@ const categoryPaths: Record<string, string> = {
   root: "root",
 };
 
-// Fetch MapLibre Style Spec reference
-const response = await fetch(
-  "https://raw.githubusercontent.com/maplibre/maplibre-style-spec/refs/heads/main/src/reference/v8.json"
-);
-const maplibreReference = await response.json();
+// Fetch MapLibre Style Spec reference with error handling
+let maplibreReference: any = {};
+try {
+  const response = await fetch(
+    "https://raw.githubusercontent.com/maplibre/maplibre-style-spec/refs/heads/main/src/reference/v8.json"
+  );
+
+  if (!response.ok) {
+    console.warn(`Failed to fetch MapLibre spec: ${response.status} ${response.statusText}`);
+  } else {
+    maplibreReference = await response.json();
+  }
+} catch (error) {
+  console.warn("Failed to fetch MapLibre spec, using fallback:", error);
+}
 
 // Decode HTML entities
 function decodeHtmlEntities(text: string): string {
@@ -56,6 +66,12 @@ async function fetchRealAnchors(category: string): Promise<Map<string, string>> 
     if (!url) return anchorMap;
 
     const htmlResponse = await fetch(url);
+
+    if (!htmlResponse.ok) {
+      console.warn(`Failed to fetch anchors from ${url}: ${htmlResponse.status} ${htmlResponse.statusText}`);
+      return anchorMap;
+    }
+
     const html = await htmlResponse.text();
 
     if (category === "layer") {
@@ -147,7 +163,7 @@ let rows: Row[] = [];
 switch (category) {
   case "layer": {
     // For layers, show layer types and their paint/layout properties
-    const layerTypes = Object.keys(maplibreReference.layer.type.values);
+    const layerTypes = Object.keys(maplibreReference?.layer?.type?.values || {});
 
     for (const layerType of layerTypes.sort()) {
       // Add layer type as header
@@ -231,7 +247,7 @@ switch (category) {
   }
   case "source": {
     // Source types
-    const sourceTypes = maplibreReference.source.flatMap((sourceKey: string) =>
+    const sourceTypes = (maplibreReference?.source || []).flatMap((sourceKey: string) =>
       Object.keys(maplibreReference[sourceKey]?.type?.values || {})
     );
     rows = sourceTypes.sort().map((name: string) => {
@@ -251,7 +267,7 @@ switch (category) {
   }
   case "expression": {
     // Expression operators
-    const operators = Object.keys(maplibreReference.expression_name.values);
+    const operators = Object.keys(maplibreReference?.expression_name?.values || {});
     rows = operators.sort().map((name) => {
       const supported = supportedItems[name];
       const status = supported
@@ -269,7 +285,7 @@ switch (category) {
   }
   case "root": {
     // Root features - extract from $root in the spec
-    const rootProps = Object.keys(maplibreReference.$root).filter(
+    const rootProps = Object.keys(maplibreReference?.$root || {}).filter(
       key => !key.startsWith('*') && key !== 'required'
     );
     rows = rootProps.sort().map((name) => {
