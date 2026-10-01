@@ -606,6 +606,27 @@
     "name": {
       "status": "✅"
     },
+    "metadata": {
+      "status": "✅"
+    },
+    "center": {
+      "status": "✅"
+    },
+    "centerAltitude": {
+      "status": "✅"
+    },
+    "zoom": {
+      "status": "✅"
+    },
+    "bearing": {
+      "status": "✅"
+    },
+    "pitch": {
+      "status": "✅"
+    },
+    "roll": {
+      "status": "✅"
+    },
     "sources": {
       "status": "⚠️ Partial support"
     },
@@ -615,18 +636,139 @@
     "state": {
       "status": "✅"
     },
+    "light": {
+      "status": "❌"
+    },
+    "sky": {
+      "status": "❌"
+    },
+    "projection": {
+      "status": "❌"
+    },
     "terrain": {
-      "status": "✅",
-      "properties": {
-        "source": {
-          "status": "✅"
-        },
-        "exaggeration": {
-          "status": "✅"
-        }
-      }
+      "status": "✅"
+    },
+    "sprite": {
+      "status": "✅"
+    },
+    "glyphs": {
+      "status": "✅"
     },
     "font-faces": {
+      "status": "✅"
+    },
+    "transition": {
+      "status": "❌"
+    }
+  },
+  "light": {
+    "anchor": {
+      "status": "❌"
+    },
+    "position": {
+      "status": "❌"
+    },
+    "color": {
+      "status": "❌"
+    },
+    "intensity": {
+      "status": "❌"
+    }
+  },
+  "sky": {
+    "sky-color": {
+      "status": "❌"
+    },
+    "horizon-color": {
+      "status": "❌"
+    },
+    "fog-color": {
+      "status": "❌"
+    },
+    "fog-ground-blend": {
+      "status": "❌"
+    },
+    "horizon-fog-blend": {
+      "status": "❌"
+    },
+    "sky-horizon-blend": {
+      "status": "❌"
+    },
+    "atmosphere-blend": {
+      "status": "❌"
+    }
+  },
+  "terrain": {
+    "source": {
+      "status": "✅"
+    },
+    "exaggeration": {
+      "status": "❌"
+    }
+  },
+  "projection": {
+    "type": {
+      "status": "❌"
+    }
+  },
+  "transition": {
+    "duration": {
+      "status": "❌"
+    },
+    "delay": {
+      "status": "❌"
+    }
+  },
+  "sprite": {
+    "status": "❌"
+  },
+  "glyphs": {
+    "status": "❌"
+  },
+  "font-faces": {
+    "status": "✅"
+  },
+  "state": {
+    "status": "✅"
+  },
+  "types": {
+    "color": {
+      "status": "✅"
+    },
+    "formatted": {
+      "status": "❌"
+    },
+    "resolvedImage": {
+      "status": "✅"
+    },
+    "string": {
+      "status": "✅"
+    },
+    "boolean": {
+      "status": "✅"
+    },
+    "number": {
+      "status": "✅"
+    },
+    "array": {
+      "status": "✅"
+    },
+    "Point": {
+      "status": "✅"
+    },
+    "enum": {
+      "status": "✅"
+    },
+    "padding": {
+      "status": "✅"
+    },
+    "projectionDefinition": {
+      "status": "❌"
+    },
+    "numberArray": {
+      "status": "✅"
+    },
+    "colorArray": {
       "status": "✅"
     }
   }

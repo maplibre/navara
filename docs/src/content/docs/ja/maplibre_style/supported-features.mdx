@@ -39,3 +39,49 @@ import MapLibreSupportTable from "@components/MapLibreSupportTable.astro";
 <MapLibreSupportTable category="root" />
 
 フォント設定については [フォント設定](../maplibre-style-plugin/#フォント設定を使用する) を参照してください。
+
+## Light
+
+<MapLibreSupportTable category="light" />
+
+## Sky
+
+<MapLibreSupportTable category="sky" />
+
+## Terrain
+
+<MapLibreSupportTable category="terrain" />
+
+**注意:** `source` プロパティのみがサポートされています。`exaggeration` プロパティは現在実装されていません。
+
+## Projection
+
+<MapLibreSupportTable category="projection" />
+
+## Transition
+
+<MapLibreSupportTable category="transition" />
+
+## Sprite
+
+<MapLibreSupportTable category="sprite" />
+
+**注意:** スプライトシートはサポートされていません。`icon-image` プロパティでは、スプライト ID の代わりに完全な画像 URL を直接使用してください。
+
+## Glyphs
+
+<MapLibreSupportTable category="glyphs" />
+
+**注意:** 標準的な MapLibre の `glyphs` プロパティ（SDF glyph PBF の読み込み用）はサポートされていません。テキストレンダリングには `font-faces` を使用して Web フォントを読み込んでください。詳細は [フォント設定](../maplibre-style-plugin/#フォント設定を使用する) を参照してください。
+
+## Font-faces
+
+<MapLibreSupportTable category="font-faces" />
+
+## State
+
+<MapLibreSupportTable category="state" />
+
+## Types
+
+<MapLibreSupportTable category="types" />

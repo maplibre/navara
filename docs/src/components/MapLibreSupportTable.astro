@@ -2,7 +2,7 @@
 import supportedStyles from "../content/docs/maplibre_style/supported.json";
 
 interface Props {
-  category: "layer" | "source" | "expression" | "root";
+  category: "layer" | "source" | "expression" | "root" | "light" | "sky" | "terrain" | "projection" | "transition" | "sprite" | "glyphs" | "font-faces" | "state" | "types";
 }
 
 const { category } = Astro.props;
@@ -15,6 +15,16 @@ const categoryPaths: Record<string, string> = {
   source: "sources",
   expression: "expressions",
   root: "root",
+  light: "light",
+  sky: "sky",
+  terrain: "terrain",
+  projection: "projection",
+  transition: "transition",
+  sprite: "sprite",
+  glyphs: "glyphs",
+  "font-faces": "font-faces",
+  state: "state",
+  types: "types",
 };
 
 // Fetch MapLibre Style Spec reference with error handling
@@ -159,7 +169,73 @@ function generateAnchors(
       const anchor = makeUnique(slugify(prop), usedIds);
       anchorMap.set(prop, anchor);
     }
+  } else if (category === "light") {
+    // Process light properties
+    const lightProps = Object.keys(spec?.light || {})
+      .filter(key => !key.startsWith('*'))
+      .sort();
+
+    for (const prop of lightProps) {
+      const anchor = makeUnique(slugify(prop), usedIds);
+      anchorMap.set(prop, anchor);
+    }
+  } else if (category === "sky") {
+    // Process sky properties
+    const skyProps = Object.keys(spec?.sky || {})
+      .filter(key => !key.startsWith('*'))
+      .sort();
+
+    for (const prop of skyProps) {
+      const anchor = makeUnique(slugify(prop), usedIds);
+      anchorMap.set(prop, anchor);
+    }
+  } else if (category === "terrain") {
+    // Process terrain properties
+    const terrainProps = Object.keys(spec?.terrain || {})
+      .filter(key => !key.startsWith('*'))
+      .sort();
+
+    for (const prop of terrainProps) {
+      const anchor = makeUnique(slugify(prop), usedIds);
+      anchorMap.set(prop, anchor);
+    }
+  } else if (category === "projection") {
+    // Process projection properties
+    const projectionProps = Object.keys(spec?.projection || {})
+      .filter(key => !key.startsWith('*'))
+      .sort();
+
+    for (const prop of projectionProps) {
+      const anchor = makeUnique(slugify(prop), usedIds);
+      anchorMap.set(prop, anchor);
+    }
+  } else if (category === "transition") {
+    // Process transition properties
+    const transitionProps = Object.keys(spec?.transition || {})
+      .filter(key => !key.startsWith('*'))
+      .sort();
+
+    for (const prop of transitionProps) {
+      const anchor = makeUnique(slugify(prop), usedIds);
+      anchorMap.set(prop, anchor);
+    }
+  } else if (category === "types") {
+    // Types documented on MapLibre's Types page (manually written, not from v8.json)
+    // Anchors are lowercase versions of the type names
+    const documentedTypes = [
+      'color', 'formatted', 'resolvedImage', 'string', 'boolean',
+      'number', 'array', 'Point', 'enum', 'padding',
+      'projectionDefinition', 'numberArray', 'colorArray'
+    ];
+
+    for (const type of documentedTypes) {
+      // MapLibre uses lowercase anchors
+      const anchor = type.toLowerCase();
+      anchorMap.set(type, anchor);
+    }
   }
+  // For sprite, glyphs, font-faces, state: these are single-property pages,
+  // no anchors needed within the page
 
   return anchorMap;
 }
@@ -316,6 +392,155 @@ switch (category) {
       return {
         name,
         url: `${MAPLIBRE_SPEC_BASE}/root/#${realAnchors.get(name) || name}`,
+        status,
+      };
+    });
+    break;
+  }
+  case "light": {
+    // Light properties
+    const lightProps = Object.keys(maplibreReference?.light || {}).filter(
+      key => !key.startsWith('*')
+    );
+    rows = lightProps.sort().map((name) => {
+      const supported = supportedItems[name];
+      const status = supported
+        ? typeof supported === "string"
+          ? supported
+          : (supported as any).status
+        : "❌";
+      return {
+        name,
+        url: `${MAPLIBRE_SPEC_BASE}/${categoryPath}/#${realAnchors.get(name) || name}`,
+        status,
+      };
+    });
+    break;
+  }
+  case "sky": {
+    // Sky properties
+    const skyProps = Object.keys(maplibreReference?.sky || {}).filter(
+      key => !key.startsWith('*')
+    );
+    rows = skyProps.sort().map((name) => {
+      const supported = supportedItems[name];
+      const status = supported
+        ? typeof supported === "string"
+          ? supported
+          : (supported as any).status
+        : "❌";
+      return {
+        name,
+        url: `${MAPLIBRE_SPEC_BASE}/${categoryPath}/#${realAnchors.get(name) || name}`,
+        status,
+      };
+    });
+    break;
+  }
+  case "terrain": {
+    // Terrain properties
+    const terrainProps = Object.keys(maplibreReference?.terrain || {}).filter(
+      key => !key.startsWith('*')
+    );
+    rows = terrainProps.sort().map((name) => {
+      const supported = supportedItems[name];
+      const status = supported
+        ? typeof supported === "string"
+          ? supported
+          : (supported as any).status
+        : "❌";
+      return {
+        name,
+        url: `${MAPLIBRE_SPEC_BASE}/${categoryPath}/#${realAnchors.get(name) || name}`,
+        status,
+      };
+    });
+    break;
+  }
+  case "projection": {
+    // Projection properties
+    const projectionProps = Object.keys(maplibreReference?.projection || {}).filter(
+      key => !key.startsWith('*')
+    );
+    rows = projectionProps.sort().map((name) => {
+      const supported = supportedItems[name];
+      const status = supported
+        ? typeof supported === "string"
+          ? supported
+          : (supported as any).status
+        : "❌";
+      return {
+        name,
+        url: `${MAPLIBRE_SPEC_BASE}/${categoryPath}/#${realAnchors.get(name) || name}`,
+        status,
+      };
+    });
+    break;
+  }
+  case "transition": {
+    // Transition properties
+    const transitionProps = Object.keys(maplibreReference?.transition || {}).filter(
+      key => !key.startsWith('*')
+    );
+    rows = transitionProps.sort().map((name) => {
+      const supported = supportedItems[name];
+      const status = supported
+        ? typeof supported === "string"
+          ? supported
+          : (supported as any).status
+        : "❌";
+      return {
+        name,
+        url: `${MAPLIBRE_SPEC_BASE}/${categoryPath}/#${realAnchors.get(name) || name}`,
+        status,
+      };
+    });
+    break;
+  }
+  case "sprite":
+  case "glyphs":
+  case "font-faces":
+  case "state": {
+    // These are single-property pages, just show the main property
+    const status = supportedItems.status || "❌";
+    rows = [{
+      name: category === "font-faces" ? "font-faces" : category,
+      url: `${MAPLIBRE_SPEC_BASE}/${categoryPath}/`,
+      status,
+    }];
+    break;
+  }
+  case "types": {
+    // Types documented on MapLibre's Types page
+    // Map internal names (from supported.json) to display names (as shown on MapLibre docs)
+    const typeDisplayNames: Record<string, string> = {
+      'color': 'Color',
+      'formatted': 'Formatted',
+      'resolvedImage': 'ResolvedImage',
+      'string': 'String',
+      'boolean': 'Boolean',
+      'number': 'Number',
+      'array': 'Array',
+      'Point': 'Point',
+      'enum': 'Enum',
+      'padding': 'Padding',
+      'projectionDefinition': 'ProjectionDefinition',
+      'numberArray': 'numberArray',
+      'colorArray': 'colorArray'
+    };
+
+    const documentedTypes = Object.keys(typeDisplayNames);
+
+    rows = documentedTypes.map((name) => {
+      const supported = supportedItems[name];
+      const status = supported
+        ? typeof supported === "string"
+          ? supported
+          : (supported as any).status
+        : "❌";
+      return {
+        name: typeDisplayNames[name],
+        url: `${MAPLIBRE_SPEC_BASE}/${categoryPath}/#${realAnchors.get(name) || name.toLowerCase()}`,
         status,
       };
     });
