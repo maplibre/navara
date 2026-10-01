@@ -248,7 +248,6 @@ type Row = {
   url: string;
   status: string;
   isHeader?: boolean;
-  note?: string;
 };
 
 const categoryPath = categoryPaths[category];
@@ -269,28 +268,11 @@ switch (category) {
           : (layerSupported as any).status
         : "❌";
 
-      // Add note for layers that can be added but have no adjustable properties
-      let note: string | undefined;
-      if (layerStatus === "⚠️" || layerStatus === "⚠️ Partial support") {
-        const hasAnySupported =
-          Object.values(layerSupported?.paint || {}).some((v: any) =>
-            (typeof v === "string" ? v : v?.status) === "✅"
-          ) ||
-          Object.values(layerSupported?.layout || {}).some((v: any) =>
-            (typeof v === "string" ? v : v?.status) === "✅"
-          );
-
-        if (!hasAnySupported) {
-          note = "⚠️ Layer only, no properties supported";
-        }
-      }
-
       rows.push({
         name: layerType,
         url: `${MAPLIBRE_SPEC_BASE}/${categoryPath}/#${realAnchors.get(layerType) || layerType}`,
         status: layerStatus,
         isHeader: true,
-        note,
       });
 
       // Add paint properties
@@ -582,7 +564,7 @@ switch (category) {
             {row.name}
           </a>
         </td>
-        <td>{row.note ?? row.status}</td>
+        <td>{row.status}</td>
       </tr>
     ))}
   </tbody>

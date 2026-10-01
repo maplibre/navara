@@ -219,7 +219,7 @@
       }
     },
     "raster": {
-      "status": "⚠️",
+      "status": "⚠️ Layer only, no properties supported",
       "paint": {
         "raster-opacity": {
           "status": "❌"
@@ -248,7 +248,7 @@
       }
     },
     "hillshade": {
-      "status": "⚠️",
+      "status": "⚠️ Layer only, no properties supported",
       "paint": {
         "hillshade-illumination-direction": {
           "status": "❌"
