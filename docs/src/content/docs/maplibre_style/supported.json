@@ -1,7 +1,7 @@
 {
   "layer": {
     "fill": {
-      "status": "⚠️ Partial support",
+      "status": "⚠️",
       "paint": {
         "fill-color": {
           "status": "✅"
@@ -27,7 +27,7 @@
       }
     },
     "fill-extrusion": {
-      "status": "⚠️ Partial support",
+      "status": "⚠️",
       "paint": {
         "fill-extrusion-color": {
           "status": "✅"
@@ -56,7 +56,7 @@
       }
     },
     "line": {
-      "status": "⚠️ Partial support",
+      "status": "⚠️",
       "paint": {
         "line-color": {
           "status": "✅"
@@ -102,7 +102,7 @@
       }
     },
     "circle": {
-      "status": "⚠️ Partial support",
+      "status": "⚠️",
       "paint": {
         "circle-color": {
           "status": "✅"
@@ -140,7 +140,7 @@
       }
     },
     "symbol": {
-      "status": "⚠️ Partial support",
+      "status": "⚠️",
       "paint": {
         "icon-color": {
           "status": "✅"
@@ -219,7 +219,7 @@
       }
     },
     "raster": {
-      "status": "⚠️ Partial support",
+      "status": "⚠️",
       "paint": {
         "raster-opacity": {
           "status": "❌"
@@ -248,7 +248,7 @@
       }
     },
     "hillshade": {
-      "status": "⚠️ Partial support",
+      "status": "⚠️",
       "paint": {
         "hillshade-illumination-direction": {
           "status": "❌"
@@ -271,7 +271,7 @@
       }
     },
     "background": {
-      "status": "⚠️ Partial support",
+      "status": "⚠️",
       "paint": {
         "background-color": {
           "status": "✅"
@@ -628,10 +628,10 @@
       "status": "❌"
     },
     "sources": {
-      "status": "⚠️ Partial support"
+      "status": "⚠️"
     },
     "layers": {
-      "status": "⚠️ Partial support"
+      "status": "⚠️"
     },
     "state": {
       "status": "❌"
