@@ -16,17 +16,6 @@ MapLibre Style プラグインは現在実験的です。API は変更される�
 プラグインが処理するもの：
 - **式の評価** - サポートされている MapLibre 式（数学、決定、検索、zoom など）
 
-## パッケージ概要
-
-```text
-@navaramap/maplibre-style
-  ├── MapLibreStylePlugin (メインプラグインクラス)
-  └── フォントヘルパー
-        ├── fetchFontStyleOverrides (CSS URL からフォントを取得)
-        ├── fontFamilyToStyleOverrides (FontFamily をスタイルオーバーライドに変換)
-        └── convertFontFacesToFontFamilies (スタイル font-faces を FontFamily に変換)
-```
-
 ## インストール
 
 ```bash

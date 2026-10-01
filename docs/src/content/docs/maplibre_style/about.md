@@ -16,17 +16,6 @@ The MapLibre Style plugin is currently experimental. APIs may change, and some f
 The plugin handles:
 - **Expression evaluation** - Supported MapLibre expressions (math, decision, lookup, zoom, etc.)
 
-## Package Overview
-
-```text
-@navaramap/maplibre-style
-  ├── MapLibreStylePlugin (main plugin class)
-  └── Font helpers
-        ├── fetchFontStyleOverrides (fetch fonts from CSS URLs)
-        ├── fontFamilyToStyleOverrides (convert FontFamily to style overrides)
-        └── convertFontFacesToFontFamilies (convert style font-faces to FontFamily)
-```
-
 ## Installation
 
 ```bash

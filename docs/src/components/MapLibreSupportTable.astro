@@ -259,7 +259,7 @@ switch (category) {
     // For layers, show layer types and their paint/layout properties
     const layerTypes = Object.keys(maplibreReference?.layer?.type?.values || {});
 
-    for (const layerType of layerTypes.sort()) {
+    for (const layerType of layerTypes) {
       // Add layer type as header
       const layerSupported = supportedItems[layerType];
       const layerStatus = layerSupported
@@ -281,7 +281,7 @@ switch (category) {
         const paintProps = Object.keys(maplibreReference[paintKey]).filter(
           key => !key.startsWith('*')
         );
-        for (const propName of paintProps.sort()) {
+        for (const propName of paintProps) {
           const propSupported = layerSupported?.paint?.[propName];
           const propStatus = propSupported
             ? typeof propSupported === "string"
@@ -312,7 +312,7 @@ switch (category) {
         const layoutProps = Object.keys(maplibreReference[layoutKey]).filter(
           key => !key.startsWith('*')
         );
-        for (const propName of layoutProps.sort()) {
+        for (const propName of layoutProps) {
           const propSupported = layerSupported?.layout?.[propName];
           const propStatus = propSupported
             ? typeof propSupported === "string"
@@ -344,7 +344,7 @@ switch (category) {
     const sourceTypes = (maplibreReference?.source || []).flatMap((sourceKey: string) =>
       Object.keys(maplibreReference[sourceKey]?.type?.values || {})
     );
-    rows = sourceTypes.sort().map((name: string) => {
+    rows = sourceTypes.map((name: string) => {
       const supported = supportedItems[name];
       const status = supported
         ? typeof supported === "string"
@@ -362,7 +362,7 @@ switch (category) {
   case "expression": {
     // Expression operators
     const operators = Object.keys(maplibreReference?.expression_name?.values || {});
-    rows = operators.sort().map((name) => {
+    rows = operators.map((name) => {
       const supported = supportedItems[name];
       const status = supported
         ? typeof supported === "string"
@@ -382,7 +382,7 @@ switch (category) {
     const rootProps = Object.keys(maplibreReference?.$root || {}).filter(
       key => !key.startsWith('*') && key !== 'required'
     );
-    rows = rootProps.sort().map((name) => {
+    rows = rootProps.map((name) => {
       const supported = supportedItems[name];
       const status = supported
         ? typeof supported === "string"
@@ -402,7 +402,7 @@ switch (category) {
     const lightProps = Object.keys(maplibreReference?.light || {}).filter(
       key => !key.startsWith('*')
     );
-    rows = lightProps.sort().map((name) => {
+    rows = lightProps.map((name) => {
       const supported = supportedItems[name];
       const status = supported
         ? typeof supported === "string"
@@ -422,7 +422,7 @@ switch (category) {
     const skyProps = Object.keys(maplibreReference?.sky || {}).filter(
       key => !key.startsWith('*')
     );
-    rows = skyProps.sort().map((name) => {
+    rows = skyProps.map((name) => {
       const supported = supportedItems[name];
       const status = supported
         ? typeof supported === "string"
@@ -442,7 +442,7 @@ switch (category) {
     const terrainProps = Object.keys(maplibreReference?.terrain || {}).filter(
       key => !key.startsWith('*')
     );
-    rows = terrainProps.sort().map((name) => {
+    rows = terrainProps.map((name) => {
       const supported = supportedItems[name];
       const status = supported
         ? typeof supported === "string"
@@ -462,7 +462,7 @@ switch (category) {
     const projectionProps = Object.keys(maplibreReference?.projection || {}).filter(
       key => !key.startsWith('*')
     );
-    rows = projectionProps.sort().map((name) => {
+    rows = projectionProps.map((name) => {
       const supported = supportedItems[name];
       const status = supported
         ? typeof supported === "string"
@@ -482,7 +482,7 @@ switch (category) {
     const transitionProps = Object.keys(maplibreReference?.transition || {}).filter(
       key => !key.startsWith('*')
     );
-    rows = transitionProps.sort().map((name) => {
+    rows = transitionProps.map((name) => {
       const supported = supportedItems[name];
       const status = supported
         ? typeof supported === "string"

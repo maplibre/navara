@@ -20,53 +20,15 @@ import MapLibreSupportTable from "@components/MapLibreSupportTable.astro";
 - ⚠️ 部分的にサポート
 - ❌ 未サポート
 
-## Layer
-
-<MapLibreSupportTable category="layer" />
-
-## Source
-
-<MapLibreSupportTable category="source" />
-
 ## Expression
 
 <MapLibreSupportTable category="expression" />
 
 完全なドキュメントについては [MapLibre Expressions](https://maplibre.org/maplibre-style-spec/expressions/) を参照してください。
 
-## Root
+## Font-faces
 
-<MapLibreSupportTable category="root" />
-
-フォント設定については [フォント設定](../maplibre-style-plugin/#フォント設定を使用する) を参照してください。
-
-## Light
-
-<MapLibreSupportTable category="light" />
-
-## Sky
-
-<MapLibreSupportTable category="sky" />
-
-## Terrain
-
-<MapLibreSupportTable category="terrain" />
-
-**注意:** `source` プロパティのみがサポートされています。`exaggeration` プロパティは現在実装されていません。
-
-## Projection
-
-<MapLibreSupportTable category="projection" />
-
-## Transition
-
-<MapLibreSupportTable category="transition" />
-
-## Sprite
-
-<MapLibreSupportTable category="sprite" />
-
-**注意:** スプライトシートはサポートされていません。`icon-image` プロパティでは、スプライト ID の代わりに完全な画像 URL を直接使用してください。
+<MapLibreSupportTable category="font-faces" />
 
 ## Glyphs
 
@@ -74,13 +36,45 @@ import MapLibreSupportTable from "@components/MapLibreSupportTable.astro";
 
 **注意:** 標準的な MapLibre の `glyphs` プロパティ（SDF glyph PBF の読み込み用）はサポートされていません。テキストレンダリングには `font-faces` を使用して Web フォントを読み込んでください。詳細は [フォント設定](../maplibre-style-plugin/#フォント設定を使用する) を参照してください。
 
-## Font-faces
+## Layer
 
-<MapLibreSupportTable category="font-faces" />
+<MapLibreSupportTable category="layer" />
+
+## Light
+
+<MapLibreSupportTable category="light" />
+
+## Projection
+
+<MapLibreSupportTable category="projection" />
+
+## Root
+
+<MapLibreSupportTable category="root" />
+
+## Sky
+
+<MapLibreSupportTable category="sky" />
+
+## Source
+
+<MapLibreSupportTable category="source" />
+
+## Sprite
+
+<MapLibreSupportTable category="sprite" />
 
 ## State
 
 <MapLibreSupportTable category="state" />
+
+## Terrain
+
+<MapLibreSupportTable category="terrain" />
+
+## Transition
+
+<MapLibreSupportTable category="transition" />
 
 ## Types
 
