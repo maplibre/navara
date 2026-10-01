@@ -582,13 +582,7 @@ switch (category) {
             {row.name}
           </a>
         </td>
-        <td>
-          {row.note ? (
-            <span class="note">{row.note}</span>
-          ) : (
-            row.status
-          )}
-        </td>
+        <td>{row.note ?? row.status}</td>
       </tr>
     ))}
   </tbody>
@@ -599,16 +593,18 @@ switch (category) {
   table {
     display: table;
     width: 100%;
+    table-layout: fixed;
+  }
+
+  th {
+    width: 50%;
   }
 
   .header-row {
-    font-weight: bold;
     background-color: var(--sl-color-gray-6);
   }
 
-  .note {
-    font-size: 0.9em;
-    color: var(--sl-color-gray-3);
-    font-style: italic;
+  .header-row td:first-child {
+    font-weight: bold;
   }
 </style>
