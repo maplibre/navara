@@ -251,7 +251,7 @@ type Row = {
 };
 
 const categoryPath = categoryPaths[category];
-const supportedItems = supportedStyles[category] || {};
+const supportedItems = (supportedStyles[category] || {}) as Record<string, any>;
 let rows: Row[] = [];
 
 switch (category) {

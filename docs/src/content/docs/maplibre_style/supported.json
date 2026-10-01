@@ -610,22 +610,22 @@
       "status": "✅"
     },
     "center": {
-      "status": "✅"
+      "status": "❌"
     },
     "centerAltitude": {
-      "status": "✅"
+      "status": "❌"
     },
     "zoom": {
-      "status": "✅"
+      "status": "❌"
     },
     "bearing": {
-      "status": "✅"
+      "status": "❌"
     },
     "pitch": {
-      "status": "✅"
+      "status": "❌"
     },
     "roll": {
-      "status": "✅"
+      "status": "❌"
     },
     "sources": {
       "status": "⚠️ Partial support"
@@ -729,7 +729,7 @@
     "status": "✅"
   },
   "state": {
-    "status": "✅"
+    "status": "❌"
   },
   "types": {
     "color": {
