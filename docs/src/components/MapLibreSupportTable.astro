@@ -34,119 +34,138 @@ try {
   console.warn("Failed to fetch MapLibre spec, using fallback:", error);
 }
 
-// Decode HTML entities
-function decodeHtmlEntities(text: string): string {
-  const entities: Record<string, string> = {
-    '&lt;': '<',
-    '&gt;': '>',
-    '&le;': '≤',
-    '&ge;': '≥',
-    '&amp;': '&',
-    '&quot;': '"',
-    '&apos;': "'",
-    '&nbsp;': ' ',
-  };
+// Slugify function matching Python-Markdown's toc extension
+function slugify(text: string): string {
+  // Remove special chars except word chars (\w), spaces (\s), and hyphens (-)
+  // This matches the regex: [^\w\s-]
+  let slug = text.replace(/[^\w\s-]/g, '');
 
-  return text.replace(/&[a-z]+;/gi, (match) => entities[match.toLowerCase()] || '');
+  // Strip leading/trailing whitespace and convert to lowercase
+  slug = slug.trim().toLowerCase();
+
+  // Replace whitespace with hyphens and collapse multiple hyphens
+  slug = slug.replace(/[\s]+/g, '-').replace(/-+/g, '-');
+
+  return slug;
 }
 
-// Fetch and parse real anchors from MapLibre documentation
-async function fetchRealAnchors(category: string): Promise<Map<string, string>> {
-  const anchorMap = new Map<string, string>();
+// Handle duplicate IDs by appending _1, _2, etc.
+function makeUnique(id: string, usedIds: Set<string>): string {
+  let uniqueId = id;
 
-  try {
-    const categoryUrls: Record<string, string> = {
-      layer: "https://maplibre.org/maplibre-style-spec/layers/",
-      source: "https://maplibre.org/maplibre-style-spec/sources/",
-      expression: "https://maplibre.org/maplibre-style-spec/expressions/",
-      root: "https://maplibre.org/maplibre-style-spec/root/",
-    };
-
-    const url = categoryUrls[category];
-    if (!url) return anchorMap;
-
-    const htmlResponse = await fetch(url);
-
-    if (!htmlResponse.ok) {
-      console.warn(`Failed to fetch anchors from ${url}: ${htmlResponse.status} ${htmlResponse.statusText}`);
-      return anchorMap;
+  // If ID is empty or already used, make it unique
+  while (!uniqueId || usedIds.has(uniqueId)) {
+    // Check if it matches pattern: something_N
+    const match = uniqueId.match(/^(.*)_(\d+)$/);
+    if (match) {
+      // Increment the number
+      uniqueId = `${match[1]}_${parseInt(match[2]) + 1}`;
+    } else {
+      // Append _1 (for empty strings, this becomes "_1")
+      uniqueId = `${uniqueId}_1`;
     }
+  }
 
-    const html = await htmlResponse.text();
+  usedIds.add(uniqueId);
+  return uniqueId;
+}
 
-    if (category === "layer") {
-      // For layers, we need to track which layer type each property belongs to
-      // Parse the HTML structure to find headings and their anchors
-      const headingRegex = /<h([23])[^>]*id=["']([^"']+)["'][^>]*>(.*?)<\/h\1>/gs;
-      let match;
-      let currentLayerType: string | null = null;
+// Generate anchors using MapLibre's anchor generation rules
+// This avoids network requests and makes builds reproducible
+function generateAnchors(
+  category: string,
+  spec: any
+): Map<string, string> {
+  const anchorMap = new Map<string, string>();
+  const usedIds = new Set<string>();
 
-      while ((match = headingRegex.exec(html)) !== null) {
-        const level = match[1]; // "2" or "3"
-        const anchorId = match[2];
-        // Clean heading text: remove HTML tags, decode entities, remove special chars
-        const headingText = match[3]
-          .replace(/<[^>]+>/g, '') // Remove HTML tags
-          .replace(/&para;/gi, '') // Remove paragraph symbol
-          .trim();
-        const decodedText = decodeHtmlEntities(headingText);
+  if (category === "layer") {
+    // MapLibre docs use the insertion order of layout_* keys in v8.json
+    const layoutKeys = Object.keys(spec || {}).filter(key => key.startsWith('layout_'));
+    const layerTypes = layoutKeys.map(key => key.replace('layout_', ''));
 
-        if (level === "2") {
-          // h2 is a layer type
-          currentLayerType = anchorId;
-          anchorMap.set(anchorId, anchorId);
-        } else if (level === "3" && currentLayerType) {
-          // h3 is a property under the current layer type
-          const propertyName = decodedText;
+    for (const layerType of layerTypes) {
+      // Generate anchor for layer type itself
+      const layerAnchor = makeUnique(slugify(layerType), usedIds);
+      anchorMap.set(layerType, layerAnchor);
 
-          // Store mapping: anchorId -> anchorId for direct lookup
-          anchorMap.set(anchorId, anchorId);
+      // Process paint and layout properties for this layer
+      const paintKey = `paint_${layerType}`;
+      const layoutKey = `layout_${layerType}`;
 
-          // Store mapping: propertyName -> anchorId (for properties like circle-radius)
-          anchorMap.set(propertyName, anchorId);
+      // Get all properties (paint + layout) and sort them
+      const paintProps = Object.keys(spec?.[paintKey] || {}).filter(
+        key => !key.startsWith('*')
+      );
+      const layoutProps = Object.keys(spec?.[layoutKey] || {}).filter(
+        key => !key.startsWith('*')
+      );
 
-          // Store mapping: layer-property -> anchorId (for properties like visibility)
-          const compositeKey = `${currentLayerType}-${propertyName}`;
-          anchorMap.set(compositeKey, anchorId);
+      // Process in order: paint properties first, then layout
+      for (const propName of [...paintProps.sort(), ...layoutProps.sort()]) {
+        const propAnchor = makeUnique(slugify(propName), usedIds);
+
+        // Store layer-property composite key
+        anchorMap.set(`${layerType}-${propName}`, propAnchor);
+
+        // Only store plain property name if not already stored (first occurrence wins)
+        if (!anchorMap.has(propName)) {
+          anchorMap.set(propName, propAnchor);
         }
       }
-    } else if (category === "expression" || category === "source" || category === "root") {
-      // For expressions, sources, and root: parse headings to map names to anchor IDs
-      const headingRegex = /<h[23][^>]*id=["']([^"']+)["'][^>]*>(.*?)<\/h[23]>/gs;
-      let match;
+    }
+  } else if (category === "expression") {
+    // MapLibre processes expressions by group, in the order groups first appear in v8.json
+    // Within each group, expressions are processed in v8.json order
+    const expressionValues = spec?.expression_name?.values || {};
 
-      while ((match = headingRegex.exec(html)) !== null) {
-        const anchorId = match[1];
-        // Clean heading text: remove HTML tags and paragraph symbol
-        const headingText = match[2]
-          .replace(/<[^>]+>/g, '') // Remove HTML tags
-          .replace(/&para;/gi, '') // Remove paragraph symbol
-          .trim();
-        // Decode HTML entities like &lt; &gt; &le;
-        const decodedText = decodeHtmlEntities(headingText);
-
-        // Store both the anchor ID and the heading text mapping
-        anchorMap.set(anchorId, anchorId);
-        anchorMap.set(decodedText, anchorId);
-      }
-    } else {
-      // Fallback: simple anchor mapping
-      const anchorRegex = /id=["']([^"']+)["']/g;
-      let match;
-
-      while ((match = anchorRegex.exec(html)) !== null) {
-        const anchorId = match[1];
-        anchorMap.set(anchorId, anchorId);
+    // Collect groups in the order they first appear
+    const groups: string[] = [];
+    const seenGroups = new Set<string>();
+    for (const value of Object.values(expressionValues)) {
+      const group = (value as any).group;
+      if (group && !seenGroups.has(group)) {
+        groups.push(group);
+        seenGroups.add(group);
       }
     }
-  } catch (error) {
-    console.warn(`Failed to fetch anchors for ${category}:`, error);
+
+    // Process expressions group by group
+    for (const group of groups) {
+      for (const [operator, value] of Object.entries(expressionValues)) {
+        if ((value as any).group !== group) continue;
+
+        const slug = slugify(operator);
+        const anchor = makeUnique(slug, usedIds);
+        anchorMap.set(operator, anchor);
+      }
+    }
+  } else if (category === "source") {
+    // Process source types
+    const sourceTypes = (spec?.source || []).flatMap((sourceKey: string) =>
+      Object.keys(spec?.[sourceKey]?.type?.values || {})
+    );
+
+    for (const sourceType of sourceTypes.sort()) {
+      const anchor = makeUnique(slugify(sourceType), usedIds);
+      anchorMap.set(sourceType, anchor);
+    }
+  } else if (category === "root") {
+    // Process root properties in alphabetical order
+    const rootProps = Object.keys(spec?.$root || {})
+      .filter(key => !key.startsWith('*') && key !== 'required')
+      .sort();
+
+    for (const prop of rootProps) {
+      const anchor = makeUnique(slugify(prop), usedIds);
+      anchorMap.set(prop, anchor);
+    }
   }
 
   return anchorMap;
 }
 
-const realAnchors = await fetchRealAnchors(category);
+const realAnchors = generateAnchors(category, maplibreReference);
 
 // Build rows based on category
 type Row = {
