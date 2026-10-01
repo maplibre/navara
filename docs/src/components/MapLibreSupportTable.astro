@@ -3,10 +3,9 @@ import supportedStyles from "../content/docs/maplibre_style/supported.json";
 
 interface Props {
   category: "layer" | "source" | "expression" | "root";
-  showLegend?: boolean;
 }
 
-const { category, showLegend = false } = Astro.props;
+const { category } = Astro.props;
 
 const MAPLIBRE_SPEC_BASE = "https://maplibre.org/maplibre-style-spec";
 
@@ -325,15 +324,6 @@ switch (category) {
 }
 ---
 
-{showLegend && (
-  <p><strong>Legend:</strong></p>
-  <ul>
-    <li>✅ Supported</li>
-    <li>⚠️ Partial support</li>
-    <li>❌ Not supported</li>
-  </ul>
-)}
-
 <table>
   <thead>
     <tr>
@@ -356,6 +346,12 @@ switch (category) {
 </table>
 
 <style>
+  /* Starlight renders tables as `display: block`, which shrinks them to content width */
+  table {
+    display: table;
+    width: 100%;
+  }
+
   .header-row {
     font-weight: bold;
     background-color: var(--sl-color-gray-6);
