@@ -187,6 +187,13 @@ pub(crate) fn finalize_parsed_mvt(
                 layer_properties.push(props.into_shared_parts());
             }
 
+            // Parsed, so no longer pending even when nothing matched: the
+            // traversal reads `None` as "still parsing" and would keep the
+            // parent tile on screen in this one's place forever.
+            if let Ok(mut rt) = rendered_tiles.get_mut(ctx.rendered_tile) {
+                rt.feature_ids.get_or_insert_with(Vec::new);
+            }
+
             for header in meta.headers {
                 // Slice the group out even when no appearance matches: the
                 // cursor must advance past every group's segments.
@@ -493,6 +500,10 @@ mod test {
                 coords: vec![Vec3::new(1.0, 2.0, 0.0), Vec3::new(3.0, 4.0, 0.0)],
                 batch_indices: vec![0, 1],
                 encoded_coords: vec![0.1, 0.2, 0.3, 0.4, 0.5, 0.6],
+                bearings: vec![],
+                scale_bands: vec![],
+                path_samples: vec![],
+                path_meta: vec![],
             },
         };
         let packed = pack_parsed_mvt_groups(vec![group]);
@@ -559,5 +570,67 @@ mod test {
             cost.gpu_est,
             "the TileCost hook must have added the geometry to the ledger"
         );
+    }
+
+    /// A tile with nothing for the layers still finishes parsing. Its feature
+    /// list must become empty rather than stay unset: unset is how the
+    /// traversal tells a parse in flight, and a parent keeps drawing in place
+    /// of children until every one of them has parsed.
+    #[test]
+    fn it_should_mark_a_tile_with_no_features_as_parsed() {
+        use bevy_ecs::system::RunSystemOnce;
+        use navara_memory::MemoryLedger;
+        use navara_parser::mvt::pack_parsed_mvt_groups;
+        use navara_vector_tile::{RenderedTile, TileCacheManager};
+        use navara_worker::{WorkerTaskCompleted, parse_mvt_tile::ParseMvtTileResult};
+
+        let mut world = World::new();
+        world.init_resource::<BatchTable>();
+        world.init_resource::<MemoryLedger>();
+        world.init_resource::<navara_memory::ReserveEstimates>();
+
+        let packed = pack_parsed_mvt_groups(vec![]);
+        let mut buf = BufferStore::new();
+        let result = ParseMvtTileResult {
+            f64_handle: buf.new_f64(packed.f64_stream),
+            f32_handle: buf.new_f32(packed.f32_stream),
+            u32_handle: buf.new_u32(packed.u32_stream),
+            u8_handle: buf.new_u8(packed.u8_stream),
+            meta: packed.meta,
+        };
+        let pbf_handle = buf.new_u8(vec![0u8; 8]);
+        world.insert_resource(buf);
+
+        let handle: TileHandle = 0;
+        let rendered_tile = world
+            .spawn(RenderedTile {
+                tile_handle: handle,
+                feature_ids: None,
+            })
+            .id();
+        let mut tc = TileCacheManager::default();
+        tc.rendered_tile_caches.insert(handle, rendered_tile);
+        world.spawn(tc);
+
+        world.spawn((
+            result,
+            WorkerTaskCompleted,
+            MvtParseFinalizeContext {
+                rendered_tile,
+                tile_handle: handle,
+                tile_extent: None,
+                order: OrderByDistance {
+                    sse: 0.,
+                    distance: 0.,
+                },
+                appearances: Vec::new(),
+                pbf_handle,
+            },
+        ));
+
+        world.run_system_once(finalize_parsed_mvt).unwrap();
+
+        let rt = world.entity(rendered_tile).get::<RenderedTile>().unwrap();
+        assert_eq!(rt.feature_ids.as_deref(), Some(&[][..]));
     }
 }

@@ -219,7 +219,7 @@ import { Color } from "@navaramap/three";
 
 **Type:** `("point" | "line" | "polygon")[] | undefined`
 
-**Description:** Source geometry categories this material consumes. Adding `"line"` emits one billboard per line-string vertex, and adding `"polygon"` emits one billboard per polygon-ring vertex (the closing duplicate vertex is skipped). Setting the array replaces the default, so include `"point"` when point geometry should keep rendering. This option applies when the layer's geometry is built: set it at layer creation. `layer.update()` applies a new value only to tiles loaded afterwards, so already-loaded tiles keep their previous geometry until the layer is re-created.
+**Description:** Source geometry categories this material consumes. Adding `"line"` emits one billboard per line-string vertex by default. Set [`placement`](#placement) to repeat billboards along the line instead. Adding `"polygon"` emits one billboard per polygon-ring vertex (the closing duplicate vertex is skipped). Setting the array replaces the default, so include `"point"` when point geometry should keep rendering. This option applies when the layer's geometry is built: set it at layer creation. `layer.update()` applies a new value only to tiles loaded afterwards, so already-loaded tiles keep their previous geometry until the layer is re-created.
 
 **Default:** `["point"]`
 
@@ -288,6 +288,38 @@ import { Color } from "@navaramap/three";
 }
 ```
 
+### placement
+
+**Type:** `"point" | "line" | "line-center" | undefined`
+
+**Description:** How billboards are placed on line geometry. Only takes effect when [`geometryTypes`](#geometrytypes) includes `"line"`. Point geometry is always placed at the point itself, and polygon rings always get one billboard per vertex.
+
+- `"point"`: one billboard per line-string vertex.
+- `"line"`: billboards repeat along the line every [`spacing`](#spacing), evenly spaced regardless of where the line's vertices are.
+- `"line-center"`: a single billboard at the halfway point along each line string.
+
+With `"line"` and `"line-center"`, each billboard is also turned to the direction of the line where it sits (see [`rotateToLine`](#rotatetoline)).
+
+This option applies when the layer's geometry is built: set it at layer creation. `layer.update()` does not rebuild billboards that are already loaded, so remove the layer and add it again to change it.
+
+**Default:** `"point"`
+
+**Example:**
+
+```typescript
+{
+  billboard: {
+    url: "/icons/arrow.png",
+    geometryTypes: ["line"],
+    placement: "line",
+    spacing: 120, // Screen pixels
+    billboardFacing: "flat",
+    rotateWithCamera: false, // Arrows lie on the surface and point along the line
+    clampToGround: true
+  }
+}
+```
+
 ### sizeInMeters
 
 **Type:** `boolean | undefined`
@@ -331,6 +363,33 @@ Can also be set per feature from a [feature evaluator](../../api/feature-evaluat
 {
   billboard: {
     billboardFacing: "flat"
+  }
+}
+```
+
+### rotateToLine
+
+**Type:** `boolean | undefined`
+
+**Description:** Whether a billboard placed along a line turns with the line. When `true`, the direction of the line at the billboard's anchor, as a compass bearing, is added to [`rotation`](#rotation). Only used when [`placement`](#placement) is `"line"` or `"line-center"`.
+
+The added bearing reads as a direction on the map when the billboard is fixed to the surface, so combine it with `billboardFacing: "flat"` and `rotateWithCamera: false`. The top of the image then points along the line, and `rotation` turns it further from there. On a billboard that follows the camera, the bearing only spins the image on screen.
+
+This option applies when the layer's geometry is built. `layer.update()` does not change it for billboards that are already loaded, so remove the layer and add it again to change it.
+
+**Default:** `true`
+
+**Example:**
+
+```typescript
+{
+  billboard: {
+    geometryTypes: ["line"],
+    placement: "line",
+    billboardFacing: "flat",
+    rotateWithCamera: false,
+    rotateToLine: true,
+    rotation: 90 // Point to the right of the line's direction
   }
 }
 ```
@@ -410,6 +469,34 @@ Can also be set per feature from a [feature evaluator](../../api/feature-evaluat
 {
   billboard: {
     size: 10 // 10 meters
+  }
+}
+```
+
+### spacing
+
+**Type:** `number | undefined`
+
+**Description:** The distance between repeated billboards when [`placement`](#placement) is `"line"`, in screen pixels. The unit is the same on `geojson` and `vector-tile` sources.
+
+The billboards shown on a line are decided again as the camera moves. Pulling the camera back thins them out, and moving closer fills in more billboards between them. Billboards never slide along the line: they only appear or disappear. The gap on screen stays between one and two times `spacing`, also in a tilted view, where the near and far parts of the view each get their own density.
+
+A line always keeps the billboard at its halfway point, and a line shorter than `spacing` on screen gets only that one. Billboards stop filling in very close to the ground (street level) on a GeoJSON source, and when a vector tile is shown much deeper than its own zoom level (overscaled). There they sit farther apart than `spacing`.
+
+As with MapLibre's `symbol-spacing`, a billboard longer along the line than three quarters of `spacing` spreads its repeats to that length plus a quarter of `spacing`. The length is measured in the billboard's own frame: with `rotateToLine` the top of the image points along the line, so its height is what counts, and `rotation` turns it from there. On a vector tile source, each tile places billboards only inside its own bounds. Each tile spaces its own billboards, so repeats end up at most about one tile apart (512 to 1024 screen pixels) however large `spacing` is.
+
+This option applies when the layer's geometry is built. `layer.update()` does not rebuild billboards that are already loaded, so remove the layer and add it again to change it.
+
+**Default:** `250.0`
+
+**Example:**
+
+```typescript
+{
+  billboard: {
+    geometryTypes: ["line"],
+    placement: "line",
+    spacing: 120
   }
 }
 ```

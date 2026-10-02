@@ -1,6 +1,7 @@
 use navara_core::{CRS, EncodedVec3, WGS84_64};
 use navara_geometry::{Hierarchy, WindingOrder};
 use navara_math::Vec3;
+use navara_parser::line_placement::AlongLine;
 
 use navara_feature_component::batch::BatchTable;
 pub(crate) use navara_feature_component::geometry_builder::GeometryAppearanceKind;
@@ -74,6 +75,28 @@ impl<'a> GeometryBuilder<'a> {
         crs: CRS,
         height: f32,
     ) -> u32 {
+        self.add_point_with(kind, coords, crs, height, None)
+    }
+
+    /// [`Self::add_point`] for an anchor placed along a line.
+    pub(crate) fn add_line_anchor(
+        &mut self,
+        kind: GeometryAppearanceKind,
+        coords: Vec3,
+        height: f32,
+        line: AlongLine,
+    ) -> u32 {
+        self.add_point_with(kind, coords, CRS::Geographic, height, Some(line))
+    }
+
+    fn add_point_with(
+        &mut self,
+        kind: GeometryAppearanceKind,
+        coords: Vec3,
+        crs: CRS,
+        height: f32,
+        line: Option<AlongLine>,
+    ) -> u32 {
         self.ensure_kind(kind);
         let global_batch_id = self.batch_table.gen_global_batch_id().unwrap_or(0);
         let world_pos = crs.to_vec3(WGS84_64, coords, height);
@@ -82,7 +105,7 @@ impl<'a> GeometryBuilder<'a> {
         let low = [enc.low.x as f32, enc.low.y as f32, enc.low.z as f32];
         let (batch_index, commit_batch_id) =
             self.groups
-                .track_point_rte(kind, coords, crs, high, low, global_batch_id);
+                .track_point_rte(kind, coords, crs, high, low, global_batch_id, line);
         self.maybe_commit_props(commit_batch_id);
         batch_index
     }

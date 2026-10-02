@@ -198,6 +198,7 @@ export class DeclutterManager {
     // labels.
     for (const p of this._participants) {
       p.prepareDeferredLabels?.(camera);
+      p.placeLineLabels?.(camera, widthPx, heightPx);
     }
 
     const candidates = this._candidates;

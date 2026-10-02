@@ -141,6 +141,53 @@ describe("sdfTextBaseEnhancer shader", () => {
       expect(shader.uniforms.uLabelData).toBeDefined();
       expect(shader.uniforms.uLabelTexSize).toBeDefined();
     });
+
+    it("keeps the shader's row indices in step with the row table", () => {
+      // The GLSL side restates the row numbers as its own defines, so a row
+      // inserted on the CPU without updating the shader would silently read
+      // the wrong texel rather than fail to compile.
+      for (const [name, index] of Object.entries(LabelRow)) {
+        const define = `LABEL_ROW_${name}`;
+        expect(sdfTextVertexShader).toMatch(
+          new RegExp(`#define\\s+${define}\\s+${index}\\b`),
+        );
+      }
+    });
+  });
+
+  // Line placement compiles a different placement branch and reads a second
+  // texture, so the define, the sample count and the uniforms must arrive
+  // together or the branch reads garbage.
+  describe("line placement contract", () => {
+    it("compiles the straight-label branch by default", () => {
+      const shader = transform({});
+      expect(shader.defines.NVR_LINE_PLACEMENT).toBeUndefined();
+      expect(shader.defines.PATH_SAMPLES).toBeUndefined();
+    });
+
+    it("injects the define and the sample count together", () => {
+      const shader = transform({ linePlacement: true, pathSamples: 32 });
+      expect(shader.defines.NVR_LINE_PLACEMENT).toBe(1);
+      expect(shader.defines.PATH_SAMPLES).toBe(32);
+    });
+
+    it("binds the path texture uniforms", () => {
+      const shader = transform({ linePlacement: true, pathSamples: 32 });
+      expect(shader.uniforms.uPathData).toBeDefined();
+      expect(shader.uniforms.uPathTexSize).toBeDefined();
+      expect(shader.uniforms.uLineOffset).toBeDefined();
+    });
+
+    it("gives line-placed batches their own program cache key", () => {
+      // The two branches declare different uniforms, so sharing a compiled
+      // program would leave one of them reading an unbound sampler.
+      const straight = createSdfTextBaseEnhancer(createMockMaterial());
+      straight.mount({});
+      const curved = createSdfTextBaseEnhancer(createMockMaterial());
+      curved.mount({ linePlacement: true, pathSamples: 32 });
+
+      expect(curved.programCacheKey()).not.toBe(straight.programCacheKey());
+    });
   });
 
   it("should assign batch-wide uniforms to shader.uniforms", () => {

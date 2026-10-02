@@ -12,6 +12,19 @@ pub const CLAMP_TO_GROUND_DYNAMIC_SSE_SCALE: f32 = 1.0;
 /// that vanish (not just blur) when over-coarsened.
 pub const GEOMETRY_DYNAMIC_SSE_SCALE: f32 = 0.5;
 
+/// Factor on `max_sse` for a layer drawing only symbols (text, billboards,
+/// points).
+///
+/// The vector traversal's screen-space error is a tile's on-screen width over
+/// 256 pixels (a 64-sample geometric error), so the default `max_sse` of 2
+/// draws tiles 256–512 CSS pixels across. MapLibre lays symbols out on tiles
+/// of 512–1024: `symbol-spacing` then fits several repeats into one tile.
+/// Twice as small, a tile's piece of a line has room for about one, and the
+/// spacing stops deciding where labels go. Doubling the error budget gives
+/// symbol layers MapLibre's tile size; geometry keeps the finer tiles its
+/// shapes need.
+pub const SYMBOL_SSE_SCALE: f32 = 2.0;
+
 /// Configuration for tile traversal derived from layer properties.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct TraversalConfig {
@@ -63,6 +76,19 @@ impl TraversalConfig {
         } else {
             GEOMETRY_DYNAMIC_SSE_SCALE
         });
+
+        let symbols_only = !appearances.is_empty()
+            && appearances.iter().all(|a| {
+                matches!(
+                    a,
+                    Appearance::Text(_) | Appearance::Billboard(_) | Appearance::Point(_)
+                )
+            });
+        let max_sse = if symbols_only {
+            max_sse * SYMBOL_SSE_SCALE
+        } else {
+            max_sse
+        };
 
         Self {
             has_clamp_to_ground,
@@ -192,5 +218,38 @@ impl VectorTileSourceCache {
 
     pub fn iter(&self) -> impl Iterator<Item = (&SourceId, &Entity)> {
         self.sources.iter()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use navara_material::{BillboardMaterial, PolygonMaterial, PolylineMaterial, TextMaterial};
+
+    use super::*;
+
+    fn config(appearances: &[Appearance]) -> TraversalConfig {
+        TraversalConfig::from_appearances(appearances, 0, 14, 2.0, 20, None)
+    }
+
+    #[test]
+    fn symbol_only_layers_are_traversed_at_maplibres_tile_size() {
+        let labels = [
+            Appearance::Text(TextMaterial::default()),
+            Appearance::Billboard(BillboardMaterial::default()),
+        ];
+        assert_eq!(config(&labels).max_sse(), 2.0 * SYMBOL_SSE_SCALE);
+    }
+
+    #[test]
+    fn layers_drawing_geometry_keep_the_source_sse() {
+        // Mixed with a line, labels share the geometry's finer tiles.
+        let mixed = [
+            Appearance::Text(TextMaterial::default()),
+            Appearance::Polyline(PolylineMaterial::default()),
+        ];
+        assert_eq!(config(&mixed).max_sse(), 2.0);
+        let polygon = [Appearance::Polygon(PolygonMaterial::default())];
+        assert_eq!(config(&polygon).max_sse(), 2.0);
+        assert_eq!(config(&[]).max_sse(), 2.0);
     }
 }

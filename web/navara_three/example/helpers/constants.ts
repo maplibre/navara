@@ -166,7 +166,28 @@ export const VECTOR_DATASETS = {
     attributionUrl:
       "https://github.com/gsi-cyberjapan/gsimaps-vector-experiment",
   },
+  // OpenFreeMap serves the whole planet on the OpenMapTiles schema, z0-14,
+  // with no API key and `access-control-allow-origin: *`.
+  //
+  // The schema splits roads in two: `transportation` carries the geometry,
+  // while `transportation_name` (z6-14) carries `name`, `name:en`, `ref` and
+  // `class` on linestrings that have been **merged across the tile**. That
+  // merging is what makes street labels tractable — labelling the raw
+  // `transportation` layer instead repeats a name on every short segment.
+  //
+  // The path below is republished weekly, so prefer resolving the TileJSON at
+  // `https://tiles.openfreemap.org/planet` (e.g. through `TileJsonPlugin`) and
+  // treat this pinned URL as the fallback.
+  openFreeMapPlanet: {
+    url: "https://tiles.openfreemap.org/planet/20260913_164504_pt/{z}/{x}/{y}.pbf",
+    attribution: "OpenFreeMap © OpenMapTiles Data from OpenStreetMap",
+    attributionUrl: "https://openfreemap.org/",
+  },
 } satisfies Record<string, Dataset>;
+
+/** TileJSON endpoint for {@link VECTOR_DATASETS.openFreeMapPlanet}, which
+ *  resolves to whichever weekly build is current. */
+export const OPEN_FREE_MAP_TILEJSON = "https://tiles.openfreemap.org/planet";
 
 /**
  * PMTiles datasets — a single archive served over HTTP range requests, with an

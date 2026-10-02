@@ -10,6 +10,10 @@ export type InstancedSpriteBaseProps = {
   // Immutable after mount
   useRTE?: boolean;
   billboard?: boolean;
+  /** Whether the geometry carries an `instanceBearing` attribute, which the
+   *  shader adds to the resolved rotation. Set by along-line placement, where
+   *  each anchor knows its line's tangent. */
+  instanceBearing?: boolean;
 
   // Mutable state
   scale?: number;
@@ -65,6 +69,7 @@ export type InstancedSpriteBaseState = Readonly<{
   // Immutable after mount
   useRTE: boolean;
   billboard: boolean;
+  instanceBearing: boolean;
 
   // Mutable
   scale: number;

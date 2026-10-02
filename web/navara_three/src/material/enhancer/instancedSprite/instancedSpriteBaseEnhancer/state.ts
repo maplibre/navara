@@ -10,6 +10,7 @@ export const DEFAULT_BASE_PROPS: Required<
 > = {
   useRTE: false,
   billboard: false,
+  instanceBearing: false,
   scale: 100.0,
   center: [0.0, 0.0],
   flatFacing: false,
@@ -37,6 +38,7 @@ export const DEFAULT_BASE_PROPS: Required<
 export const DEFAULT_BASE_STATE: InstancedSpriteBaseState = {
   useRTE: DEFAULT_BASE_PROPS.useRTE,
   billboard: DEFAULT_BASE_PROPS.billboard,
+  instanceBearing: DEFAULT_BASE_PROPS.instanceBearing,
   scale: DEFAULT_BASE_PROPS.scale,
   center: DEFAULT_BASE_PROPS.center,
   flatFacing: DEFAULT_BASE_PROPS.flatFacing,
@@ -76,6 +78,7 @@ export const updateState = (
     // Immutable after mount - always preserve current value
     useRTE: currentState.useRTE,
     billboard: currentState.billboard,
+    instanceBearing: currentState.instanceBearing,
     // Mutable
     scale: props.scale ?? currentState.scale,
     center: props.center ?? currentState.center,

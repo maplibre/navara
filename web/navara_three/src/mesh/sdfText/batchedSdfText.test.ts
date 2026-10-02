@@ -491,3 +491,36 @@ describe("BatchedSdfTextMesh deferred font preparation", () => {
     expect(settled).toBe(true);
   });
 });
+
+// `_applyUpdate` rebuilds the enhancer's props from scratch, and the state
+// merge reads `props.x ?? currentState.x` — so a field left out of that object
+// is not "unchanged", it is unreachable forever. `lineOffset` was missing, and
+// the example's slider moved nothing.
+describe("BatchedSdfTextMesh style updates reach the enhancer", () => {
+  const enhancerState = (mesh: BatchedSdfTextMesh) =>
+    (
+      mesh as unknown as {
+        _enhancer: { states: () => { lineOffset: number } };
+      }
+    )._enhancer.states();
+
+  it("applies a changed lineOffset", async () => {
+    const { mesh } = makeMesh(material({ lineOffset: 0 } as never));
+    expect(enhancerState(mesh).lineOffset).toBe(0);
+
+    await mesh._update(textMeshEvent(material({ lineOffset: 12 } as never)));
+
+    expect(enhancerState(mesh).lineOffset).toBe(12);
+  });
+
+  it("treats a dropped lineOffset as the default rather than keeping the old one", async () => {
+    // Clearing the field in a style update must return the label to the line,
+    // not strand it at whatever offset it last had.
+    const { mesh } = makeMesh(material({ lineOffset: 12 } as never));
+    expect(enhancerState(mesh).lineOffset).toBe(12);
+
+    await mesh._update(textMeshEvent(material()));
+
+    expect(enhancerState(mesh).lineOffset).toBe(0);
+  });
+});

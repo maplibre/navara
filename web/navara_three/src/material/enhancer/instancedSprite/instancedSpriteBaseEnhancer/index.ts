@@ -65,6 +65,7 @@ export function createInstancedSpriteBaseEnhancer(
         ...DEFAULT_BASE_STATE,
         useRTE: mergedProps.useRTE,
         billboard: mergedProps.billboard,
+        instanceBearing: mergedProps.instanceBearing,
       };
       state = updateState(mergedProps, initialState);
       // Create mutates (refs are created inside with default values)
@@ -114,9 +115,13 @@ export function createInstancedSpriteBaseEnhancer(
 
     programCacheKey: (): string => {
       invariant(state, "mount() must be called before programCacheKey");
+      // Every field that reaches `shader.defines` must appear here, or three
+      // hands a batch the cached program of a batch compiled with different
+      // defines.
       return JSON.stringify({
         useRTE: state.useRTE,
         billboard: state.billboard,
+        instanceBearing: state.instanceBearing,
       });
     },
   };

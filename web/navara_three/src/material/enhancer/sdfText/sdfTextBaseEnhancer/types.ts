@@ -32,6 +32,17 @@ export const LabelRow = {
    * style (color/opacity/size/height) — see guide/BATCH_TEXTURE.md.
    */
   STATE: 3,
+  /**
+   * Along-line placement only, all zero otherwise.
+   *
+   * x = first texel of this label's run in the *path* texture (`uPathData`),
+   * y = metres between adjacent path samples,
+   * z = flip (non-zero reverses the walk, so `keepUpright` can turn a label
+   *     that would otherwise read right-to-left),
+   * w = rejected (non-zero culls the label: it overruns its line or bends too
+   *     sharply). Starts at 1 until the placement pass first judges it.
+   */
+  PATH: 4,
 } as const;
 
 /** Texels per label. Derived from {@link LabelRow} so the two can't disagree. */
@@ -52,6 +63,14 @@ export type SdfTextBaseProps = {
   /** When `true` the fragment shader samples the atlas as 4-channel MTSDF
    *  (median of RGB + true SDF in alpha) instead of single-channel R8. */
   useMsdf?: boolean;
+  /** Bend each glyph along the line its anchor was placed on, reading the
+   *  resampled path from `uPathData`. Immutable because it decides which
+   *  branch the shader compiles; placement is a layer-level property, never
+   *  per feature. */
+  linePlacement?: boolean;
+  /** Samples per label in the path texture. Must match the Rust constant that
+   *  produced the data; injected as a GLSL define. */
+  pathSamples?: number;
 
   // Mutable state
   center?: [number, number];
@@ -69,6 +88,9 @@ export type SdfTextBaseProps = {
    *  clockwise seen from the front. Converted to radians in state. */
   rotation?: number;
   sizeInMeters?: boolean;
+  /** Perpendicular shift away from the line, in the same units as the font
+   *  size. Positive is left of the direction of travel. Line placement only. */
+  lineOffset?: number;
   offsetDepth?: boolean;
   outlineWidth?: number; // raw width, converted in state via sdfRadiusFor(useMsdf)
   outlineColor?: number; // hex
@@ -103,6 +125,8 @@ export type SdfTextBaseState = Readonly<{
   // Immutable after mount
   useRTE: boolean;
   useMsdf: boolean;
+  linePlacement: boolean;
+  pathSamples: number;
 
   // Mutable
   center: [number, number];
@@ -110,6 +134,7 @@ export type SdfTextBaseState = Readonly<{
   rotateWithCamera: boolean;
   rotation: number; // pre-converted: degrees -> radians
   sizeInMeters: boolean;
+  lineOffset: number;
   offsetDepth: boolean;
   outlineWidth: number; // pre-converted: raw / sdfRadiusFor(useMsdf)
   outlineColor: Color;
@@ -175,6 +200,13 @@ export type SdfTextBaseRefs = {
   /** Dimensions of `uLabelData` in texels, for the shader's index-to-texel
    *  math. Read as an `ivec2`. */
   uLabelTexSize: UniformValue<Vector2>;
+  /** Per-label resampled line, as east/north metre offsets from the anchor.
+   *  Only bound under line placement. */
+  uPathData: UniformValue<DataTexture | null>;
+  /** Dimensions of `uPathData` in texels. */
+  uPathTexSize: UniformValue<Vector2>;
+  /** Perpendicular shift from the line, in the same units as the font size. */
+  uLineOffset: UniformValue<number>;
   /** Shared batch data texture ref (per-feature style); growth swaps its
    *  `.value` in place. */
   batchDataTexture?: UniformValue<DataTexture | null>;
@@ -221,6 +253,12 @@ export type SdfTextBaseMutates = Mutates<
      * whenever the mesh grows it, since growing allocates a new texture.
      */
     setLabelDataTexture: (
+      texture: DataTexture | null,
+      width: number,
+      height: number,
+    ) => void;
+    /** Same, for the per-label path texture used by line placement. */
+    setPathDataTexture: (
       texture: DataTexture | null,
       width: number,
       height: number,

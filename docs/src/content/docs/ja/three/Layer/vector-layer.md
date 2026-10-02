@@ -100,7 +100,7 @@ view.addLayer({
 派生はダウンコンバートのみです。
 
 - `polyline` に `"polygon"`：ポリゴンの境界リング（外周と穴）が、リングの基準高度で閉じたポリラインとして描画されます。押し出しの側面エッジは含まれないため、押し出しポリゴンにはポリゴンマテリアルの [`outline`](../../../three/material/polygon-material/#outline) を使用してください。
-- `point` / `billboard` / `text` に `"line"`：ラインの頂点ごとに 1 つのポイントを描画します。
+- `point` / `billboard` / `text` に `"line"`：デフォルトではラインの頂点ごとに 1 つのポイントを描画します。`placement` オプションでラインに沿って配置することもできます。[ライン沿いのラベルとスプライトの配置](#ライン沿いのラベルとスプライトの配置) を参照してください。
 - `point` / `billboard` / `text` に `"polygon"`：ポリゴンリングの頂点ごとに 1 つのポイントを描画します（リングを閉じる重複頂点はスキップされます）。
 
 ```typescript
@@ -125,6 +125,38 @@ view.addLayer({
 `geometryTypes` はジオメトリ構築時に適用されるため、レイヤー作成時に指定してください。`layer.update()` で値を変更しても、変更後に読み込まれたタイルにしか反映されません。表示中のタイルは構築時のジオメトリを保持するため、すべてに反映するにはレイヤーを作り直してください。
 
 タイル分割された描画パス（ベクタータイルソース、または `tiled` / `clampToGround` を指定したマテリアル）では、派生はタイルごとにクリップされたリングを走査します。境界ポリラインはこれを自動で処理し、タイルクリップで挿入されたエッジは描画されないため、ポリゴン内部にタイルの輪郭が現れることはありません。一方、ベクタータイルのポリゴンから派生したポイントは、タイル端のクリップで挿入された頂点に現れることがあります。それが問題になる場合は、ポイント派生にはタイル分割しない GeoJSON レイヤーを使用してください。
+
+### ライン沿いのラベルとスプライトの配置
+
+`geometryTypes` に `"line"` を含めると、`point`、`billboard`、`text` の各マテリアルで `placement` も指定できます。
+
+- `"point"`（デフォルト）：ラインの頂点ごとに 1 つのオブジェクトを配置します。
+- `"line"`：`spacing` ごとにラインに沿ってオブジェクトを繰り返し配置します。頂点の位置に関係なく等間隔になります。
+- `"line-center"`：各ラインの長さの中間点に 1 つのオブジェクトを配置します。
+
+ライン沿いに配置したテキストは、道路名のように単語ごとにカーブに沿って曲がります。各単語はその下のラインの向きに合わせて回転し、単語内の文字はまっすぐ並んだままです。ラインからはみ出すラベルや `maxAngle` を超えて曲がるラベルは非表示になり、上下逆さまに読める向きのラベルは反転されます（`keepUpright` が `false` の場合を除く）。どちらもカメラの移動に合わせて判定し直されます。ビルボードとポイントは `rotateToLine` によってラインの向きに回転します。
+
+`spacing` の単位は、ベクタータイルソースでも GeoJSON ソースでも画面上のピクセルです。カメラを引くとオブジェクトは間引かれ、近づくと間に追加されるため、画面上の間隔は `spacing` の 1〜2 倍に保たれます。オブジェクトがラインに沿って移動することはなく、表示されるか消えるかのどちらかです。
+
+```typescript
+// ベクタータイルソースの道路ラインに沿って道路名を表示
+view.addLayer({
+  type: "vector",
+  source: roads,
+  text: {
+    font: "Arsenal",
+    geometryTypes: ["line"],
+    placement: "line",
+    spacing: 250, // 画面上のピクセル
+    textFacing: "flat",
+    size: 14,
+    sizeInMeters: false,
+    clampToGround: true,
+  },
+});
+```
+
+`geometryTypes` と同様に、`placement`、`spacing`、`rotateToLine` はジオメトリ構築時に適用されるため、レイヤー作成時に指定してください。すべてのオプションは [TextMaterial](../../../three/material/text-material/#placement)、[BillboardMaterial](../../../three/material/billboard-material/#placement)、[PointMaterial](../../../three/material/point-material/#placement) を参照してください。
 
 ## 関連リソース
 

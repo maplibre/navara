@@ -6,6 +6,7 @@ export {
   readBatchScalar,
   readBatchShowOpacity,
   readBatchVec3,
+  unpackOrientation,
   unpackShowOpacity,
   updateBatchAttribute,
 } from "./core";

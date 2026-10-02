@@ -97,6 +97,17 @@ impl PosConverter {
         self.extent as f64
     }
 
+    /// Ground metres spanned by one tile coordinate unit at `lat_deg`.
+    ///
+    /// Web Mercator inflates distances by `1 / cos(latitude)`, so a fixed
+    /// number of tile units covers less ground the further from the equator it
+    /// sits. Callers converting a tile-space offset into metres must use the
+    /// latitude of the point they are measuring from.
+    pub fn ground_meters_per_unit(&self, lat_deg: f64) -> f64 {
+        const EQUATORIAL_CIRCUMFERENCE_M: f64 = 40_075_016.685_578_49;
+        EQUATORIAL_CIRCUMFERENCE_M / self.size * lat_deg.to_radians().cos()
+    }
+
     /// Project a single point from tile coordinates (f64) to geographic coordinates.
     pub fn project_point(&self, px: f64, py: f64) -> (FloatType, FloatType) {
         let x = (px + self.x0) * self.scale_x - 180.0;

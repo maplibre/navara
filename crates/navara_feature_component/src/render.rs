@@ -627,6 +627,19 @@ pub struct TransferablePointGeometry {
     pub position_3d_low: Option<TransferableFloatAttribute>,
     pub batch_ids: TransferableFloatAttribute,
     pub batch_index: TransferableUintAttribute,
+    /// Per-anchor tangent bearing in degrees clockwise from north. `None`
+    /// unless the anchors were placed along a line.
+    pub bearings: Option<TransferableFloatAttribute>,
+    /// Per-anchor `(min, max]` ground metres per screen pixel over which the
+    /// renderer shows it; `size` is the stride. Set exactly when `bearings` is.
+    pub scale_bands: Option<TransferableFloatAttribute>,
+    /// Per-anchor east/north path samples for bending glyphs along the line;
+    /// `size` is the stride (two floats per sample). `None` unless along-line
+    /// text.
+    pub path_samples: Option<TransferableFloatAttribute>,
+    /// Per-anchor `(metres between path samples, metres of real line either
+    /// side of the anchor)`.
+    pub path_meta: Option<TransferableFloatAttribute>,
 }
 
 impl TransferablePointGeometry {
@@ -653,6 +666,10 @@ impl TransferablePointGeometry {
                 data: buf.new_u32(batch_indices),
                 size: 1,
             },
+            bearings: None,
+            scale_bands: None,
+            path_samples: None,
+            path_meta: None,
         }
     }
 
@@ -685,6 +702,10 @@ impl TransferablePointGeometry {
                 data: buf.new_u32(batch_indices),
                 size: 1,
             },
+            bearings: None,
+            scale_bands: None,
+            path_samples: None,
+            path_meta: None,
         }
     }
 
@@ -698,6 +719,17 @@ impl TransferablePointGeometry {
         }
         if let Some(position_3d_low) = &self.position_3d_low {
             buf.remove(&position_3d_low.data);
+        }
+        for attr in [
+            &self.bearings,
+            &self.scale_bands,
+            &self.path_samples,
+            &self.path_meta,
+        ]
+        .into_iter()
+        .flatten()
+        {
+            buf.remove(&attr.data);
         }
 
         if let Some(vec_ids) = buf.remove_f32(&self.batch_ids.data) {
@@ -713,6 +745,22 @@ impl TransferablePointGeometry {
 impl From<&crate::batched_geometry::BatchedPointGeometry> for TransferablePointGeometry {
     fn from(geom: &crate::batched_geometry::BatchedPointGeometry) -> Self {
         use crate::batched_geometry::PointEncoding;
+        let bearings = geom
+            .bearings
+            .map(|data| TransferableFloatAttribute { data, size: 1 });
+        let scale_bands = geom.scale_bands.map(|data| TransferableFloatAttribute {
+            data,
+            size: navara_parser::line_placement::SCALE_BAND_STRIDE as u8,
+        });
+        let path_samples = geom.path_samples.map(|data| TransferableFloatAttribute {
+            data,
+            // `size` is a u8, so the sample count can never exceed 127.
+            size: (navara_parser::line_placement::PATH_SAMPLES * 2) as u8,
+        });
+        let path_meta = geom.path_meta.map(|data| TransferableFloatAttribute {
+            data,
+            size: navara_parser::line_placement::PATH_META_STRIDE as u8,
+        });
         match geom.encoding {
             PointEncoding::Rtc => Self {
                 position: Some(TransferableFloatAttribute {
@@ -729,6 +777,10 @@ impl From<&crate::batched_geometry::BatchedPointGeometry> for TransferablePointG
                     data: geom.batch_indices,
                     size: 1,
                 },
+                bearings,
+                scale_bands,
+                path_samples,
+                path_meta,
             },
             PointEncoding::Rte => Self {
                 position: None,
@@ -748,6 +800,10 @@ impl From<&crate::batched_geometry::BatchedPointGeometry> for TransferablePointG
                     data: geom.batch_indices,
                     size: 1,
                 },
+                bearings,
+                scale_bands,
+                path_samples,
+                path_meta,
             },
         }
     }

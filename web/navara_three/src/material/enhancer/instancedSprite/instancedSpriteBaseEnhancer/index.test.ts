@@ -194,8 +194,27 @@ describe("instancedSpriteBaseEnhancer", () => {
       expect(parsed).toEqual({
         useRTE: true,
         billboard: true,
+        instanceBearing: false,
         userDataDefines: undefined,
       });
+    });
+
+    it("distinguishes bearing-carrying geometry", () => {
+      // USE_INSTANCE_BEARING declares an attribute the straight program does
+      // not have, so the two must not share a compiled program.
+      enhancer.mount({ useRTE: true, billboard: true });
+      const without = enhancer.programCacheKey();
+
+      const withBearing = createInstancedSpriteBaseEnhancer(
+        new ShaderMaterial(),
+      );
+      withBearing.mount({
+        useRTE: true,
+        billboard: true,
+        instanceBearing: true,
+      });
+
+      expect(withBearing.programCacheKey()).not.toBe(without);
     });
 
     it("should return different cache keys for different shader-affecting states", () => {

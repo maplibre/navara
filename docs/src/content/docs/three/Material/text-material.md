@@ -302,7 +302,7 @@ view.addFontFamily({
 
 **Type:** `("point" | "line" | "polygon")[] | undefined`
 
-**Description:** Source geometry categories this material consumes. Adding `"line"` emits one label per line-string vertex, and adding `"polygon"` emits one label per polygon-ring vertex (the closing duplicate vertex is skipped). Setting the array replaces the default, so include `"point"` when point geometry should keep rendering. This option applies when the layer's geometry is built: set it at layer creation. `layer.update()` applies a new value only to tiles loaded afterwards, so already-loaded tiles keep their previous geometry until the layer is re-created.
+**Description:** Source geometry categories this material consumes. Adding `"line"` emits one label per line-string vertex by default. Set [`placement`](#placement) to lay labels along the line instead. Adding `"polygon"` emits one label per polygon-ring vertex (the closing duplicate vertex is skipped). Setting the array replaces the default, so include `"point"` when point geometry should keep rendering. This option applies when the layer's geometry is built: set it at layer creation. `layer.update()` applies a new value only to tiles loaded afterwards, so already-loaded tiles keep their previous geometry until the layer is re-created.
 
 **Default:** `["point"]`
 
@@ -330,6 +330,26 @@ view.addFontFamily({
 {
   text: {
     height: 100 // 100 meters
+  }
+}
+```
+
+### keepUpright
+
+**Type:** `boolean | undefined`
+
+**Description:** Flips a label placed along a line when it would otherwise read upside down, so that names stay legible whichever way the line was drawn. Only used when [`placement`](#placement) is `"line"` or `"line-center"`. Which way a label reads depends on the camera, so it is decided again as the camera moves, and `layer.update()` applies a new value to labels that are already shown.
+
+**Default:** `true`
+
+**Example:**
+
+```typescript
+{
+  text: {
+    geometryTypes: ["line"],
+    placement: "line",
+    keepUpright: false // Always read in the direction the line was drawn
   }
 }
 ```
@@ -366,6 +386,48 @@ view.addFontFamily({
 {
   text: {
     lineHeight: 1.2
+  }
+}
+```
+
+### lineOffset
+
+**Type:** `number | undefined`
+
+**Description:** Shifts a label placed along a line sideways, away from the line. Positive values move it to the left of the line's direction of travel, which puts it above the line when the label reads left to right. The value uses the same unit as [`size`](#size): meters when [`sizeInMeters`](#sizeinmeters) is `true`, pixels otherwise. Use it to set a name beside a road instead of on top of it. Only used when [`placement`](#placement) is `"line"` or `"line-center"`. `layer.update()` applies a new value to labels that are already shown.
+
+**Default:** `0.0`
+
+**Example:**
+
+```typescript
+{
+  text: {
+    geometryTypes: ["line"],
+    placement: "line",
+    size: 14,
+    sizeInMeters: false,
+    lineOffset: 10 // 10 pixels beside the line
+  }
+}
+```
+
+### maxAngle
+
+**Type:** `number | undefined`
+
+**Description:** The largest turn, in degrees, that the line may make under a label placed along it before the label is hidden as unreadable. The turn is added up over a short stretch of the label, about one and a half times the font size, which slides along it: several small corners close together count together and can hide the label, while a long gentle curve is kept however far it turns in total. Only used when [`placement`](#placement) is `"line"` or `"line-center"`. Whether a label fits is decided again as the camera moves, and `layer.update()` applies a new value to labels that are already shown.
+
+**Default:** `45.0`
+
+**Example:**
+
+```typescript
+{
+  text: {
+    geometryTypes: ["line"],
+    placement: "line",
+    maxAngle: 90 // Allow labels on tighter curves
   }
 }
 ```
@@ -478,6 +540,94 @@ import { Color } from "@navaramap/three";
     outlineWidth: 2
   }
 }
+```
+
+### placement
+
+**Type:** `"point" | "line" | "line-center" | undefined`
+
+**Description:** How labels are placed on line geometry. Only takes effect when [`geometryTypes`](#geometrytypes) includes `"line"`. Point geometry is always labeled at the point itself, and polygon rings always get one label per vertex.
+
+- `"point"`: one label per line-string vertex.
+- `"line"`: labels repeat along the line every [`spacing`](#spacing) and follow its curve word by word, like a street name on a map. Each word turns to match the line under it, and the letters within a word stay straight.
+- `"line-center"`: a single label at the halfway point along each line string, bent along the line in the same way.
+
+A label along a line is hidden instead of drawn when it would not read well:
+
+- it is longer than the line left on either side of its anchor, or
+- it bends through more than [`maxAngle`](#maxangle).
+
+These checks run again as the camera moves.
+
+Along-line labels also accept [`keepUpright`](#keepupright) and [`lineOffset`](#lineoffset). They are usually combined with `textFacing: "flat"` so the text lies on the surface along the line.
+
+This option applies when the layer's geometry is built: set it at layer creation. `layer.update()` does not rebuild labels that are already loaded, so remove the layer and add it again to change it.
+
+**Default:** `"point"`
+
+**Example:**
+
+```typescript
+import ThreeView, { Color, fetchFontFamilyFromCss } from "@navaramap/three";
+import { DefaultPlugin } from "@navaramap/three-default-plugin";
+
+const view = new ThreeView({ canvas: document.querySelector("canvas")! });
+view.addPlugin(new DefaultPlugin());
+await view.init();
+
+view.addFontFamily(
+  await fetchFontFamilyFromCss(
+    "Arsenal",
+    "https://fonts.googleapis.com/css2?family=Arsenal:wght@700",
+  ),
+);
+
+const source = view.addSource({
+  type: "geojson",
+  data: {
+    type: "FeatureCollection",
+    features: [
+      {
+        type: "Feature",
+        properties: { name: "Riverside Avenue" },
+        geometry: {
+          type: "LineString",
+          coordinates: [
+            [139.76, 35.68],
+            [139.77, 35.685],
+            [139.78, 35.683],
+            [139.79, 35.688],
+          ],
+        },
+      },
+    ],
+  },
+});
+
+const streets = view.addLayer({
+  type: "vector",
+  source,
+  text: {
+    font: "Arsenal",
+    geometryTypes: ["line"],
+    placement: "line",
+    spacing: 250, // Screen pixels
+    textFacing: "flat",
+    size: 18,
+    sizeInMeters: false,
+    clampToGround: true,
+    color: new Color().setStyle("#ffffff"),
+    outlineColor: new Color().setStyle("#111318"),
+    outlineWidth: 4,
+  },
+});
+
+streets.on("featureUpdated", ({ evaluator }) => {
+  evaluator.evaluate(
+    ({ properties }) => ({ text: properties?.["name"] as string, show: true }),
+    { filters: ["name"] },
+  );
+});
 ```
 
 ### rotateWithCamera
@@ -598,6 +748,38 @@ Can also be set per feature from a [feature evaluator](../../api/feature-evaluat
 {
   text: {
     size: 16
+  }
+}
+```
+
+### spacing
+
+**Type:** `number | undefined`
+
+**Description:** The distance between repeated labels when [`placement`](#placement) is `"line"`, in screen pixels. The unit is the same on `geojson` and `vector-tile` sources.
+
+The labels shown on a line are decided again as the camera moves. Pulling the camera back thins them out, and moving closer fills in more labels between them. Labels never slide along the line: they only appear or disappear. The gap on screen stays between one and two times `spacing`, also in a tilted view, where the near and far parts of the view each get their own density.
+
+A line always keeps the label at its halfway point, and a line shorter than `spacing` on screen gets only that one. Labels stop filling in very close to the ground (street level) on a GeoJSON source, and when a vector tile is shown much deeper than its own zoom level (overscaled). There they sit farther apart than `spacing`.
+
+Three more rules follow MapLibre's `symbol-spacing`:
+
+- A label longer than three quarters of `spacing` spreads its repeats to its own length plus a quarter of `spacing`, so long names are spaced out instead of hidden.
+- A label closer than half of `spacing` to an earlier label with the same text in the same tile is hidden, so a road split into several lines, or two carriageways with one name, is not labeled twice in the same spot.
+- On a vector tile source, each tile places labels only inside its own bounds. Each tile spaces its own labels, so repeats end up at most about one tile apart (512 to 1024 screen pixels) however large `spacing` is.
+
+This option applies when the layer's geometry is built. `layer.update()` does not rebuild labels that are already loaded, so remove the layer and add it again to change it.
+
+**Default:** `250.0`
+
+**Example:**
+
+```typescript
+{
+  text: {
+    geometryTypes: ["line"],
+    placement: "line",
+    spacing: 400
   }
 }
 ```

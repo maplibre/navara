@@ -15,11 +15,14 @@ export const DEFAULT_BASE_PROPS: Required<
 > = {
   useRTE: false,
   useMsdf: false,
+  linePlacement: false,
+  pathSamples: 0,
   center: [0.5, 0.0],
   flatFacing: false,
   rotateWithCamera: true,
   rotation: 0,
   sizeInMeters: true,
+  lineOffset: 0,
   offsetDepth: true,
   outlineWidth: 0,
   outlineColor: 0x000000,
@@ -41,11 +44,14 @@ export const DEFAULT_BASE_PROPS: Required<
 export const DEFAULT_BASE_STATE: SdfTextBaseState = {
   useRTE: DEFAULT_BASE_PROPS.useRTE,
   useMsdf: DEFAULT_BASE_PROPS.useMsdf,
+  linePlacement: DEFAULT_BASE_PROPS.linePlacement,
+  pathSamples: DEFAULT_BASE_PROPS.pathSamples,
   center: DEFAULT_BASE_PROPS.center,
   flatFacing: DEFAULT_BASE_PROPS.flatFacing,
   rotateWithCamera: DEFAULT_BASE_PROPS.rotateWithCamera,
   rotation: DEFAULT_BASE_PROPS.rotation * MathUtils.DEG2RAD,
   sizeInMeters: DEFAULT_BASE_PROPS.sizeInMeters,
+  lineOffset: DEFAULT_BASE_PROPS.lineOffset,
   offsetDepth: DEFAULT_BASE_PROPS.offsetDepth,
   outlineWidth:
     DEFAULT_BASE_PROPS.outlineWidth / sdfRadiusFor(DEFAULT_BASE_PROPS.useMsdf),
@@ -77,6 +83,8 @@ export const updateState = (
     // Immutable after mount
     useRTE: currentState.useRTE,
     useMsdf: currentState.useMsdf,
+    linePlacement: currentState.linePlacement,
+    pathSamples: currentState.pathSamples,
     // Mutable
     center: props.center ?? currentState.center,
     flatFacing: props.flatFacing ?? currentState.flatFacing,
@@ -86,6 +94,7 @@ export const updateState = (
         ? props.rotation * MathUtils.DEG2RAD
         : currentState.rotation,
     sizeInMeters: props.sizeInMeters ?? currentState.sizeInMeters,
+    lineOffset: props.lineOffset ?? currentState.lineOffset,
     offsetDepth: props.offsetDepth ?? currentState.offsetDepth,
     outlineWidth:
       props.outlineWidth !== undefined

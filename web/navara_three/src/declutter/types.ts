@@ -75,4 +75,21 @@ export type DeclutterParticipant = {
    * promoted labels join a *later* pass once their text is applied.
    */
   prepareDeferredLabels?: (camera: PerspectiveCamera) => void;
+  /**
+   * Optional: re-decide along-line placement for this participant's labels.
+   * Called at the start of every placement pass, before candidates are
+   * collected.
+   *
+   * Which way a line label reads, and whether it still fits the road it sits
+   * on, both depend on the camera — a pixel-sized label grows in world metres
+   * as the camera pulls back — so neither can be baked when the tile is
+   * parsed. This shares the placement pass's cadence because it changes at
+   * exactly the same rate, and runs before `collectDeclutterCandidates` so a
+   * label rejected here never competes for screen space.
+   */
+  placeLineLabels?: (
+    camera: PerspectiveCamera,
+    widthPx: number,
+    heightPx: number,
+  ) => void;
 };

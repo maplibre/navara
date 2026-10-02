@@ -28,6 +28,18 @@ attribute float instanceBatchID;
 // the batch texture's `show` so user visibility and declutter results compose.
 attribute float instanceDeclutterHide;
 
+#ifdef USE_INSTANCE_BEARING
+    // Tangent bearing of the line this anchor was placed along, in radians
+    // clockwise from north. It composes with the rotation the batch texture
+    // resolves rather than replacing it, so a material or per-feature
+    // `rotation` still offsets the sprite from the line's direction.
+    //
+    // This cannot live in the batch texture: along-line placement gives one
+    // feature many anchors, and the texture is keyed per feature, not per
+    // instance.
+    attribute float instanceBearing;
+#endif
+
 uniform vec3 uRTCCenter;
 // RTC center already transformed into view (eye) space on the CPU in float64.
 // Computed there to avoid the catastrophic float32 cancellation that
@@ -146,6 +158,9 @@ void main() {
     // derived from the anchor's east-north-up frame (see quad_orientation).
     vec3 axisRight;
     vec3 axisUp;
+#ifdef USE_INSTANCE_BEARING
+    nvr_batchRotation += instanceBearing;
+#endif
     nvr_quadBasis(
         absTransformed,
         nvr_batchFlatFacing,

@@ -302,7 +302,7 @@ view.addFontFamily({
 
 **Type:** `("point" | "line" | "polygon")[] | undefined`
 
-**Description:** このマテリアルが消費するソースジオメトリのカテゴリーです。`"line"` を含めるとラインの頂点ごとに、`"polygon"` を含めるとポリゴンリングの頂点ごとに 1 つのラベルを描画します（リングを閉じる重複頂点はスキップされます）。配列を指定するとデフォルトは置き換えられるため、ポイントジオメトリも描画し続けたい場合は `"point"` を含めてください。このオプションはジオメトリ構築時に適用されます。レイヤー作成時に指定してください。`layer.update()` で変更しても読み込み済みのタイルには反映されず、変更後に読み込まれたタイルにのみ適用されます（すべてに反映するにはレイヤーを作り直してください）。
+**Description:** このマテリアルが消費するソースジオメトリのカテゴリーです。`"line"` を含めると、デフォルトではラインの頂点ごとに 1 つのラベルを描画します。ラインに沿ってラベルを配置するには [`placement`](#placement) を指定してください。`"polygon"` を含めるとポリゴンリングの頂点ごとに 1 つのラベルを描画します（リングを閉じる重複頂点はスキップされます）。配列を指定するとデフォルトは置き換えられるため、ポイントジオメトリも描画し続けたい場合は `"point"` を含めてください。このオプションはジオメトリ構築時に適用されます。レイヤー作成時に指定してください。`layer.update()` で変更しても読み込み済みのタイルには反映されず、変更後に読み込まれたタイルにのみ適用されます（すべてに反映するにはレイヤーを作り直してください）。
 
 **Default:** `["point"]`
 
@@ -330,6 +330,26 @@ view.addFontFamily({
 {
   text: {
     height: 100 // 100メートル
+  }
+}
+```
+
+### keepUpright
+
+**Type:** `boolean | undefined`
+
+**Description:** ライン沿いに配置したラベルが上下逆さまに読める向きになる場合に反転し、ラインがどちら向きに描かれていても名前が読めるようにします。[`placement`](#placement) が `"line"` または `"line-center"` のときのみ使用されます。ラベルの読み方向はカメラに依存するため、カメラの移動に合わせて判定し直されます。`layer.update()` で変更した値は、表示中のラベルにも反映されます。
+
+**Default:** `true`
+
+**Example:**
+
+```typescript
+{
+  text: {
+    geometryTypes: ["line"],
+    placement: "line",
+    keepUpright: false // 常にラインが描かれた向きに読む
   }
 }
 ```
@@ -366,6 +386,48 @@ view.addFontFamily({
 {
   text: {
     lineHeight: 1.2
+  }
+}
+```
+
+### lineOffset
+
+**Type:** `number | undefined`
+
+**Description:** ライン沿いに配置したラベルを、ラインから横方向にずらします。正の値はラインの進行方向の左側に移動し、ラベルが左から右に読める向きのときはラインの上側になります。単位は [`size`](#size) と同じで、[`sizeInMeters`](#sizeinmeters) が `true` のときはメートル、それ以外はピクセルです。道路の上ではなく道路の脇に名前を置きたい場合に使用します。[`placement`](#placement) が `"line"` または `"line-center"` のときのみ使用されます。`layer.update()` で変更した値は、表示中のラベルにも反映されます。
+
+**Default:** `0.0`
+
+**Example:**
+
+```typescript
+{
+  text: {
+    geometryTypes: ["line"],
+    placement: "line",
+    size: 14,
+    sizeInMeters: false,
+    lineOffset: 10 // ラインから 10 ピクセル横に配置
+  }
+}
+```
+
+### maxAngle
+
+**Type:** `number | undefined`
+
+**Description:** ライン沿いに配置したラベルの下でラインが曲がってよい角度の上限（度）です。これを超えるラベルは読みにくいため非表示になります。角度はフォントサイズの約 1.5 倍の短い区間ごとに合計し、その区間をラベルに沿ってずらしながら判定します。そのため、近接した小さな角が重なると非表示になることがある一方、長く緩やかなカーブは全体でどれだけ曲がっていても表示されます。[`placement`](#placement) が `"line"` または `"line-center"` のときのみ使用されます。ラベルが収まるかどうかはカメラの移動に合わせて判定し直され、`layer.update()` で変更した値は表示中のラベルにも反映されます。
+
+**Default:** `45.0`
+
+**Example:**
+
+```typescript
+{
+  text: {
+    geometryTypes: ["line"],
+    placement: "line",
+    maxAngle: 90 // よりきついカーブにもラベルを配置
   }
 }
 ```
@@ -478,6 +540,94 @@ import { Color } from "@navaramap/three";
     outlineWidth: 2
   }
 }
+```
+
+### placement
+
+**Type:** `"point" | "line" | "line-center" | undefined`
+
+**Description:** ラインジオメトリ上でのラベルの配置方法を指定します。[`geometryTypes`](#geometrytypes) に `"line"` が含まれる場合のみ有効です。ポイントジオメトリは常にその地点に、ポリゴンリングは常に頂点ごとにラベルが配置されます。
+
+- `"point"`：ラインの頂点ごとに 1 つのラベルを配置します。
+- `"line"`：[`spacing`](#spacing) ごとにラインに沿ってラベルを繰り返し配置します。地図上の道路名のように、単語ごとにラインのカーブに沿って曲がります。各単語はその下のラインの向きに合わせて回転し、単語内の文字はまっすぐ並んだままです。
+- `"line-center"`：各ラインの長さの中間点に 1 つのラベルを配置し、同じようにラインに沿って曲げます。
+
+ライン沿いのラベルは、読みにくくなる場合は描画されずに非表示になります。
+
+- アンカーの左右に残っているラインよりもラベルが長い場合
+- ラベルが [`maxAngle`](#maxangle) を超えて曲がる場合
+
+これらの判定はカメラの移動に合わせて再実行されます。
+
+ライン沿いのラベルでは [`keepUpright`](#keepupright) と [`lineOffset`](#lineoffset) も使用できます。テキストをラインに沿って地表に寝かせるため、通常は `textFacing: "flat"` と組み合わせます。
+
+このオプションはジオメトリ構築時に適用されます。レイヤー作成時に指定してください。`layer.update()` では読み込み済みのラベルは再構築されないため、変更するにはレイヤーを削除して追加し直してください。
+
+**Default:** `"point"`
+
+**Example:**
+
+```typescript
+import ThreeView, { Color, fetchFontFamilyFromCss } from "@navaramap/three";
+import { DefaultPlugin } from "@navaramap/three-default-plugin";
+
+const view = new ThreeView({ canvas: document.querySelector("canvas")! });
+view.addPlugin(new DefaultPlugin());
+await view.init();
+
+view.addFontFamily(
+  await fetchFontFamilyFromCss(
+    "Arsenal",
+    "https://fonts.googleapis.com/css2?family=Arsenal:wght@700",
+  ),
+);
+
+const source = view.addSource({
+  type: "geojson",
+  data: {
+    type: "FeatureCollection",
+    features: [
+      {
+        type: "Feature",
+        properties: { name: "Riverside Avenue" },
+        geometry: {
+          type: "LineString",
+          coordinates: [
+            [139.76, 35.68],
+            [139.77, 35.685],
+            [139.78, 35.683],
+            [139.79, 35.688],
+          ],
+        },
+      },
+    ],
+  },
+});
+
+const streets = view.addLayer({
+  type: "vector",
+  source,
+  text: {
+    font: "Arsenal",
+    geometryTypes: ["line"],
+    placement: "line",
+    spacing: 250, // 画面上のピクセル
+    textFacing: "flat",
+    size: 18,
+    sizeInMeters: false,
+    clampToGround: true,
+    color: new Color().setStyle("#ffffff"),
+    outlineColor: new Color().setStyle("#111318"),
+    outlineWidth: 4,
+  },
+});
+
+streets.on("featureUpdated", ({ evaluator }) => {
+  evaluator.evaluate(
+    ({ properties }) => ({ text: properties?.["name"] as string, show: true }),
+    { filters: ["name"] },
+  );
+});
 ```
 
 ### rotateWithCamera
@@ -598,6 +748,38 @@ import { Color } from "@navaramap/three";
 {
   text: {
     size: 16
+  }
+}
+```
+
+### spacing
+
+**Type:** `number | undefined`
+
+**Description:** [`placement`](#placement) が `"line"` のときに繰り返し配置するラベルの間隔を、画面上のピクセルで指定します。単位は `geojson` ソースでも `vector-tile` ソースでも同じです。
+
+ライン上に表示するラベルは、カメラの移動に合わせて決め直されます。カメラを引くとラベルは間引かれ、近づくと間にラベルが追加されます。ラベルがラインに沿って移動することはなく、表示されるか消えるかのどちらかです。画面上の間隔は `spacing` の 1〜2 倍に保たれます。これは傾けた視点でも同様で、画面の手前側と奥側でそれぞれの密度になります。
+
+ラインの中間点のラベルは常に残り、画面上で `spacing` より短いラインにはそのラベルだけが配置されます。GeoJSON ソースで地表にごく近づいた場合（ストリートレベル）や、ベクタータイルが自身のズームレベルよりかなり深く表示されている場合（オーバーズーム）は、ラベルがそれ以上追加されなくなり、`spacing` より広い間隔になります。
+
+さらに、MapLibre の `symbol-spacing` と同じ次の規則が適用されます。
+
+- `spacing` の 4 分の 3 より長いラベルは、繰り返しの間隔が「ラベルの長さ + `spacing` の 4 分の 1」に広がります。長い名前は非表示にならず、間隔を空けて配置されます。
+- 同じタイル内で、同じテキストの先行ラベルから `spacing` の半分未満の距離にあるラベルは非表示になります。複数のラインに分かれた道路や、同じ名前の上下線に同じ場所で 2 度ラベルが付くことはありません。
+- ベクタータイルソースでは、各タイルは自身の範囲内にだけラベルを配置します。ラベルの間隔はタイルごとに決まるため、`spacing` をどれだけ大きくしても、繰り返しの間隔はおよそ 1 タイル分（画面上で 512〜1024 ピクセル）までになります。
+
+このオプションはジオメトリ構築時に適用されます。`layer.update()` では読み込み済みのラベルは再構築されないため、変更するにはレイヤーを削除して追加し直してください。
+
+**Default:** `250.0`
+
+**Example:**
+
+```typescript
+{
+  text: {
+    geometryTypes: ["line"],
+    placement: "line",
+    spacing: 400
   }
 }
 ```

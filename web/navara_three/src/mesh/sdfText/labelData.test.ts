@@ -19,6 +19,28 @@ describe("LabelDataTexture", () => {
     expect(dataOf(store).length).toBe(width * height * 4);
   });
 
+  it("lays a wide slot out on a wide row", () => {
+    // The path texture: 16 texels a label. On the default row a 4096-row
+    // texture holds only 16k of them; on its own width it keeps the same
+    // linear addressing but grows ~16x more slowly.
+    const store = new LabelDataTexture(100_000, 16, 1024);
+    expect(store.size.x).toBe(1024);
+    expect(store.size.y).toBeLessThanOrEqual(4096);
+    expect(store.capacity).toBeGreaterThanOrEqual(100_000);
+
+    store.setRow(70_000, 3, 1, 2, 3, 4);
+    const base = (70_000 * 16 + 3) * 4;
+    expect(Array.from(dataOf(store).slice(base, base + 4))).toEqual([
+      1, 2, 3, 4,
+    ]);
+    // A grow keeps the width, so existing addresses survive it.
+    store.ensureCapacity(store.capacity + 1);
+    expect(store.size.x).toBe(1024);
+    expect(Array.from(dataOf(store).slice(base, base + 4))).toEqual([
+      1, 2, 3, 4,
+    ]);
+  });
+
   it("writes a row at the address the shader reads", () => {
     const store = new LabelDataTexture(8);
     store.setRow(3, LabelRow.BOX, 0.25, 0.5, 0.75, 0.5);

@@ -71,6 +71,8 @@ export function createSdfTextBaseEnhancer(
         ...DEFAULT_BASE_STATE,
         useRTE: mergedProps.useRTE,
         useMsdf: mergedProps.useMsdf,
+        linePlacement: mergedProps.linePlacement,
+        pathSamples: mergedProps.pathSamples,
       };
       state = updateState(mergedProps, initialState);
       // Create mutates (refs are created inside with default values)
@@ -110,7 +112,15 @@ export function createSdfTextBaseEnhancer(
 
     programCacheKey: (): string => {
       invariant(state, "mount() must be called before programCacheKey");
-      return JSON.stringify({ useRTE: state.useRTE, useMsdf: state.useMsdf });
+      // Every field that reaches `shader.defines` must appear here, or three
+      // hands a batch the cached program of a batch compiled with different
+      // defines — line-placed labels would silently run the straight branch.
+      return JSON.stringify({
+        useRTE: state.useRTE,
+        useMsdf: state.useMsdf,
+        linePlacement: state.linePlacement,
+        pathSamples: state.pathSamples,
+      });
     },
   };
 }

@@ -13,7 +13,7 @@ import type {
  *
  * InstancedSprites use custom ShaderMaterial shaders. This function:
  * 1. Sets the vertex/fragment shader sources
- * 2. Sets defines based on state (USE_RTE, BILLBOARD)
+ * 2. Sets defines based on state (USE_RTE, BILLBOARD, USE_INSTANCE_BEARING)
  * 3. Assigns uniform refs via mutates.updateUniforms()
  */
 export const transformShader = (
@@ -35,6 +35,10 @@ export const transformShader = (
 
   if (state.billboard) {
     shader.defines.BILLBOARD = 1;
+  }
+
+  if (state.instanceBearing) {
+    shader.defines.USE_INSTANCE_BEARING = 1;
   }
 
   shader.defines.USE_SELECTIVE_EFFECT = 1;

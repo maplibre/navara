@@ -7,6 +7,7 @@ use navara_geometry::{Hierarchy, WindingOrder};
 use navara_layer::LayerId;
 use navara_material::Appearance;
 use navara_math::{Transform, Vec3};
+use navara_parser::line_placement::{AlongLine, push_anchor_line_data};
 
 use crate::{
     BatchedFeatureMarker,
@@ -99,7 +100,7 @@ pub struct GeometryGroup {
 ///
 /// // Per feature:
 /// groups.begin_feature();
-/// groups.track_point_rte(kind, coords, crs, high, low, global_batch_id);
+/// groups.track_point_rte(kind, coords, crs, high, low, global_batch_id, None, None);
 ///
 /// // After all features:
 /// let entities = groups.finalize(commands, buf, appearances, layer_id, true);
@@ -159,6 +160,16 @@ impl GeometryGroups {
             AccumulatedGeometry::Points(g) => g,
             _ => unreachable!(),
         };
+        // Never along-line itself, but it may share a group with anchors that
+        // are, so it still takes its padding entry.
+        push_anchor_line_data(
+            geom.coords.len(),
+            &mut geom.bearings,
+            &mut geom.scale_bands,
+            &mut geom.path_samples,
+            &mut geom.path_meta,
+            None,
+        );
         geom.coords.push(coords);
         geom.batch_indices.push(batch_index);
         geom.batch_ids.push(global_batch_id as f32);
@@ -169,7 +180,11 @@ impl GeometryGroups {
 
     /// Accumulate a point with RTE-encoded position.
     /// `high`/`low`: pre-computed `EncodedVec3` f32 triplets.
+    /// `line` is set only for anchors placed along a line; see
+    /// [`push_anchor_line_data`] for how a group mixing them with plain points
+    /// stays aligned.
     /// Returns `(batch_index, commit_batch_id)`.
+    #[allow(clippy::too_many_arguments)]
     pub fn track_point_rte(
         &mut self,
         kind: GeometryAppearanceKind,
@@ -178,6 +193,7 @@ impl GeometryGroups {
         high: [f32; 3],
         low: [f32; 3],
         global_batch_id: u32,
+        line: Option<AlongLine>,
     ) -> (u32, Option<u32>) {
         let group = self.groups.iter_mut().find(|g| g.kind == kind).unwrap();
         let (batch_index, commit_batch_id) = Self::advance_feature(group, global_batch_id);
@@ -186,6 +202,14 @@ impl GeometryGroups {
             AccumulatedGeometry::Points(g) => g,
             _ => unreachable!(),
         };
+        push_anchor_line_data(
+            geom.coords.len(),
+            &mut geom.bearings,
+            &mut geom.scale_bands,
+            &mut geom.path_samples,
+            &mut geom.path_meta,
+            line,
+        );
         geom.coords.push(coords);
         geom.batch_indices.push(batch_index);
         geom.batch_ids.push(global_batch_id as f32);
@@ -569,6 +593,7 @@ mod test {
             [0.; 3],
             [0.; 3],
             100,
+            None,
         );
         assert_eq!(idx0, 0);
         assert_eq!(commit0, Some(42));
@@ -581,6 +606,7 @@ mod test {
             [0.; 3],
             [0.; 3],
             101,
+            None,
         );
         assert_eq!(idx1, 1);
         assert_eq!(commit1, Some(42));
@@ -613,6 +639,7 @@ mod test {
             [0.; 3],
             [0.; 3],
             10,
+            None,
         );
         assert_eq!(idx0, 0);
         assert_eq!(commit0, Some(1));
@@ -624,6 +651,7 @@ mod test {
             [0.; 3],
             [0.; 3],
             11,
+            None,
         );
         assert_eq!(idx0b, 0); // same batch index for same feature
         assert!(commit0b.is_none());
@@ -637,6 +665,7 @@ mod test {
             [0.; 3],
             [0.; 3],
             12,
+            None,
         );
         assert_eq!(idx1, 1);
 
@@ -705,6 +734,7 @@ mod test {
             [1.0, 2.0, 3.0],
             [0.1, 0.2, 0.3],
             100,
+            None,
         );
 
         match &groups.groups[0].accumulated {
@@ -845,6 +875,7 @@ mod test {
                     [0.; 3],
                     [0.; 3],
                     100,
+                    None,
                 );
 
                 groups.begin_feature();
@@ -855,6 +886,7 @@ mod test {
                     [0.; 3],
                     [0.; 3],
                     101,
+                    None,
                 );
 
                 let appearances = vec![Appearance::Point(PointMaterial::default())];
@@ -904,6 +936,7 @@ mod test {
                         [0.; 3],
                         [0.; 3],
                         id,
+                        None,
                     );
                 }
                 groups.begin_feature();
@@ -914,6 +947,7 @@ mod test {
                     [0.; 3],
                     [0.; 3],
                     102,
+                    None,
                 );
 
                 let appearances = vec![Appearance::Point(PointMaterial::default())];
@@ -962,6 +996,7 @@ mod test {
                         [0.; 3],
                         [0.; 3],
                         id,
+                        None,
                     );
                 }
                 let appearances = vec![Appearance::Point(PointMaterial::default())];

@@ -446,8 +446,11 @@ pub fn traverse_tile(
                 }
 
                 let target_active = are_all_children_mesh_prepared && !hide_children;
-                let needs_activation_update =
-                    activation_state.is_some_and(|state| state.all_active != target_active);
+                // An empty tile reads as all active whatever it is set to, so
+                // it must not ask for another pass, or the traversal would re-run
+                // every frame.
+                let needs_activation_update = activation_state
+                    .is_some_and(|state| !state.is_empty && state.all_active != target_active);
 
                 if needs_activation_update {
                     // Re-run this traverse if `active` is updated, because the child tiles are updated depending on the parent state.
@@ -595,6 +598,9 @@ pub fn are_all_renderable_features_active(
 struct RenderableFeatureActivationState {
     all_active: bool,
     any_active: bool,
+    /// The tile parsed to no features: vacuously all active and none active,
+    /// and activating it changes nothing.
+    is_empty: bool,
 }
 
 fn get_renderable_feature_activation_state(
@@ -625,6 +631,7 @@ fn get_renderable_feature_activation_state(
     Some(RenderableFeatureActivationState {
         all_active,
         any_active,
+        is_empty: tile_feature_ids.is_empty(),
     })
 }
 

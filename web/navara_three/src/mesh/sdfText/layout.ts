@@ -165,6 +165,18 @@ export type GlyphQuad = {
   uvB: number;
   /** Sample the COLRv1 colour atlas rather than the SDF atlas. */
   isColor: boolean;
+  /**
+   * Centre, along x in em, of the word this glyph belongs to — the same value
+   * for every glyph in the word.
+   *
+   * Line placement puts each *word* on the curve as one rigid piece and lays
+   * its glyphs out along that word's tangent, rather than giving every glyph
+   * its own tangent. Per-glyph following makes the letters of a single word
+   * splay apart on a tight bend, which reads as broken text; a word is short
+   * enough that keeping it straight costs nothing. Unused when the label is
+   * placed at a point.
+   */
+  wordCenterEmX: number;
 };
 
 /** A laid-out label: its glyph quads plus the block metrics the shader and the
@@ -178,6 +190,9 @@ export type LabelLayout = {
   /** Y bounds of the actual rendered glyph bboxes, for the background quad. */
   minYEm: number;
   maxYEm: number;
+  /** Half the width of the widest word: how far line placement's rigid words
+   *  can run along their own tangent from where they sit on the curve. */
+  maxWordHalfEm: number;
 };
 
 export type LayoutOptions = {
@@ -198,7 +213,29 @@ const EMPTY_LAYOUT: LabelLayout = {
   heightEm: 0,
   minYEm: 0,
   maxYEm: 1,
+  maxWordHalfEm: 0,
 };
+
+/**
+ * Give every quad from `start` to the end of `quads` the centre of the word
+ * they form, measured across the glyphs' own bounding boxes.
+ *
+ * Taken from the drawn extent rather than the advance width so the word sits on
+ * the curve where it looks centred, not where its trailing side bearing would
+ * put it. Returns half that extent.
+ */
+function assignWordCenter(quads: GlyphQuad[], start: number): number {
+  if (quads.length <= start) return 0;
+  let minX = Infinity;
+  let maxX = -Infinity;
+  for (let i = start; i < quads.length; i++) {
+    minX = Math.min(minX, quads[i].offsetEmX);
+    maxX = Math.max(maxX, quads[i].offsetEmX + quads[i].sizeEmX);
+  }
+  const center = (minX + maxX) * 0.5;
+  for (let i = start; i < quads.length; i++) quads[i].wordCenterEmX = center;
+  return (maxX - minX) * 0.5;
+}
 
 /**
  * Turn a shaping result into positioned glyph quads.
@@ -246,10 +283,17 @@ export function buildLabelLayout(
   const glyphKeys = new Set<bigint>();
   let minYEm = Infinity;
   let maxYEm = -Infinity;
+  let maxWordHalfEm = 0;
 
   for (let li = 0; li < lines.length; li++) {
     let cursorX = (blockWidthFu - widths[li]) * options.textAlign;
     let cursorY = -li * lineHeightFu;
+    // Start of the word being laid out, as an index into `quads`. Only the
+    // shaper's whitespace closes a word (as does the end of a line): drawing
+    // nothing is not enough, since a join control (ZWJ/ZWNJ) or a glyph missing
+    // from the atlas has no quad yet sits inside its word, and splitting there
+    // would turn one joined word into independently rotated pieces.
+    let wordStart = quads.length;
 
     for (const glyph of lines[li]) {
       const m = metricsMap.get(glyph.compositeKey);
@@ -276,11 +320,20 @@ export function buildLabelLayout(
           uvR: m.atlasX + m.atlasW,
           uvB: m.atlasY + m.atlasH,
           isColor: m.isColor,
+          // Filled in once the word is complete.
+          wordCenterEmX: 0,
         });
+      } else if (glyph.charClass === GlyphCharClass.Whitespace) {
+        maxWordHalfEm = Math.max(
+          maxWordHalfEm,
+          assignWordCenter(quads, wordStart),
+        );
+        wordStart = quads.length;
       }
       cursorX += glyph.xAdvance;
       cursorY += glyph.yAdvance;
     }
+    maxWordHalfEm = Math.max(maxWordHalfEm, assignWordCenter(quads, wordStart));
   }
 
   if (quads.length === 0) {
@@ -300,5 +353,6 @@ export function buildLabelLayout(
       SDF_PX_SIZE,
     minYEm,
     maxYEm,
+    maxWordHalfEm,
   };
 }

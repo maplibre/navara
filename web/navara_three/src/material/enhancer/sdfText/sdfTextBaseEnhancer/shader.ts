@@ -44,6 +44,11 @@ export const transformShader = (
   // Stride of the per-label data texture. Injected rather than hard-coded in
   // GLSL so the shader's row addressing always matches `LabelRow`.
   shader.defines.LABEL_ROWS = LABEL_ROWS;
+
+  if (state.linePlacement) {
+    shader.defines.NVR_LINE_PLACEMENT = 1;
+    shader.defines.PATH_SAMPLES = state.pathSamples;
+  }
   // These values are compile-time constants for a material: quality is
   // immutable, and all glyphs in an atlas use the same raster density/range.
   // Injecting them from the TypeScript sources of truth prevents the shader's

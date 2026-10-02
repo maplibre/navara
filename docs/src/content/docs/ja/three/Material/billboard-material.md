@@ -219,7 +219,7 @@ import { Color } from "@navaramap/three";
 
 **Type:** `("point" | "line" | "polygon")[] | undefined`
 
-**Description:** このマテリアルが消費するソースジオメトリのカテゴリーです。`"line"` を含めるとラインの頂点ごとに、`"polygon"` を含めるとポリゴンリングの頂点ごとに 1 つのビルボードを描画します（リングを閉じる重複頂点はスキップされます）。配列を指定するとデフォルトは置き換えられるため、ポイントジオメトリも描画し続けたい場合は `"point"` を含めてください。このオプションはジオメトリ構築時に適用されます。レイヤー作成時に指定してください。`layer.update()` で変更しても読み込み済みのタイルには反映されず、変更後に読み込まれたタイルにのみ適用されます（すべてに反映するにはレイヤーを作り直してください）。
+**Description:** このマテリアルが消費するソースジオメトリのカテゴリーです。`"line"` を含めると、デフォルトではラインの頂点ごとに 1 つのビルボードを描画します。ラインに沿って繰り返し配置するには [`placement`](#placement) を指定してください。`"polygon"` を含めるとポリゴンリングの頂点ごとに 1 つのビルボードを描画します（リングを閉じる重複頂点はスキップされます）。配列を指定するとデフォルトは置き換えられるため、ポイントジオメトリも描画し続けたい場合は `"point"` を含めてください。このオプションはジオメトリ構築時に適用されます。レイヤー作成時に指定してください。`layer.update()` で変更しても読み込み済みのタイルには反映されず、変更後に読み込まれたタイルにのみ適用されます（すべてに反映するにはレイヤーを作り直してください）。
 
 **Default:** `["point"]`
 
@@ -288,6 +288,38 @@ import { Color } from "@navaramap/three";
 }
 ```
 
+### placement
+
+**Type:** `"point" | "line" | "line-center" | undefined`
+
+**Description:** ラインジオメトリ上でのビルボードの配置方法を指定します。[`geometryTypes`](#geometrytypes) に `"line"` が含まれる場合のみ有効です。ポイントジオメトリは常にその地点に、ポリゴンリングは常に頂点ごとにビルボードが配置されます。
+
+- `"point"`：ラインの頂点ごとに 1 つのビルボードを配置します。
+- `"line"`：[`spacing`](#spacing) ごとにラインに沿ってビルボードを繰り返し配置します。ラインの頂点の位置に関係なく等間隔になります。
+- `"line-center"`：各ラインの長さの中間点に 1 つのビルボードを配置します。
+
+`"line"` と `"line-center"` では、各ビルボードは配置された位置でのラインの向きにも回転します（[`rotateToLine`](#rotatetoline) を参照）。
+
+このオプションはジオメトリ構築時に適用されます。レイヤー作成時に指定してください。`layer.update()` では読み込み済みのビルボードは再構築されないため、変更するにはレイヤーを削除して追加し直してください。
+
+**Default:** `"point"`
+
+**Example:**
+
+```typescript
+{
+  billboard: {
+    url: "/icons/arrow.png",
+    geometryTypes: ["line"],
+    placement: "line",
+    spacing: 120, // 画面上のピクセル
+    billboardFacing: "flat",
+    rotateWithCamera: false, // 矢印を地表に寝かせ、ラインに沿った向きにする
+    clampToGround: true
+  }
+}
+```
+
 ### sizeInMeters
 
 **Type:** `boolean | undefined`
@@ -331,6 +363,33 @@ import { Color } from "@navaramap/three";
 {
   billboard: {
     billboardFacing: "flat"
+  }
+}
+```
+
+### rotateToLine
+
+**Type:** `boolean | undefined`
+
+**Description:** ライン沿いに配置したビルボードをラインに合わせて回転させるかどうかを指定します。`true` の場合、アンカー位置でのラインの向きを方位角として [`rotation`](#rotation) に加算します。[`placement`](#placement) が `"line"` または `"line-center"` のときのみ使用されます。
+
+加算される方位角は、ビルボードが地表に固定されているときに地図上の向きとして意味を持つため、`billboardFacing: "flat"` と `rotateWithCamera: false` と組み合わせてください。画像の上端がラインの進行方向を向き、`rotation` でそこからさらに回転させられます。カメラに追従するビルボードでは、方位角は画面上で画像を回転させるだけです。
+
+このオプションはジオメトリ構築時に適用されます。`layer.update()` では読み込み済みのビルボードには反映されないため、変更するにはレイヤーを削除して追加し直してください。
+
+**Default:** `true`
+
+**Example:**
+
+```typescript
+{
+  billboard: {
+    geometryTypes: ["line"],
+    placement: "line",
+    billboardFacing: "flat",
+    rotateWithCamera: false,
+    rotateToLine: true,
+    rotation: 90 // ラインの進行方向の右側を向ける
   }
 }
 ```
@@ -410,6 +469,34 @@ import { Color } from "@navaramap/three";
 {
   billboard: {
     size: 10 // 10メートル
+  }
+}
+```
+
+### spacing
+
+**Type:** `number | undefined`
+
+**Description:** [`placement`](#placement) が `"line"` のときに繰り返し配置するビルボードの間隔を、画面上のピクセルで指定します。単位は `geojson` ソースでも `vector-tile` ソースでも同じです。
+
+ライン上に表示するビルボードは、カメラの移動に合わせて決め直されます。カメラを引くとビルボードは間引かれ、近づくと間にビルボードが追加されます。ビルボードがラインに沿って移動することはなく、表示されるか消えるかのどちらかです。画面上の間隔は `spacing` の 1〜2 倍に保たれます。これは傾けた視点でも同様で、画面の手前側と奥側でそれぞれの密度になります。
+
+ラインの中間点のビルボードは常に残り、画面上で `spacing` より短いラインにはそのビルボードだけが配置されます。GeoJSON ソースで地表にごく近づいた場合（ストリートレベル）や、ベクタータイルが自身のズームレベルよりかなり深く表示されている場合（オーバーズーム）は、ビルボードがそれ以上追加されなくなり、`spacing` より広い間隔になります。
+
+MapLibre の `symbol-spacing` と同様に、`spacing` の 4 分の 3 より幅の広いビルボードは、繰り返しの間隔が「ビルボードの幅 + `spacing` の 4 分の 1」に広がります。また、ベクタータイルソースでは、各タイルは自身の範囲内にだけビルボードを配置します。間隔はタイルごとに決まるため、`spacing` をどれだけ大きくしても、繰り返しの間隔はおよそ 1 タイル分（画面上で 512〜1024 ピクセル）までになります。
+
+このオプションはジオメトリ構築時に適用されます。`layer.update()` では読み込み済みのビルボードは再構築されないため、変更するにはレイヤーを削除して追加し直してください。
+
+**Default:** `250.0`
+
+**Example:**
+
+```typescript
+{
+  billboard: {
+    geometryTypes: ["line"],
+    placement: "line",
+    spacing: 120
   }
 }
 ```

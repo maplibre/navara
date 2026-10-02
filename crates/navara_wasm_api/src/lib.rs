@@ -5,6 +5,7 @@ mod css_font_family;
 mod declutter;
 mod ellipsoid;
 mod intersection;
+mod line_label;
 mod rte;
 mod terrain;
 mod transform;

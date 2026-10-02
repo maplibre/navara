@@ -22,6 +22,12 @@ attribute vec2 glyphSize;    // Glyph quad dimensions in normalized text space
 attribute vec4 glyphUvRect;  // Atlas sub-rect in PIXEL space: (x0, y0, x1, y1)
 attribute float glyphKind;   // See GLYPH_KIND_* below
 attribute float labelIndex;  // Row block in uLabelData owning this instance
+#ifdef NVR_LINE_PLACEMENT
+// Centre in x, in ems, of the word this glyph belongs to — shared by every
+// glyph in that word. A curved label follows its line word by word, not letter
+// by letter; see the walk below.
+attribute float glyphWordCenter;
+#endif
 
 #define GLYPH_KIND_SDF        0.0
 #define GLYPH_KIND_COLOR      1.0
@@ -34,6 +40,7 @@ attribute float labelIndex;  // Row block in uLabelData owning this instance
 #define LABEL_ROW_POSITION_LOW 1
 #define LABEL_ROW_BOX 2
 #define LABEL_ROW_STATE 3
+#define LABEL_ROW_PATH 4
 
 // Per-label data texture (RGBA32F, unfiltered).
 uniform sampler2D uLabelData;
@@ -43,6 +50,26 @@ vec4 nvr_readLabel(int slot, int row) {
     int i = slot * LABEL_ROWS + row;
     return texelFetch(uLabelData, ivec2(i % uLabelTexSize.x, i / uLabelTexSize.x), 0);
 }
+
+#ifdef NVR_LINE_PLACEMENT
+// Each label's line, resampled at a uniform arc-length step as east/north
+// metre offsets from its anchor. Uniform spacing is the whole point: a glyph
+// finds its segment with one division instead of walking the path, so bending
+// costs two texel fetches rather than a loop. PATH_SAMPLES is injected as a
+// define from the same Rust constant that produced the data.
+uniform sampler2D uPathData;
+uniform ivec2 uPathTexSize;
+// Perpendicular shift away from the line, in the same units as the font size
+// (pixels or metres, per uSizeInMeters). Positive is left of travel.
+uniform float uLineOffset;
+
+// Two samples per RGBA texel, so a label's run is PATH_SAMPLES/2 texels.
+vec2 nvr_readPath(int base, int k) {
+    int i = base + (k >> 1);
+    vec4 texel = texelFetch(uPathData, ivec2(i % uPathTexSize.x, i / uPathTexSize.x), 0);
+    return (k - ((k >> 1) << 1)) == 0 ? texel.xy : texel.zw;
+}
+#endif
 
 // Uniforms — batch-wide only.
 #ifdef USE_RTE
@@ -186,18 +213,102 @@ void main() {
         scaleFactor = nvr_pxToWorld(fontSize, uFovRad, uScreenHeightPx, vec3(0.0, 0.0, mvPosition.z), vec3(0.0, 0.0, 0.0));
     }
 
+    vec2 center = clamp(uCenter, vec2(-0.5), vec2(0.5)); // Ensure center is within the bounds of the sprite
+
     vec3 axisRight;
     vec3 axisUp;
-    nvr_quadBasis(
-        absTransformed,
-        nvr_batchFlatFacing,
-        nvr_batchRotateWithCamera,
-        nvr_batchRotation,
-        axisRight,
-        axisUp
-    );
+    // Set by the along-line walk below; an ordinary label keeps these.
+    bool nvr_alongLine = false;
+    float wordCenterEm = 0.0;
+    vec3 pathOffset = vec3(0.0);
+#ifdef NVR_LINE_PLACEMENT
+    vec4 pathRow = nvr_readLabel(slot, LABEL_ROW_PATH);
+    // A zero sample step marks a plain point sharing the batch with along-line
+    // anchors (`geometryTypes: ["point", "line"]`): it has no path to walk, so
+    // it lays out as an ordinary label, background and all.
+    nvr_alongLine = pathRow.y > 0.0;
+    if (nvr_alongLine) {
+        // A curved label's background would have to be a bent ribbon, which
+        // one quad cannot express, so line placement draws glyphs only.
+        if (isBackground) {
+            gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
+            return;
+        }
 
-    vec2 center = clamp(uCenter, vec2(-0.5), vec2(0.5)); // Ensure center is within the bounds of the sprite
+        // The placement pass rejected this label: it is longer than the road it
+        // sits on, or the road bends too sharply under it to stay readable. Culled
+        // rather than faded, because unlike a declutter loss this is not a
+        // competition the label could win back by a pixel of camera drift.
+        if (pathRow.w > 0.5) {
+            gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
+            return;
+        }
+
+        int pathBase = int(pathRow.x);
+        float stepMeters = pathRow.y;
+        // keepUpright walks the path backwards, so a label never reads
+        // right-to-left. Reversing the tangent with it keeps the glyph frame
+        // self-consistent: the text's own "up" stays on its own up side.
+        float dir = pathRow.z > 0.5 ? -1.0 : 1.0;
+
+        // Follow the line a WORD at a time. The word is placed rigidly at its own
+        // centre and its glyphs are laid along that one tangent, so the letters of
+        // a name stay square to each other however the road bends under them —
+        // per-glyph tangents splay them apart on a tight curve and the word stops
+        // reading as a word. Only the joins between words take up the curvature.
+        //
+        // Quads are never bent vertex by vertex either way: that would shear them.
+        wordCenterEm = glyphWordCenter - center.x * textWidth;
+        float sMeters = wordCenterEm * scaleFactor * dir;
+
+        float halfSpan = 0.5 * float(PATH_SAMPLES - 1) * stepMeters;
+        float t = (sMeters + halfSpan) / max(stepMeters, 1e-6);
+        int seg = int(clamp(floor(t), 0.0, float(PATH_SAMPLES - 2)));
+        vec2 pa = nvr_readPath(pathBase, seg);
+        vec2 pb = nvr_readPath(pathBase, seg + 1);
+        vec2 pathPos = mix(pa, pb, clamp(t - float(seg), 0.0, 1.0));
+
+        vec2 tangent = pb - pa;
+        float tangentLen = length(tangent);
+        // Neighbouring samples are a whole step apart, so only a step too small
+        // for f32 to separate them lands here; east keeps the glyph readable
+        // rather than letting a normalize() produce NaN.
+        tangent = (tangentLen > 1e-6 ? tangent / tangentLen : vec2(1.0, 0.0)) * dir;
+        vec2 normal = vec2(-tangent.y, tangent.x);
+
+        // `scaleFactor` is metres per em, so dividing by the font size recovers
+        // metres per style unit — which is what lineOffset is expressed in.
+        pathPos += normal * (uLineOffset * (scaleFactor / max(fontSize, 1e-6)));
+
+        vec3 eastWorld, northWorld, normalWorld;
+        nvr_enuBasis(absTransformed, eastWorld, northWorld, normalWorld);
+        vec3 eastView = (viewMatrix * vec4(eastWorld, 0.0)).xyz;
+        vec3 northView = (viewMatrix * vec4(northWorld, 0.0)).xyz;
+
+        // The walk decides where in the tangent plane the glyph sits; facing still
+        // decides which plane its quad stands in.
+        axisRight = tangent.x * eastView + tangent.y * northView;
+        axisUp = nvr_batchFlatFacing
+            ? normal.x * eastView + normal.y * northView
+            : (viewMatrix * vec4(normalWorld, 0.0)).xyz;
+
+        // Path offsets are already metres, so they bypass the em scaling below.
+        // Kept apart rather than added to mvPosition so a flat label wraps the
+        // word's place on the path and the glyph's place in its word as one
+        // offset (see nvr_wrapOffset).
+        pathOffset = pathPos.x * eastView + pathPos.y * northView;
+    }
+#endif
+    if (!nvr_alongLine) {
+        nvr_quadBasis(
+            absTransformed,
+            nvr_batchFlatFacing,
+            nvr_batchRotateWithCamera,
+            nvr_batchRotation,
+            axisRight,
+            axisUp
+        );
+    }
 
     vIsColor = glyphKind == GLYPH_KIND_COLOR ? 1 : 0;
     // Meters to push a background strip away from the camera (below).
@@ -258,12 +369,19 @@ void main() {
         localPos.x -= center.x * textWidth;
         localPos.y -= center.y * textHeight;
 
+        // The walk placed this glyph's WORD on the curve, so what is left is
+        // the offset from the word's centre, laid along the word's single
+        // tangent. Only x needs rebasing: y is still the baseline-relative
+        // height the layout gave it.
+        if (nvr_alongLine) {
+            localPos.x -= wordCenterEm;
+        }
+
         // Lay the glyph out in the label's basis (see nvr_quadBasis), scaled,
-        // and wrapped onto the globe when flat (see nvr_quadOffset).
-        vec4 newMvPosition = mvPosition + vec4(nvr_quadOffset(
-            localPos * scaleFactor,
-            axisRight,
-            axisUp,
+        // and wrapped onto the globe when flat (see nvr_wrapOffset).
+        vec2 glyphLocal = localPos * scaleFactor;
+        vec4 newMvPosition = mvPosition + vec4(nvr_wrapOffset(
+            pathOffset + glyphLocal.x * axisRight + glyphLocal.y * axisUp,
             nvr_batchFlatFacing,
             absTransformed,
             addHeight
