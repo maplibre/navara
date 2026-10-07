@@ -2807,6 +2807,51 @@ export default class ThreeView<
   }
 
   /**
+   * Compute camera height required to achieve a target zoom level.
+   *
+   * This is the inverse of the camera's `zoom` property calculation. Given a
+   * Web Mercator zoom level and latitude, returns the camera height in meters
+   * above the ellipsoid that would produce that zoom level.
+   *
+   * Uses the current viewport height and camera FOV from the engine state,
+   * unless overridden by the fovRad parameter.
+   *
+   * @param zoomLevel - Target Web Mercator zoom level (typically 0-22)
+   * @param latDeg - Latitude in degrees (affects scale due to Web Mercator projection)
+   * @param tileSizePx - Tile size for zoom calculation. Defaults to 256 for backward compatibility.
+   *                     Use 512 for MapLibre-compatible calculations.
+   * @param fovRad - Optional FOV override in radians. If not provided, uses camera's current FOV.
+   * @returns Camera height in meters above the ellipsoid, or undefined if engine not initialized
+   */
+  zoomLevelToCameraHeight(
+    zoomLevel: number,
+    latDeg: number,
+    tileSizePx?: number,
+    fovRad?: number,
+  ): number | undefined {
+    return this._core?.zoomLevelToCameraHeight(
+      zoomLevel,
+      latDeg,
+      tileSizePx,
+      fovRad,
+    );
+  }
+
+  /**
+   * Get the current Web Mercator zoom level.
+   *
+   * This is the same calculation as `camera.zoom`, but allows specifying a custom
+   * tile size for compatibility with different mapping systems.
+   *
+   * @param tileSizePx - Tile size for zoom calculation. Defaults to 256 (standard Web Mercator).
+   *                     Use 512 for MapLibre-compatible calculations.
+   * @returns Current zoom level, or undefined if camera not initialized
+   */
+  getZoomLevel(tileSizePx?: number): number | undefined {
+    return this._core?.getZoomLevel(tileSizePx);
+  }
+
+  /**
    * Samples terrain heights at the most detailed zoom level the terrain
    * source provides, fetching the needed tiles over the network — unlike
    * {@link sampleTerrainHeight}, which reads only tiles already resident for

@@ -47,6 +47,44 @@ await view.init();
 
 The plugin will fetch and parse the style during initialization.
 
+## Camera Initialization
+
+The plugin automatically initializes the camera from the style's root-level properties. When a style defines both `center` and `zoom`, the camera moves to that position on plugin initialization:
+
+```json
+{
+  "version": 8,
+  "center": [139.7, 35.7],
+  "zoom": 12,
+  "pitch": 60,
+  "bearing": 45,
+  "centerAltitude": 0,
+  "roll": 0,
+  "sources": { ... },
+  "layers": [ ... ]
+}
+```
+
+**Required properties:**
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `center` | `[number, number]` | Initial view center as `[longitude, latitude]` in degrees |
+| `zoom` | `number` | Initial Web Mercator zoom level |
+
+Both `center` and `zoom` must be specified for camera initialization to occur.
+
+**Optional properties:**
+
+| Property | Type | Default | Description |
+|----------|------|---------|-------------|
+| `pitch` | `number` | `0` | Initial camera pitch in degrees (0 = straight down, 60 = towards horizon) |
+| `bearing` | `number` | `0` | Initial camera bearing (heading) in degrees (0 = north) |
+| `centerAltitude` | `number` | `0` | Altitude of the center point in meters above the ellipsoid |
+| `roll` | `number` | `0` | Initial camera roll in degrees |
+
+The camera uses MapLibre's tile size of 512 pixels for zoom calculation, matching MapLibre GL JS behavior precisely. Camera position accounts for pitch: the same zoom level at different pitch angles produces the same map scale at the screen center.
+
 ## Advanced Usage
 
 ### With Font Configuration
@@ -354,6 +392,7 @@ The plugin follows the standard Navara plugin lifecycle:
    - Parses and validates the style
    - Registers fonts from `font-faces`
    - Initializes background handler
+   - Applies camera position from root properties (center, zoom, pitch, bearing, etc.)
    - Adds all sources and layers
    - Sets up zoom change detection
 4. **Usage** - The plugin is now active and managing the style

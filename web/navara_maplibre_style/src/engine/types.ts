@@ -25,6 +25,13 @@ export type ParsedStyle = {
   glyphs?: string; // URL template for font glyphs (not supported, use font-faces instead)
   "font-faces"?: FontFacesSpecification; // Font face definitions
   metadata?: Record<string, unknown>; // Custom metadata
+  // Camera initialization properties
+  center?: [number, number]; // [lng, lat] in degrees
+  zoom?: number; // Web Mercator zoom level
+  centerAltitude?: number; // Altitude of the target point in meters (defaults to 0)
+  bearing?: number; // Compass bearing in degrees (0 = north, 90 = east)
+  pitch?: number; // MapLibre pitch in degrees (0 = straight down, 60 = towards horizon)
+  roll?: number; // Camera roll in degrees
 };
 
 /**

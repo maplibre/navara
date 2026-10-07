@@ -447,7 +447,7 @@ pub fn calc_meters_per_texel(
 /// Estimates the effective Web Mercator zoom level a camera is viewing the
 /// surface at, from its ellipsoid height and vertical field of view.
 ///
-/// Inverts the model in [`calc_meters_per_texel`] (256px tiles, Web Mercator
+/// Inverts the model in [`calc_meters_per_texel`] (Web Mercator
 /// latitude correction): the ground meters-per-pixel implied by the camera
 /// frustum is mapped back to a zoom level.
 ///
@@ -457,6 +457,7 @@ pub fn calc_meters_per_texel(
 /// * `viewport_height_px` - Rendered viewport height in (CSS) pixels
 /// * `lat_rad` - Camera latitude in radians
 /// * `semi_major_axis` - Ellipsoid semi-major axis in meters (e.g. WGS84: 6378137.0)
+/// * `tile_size_px` - Optional tile size used in zoom calculation. Defaults to 256 if not provided.
 ///
 /// # Returns
 /// The fractional zoom level. The caller guards against invalid inputs
@@ -467,12 +468,75 @@ pub fn camera_zoom_level(
     viewport_height_px: f64,
     lat_rad: f64,
     semi_major_axis: f64,
+    tile_size_px: Option<f64>,
 ) -> f64 {
-    const TILE_SIZE_PX: f64 = 256.0;
+    let tile_size = tile_size_px.unwrap_or(256.0);
     let meters_per_pixel = (2.0 * height_m * (fov_y / 2.0).tan()) / viewport_height_px;
     let earth_circumference = 2.0 * std::f64::consts::PI * semi_major_axis;
-    let meters_per_pixel_z0 = (earth_circumference * lat_rad.cos()) / TILE_SIZE_PX;
+    let meters_per_pixel_z0 = (earth_circumference * lat_rad.cos()) / tile_size;
     (meters_per_pixel_z0 / meters_per_pixel).log2()
+}
+
+/// Inverse of [`camera_zoom_level`]: computes the camera height required to
+/// achieve a given Web Mercator zoom level.
+///
+/// Uses the inverse of the zoom calculation formula, accounting for FOV,
+/// viewport height, and Web Mercator's latitude-dependent scale.
+///
+/// Returns `None` if inputs are invalid (non-finite, zero/negative dimensions,
+/// invalid FOV range, or computation produces non-finite result).
+///
+/// # Arguments
+/// * `zoom_level` - Web Mercator zoom level (must be finite)
+/// * `fov_y` - Vertical field of view in radians (must be > 0 and < π)
+/// * `viewport_height_px` - Viewport height in pixels (must be > 0)
+/// * `lat_rad` - Latitude in radians (must be finite)
+/// * `semi_major_axis` - Ellipsoid semi-major axis in meters (must be > 0)
+/// * `tile_size_px` - Tile size in pixels (e.g., 256 for standard Web Mercator, 512 for MapLibre; must be > 0)
+///
+/// # Returns
+/// Camera height in meters, or `None` if inputs are invalid or result is non-finite.
+pub fn zoom_level_to_camera_height(
+    zoom_level: f64,
+    fov_y: f64,
+    viewport_height_px: f64,
+    lat_rad: f64,
+    semi_major_axis: f64,
+    tile_size_px: f64,
+) -> Option<f64> {
+    // Validate inputs
+    if !zoom_level.is_finite()
+        || !fov_y.is_finite()
+        || !viewport_height_px.is_finite()
+        || !lat_rad.is_finite()
+        || !semi_major_axis.is_finite()
+        || !tile_size_px.is_finite()
+    {
+        return None;
+    }
+
+    // Validate positive dimensions
+    if tile_size_px <= 0.0 || viewport_height_px <= 0.0 || semi_major_axis <= 0.0 {
+        return None;
+    }
+
+    // Validate FOV range (must be > 0 and < π to avoid tan issues)
+    if fov_y <= 0.0 || fov_y >= std::f64::consts::PI {
+        return None;
+    }
+
+    let earth_circumference = 2.0 * std::f64::consts::PI * semi_major_axis;
+    let meters_per_pixel_z0 = (earth_circumference * lat_rad.cos()) / tile_size_px;
+
+    let height_m = (meters_per_pixel_z0 * viewport_height_px)
+        / (2.0_f64.powf(zoom_level) * 2.0 * (fov_y / 2.0).tan());
+
+    // Validate result
+    if height_m.is_finite() && height_m > 0.0 {
+        Some(height_m)
+    } else {
+        None
+    }
 }
 
 pub fn is_tile_url(s: &str) -> bool {
@@ -562,14 +626,93 @@ mod tests {
         const A: f64 = 6378137.0;
         // Doubling the camera altitude halves the ground resolution, so the
         // zoom level drops by exactly 1.
-        let z1 = camera_zoom_level(1000.0, 1.0, 800.0, 0.0, A);
-        let z2 = camera_zoom_level(2000.0, 1.0, 800.0, 0.0, A);
+        let z1 = camera_zoom_level(1000.0, 1.0, 800.0, 0.0, A, Some(256.0));
+        let z2 = camera_zoom_level(2000.0, 1.0, 800.0, 0.0, A, Some(256.0));
         assert!(
             (z1 - z2 - 1.0).abs() < 1e-6,
             "doubling height should drop zoom by 1"
         );
         // Closer to the surface means a higher zoom level.
         assert!(z1 > z2);
+    }
+
+    #[test]
+    fn test_zoom_level_to_camera_height() {
+        const A: f64 = 6378137.0;
+        const FOV: f64 = 1.0;
+        const VIEWPORT: f64 = 800.0;
+        const LAT: f64 = 0.0;
+
+        const TILE_SIZE: f64 = 256.0; // Default tile size
+
+        // Test that the inverse function correctly inverts camera_zoom_level
+        // Note: Both functions must use the same TILE_SIZE for round-trip consistency
+        for height in [1000.0, 5000.0, 10000.0, 100000.0, 1000000.0] {
+            let zoom = camera_zoom_level(height, FOV, VIEWPORT, LAT, A, Some(TILE_SIZE));
+            let computed_height =
+                zoom_level_to_camera_height(zoom, FOV, VIEWPORT, LAT, A, TILE_SIZE)
+                    .expect("Valid inputs should return Some");
+            assert!(
+                (height - computed_height).abs() / height < 1e-10,
+                "zoom_level_to_camera_height should invert camera_zoom_level: \
+                 height={}, zoom={}, computed_height={}",
+                height,
+                zoom,
+                computed_height
+            );
+        }
+
+        // Test with different latitudes
+        for lat in [0.0, 0.5, 1.0, -0.5] {
+            let height = 10000.0;
+            let zoom = camera_zoom_level(height, FOV, VIEWPORT, lat, A, Some(TILE_SIZE));
+            let computed_height =
+                zoom_level_to_camera_height(zoom, FOV, VIEWPORT, lat, A, TILE_SIZE)
+                    .expect("Valid inputs should return Some");
+            assert!(
+                (height - computed_height).abs() / height < 1e-10,
+                "should work at different latitudes: lat={}, height={}, computed_height={}",
+                lat,
+                height,
+                computed_height
+            );
+        }
+
+        // Test input validation
+
+        // Non-finite values should return None
+        assert!(zoom_level_to_camera_height(f64::NAN, FOV, VIEWPORT, LAT, A, TILE_SIZE).is_none());
+        assert!(
+            zoom_level_to_camera_height(5.0, f64::INFINITY, VIEWPORT, LAT, A, TILE_SIZE).is_none()
+        );
+        assert!(zoom_level_to_camera_height(5.0, FOV, f64::NAN, LAT, A, TILE_SIZE).is_none());
+
+        // Zero or negative dimensions should return None
+        assert!(zoom_level_to_camera_height(5.0, FOV, VIEWPORT, LAT, A, 0.0).is_none());
+        assert!(zoom_level_to_camera_height(5.0, FOV, VIEWPORT, LAT, A, -100.0).is_none());
+        assert!(zoom_level_to_camera_height(5.0, FOV, 0.0, LAT, A, TILE_SIZE).is_none());
+        assert!(zoom_level_to_camera_height(5.0, FOV, -800.0, LAT, A, TILE_SIZE).is_none());
+        assert!(zoom_level_to_camera_height(5.0, FOV, VIEWPORT, LAT, 0.0, TILE_SIZE).is_none());
+        assert!(zoom_level_to_camera_height(5.0, FOV, VIEWPORT, LAT, -A, TILE_SIZE).is_none());
+
+        // Invalid FOV range should return None
+        assert!(zoom_level_to_camera_height(5.0, 0.0, VIEWPORT, LAT, A, TILE_SIZE).is_none());
+        assert!(zoom_level_to_camera_height(5.0, -0.5, VIEWPORT, LAT, A, TILE_SIZE).is_none());
+        assert!(
+            zoom_level_to_camera_height(5.0, std::f64::consts::PI, VIEWPORT, LAT, A, TILE_SIZE)
+                .is_none()
+        );
+        assert!(
+            zoom_level_to_camera_height(
+                5.0,
+                std::f64::consts::PI + 0.1,
+                VIEWPORT,
+                LAT,
+                A,
+                TILE_SIZE
+            )
+            .is_none()
+        );
     }
 
     #[test]

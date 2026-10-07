@@ -15,6 +15,7 @@ use navara_camera::{
 use navara_component::{Deleted, Rendered};
 use navara_core::{
     CRS, ElevationDecoder, LLE, LngLat, Radians, WGS84_64, WGS84_A_64, camera_zoom_level,
+    zoom_level_to_camera_height,
 };
 use navara_data_requester::DataRequester;
 use navara_event::Events;
@@ -1119,7 +1120,11 @@ impl App {
     /// Effective Web Mercator zoom level the camera is viewing the surface at,
     /// derived from the camera's ellipsoid height (not terrain), FOV and
     /// viewport (see [`navara_core::camera_zoom_level`]).
-    pub fn get_zoom_level(&mut self) -> Option<FloatType> {
+    ///
+    /// # Arguments
+    /// * `tile_size_px` - Optional tile size for zoom calculation. Defaults to 256.
+    ///   Use 512 for MapLibre-compatible zoom values.
+    pub fn get_zoom_level(&mut self, tile_size_px: Option<FloatType>) -> Option<FloatType> {
         // Camera altitude (m) and latitude (rad).
         let lle = {
             let world = self.app.world_mut();
@@ -1133,7 +1138,7 @@ impl App {
             let mut query = world.query_filtered::<&CameraFrustum, With<CameraMarker>>();
             query.iter(world).next()?.fov
         };
-        // Viewport height in CSS px (matches the 256px tile model).
+        // Viewport height in CSS px
         let viewport_height = self.app.world_mut().get_resource::<Window>()?.raw_height();
 
         let height = lle.height.val();
@@ -1150,8 +1155,61 @@ impl App {
         {
             return None;
         }
-        let zoom = camera_zoom_level(height, fov_y, viewport_height, lat, WGS84_A_64);
+
+        let tile_size = match tile_size_px {
+            Some(t) if t <= 0.0 => return None, // Invalid tile size provided
+            Some(t) => Some(t),                 // Valid tile size provided
+            None => None,                       // Use default (256)
+        };
+        let zoom = camera_zoom_level(height, fov_y, viewport_height, lat, WGS84_A_64, tile_size);
         zoom.is_finite().then_some(zoom)
+    }
+
+    /// Inverse of [`Self::get_zoom_level`]: computes the camera height required to
+    /// achieve a given Web Mercator zoom level at the specified latitude.
+    ///
+    /// # Arguments
+    /// * `zoom_level` - Target Web Mercator zoom level
+    /// * `lat_deg` - Latitude in degrees (affects scale due to Web Mercator projection)
+    /// * `tile_size_px` - Tile size used in zoom calculation (e.g., 256 for standard, 512 for MapLibre)
+    /// * `fov_rad` - Optional FOV override in radians. If None, uses camera's current FOV.
+    ///
+    /// # Returns
+    /// Camera height in meters above the ellipsoid, or `None` if inputs are invalid
+    /// or required resources (camera FOV, window) are not available.
+    pub fn zoom_level_to_camera_height(
+        &mut self,
+        zoom_level: FloatType,
+        lat_deg: FloatType,
+        tile_size_px: FloatType,
+        fov_rad: Option<FloatType>,
+    ) -> Option<FloatType> {
+        // Validate inputs
+        if !zoom_level.is_finite() || !lat_deg.is_finite() || tile_size_px <= 0.0 {
+            return None;
+        }
+
+        // Get FOV: use override if provided, otherwise get from camera
+        let fov_y_rad = match fov_rad {
+            Some(fov) if fov.is_finite() && fov > 0.0 => fov,
+            Some(_) => return None, // Invalid FOV override
+            None => self.get_camera_fov()?,
+        };
+
+        // Get viewport height from window
+        let viewport_height_px =
+            self.app.world_mut().get_resource::<Window>()?.raw_height() as FloatType;
+
+        let lat_rad = lat_deg.to_radians();
+
+        zoom_level_to_camera_height(
+            zoom_level,
+            fov_y_rad,
+            viewport_height_px,
+            lat_rad,
+            WGS84_A_64,
+            tile_size_px,
+        )
     }
 
     pub fn rotate_around_axis(&mut self, axis: Option<Vec<FloatType>>, angle: FloatType) {
