@@ -8,7 +8,6 @@ import {
   BufferGeometry,
   MeshBasicMaterial,
   MeshLambertMaterial,
-  RGBADepthPacking,
   Sphere,
   SphereGeometry,
   Mesh as ThreeMesh,
@@ -18,14 +17,13 @@ import invariant from "tiny-invariant";
 
 import { PolygonOutlineMesh } from "..";
 import {
-  attachBatchedMaterial,
   registerBatchedMaterial,
   type BatchedAttributeName,
   POLYGON_BATCH_SUPPORT,
   type BatchTextureSupport,
 } from "../batchTexture";
 import type { EventContext } from "../event/context";
-import { applyLitOption } from "../material";
+import { applyLitOption, createShadowDepthMaterial } from "../material";
 import type { PolygonMaterialProps } from "../material/enhancer/polygon";
 import { createPolygonMaterialEnhancer } from "../material/enhancer/polygon/polygonMaterialEnhancer";
 
@@ -380,29 +378,7 @@ export class PolygonMesh extends BatchedFeatureMesh<
    * Override a material that is used to generate a shadow map.
    */
   private initDepthMaterial() {
-    this.customDepthMaterial = this.material.clone();
-    this.customDepthMaterial.needsUpdate = true;
-
-    const origin = this.material;
-
-    // Attach to the batch texture state so layout allocations bump this
-    // clone's needsUpdate too — its compiled defines come from the origin, so
-    // it must recompile whenever they change.
-    attachBatchedMaterial(origin, this.customDepthMaterial);
-    // The clone's compiled defines come from the origin, so key its program on
-    // the origin's key (which includes the per-instance batch layout defines);
-    // the prefix separates it from the origin's own program.
-    this.customDepthMaterial.customProgramCacheKey = () =>
-      `nvr-depth:${origin.customProgramCacheKey()}`;
-
-    this.customDepthMaterial.onBeforeCompile = (shader, renderer) => {
-      origin.onBeforeCompile(shader, renderer);
-
-      shader.defines ??= {};
-      Object.assign(shader.defines, origin.userData.defines || {});
-      shader.defines["USE_SHADOWMAP_DEPTH"] = 1;
-      shader.defines["DEPTH_PACKING"] = RGBADepthPacking;
-    };
+    this.customDepthMaterial = createShadowDepthMaterial(this.material);
   }
 
   _update(material: PolygonMaterial, active: boolean, isTexturized: boolean) {

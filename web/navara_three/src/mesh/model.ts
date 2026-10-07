@@ -14,7 +14,6 @@ import {
   MeshPhysicalMaterial,
   MeshStandardMaterial,
   Object3D,
-  RGBADepthPacking,
   SkinnedMesh,
   Texture,
   type NormalBufferAttributes,
@@ -23,7 +22,6 @@ import {
 import invariant from "tiny-invariant";
 
 import {
-  attachBatchedMaterial,
   initBatchedMaterial,
   MODEL_BATCH_SUPPORT,
   registerBatchedMaterial,
@@ -32,7 +30,7 @@ import {
   type BatchTextureSupport,
 } from "../batchTexture";
 import type { EventContext } from "../event/context";
-import { applyLitOption } from "../material";
+import { applyLitOption, createShadowDepthMaterial } from "../material";
 import {
   createModelMaterialEnhancer,
   createPntsEnhancer,
@@ -335,28 +333,10 @@ export class ModelMesh
     mesh: Mesh<BufferGeometry<NormalBufferAttributes>, ModelMaterial>,
     enhancer: ModelMaterialEnhancer,
   ) {
-    mesh.customDepthMaterial = mesh.material.clone();
-    mesh.customDepthMaterial.needsUpdate = true;
-
-    const origin = mesh.material;
-    // Attach to the batch texture state so layout allocations bump this
-    // clone's needsUpdate too — its compiled defines come from the origin, so
-    // it must recompile whenever they change.
-    attachBatchedMaterial(origin, mesh.customDepthMaterial);
-    // The clone's compiled defines come from the origin, so key its program on
-    // the origin's key (which includes the per-instance batch layout defines);
-    // the prefix separates it from the origin's own program.
-    mesh.customDepthMaterial.customProgramCacheKey = () =>
-      `nvr-depth:${origin.customProgramCacheKey()}`;
-
-    mesh.customDepthMaterial.onBeforeCompile = (shader) => {
-      enhancer.transformShader(shader);
-
-      shader.defines ??= {};
-      Object.assign(shader.defines, mesh.material.userData?.defines || {});
-      shader.defines["USE_SHADOWMAP_DEPTH"] = 1;
-      shader.defines["DEPTH_PACKING"] = RGBADepthPacking;
-    };
+    mesh.customDepthMaterial = createShadowDepthMaterial(
+      mesh.material,
+      (shader) => enhancer.transformShader(shader),
+    );
   }
 
   _update(material: NavaraModelMaterial, active: boolean) {

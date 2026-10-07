@@ -1,6 +1,15 @@
-import { PerspectiveCamera, Vector2, type WebGLRenderer } from "three";
+import {
+  Mesh,
+  MeshBasicMaterial,
+  type Object3D,
+  PerspectiveCamera,
+  Scene,
+  Vector2,
+  type WebGLRenderer,
+} from "three";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { DrapedMesh } from "../mesh/DrapedMesh";
 import type { MeshCache } from "../type";
 
 import { isClickGesture, PickHelper } from "./pickHelper";
@@ -67,6 +76,10 @@ const createRendererStub = () => {
       ((x: number, y: number) => [number, number, number]) | undefined,
     renderCount: 0,
     scissors: [] as { x: number; y: number; w: number; h: number }[],
+    /** Clears and renders in call order, with each scene's children then. */
+    calls: [] as (
+      { clear: [boolean, boolean, boolean] } | { render: Object3D[] }
+    )[],
   };
   const renderer = {
     getContext: () => ({ drawingBufferWidth: 800, drawingBufferHeight: 600 }),
@@ -76,10 +89,13 @@ const createRendererStub = () => {
     getRenderTarget: () => null,
     setClearColor: () => undefined,
     setRenderTarget: () => undefined,
-    clear: () => undefined,
+    clear: (color: boolean, depth: boolean, stencil: boolean) => {
+      state.calls.push({ clear: [color, depth, stencil] });
+    },
     autoClear: true,
-    render: () => {
+    render: (scene: Scene) => {
       state.renderCount++;
+      state.calls.push({ render: [...scene.children] });
     },
     setScissor: (x: number, y: number, w: number, h: number) => {
       state.scissors.push({ x, y, w, h });
@@ -135,7 +151,11 @@ describe("PickHelper", () => {
     for (const cb of callbacks) cb(0);
   };
 
-  const setup = (opts?: { clickable?: boolean; hoverable?: boolean }) => {
+  const setup = (opts?: {
+    clickable?: boolean;
+    hoverable?: boolean;
+    meshes?: MeshCache;
+  }) => {
     const element = document.createElement("div");
     const { renderer, state } = createRendererStub();
     const picks: number[][] = [];
@@ -149,11 +169,13 @@ describe("PickHelper", () => {
       element,
       renderer,
       new PerspectiveCamera(),
-      new Map() as MeshCache,
+      opts?.meshes ?? (new Map() as MeshCache),
       (arr) => picks.push(arr),
       (arr) => hovers.push(arr),
       () => gates.clickable,
       () => gates.hoverable,
+      { value: null },
+      new Scene(),
     );
     helper.enablePick(true);
 
@@ -241,6 +263,41 @@ describe("PickHelper", () => {
 
       expect(picks).toEqual([]);
       expect(state.renderCount).toBe(0);
+    });
+  });
+
+  describe("draped pickables", () => {
+    const pickable = (raw: Object3D) => ({
+      batchId: 1,
+      onBeforePicking: () => undefined,
+      onAfterPicking: () => undefined,
+      getRenderable: () => raw,
+    });
+
+    it("are drawn before the other pickables, so those in front cover them", () => {
+      const material = new MeshBasicMaterial();
+      const draped = new DrapedMesh(undefined, material, true);
+      const standing = new Mesh();
+      new Scene().add(draped, standing);
+      const meshes = new Map([
+        ["draped", pickable(draped)],
+        ["standing", pickable(standing)],
+      ]) as unknown as MeshCache;
+      const { state, pointer } = setup({ meshes });
+
+      pointer("pointerdown", 100, 100);
+      pointer("pointerup", 100, 100);
+
+      const drapedRenders = state.calls.flatMap((call, i) =>
+        "render" in call && call.render.includes(draped) ? [i] : [],
+      );
+      const lastDraped = drapedRenders[drapedRenders.length - 1];
+      const standingRender = state.calls.findIndex(
+        (call) => "render" in call && call.render.includes(standing),
+      );
+      expect(drapedRenders.length).toBeGreaterThan(0);
+      expect(standingRender).toBeGreaterThan(lastDraped);
+      expect(draped.parent).toBe(standing.parent);
     });
   });
 

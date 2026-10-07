@@ -141,13 +141,6 @@ vPosition = (modelMatrix * vec4(transformed, 1.0)).xyz;
   // Transform fragment shader
   shader.fragmentShader = createReplacer(shader.fragmentShader)
     .replace(
-      "#include <common>",
-      `
-#include <common>
-#include <packing>
-`,
-    )
-    .replace(
       "uniform vec3 diffuse;",
       `
 ${POLYGON_BASE_SHADER_MARKERS.fragment.UNIFORM_START}

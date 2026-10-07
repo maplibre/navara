@@ -56,7 +56,7 @@ pub fn construct_polygon_feature(
         );
     }
 
-    hierarchy.align_winding_order();
+    hierarchy.align_winding_order_on_globe();
 
     if hierarchy.expected_winding_order == WindingOrder::Unknown {
         // If all the vertices of a polygon lie on a single line, the winding order becomes WindingOrder::Unknown.

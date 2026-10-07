@@ -81,6 +81,7 @@ impl Plugin for TilePlugin {
                         // (traverse, prune, eviction) has already happened.
                         raster::system::snapshot_raster_bake_inputs,
                         terrain::system::update_height_observers,
+                        terrain::system::update_terrain_height_range_observers,
                         hillshade::cleanup_hillshade_edges,
                         hillshade::cleanup_hillshade_backfill_events,
                         hillshade::emit_hillshade_canceled,

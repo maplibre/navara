@@ -394,3 +394,52 @@ describe("MeshDesc terrain-referenced placement", () => {
     expect(lastPlacement()?.heading).toBe(90);
   });
 });
+
+describe("MeshDesc draped G-buffer requirement", () => {
+  type DrapedConfig = MeshConfig & { draped?: boolean };
+
+  class SwitchableDrapeDesc extends MeshDesc<DrapedConfig, MeshUpdate, Mesh> {
+    draped: boolean;
+
+    constructor(view: ThreeView, ctx: ViewContext, config: DrapedConfig) {
+      super(view, ctx, config);
+      this.draped = config.draped ?? false;
+    }
+
+    createMesh() {
+      return new Mesh(new BoxGeometry(1, 1, 1), new MeshBasicMaterial());
+    }
+
+    protected override getPassKey() {
+      return this.draped ? "draped" : super.getPassKey();
+    }
+  }
+
+  const createSwitchable = (draped: boolean) => {
+    const ctx = makeCtx();
+    const desc = new SwitchableDrapeDesc(makeView(), ctx, { draped });
+    desc.onCreate();
+    return { desc, emit: vi.mocked(ctx.emit) };
+  };
+
+  it("requires the globe normal only in the draped pass", () => {
+    expect(createSwitchable(true).desc.getRequiredBuffers()).toEqual([
+      "globeNormal",
+    ]);
+    expect(createSwitchable(false).desc.getRequiredBuffers()).toEqual([]);
+  });
+
+  it("re-derives the G-buffers when the mesh enters or leaves the draped pass", () => {
+    const { desc, emit } = createSwitchable(false);
+    emit.mockClear();
+
+    desc.draped = true;
+    desc.onPassKeyChange();
+    expect(emit).toHaveBeenCalledWith("gbufferRequirementsChanged");
+
+    emit.mockClear();
+    desc.draped = false;
+    desc.onPassKeyChange();
+    expect(emit).toHaveBeenCalledWith("gbufferRequirementsChanged");
+  });
+});

@@ -13,7 +13,9 @@ import initCore, {
   Core,
   CameraDirection,
   DynamicSse as EngineDynamicSse,
+  ExtentRadianF32,
   LLE,
+  type TerrainHeightRangeUpdatedEvent,
   type TerrainHeightUpdatedEvent,
   type TextureFragmentStatus,
 } from "@navaramap/engine";
@@ -23,7 +25,11 @@ import {
   type FontWorkerMemoryStats,
 } from "@navaramap/font";
 import FontWorkerURL from "@navaramap/font/fontWorker?worker&url";
-import { initNavaraApi, degreeToRadian } from "@navaramap/three-api";
+import {
+  initNavaraApi,
+  degreeToRadian,
+  type GeographicExtent,
+} from "@navaramap/three-api";
 import {
   initializeWorkerPool,
   probeWorkerPoolHeap,
@@ -55,6 +61,7 @@ import { WATER_NORMAL_URL } from "./constants/assets";
 import {
   LightDesc,
   EffectDesc,
+  MeshDesc,
   ViewContext,
   type MeshConfig,
   type LightConfig,
@@ -466,6 +473,8 @@ export type ViewEvents = {
   postRender: (t: number) => void;
   /** @private Emitted when terrain height sampling completes. */
   _sample_terrain_height_received: (ev: TerrainHeightUpdatedEvent) => void;
+  /** @private Emitted when an observed terrain height range changes. */
+  _terrain_height_range_received: (ev: TerrainHeightRangeUpdatedEvent) => void;
   /** Emitted on pointerdown with map coordinates, for every input type. */
   pointerdown: (event: MapPointerEvent) => void;
   /** Emitted when a pointer enters the canvas with map coordinates, for every input type. */
@@ -545,6 +554,11 @@ export default class ThreeView<
   /** Pending `flyTo` promises keyed by flight id, settled by
    *  `camera_flight_ended` events from the engine. */
   private _pendingFlights = new Map<number, (completed: boolean) => void>();
+  /** {@link observeTerrainHeightRange} callbacks by observer entity bits. */
+  private _terrainHeightRangeObservers = new Map<
+    TerrainHeightRangeUpdatedEvent["bits"],
+    (range: { min: number; max: number }) => void
+  >();
 
   /** Currently hovered feature, used to diff-synthesize hover events. */
   private _hoveredFeature: Nullable<PickedFeature> = null;
@@ -1552,9 +1566,9 @@ export default class ThreeView<
       concurrencyManager,
       this._core,
       this._meshes,
+      this._uniforms,
     );
     this.registries = new Registries(this, this.viewContext);
-    this.viewContext.on("meshPassKeyChanged", this._syncGBuffers);
     this.viewContext.on("gbufferRequirementsChanged", this._syncGBuffers);
     this.viewContext._setRegistries(this.registries);
     this.eventContext = new EventContext({
@@ -1641,6 +1655,8 @@ export default class ThreeView<
             this.size("featureEnter") ||
             this.size("featureLeave")
           ),
+        this._uniforms.tGlobeDepth,
+        this._scenes.globe,
         // {
         //   debug: true,
         // },
@@ -2194,6 +2210,16 @@ export default class ThreeView<
     // Create mesh descriptor instance
     const meshDesc = this.registries.mesh.create(meshType, config);
 
+    try {
+      this._assertGBufferCapacity(
+        meshDesc.getRequiredBuffers(),
+        `"${meshType}" mesh`,
+      );
+    } catch (error) {
+      meshDesc.onDestroy();
+      throw error;
+    }
+
     // Initialize the mesh; hooks are wired once the instance exists.
     this._trackAsyncCreate("mesh", meshDesc, meshDesc.onCreate(), () => {
       // If deleted while an async creation was loading, nothing to wire.
@@ -2225,6 +2251,19 @@ export default class ThreeView<
 
     // Store the mesh descriptor
     this.layersManager.add(l);
+
+    // Mesh materials sample G-buffers only at render time, so syncing after
+    // `onCreate()` is enough.
+    if (meshDesc.getRequiredBuffers().length > 0) {
+      this._syncGBuffers();
+    }
+    // Registered after `layersManager.add`, so the deleted mesh is already
+    // out of the union when this runs.
+    l.on("deleted", () => {
+      if (meshDesc.getRequiredBuffers().length > 0) {
+        this._syncGBuffers();
+      }
+    });
 
     // Return handle for imperative access
     return l as MeshHandle<L>;
@@ -2298,7 +2337,10 @@ export default class ThreeView<
 
     // gl.MAX_DRAW_BUFFERS: spec minimum 4, nearly all devices expose 8.
     try {
-      this._assertGBufferCapacity(effectDesc);
+      this._assertGBufferCapacity(
+        effectDesc.getRequiredBuffers(),
+        `"${effectDesc.getKey()}" effect`,
+      );
     } catch (error) {
       effectDesc.onDestroy();
       throw error;
@@ -2341,40 +2383,47 @@ export default class ThreeView<
 
   /**
    * Re-derives the G-buffer configuration from the union of the active
-   * effects' `requiredBuffers` and applies it to the MRT pass when changed.
+   * effects' and meshes' `getRequiredBuffers()` and applies it to the MRT pass
+   * when changed.
    */
   private _syncGBuffers = (): void => {
     const requirements: (readonly GBufferName[])[] = [];
-    for (const handle of this.layersManager.getEffectDescs()) {
-      requirements.push(handle.ref.getRequiredBuffers());
-    }
-    // Draped meshes are not effects, so they cannot declare this themselves:
-    // they read the terrain normal through the globe-normal copy.
-    if (this._scenes.draped.children.length > 0) {
-      requirements.push(["globeNormal"]);
+    for (const handle of this.layersManager.getHandles()) {
+      const desc = handle.ref;
+      if (desc instanceof EffectDesc) {
+        requirements.push(desc.getRequiredBuffers());
+      } else if (desc instanceof MeshDesc) {
+        requirements.push(desc.getRequiredBuffers());
+      }
     }
     const buffers = unionGBufferRequirements(requirements);
-    // Runtime requirement changes bypass `addEffect`'s check; exceeding the
-    // limit at the GL level gives an incomplete framebuffer, not an error.
+    // `addEffect`/`addMesh` reject an over-limit descriptor up front. A
+    // requirement that grows after creation is reported instead and the
+    // previous configuration kept, since the GL level would give an
+    // incomplete framebuffer. A later re-derivation that fits applies.
     const attachmentCount = this._countGBufferAttachments(buffers);
     const maxDrawBuffers = this._maxDrawBuffers();
     if (attachmentCount > maxDrawBuffers) {
-      throw new Error(
+      console.error(
         `The required G-buffers demand ${attachmentCount} MRT attachments, ` +
-          `exceeding this device's MAX_DRAW_BUFFERS (${maxDrawBuffers}).`,
+          `exceeding this device's MAX_DRAW_BUFFERS (${maxDrawBuffers}). ` +
+          "Keeping the previous G-buffers.",
       );
+      return;
     }
     this._buffers = buffers;
     this.viewContext._setGBufferOptions(this._buffers);
   };
 
   /**
-   * Throws when enabling the effect's required G-buffers would push the
+   * Throws when enabling a descriptor's required G-buffers would push the
    * attachment count (color + enabled optional buffers) past the device's
    * `MAX_DRAW_BUFFERS` limit.
    */
-  private _assertGBufferCapacity(effectDesc: EffectDesc): void {
-    const required = effectDesc.getRequiredBuffers();
+  private _assertGBufferCapacity(
+    required: readonly GBufferName[],
+    label: string,
+  ): void {
     if (required.length === 0) return;
     const prospective = unionGBufferRequirements([
       (Object.keys(this._buffers) as GBufferName[]).filter(
@@ -2386,7 +2435,7 @@ export default class ThreeView<
     const maxDrawBuffers = this._maxDrawBuffers();
     if (attachmentCount > maxDrawBuffers) {
       throw new Error(
-        `The "${effectDesc.getKey()}" effect requires G-buffers [${required.join(", ")}], ` +
+        `The ${label} requires G-buffers [${required.join(", ")}], ` +
           `but the resulting ${attachmentCount} MRT attachments exceed this ` +
           `device's MAX_DRAW_BUFFERS (${maxDrawBuffers}).`,
       );
@@ -2888,6 +2937,85 @@ export default class ThreeView<
     }
     return sampleTerrainMostDetailed(description, positions, options);
   }
+
+  /**
+   * Min and max height, relative to the ellipsoid, of the ground rendered
+   * over `extent`: the loaded terrain tiles, or `0` before any has loaded.
+   *
+   * {@link observeTerrainHeightRange} reports the range as tiles load.
+   *
+   * @param extent - Geographic bounds in degrees
+   * @returns The range in metres, or `undefined` before the engine has a
+   *   terrain quadtree
+   */
+  sampleTerrainHeightRange(
+    extent: GeographicExtent,
+  ): { min: number; max: number } | undefined {
+    const range = this._core?.sampleTerrainHeightRange(
+      new ExtentRadianF32(
+        degreeToRadian(extent.west),
+        degreeToRadian(extent.south),
+        degreeToRadian(extent.east),
+        degreeToRadian(extent.north),
+      ),
+    );
+    return range ? { min: range[0], max: range[1] } : undefined;
+  }
+
+  /**
+   * Observes {@link sampleTerrainHeightRange} over `extent`. The callback
+   * fires once the range is first computed, then whenever a terrain tile
+   * overlapping `extent` loads and changes it.
+   *
+   * @param extent - Geographic bounds in degrees, `west <= east`
+   * @param cb - Callback receiving the range in metres
+   * @returns Cleanup function to stop observing
+   */
+  observeTerrainHeightRange(
+    extent: GeographicExtent,
+    cb: (range: { min: number; max: number }) => void,
+  ): () => void {
+    if (!this._core) {
+      return () => {};
+    }
+
+    const entityBits = this._core.registerTerrainHeightRangeEvent(
+      new ExtentRadianF32(
+        degreeToRadian(extent.west),
+        degreeToRadian(extent.south),
+        degreeToRadian(extent.east),
+        degreeToRadian(extent.north),
+      ),
+    );
+
+    if (this._terrainHeightRangeObservers.size === 0) {
+      this.on(
+        "_terrain_height_range_received",
+        this._dispatchTerrainHeightRange,
+      );
+    }
+    this._terrainHeightRangeObservers.set(entityBits, cb);
+
+    return () => {
+      if (!this._terrainHeightRangeObservers.delete(entityBits)) return;
+      this._core?.unregisterTerrainHeightRangeEvent(entityBits);
+      if (this._terrainHeightRangeObservers.size === 0) {
+        this.off(
+          "_terrain_height_range_received",
+          this._dispatchTerrainHeightRange,
+        );
+      }
+    };
+  }
+
+  private _dispatchTerrainHeightRange = (
+    ev: TerrainHeightRangeUpdatedEvent,
+  ): void => {
+    this._terrainHeightRangeObservers.get(ev.bits)?.({
+      min: ev.min,
+      max: ev.max,
+    });
+  };
 
   /**
    * Observes terrain height changes at a position. Callback is invoked each time terrain data updates.

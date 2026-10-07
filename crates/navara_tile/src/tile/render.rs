@@ -3,11 +3,13 @@ use bevy_ecs::{component::Component, entity::Entity, system::Commands};
 use navara_component::Deleted;
 use navara_tile_component::TileHandle;
 
-/// A `Rendered` tile whose own DEM has landed while it shows an upsampled (or
-/// not yet built) mesh: `transfer_mesh` revisits it to build the real-DEM
-/// mesh and clears the marker once the result is transferred. Keeps the
-/// per-frame `transfer_mesh` query narrow — every other `Rendered` tile is
-/// skipped by the query filter, not by a per-tile check.
+/// A tile `transfer_mesh` revisits for a new mesh, even once `Rendered`: its
+/// own DEM landed while it shows an upsampled (or not yet built) mesh
+/// (`mark_landed_dem_for_remesh`), or its upsampled mesh has a better source
+/// now (`traverse_terrain`). The marker stays exactly while a task it started
+/// is in flight. Keeps the per-frame `transfer_mesh` query narrow — every
+/// other `Rendered` tile is skipped by the query filter, not by a per-tile
+/// check.
 #[derive(Component)]
 pub struct RemeshPending;
 

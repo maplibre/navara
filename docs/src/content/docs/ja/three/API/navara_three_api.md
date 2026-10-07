@@ -1179,6 +1179,157 @@ scene.add(line);
 geodesic.dispose();
 ```
 
+## Feature Geometry
+
+`vector` レイヤーと同じ構築処理で、単一のポリゴンまたはポリラインのジオメトリを作ります。1 つの形状を描くだけなら、これらを内部で使う [`PolygonMeshDesc`](../../../three_default_descs/mesh-desc/polygon-mesh-desc) と [`PolylineMeshDesc`](../../../three_default_descs/mesh-desc/polyline-mesh-desc) のほうが簡単です。独自のメッシュ Descriptor の頂点データを作るときにこれらの関数を使います。
+
+結果の座標は RTE エンコードされています。各座標は `High` と `Low` の 2 つの `Float32Array` に分かれます（[RTE Rendering](#rte-relative-to-eye-rendering) を参照）。
+
+### buildPolygonGeometry(rings, geocentric, material)
+
+1 つのポリゴンのジオメトリを作ります。
+
+**Syntax:**
+
+```typescript
+function buildPolygonGeometry(
+  rings: readonly Float64Array[],
+  geocentric: boolean,
+  material: PolygonGeometryMaterial,
+): PolygonGeometryData | undefined
+```
+
+**Parameters:**
+
+- `rings`: 外周リング、続けて穴。各リングは度とメートルの `[lng, lat, height, ...]` のフラットな配列で、`geocentric` が `true` のときは ECEF メートルの `[x, y, z, ...]`
+- `geocentric`: 座標を経度・緯度ではなく ECEF メートルとして読む
+- `material`: [`polygon`](../../../three/material/polygon-material/) レイヤーマテリアルのプレーンオブジェクト。色は数値で指定します。ジオメトリの形に効くのは `clampToGround`、`height`、`perPositionHeight` で、輪郭線のオプションは無視されます
+
+**Returns:**
+
+`positionHigh`、`positionLow`、`normal`（`clampToGround` のポリゴンでは無し）、`scaleNormalAndCap`（`xyz` が押し出し方向、`w` は底面で `0`、上面で `1`）、`indices`、度単位の地理的範囲 `extent`。外周リングの頂点が 3 つ未満、またはすべて一直線上にある場合は `undefined` を返します。`material` がポリゴンマテリアルとして不正な場合は例外を投げます。
+
+**Example:**
+
+```typescript
+import { buildPolygonGeometry } from "@navaramap/three-api";
+
+const outer = new Float64Array([
+  139.76, 35.68, 0,
+  139.77, 35.68, 0,
+  139.77, 35.69, 0,
+  139.76, 35.68, 0,
+]);
+const geometry = buildPolygonGeometry([outer], false, {
+  clampToGround: false,
+  height: 10,
+});
+```
+
+### buildPolylineGeometry(positions, geocentric, ring, material)
+
+1 本のポリラインのジオメトリを作ります。
+
+**Syntax:**
+
+```typescript
+function buildPolylineGeometry(
+  positions: Float64Array,
+  geocentric: boolean,
+  ring: boolean,
+  material: PolylineGeometryMaterial,
+): PolylineGeometryData | undefined
+```
+
+**Parameters:**
+
+- `positions`: 度とメートルの `[lng, lat, height, ...]` のフラットな配列。`geocentric` が `true` のときは ECEF メートルの `[x, y, z, ...]`
+- `geocentric`: 座標を経度・緯度ではなく ECEF メートルとして読む
+- `ring`: 最初の座標の繰り返しを、2 つの端の代わりに継ぎ目としてつなぐ
+- `material`: [`polyline`](../../../three/material/polyline-material/) レイヤーマテリアルのプレーンオブジェクト。色は数値で指定します
+
+**Returns:**
+
+線のボリュームの頂点属性（`position`、RTE エンコードされた `positionHigh` / `positionLow`、`startHigh` / `startLow`、`endHigh` / `endLow`、`startNormal`、`endNormalAndTextureCoordinateNormalizationX`、`rightNormalAndTextureCoordinateNormalizationY`）、`indices`、度単位の地理的範囲 `extent`。重複しない座標が 2 つ未満の場合は `undefined` を返します。`material` がポリラインマテリアルとして不正な場合は例外を投げます。
+
+**Example:**
+
+```typescript
+import { buildPolylineGeometry } from "@navaramap/three-api";
+
+const positions = new Float64Array([
+  139.76, 35.68, 0,
+  139.78, 35.68, 0,
+]);
+const geometry = buildPolylineGeometry(positions, false, false, {
+  clampToGround: true,
+  width: 3,
+});
+```
+
+### polygonGroundVolume(range, extent)
+
+`extent` 上のクランプしたポリゴンのボリュームが、`range` の範囲の地面の高さを包み込むために必要な高さの範囲を計算します。ポリゴンジオメトリの平らな面は頂点の間で曲面の地面より下に沈むため、結果は `range` より広くなります。
+
+**Syntax:**
+
+```typescript
+function polygonGroundVolume(
+  range: HeightRange,
+  extent: GeographicExtent,
+): [number, number]
+```
+
+**Parameters:**
+
+- `range`: 包み込む地面の高さ。たとえば [`ThreeView.sampleTerrainHeightRange()`](../threeview-functions/#sampleterrainheightrange) の結果
+- `extent`: `buildPolygonGeometry()` が返す、度単位のポリゴンの範囲
+
+**Returns:**
+
+楕円体基準の高さ（メートル）`[min, max]`
+
+**Example:**
+
+```typescript
+import { buildPolygonGeometry, polygonGroundVolume } from "@navaramap/three";
+
+// `view` は初期化済みの ThreeView
+const outer = new Float64Array([
+  138.72, 35.36, 0,
+  138.75, 35.36, 0,
+  138.75, 35.38, 0,
+  138.72, 35.36, 0,
+]);
+const geometry = buildPolygonGeometry([outer], false, { clampToGround: true });
+if (geometry) {
+  const range = view.sampleTerrainHeightRange(geometry.extent) ?? { min: 0, max: 0 };
+  const [min, max] = polygonGroundVolume(range, geometry.extent);
+}
+```
+
+### polylineGroundVolume(range, extent)
+
+`extent` 上のクランプしたポリラインのボリュームが、`range` の範囲の地面の高さを包み込むために必要な高さの範囲を計算します。`buildPolylineGeometry()` が作る直線の線分を前提にします。
+
+**Syntax:**
+
+```typescript
+function polylineGroundVolume(
+  range: HeightRange,
+  extent: GeographicExtent,
+): [number, number]
+```
+
+**Parameters:**
+
+- `range`: 包み込む地面の高さ
+- `extent`: `buildPolylineGeometry()` が返す、度単位のポリラインの範囲
+
+**Returns:**
+
+楕円体基準の高さ（メートル）`[min, max]`
+
 ## Types
 
 ### LatLngHeight
@@ -1191,6 +1342,30 @@ interface LatLngHeight {
   lng: number; // 経度（度）
   height: number; // 高度（メートル）
 }
+```
+
+### GeographicExtent
+
+地理的な範囲を表す型です。
+
+```typescript
+type GeographicExtent = {
+  west: number;  // 西端の経度（度）
+  south: number; // 南端の緯度（度）
+  east: number;  // 東端の経度（度）
+  north: number; // 北端の緯度（度）
+};
+```
+
+### HeightRange
+
+楕円体基準の高さの範囲を表す型です。
+
+```typescript
+type HeightRange = {
+  min: number; // 最低の高さ（メートル）
+  max: number; // 最高の高さ（メートル）
+};
 ```
 
 ### LatLng

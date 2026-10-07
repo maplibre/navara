@@ -25,7 +25,7 @@ use crate::data_requester::request_terrain_data;
 use crate::texture_fragment::request_hillshade_data_requester;
 
 use super::{
-    render::RenderedTile,
+    render::{RemeshPending, RenderedTile},
     tile_cache_manager::{LayerParent, RenderedTileCache, TileCacheManager},
 };
 
@@ -210,6 +210,9 @@ pub fn traverse_terrain(
 
     let is_activated = tc.is_rendered_tile_activated(&handle, meshes);
     let is_rendered_last_frame = is_activated;
+    // Whether the tile is on screen if it renders itself this frame: shown,
+    // in view, and not about to give way to an ancestor that meets SSE.
+    let is_on_screen = is_activated && !is_culled_by_frustum && !meets_sse_ancestors;
 
     let tile = qt.qt.get_mut(handle).unwrap();
     let were_children_rendered = tile.were_children_rendered;
@@ -286,6 +289,18 @@ pub fn traverse_terrain(
             // Keep rendering children while preparing the tile if it's available, because rendering tile takes some time.
             && !were_children_rendered
         {
+            if is_on_screen {
+                flag_stale_upsample(
+                    command,
+                    tc,
+                    qt,
+                    terrain_layer,
+                    source_store,
+                    terrain_data_requester,
+                    handle,
+                    upsample_ancestors,
+                );
+            }
             return TraversalResult::TileRendered;
         }
 
@@ -369,8 +384,13 @@ pub fn traverse_terrain(
             ready_layer_parents,
         );
 
-        let child_upsample_ancestors =
-            upsample_ancestors.extend_with(qt.qt.get(handle).unwrap(), handle);
+        let resamples_dem =
+            terrain_layer.is_some_and(|l| matches!(l.terrain_type, TerrainDataType::RasterDEM));
+        let child_upsample_ancestors = upsample_ancestors.extend_with(
+            qt.qt.get(handle).unwrap(),
+            handle,
+            resamples_dem && tile_ready_state.is_terrain_ready,
+        );
 
         // Tile has several states to switch LOD smoothly.
         // 1. RenderedTile component is spawned if a tile is selected.
@@ -517,8 +537,24 @@ pub fn traverse_terrain(
                         cache.prefetched = false;
                     }
 
-                    // If this child's children are rendered, skip rendering this child.
-                    if rendered_children_mask & (1 << i) != 0 {
+                    // If this child's children are rendered, skip rendering
+                    // this child — unless they need it built (see
+                    // `prepare_covered_anchor`); it stays hidden under them.
+                    if rendered_children_mask & (1 << i) != 0
+                        && !prepare_covered_anchor(
+                            command,
+                            qt,
+                            buf,
+                            data_manager,
+                            terrain_layer,
+                            *child,
+                            tc,
+                            sorted_layers,
+                            source_store,
+                            data_requesters,
+                            terrain_data_requester,
+                        )
+                    {
                         continue;
                     }
 
@@ -689,7 +725,153 @@ pub fn traverse_terrain(
         );
     }
 
+    if is_on_screen {
+        flag_stale_upsample(
+            command,
+            tc,
+            qt,
+            terrain_layer,
+            source_store,
+            terrain_data_requester,
+            handle,
+            upsample_ancestors,
+        );
+    }
+
     TraversalResult::TileRendered
+}
+
+/// Flag an on-screen tile for a rebuild once its upsampled mesh has a better
+/// source (see `TerrainTile::has_stale_upsample_source`); `transfer_mesh`
+/// picks the flag up. Tiles nothing shows — covered by their children or out
+/// of view — are left alone: rebuilding them spends a worker task on a mesh
+/// no one looks at, and they are flagged once they are on screen again.
+#[allow(clippy::too_many_arguments)]
+fn flag_stale_upsample(
+    command: &mut Commands,
+    tc: &TileCacheManager,
+    qt: &TerrainTileQuadtree,
+    terrain_layer: &Option<&TerrainLayer>,
+    source_store: &SourceStore,
+    terrain_data_requester: &TileTerrainDataRequesterQuery,
+    handle: TileHandle,
+    upsample_ancestors: UpsampleAncestors,
+) {
+    let tile = qt.qt.get(handle).unwrap();
+    // The real ancestor at `real_z` is the last this tile will get when no
+    // tile between them can still hold real data: each is in the overscale
+    // band or its DEM request failed, and neither is ever retried.
+    let is_final = |real_z: usize| {
+        let coords = (tile.coords.x, tile.coords.y, tile.coords.z);
+        (real_z + 1..tile.coords.z).all(|z| {
+            qt.qt
+                .ancestor(coords, z)
+                .and_then(|a| qt.qt.get(a.handle()))
+                .is_some_and(|t| {
+                    !t.is_upsample_depth_bounded(
+                        terrain_layer,
+                        source_store,
+                        terrain_data_requester,
+                    )
+                })
+        })
+    };
+    if tile.has_stale_upsample_source(upsample_ancestors, is_final)
+        && !tile.is_upsample_depth_bounded(terrain_layer, source_store, terrain_data_requester)
+    {
+        command
+            .entity(tc.rendered_tile_caches[&handle].rendered_tile_entity)
+            .try_insert(RemeshPending);
+    }
+}
+
+/// A tile whose children cover it is normally left alone: nothing shows it.
+/// The exception is a tile with a child that will never hold real data of
+/// its own (the overscale band, or a failed DEM request): that child and
+/// everything below it are upsampled from the nearest real data above, and
+/// this tile is the nearest level that can still provide it. Covered, it is
+/// never activated or an SSE leaf, so its DEM is fetched here. A raster-DEM
+/// upsample resamples the landed DEM itself; a quantized-mesh one clips the
+/// mesh, so once the data lands this returns `true` for the caller to spawn
+/// the tile and have it built.
+#[allow(clippy::too_many_arguments)]
+fn prepare_covered_anchor(
+    command: &mut Commands,
+    qt: &mut TerrainTileQuadtree,
+    buf: &mut BufferStore,
+    data_manager: &mut DataManager,
+    terrain_layer: &Option<&TerrainLayer>,
+    handle: TileHandle,
+    tc: &mut TileCacheManager,
+    sorted_layers: &[(&TilesLayer, &Order)],
+    source_store: &SourceStore,
+    data_requesters: &Query<&navara_data_requester::DataRequester>,
+    terrain_data_requester: &TileTerrainDataRequesterQuery,
+) -> bool {
+    let Some(layer) = terrain_layer else {
+        return false;
+    };
+    let Some(source) = layer
+        .source_id
+        .as_deref()
+        .and_then(|id| source_store.get(id))
+    else {
+        return false;
+    };
+    let never_real = |t: &TerrainTile| {
+        source.should_overscale(t.coords.z) || t.is_terrain_failed(terrain_data_requester)
+    };
+    let is_quantized_mesh = matches!(layer.terrain_type, TerrainDataType::QuantizedMesh);
+
+    let tile = qt.qt.get(handle).unwrap();
+    let dem_landed = tile.is_terrain_ready(terrain_data_requester);
+    let holds_real_data = if is_quantized_mesh {
+        !tile.upsampled
+            && tile
+                .cached_mesh_handle
+                .as_ref()
+                .is_some_and(|m| m.heights.is_some())
+    } else {
+        dem_landed
+    };
+    if holds_real_data
+        || !tile
+            .children
+            .iter()
+            .any(|c| qt.qt.get(*c).is_some_and(never_real))
+        || never_real(tile)
+    {
+        return false;
+    }
+
+    if !dem_landed {
+        // Not requested yet, or rejected by the rate limiter (which drops the
+        // requester): a pending request is left to land.
+        let is_requested = tile
+            .terrain_data
+            .as_ref()
+            .and_then(|t| t.data_requester_entity_id())
+            .is_some();
+        if !is_requested {
+            prepare_tile_resource(
+                command,
+                qt,
+                buf,
+                data_manager,
+                terrain_layer,
+                handle,
+                tc,
+                sorted_layers,
+                source_store,
+                data_requesters,
+                terrain_data_requester,
+                Priority::Medium,
+            );
+        }
+        return false;
+    }
+    // A rendered tile is re-meshed by `mark_landed_dem_for_remesh` instead.
+    !tc.rendered_tile_caches.contains_key(&handle)
 }
 
 /// Apply a completed swap recorded by `traverse_terrain`: hide `handle` and
@@ -1296,10 +1478,14 @@ mod tests {
 
     #[test]
     fn traverse_terrain_stops_at_max_zoom_with_not_found() {
-        let (mut app, handle) = terrain_app_with_root();
+        let (mut app, _root) = terrain_app_with_root();
+        // Layer maxes out at zoom 0, so a z1 tile is past every source's limit
+        // and the traversal bails before visiting it.
+        let handle = {
+            let mut qt = app.world_mut().resource_mut::<TerrainTileQuadtree>();
+            qt.qt.initialize_leaf((0, 0, 1), &new_tile).unwrap()
+        };
         app.insert_resource(TargetHandle(handle));
-        // Layer maxes out at zoom 0; the root (z=0) is already beyond it, so all
-        // sources are over their limit and the traversal bails before visiting.
         spawn_layer(&mut app, raster_layer("a", 0, 0), Order(0));
 
         app.add_systems(Update, run_terrain_traverse);
@@ -1436,9 +1622,9 @@ mod tests {
     fn traverse_terrain_swaps_parent_for_children_once_prepared() {
         let (mut app, root) = terrain_app_with_root();
         app.insert_resource(TargetHandle(root));
-        // max_zoom=2 bounds the forced subdivision: the z=1 children render, their
+        // max_zoom=1 bounds the forced subdivision: the z=1 children render, their
         // z=2 grandchildren are over max → NotFound, so each child resolves at z=1.
-        spawn_layer(&mut app, raster_layer("a", 0, 2), Order(0));
+        spawn_layer(&mut app, raster_layer("a", 0, 1), Order(0));
         app.insert_resource(TraverseConfig {
             max_sse: 0.,
             fov: 60.0,
@@ -1529,9 +1715,20 @@ mod tests {
     }
 
     /// Register a raster-DEM terrain source fetchable up to `max_zoom`
-    /// (exclusive, with no overscale band beyond it) and spawn the terrain
+    /// (inclusive, with no overscale band beyond it) and spawn the terrain
     /// layer that uses it.
     fn spawn_raster_dem_terrain(app: &mut App, max_zoom: usize) {
+        spawn_raster_dem_terrain_with_band(app, max_zoom, max_zoom);
+    }
+
+    /// As `spawn_raster_dem_terrain`, but with an overscale band: the levels
+    /// past `max_zoom`, down to `overscaled_max_zoom`, are upsampled and never
+    /// fetch a DEM of their own.
+    fn spawn_raster_dem_terrain_with_band(
+        app: &mut App,
+        max_zoom: usize,
+        overscaled_max_zoom: usize,
+    ) {
         app.world_mut().resource_mut::<SourceStore>().add(
             "dem".to_string(),
             navara_source::Source::RasterDem(navara_source::RasterDemSource {
@@ -1542,7 +1739,7 @@ mod tests {
                 tile_size: 256,
                 min_zoom: 0,
                 max_zoom,
-                overscaled_max_zoom: max_zoom,
+                overscaled_max_zoom,
             }),
         );
         app.world_mut().spawn(TerrainLayer {
@@ -1551,6 +1748,100 @@ mod tests {
             terrain_type: TerrainDataType::RasterDEM,
             appearance: None,
         });
+    }
+
+    /// As `spawn_raster_dem_terrain_with_band`, for quantized-mesh terrain.
+    fn spawn_quantized_mesh_terrain_with_band(
+        app: &mut App,
+        max_zoom: usize,
+        overscaled_max_zoom: usize,
+    ) {
+        app.world_mut().resource_mut::<SourceStore>().add(
+            "qm".to_string(),
+            navara_source::Source::QuantizedMesh(navara_source::QuantizedMeshSource {
+                source_id: "qm".to_string(),
+                url: "https://example.com/{z}/{x}/{y}.terrain".to_string(),
+                tiling_scheme: navara_core::TilingScheme::WebMercator { tms: false },
+                request_vertex_normals: false,
+                request_water_mask: false,
+                token: None,
+                min_zoom: 0,
+                max_zoom,
+                overscaled_max_zoom,
+            }),
+        );
+        app.world_mut().spawn(TerrainLayer {
+            layer_id: "terrain".to_string(),
+            source_id: Some("qm".to_string()),
+            terrain_type: TerrainDataType::QuantizedMesh,
+            appearance: None,
+        });
+    }
+
+    /// A rendered tile two levels below the one the test camera looks at,
+    /// showing a mesh clipped from level `source_z`. The camera's tile holds
+    /// real DEM data; the two levels below it are in the overscale band, so
+    /// they never fetch a DEM of their own. Returns the leaf's rendered-tile
+    /// entity.
+    fn band_chain_with_stale_leaf(app: &mut App, source_z: usize) -> Entity {
+        chain_with_stale_leaf(app, (4, 4, 3), source_z, 1)
+    }
+
+    /// As above for the on-screen tile `leaf` (a descendant of the camera's
+    /// tile `(1, 1, 1)`, and the deepest level the terrain goes to), with the
+    /// terrain's `max_zoom` spelled out: past it the levels down to the leaf
+    /// are in the overscale band.
+    fn chain_with_stale_leaf(
+        app: &mut App,
+        leaf: (usize, usize, usize),
+        source_z: usize,
+        max_zoom: usize,
+    ) -> Entity {
+        spawn_raster_dem_terrain_with_band(app, max_zoom, leaf.2);
+
+        let mid = {
+            let mut qt = app.world_mut().resource_mut::<TerrainTileQuadtree>();
+            qt.qt.initialize_leaf((1, 1, 1), &new_tile).unwrap()
+        };
+        seed_real_terrain(app, mid);
+        let mid_mesh = spawn_mesh(app, true);
+        seed_rendered(app, mid, mid_mesh, true);
+
+        app.insert_resource(TargetHandle(mid));
+        app.insert_resource(TraverseConfig {
+            max_sse: 0.,
+            fov: 60.0,
+        });
+        app.add_systems(Update, run_terrain_traverse);
+        // The traversal owns the nodes it creates, so the leaf's state is
+        // written after this first pass.
+        app.update();
+
+        let leaf = handle_of(app, leaf);
+        let mesh = spawn_mesh(app, true);
+        seed_rendered(app, leaf, mesh, true);
+        {
+            let mut qt = app.world_mut().resource_mut::<TerrainTileQuadtree>();
+            let tile = qt.qt.get_mut(leaf).unwrap();
+            tile.upsampled = true;
+            tile.upsample_source_z = Some(source_z);
+            tile.cached_mesh_handle = Some(mesh_with_heights());
+        }
+        app.world()
+            .resource::<TileCacheManager>()
+            .rendered_tile_caches
+            .get(&leaf)
+            .unwrap()
+            .rendered_tile_entity
+    }
+
+    fn handle_of(app: &mut App, coords: (usize, usize, usize)) -> TileHandle {
+        app.world()
+            .resource::<TerrainTileQuadtree>()
+            .qt
+            .leaf(coords)
+            .unwrap()
+            .handle()
     }
 
     /// A raster-DEM terrain whose max zoom (8) bounds runaway subdivision if
@@ -1605,9 +1896,12 @@ mod tests {
         e
     }
 
-    /// Give a tile a mesh built from real DEM data: a `Success` requester plus
-    /// a cached mesh carrying heights, i.e. a valid upsample source.
-    fn seed_real_terrain(app: &mut App, handle: TileHandle) {
+    /// Give a tile a DEM request in `status`.
+    fn seed_dem(
+        app: &mut App,
+        handle: TileHandle,
+        status: navara_data_requester::DataRequesterStatus,
+    ) {
         use navara_data_requester::{DataRequester, DataRequesterExtension};
         use navara_tile_component::TerrainDataRequesterMarker;
 
@@ -1616,7 +1910,7 @@ mod tests {
             "https://example.com/0/0/0.png".to_string(),
             DataRequesterExtension::Png,
         );
-        requester.status = navara_data_requester::DataRequesterStatus::Success;
+        requester.status = status;
         let requester = app
             .world_mut()
             .spawn((TerrainDataRequesterMarker(handle), requester))
@@ -1627,7 +1921,18 @@ mod tests {
         let mut data = RasterDEMData::new(navara_core::ElevationDecoder::default());
         data.data_requester_entity_id = Some(requester);
         tile.terrain_data = Some(Box::new(data));
-        tile.cached_mesh_handle = Some(mesh_with_heights());
+    }
+
+    /// Give a tile a mesh built from real DEM data: a `Success` requester plus
+    /// a cached mesh carrying heights, i.e. a valid upsample source.
+    fn seed_real_terrain(app: &mut App, handle: TileHandle) {
+        seed_dem(
+            app,
+            handle,
+            navara_data_requester::DataRequesterStatus::Success,
+        );
+        let mut qt = app.world_mut().resource_mut::<TerrainTileQuadtree>();
+        qt.qt.get_mut(handle).unwrap().cached_mesh_handle = Some(mesh_with_heights());
     }
 
     fn terrain_requester_handles(app: &mut App) -> Vec<TileHandle> {
@@ -1637,6 +1942,267 @@ mod tests {
             &navara_data_requester::DataRequester,
         )>();
         q.iter(app.world()).map(|(m, _)| m.0).collect()
+    }
+
+    /// A tile covered by its four children, which are built and on screen. It
+    /// left the render caches when they took the screen, and its own DEM was
+    /// never requested: covered, it is never an SSE leaf or activated.
+    /// `max_zoom` 2 puts the children in the overscale band, so the covered
+    /// tile is the nearest level that can hold real data for them; a higher
+    /// `max_zoom` leaves them fetching DEMs of their own. Returns the covered
+    /// tile.
+    fn covered_tile(app: &mut App, terrain_type: TerrainDataType, max_zoom: usize) -> TileHandle {
+        match terrain_type {
+            TerrainDataType::RasterDEM => spawn_raster_dem_terrain_with_band(app, max_zoom, 3),
+            TerrainDataType::QuantizedMesh => {
+                spawn_quantized_mesh_terrain_with_band(app, max_zoom, 3)
+            }
+            _ => unreachable!(),
+        }
+
+        let mid = {
+            let mut qt = app.world_mut().resource_mut::<TerrainTileQuadtree>();
+            qt.qt.initialize_leaf((1, 1, 1), &new_tile).unwrap()
+        };
+        // The camera's tile carries real terrain: the children's upsample source.
+        seed_real_terrain(app, mid);
+        let mid_mesh = spawn_mesh(app, true);
+        seed_rendered(app, mid, mid_mesh, true);
+
+        app.insert_resource(TargetHandle(mid));
+        app.insert_resource(TraverseConfig {
+            max_sse: 0.,
+            fov: 60.0,
+        });
+        app.add_systems(Update, run_terrain_traverse);
+        app.update();
+
+        let covered = handle_of(app, (2, 2, 2));
+        for coords in [(4, 4, 3), (5, 4, 3), (4, 5, 3), (5, 5, 3)] {
+            let child = handle_of(app, coords);
+            let mesh = spawn_mesh(app, true);
+            seed_rendered(app, child, mesh, true);
+            let e = land_upsample(app, child);
+            app.world_mut().get_mut::<Mesh>(e).unwrap().active = true;
+        }
+        app.world_mut()
+            .resource_mut::<TileCacheManager>()
+            .rendered_tile_caches
+            .remove(&covered);
+        assert!(
+            !terrain_requester_handles(app).contains(&covered),
+            "precondition: the covered tile's DEM was never requested"
+        );
+        covered
+    }
+
+    /// Overscale-band children never fetch a DEM, so the tile they cover is
+    /// the nearest level that can hold real data for them: its DEM is fetched
+    /// though nothing shows the tile. A raster-DEM upsample resamples that DEM
+    /// once it lands, so the tile itself is not built.
+    #[test]
+    fn traverse_terrain_fetches_the_dem_of_a_covered_band_anchor() {
+        let (mut app, _root) = terrain_app_with_root();
+        let anchor = covered_tile(&mut app, TerrainDataType::RasterDEM, 2);
+
+        app.update();
+
+        assert!(terrain_requester_handles(&mut app).contains(&anchor));
+        assert!(!selected(&app, anchor));
+    }
+
+    /// Children whose DEM requests failed never hold real data either (a
+    /// failed request is never retried), so the tile they cover is fetched
+    /// just as above the overscale band — wherever real data happens to end.
+    #[test]
+    fn traverse_terrain_fetches_the_dem_of_a_tile_covered_by_failed_children() {
+        let (mut app, _root) = terrain_app_with_root();
+        // Fetchable far past these levels.
+        let covered = covered_tile(&mut app, TerrainDataType::RasterDEM, 8);
+        for coords in [(4, 4, 3), (5, 4, 3), (4, 5, 3), (5, 5, 3)] {
+            let child = handle_of(&mut app, coords);
+            seed_dem(
+                &mut app,
+                child,
+                navara_data_requester::DataRequesterStatus::Fail,
+            );
+        }
+
+        app.update();
+
+        assert!(terrain_requester_handles(&mut app).contains(&covered));
+    }
+
+    /// A covered tile whose children get DEMs of their own is left alone:
+    /// nothing needs its data.
+    #[test]
+    fn traverse_terrain_leaves_a_covered_tile_above_the_band_alone() {
+        let (mut app, _root) = terrain_app_with_root();
+        let covered = covered_tile(&mut app, TerrainDataType::RasterDEM, 8);
+
+        app.update();
+
+        assert!(!terrain_requester_handles(&mut app).contains(&covered));
+        assert!(!selected(&app, covered));
+    }
+
+    /// A quantized-mesh upsample clips the source's mesh, so once the covered
+    /// anchor's data lands it is selected — hidden under its children — for
+    /// `transfer_mesh` to build that mesh.
+    #[test]
+    fn traverse_terrain_selects_a_covered_quantized_mesh_anchor_once_its_data_lands() {
+        let (mut app, _root) = terrain_app_with_root();
+        let anchor = covered_tile(&mut app, TerrainDataType::QuantizedMesh, 2);
+        seed_dem(
+            &mut app,
+            anchor,
+            navara_data_requester::DataRequesterStatus::Success,
+        );
+
+        app.update();
+
+        assert!(selected(&app, anchor));
+    }
+
+    /// The raster-DEM counterpart: the landed DEM is all its children need,
+    /// so the anchor stays unbuilt.
+    #[test]
+    fn traverse_terrain_leaves_a_landed_raster_dem_anchor_unbuilt() {
+        let (mut app, _root) = terrain_app_with_root();
+        let anchor = covered_tile(&mut app, TerrainDataType::RasterDEM, 2);
+        seed_dem(
+            &mut app,
+            anchor,
+            navara_data_requester::DataRequesterStatus::Success,
+        );
+
+        app.update();
+
+        assert!(!selected(&app, anchor));
+    }
+
+    /// Whether the traversal flagged the rendered tile `entity` for a rebuild.
+    fn flagged(app: &App, entity: Entity) -> bool {
+        app.world().get::<RemeshPending>(entity).is_some()
+    }
+
+    /// An overscale-band tile never fetches a DEM of its own, so the mesh it
+    /// first upsampled from is all it will ever show. Once a nearer real-data
+    /// ancestor is on the path, the traversal flags the tile so
+    /// `transfer_mesh` rebuilds it from that one.
+    #[test]
+    fn traverse_terrain_flags_a_stale_band_upsample() {
+        let (mut app, _root) = terrain_app_with_root();
+        // The leaf shows a clip of the root: three levels up, past the bound.
+        let rendered_tile_entity = band_chain_with_stale_leaf(&mut app, 0);
+
+        app.update();
+
+        assert!(flagged(&app, rendered_tile_entity));
+    }
+
+    /// A tile nothing shows is not flagged: rebuilding it spends a worker task
+    /// on a mesh no one looks at. It is flagged once it is on screen again.
+    #[test]
+    fn traverse_terrain_leaves_a_hidden_stale_upsample_alone() {
+        let (mut app, _root) = terrain_app_with_root();
+        let rendered_tile_entity = band_chain_with_stale_leaf(&mut app, 0);
+        let leaf = handle_of(&mut app, (4, 4, 3));
+        let mesh = app
+            .world()
+            .resource::<TileCacheManager>()
+            .rendered_tile_caches
+            .get(&leaf)
+            .unwrap()
+            .mesh_entity
+            .unwrap();
+        app.world_mut().get_mut::<Mesh>(mesh).unwrap().active = false;
+
+        app.update();
+
+        assert!(!flagged(&app, rendered_tile_entity));
+    }
+
+    /// A band tile already within the bound still takes a nearer source: it
+    /// never fetches a DEM of its own, so that level would separate its
+    /// surface from the real one for as long as it lives.
+    #[test]
+    fn traverse_terrain_flags_a_band_upsample_within_the_bound_for_a_nearer_source() {
+        let (mut app, _root) = terrain_app_with_root();
+        // Clipped from z1, two levels up; z2 is the deepest real level.
+        let rendered_tile_entity = chain_with_stale_leaf(&mut app, (4, 4, 3), 1, 2);
+        let deepest = handle_of(&mut app, (2, 2, 2));
+        seed_real_terrain(&mut app, deepest);
+
+        app.update();
+
+        assert!(flagged(&app, rendered_tile_entity));
+    }
+
+    /// One level nearer, out of bound either way, is a rebuild only when it is
+    /// the last source the tile will ever get: every tile between them is in
+    /// the overscale band, or its DEM request failed.
+    #[test]
+    fn traverse_terrain_flags_a_one_level_improvement_only_when_it_is_final() {
+        use navara_data_requester::DataRequesterStatus;
+
+        // The leaf (z4) is clipped from the root; the nearest real level is
+        // z1, three levels up from it and one below its source.
+        let leaf = (8, 8, 4);
+        let path = [(2, 2, 2), (4, 4, 3)];
+
+        // Below max_zoom 1 the levels in between are all in the band.
+        let (mut app, _root) = terrain_app_with_root();
+        let rendered_tile_entity = chain_with_stale_leaf(&mut app, leaf, 0, 1);
+        app.update();
+        assert!(flagged(&app, rendered_tile_entity), "band in between");
+
+        // With max_zoom 3 they can still fetch real data of their own...
+        let (mut app, _root) = terrain_app_with_root();
+        let rendered_tile_entity = chain_with_stale_leaf(&mut app, leaf, 0, 3);
+        app.update();
+        assert!(
+            !flagged(&app, rendered_tile_entity),
+            "real data may still land in between"
+        );
+
+        // ...unless their requests failed.
+        let (mut app, _root) = terrain_app_with_root();
+        let rendered_tile_entity = chain_with_stale_leaf(&mut app, leaf, 0, 3);
+        for coords in path {
+            let handle = handle_of(&mut app, coords);
+            seed_dem(&mut app, handle, DataRequesterStatus::Fail);
+        }
+        app.update();
+        assert!(flagged(&app, rendered_tile_entity), "failed in between");
+    }
+
+    /// A tile the depth bound still applies to is never flagged, however far
+    /// its source is: its own DEM is on the way and replaces the mesh
+    /// outright, and a rebuild would spend a worker task on a surface that
+    /// is about to be thrown away.
+    #[test]
+    fn traverse_terrain_leaves_a_bounded_stale_upsample_to_its_own_dem() {
+        let (mut app, _root) = terrain_app_with_root();
+        // Fetchable down to the leaf: its own DEM is still coming.
+        let rendered_tile_entity = chain_with_stale_leaf(&mut app, (4, 4, 3), 0, 3);
+
+        app.update();
+
+        assert!(!flagged(&app, rendered_tile_entity));
+    }
+
+    /// A band tile already clipped from the nearest real level is left alone:
+    /// there is nothing better to rebuild it from.
+    #[test]
+    fn traverse_terrain_leaves_a_band_upsample_on_the_best_source_alone() {
+        let (mut app, _root) = terrain_app_with_root();
+        // The leaf is clipped from the deepest real level there is.
+        let rendered_tile_entity = band_chain_with_stale_leaf(&mut app, 1);
+
+        app.update();
+
+        assert!(!flagged(&app, rendered_tile_entity));
     }
 
     /// Upsample-first: children of a tile with real terrain render upsampled
@@ -1649,9 +2215,9 @@ mod tests {
     fn traverse_terrain_defers_dem_fetch_of_a_non_sse_leaf_until_it_is_on_screen() {
         let (mut app, root) = terrain_app_with_root();
         app.insert_resource(TargetHandle(root));
-        // z=2 is beyond the overscaled max zoom, so z=1 tiles are the leaves and
-        // (max_zoom 2) still fetchable — not in the overscale band.
-        spawn_raster_dem_terrain(&mut app, 2);
+        // z=2 is beyond the overscaled max zoom, so the z=1 tiles are the
+        // leaves and still fetchable — not in the overscale band.
+        spawn_raster_dem_terrain(&mut app, 1);
         seed_real_terrain(&mut app, root);
         let root_mesh = spawn_mesh(&mut app, true);
         seed_rendered(&mut app, root, root_mesh, true);
@@ -1684,7 +2250,10 @@ mod tests {
             let qt = app.world().resource::<TerrainTileQuadtree>();
             for &child in &children {
                 let tile = qt.qt.get(child).unwrap();
-                assert_eq!(tile.find_upsample_source(qt, false, true), Some(root));
+                assert_eq!(
+                    tile.find_upsample_source(qt, |_| false, false, true),
+                    Some(root)
+                );
                 assert!(
                     tile.terrain_data.is_none(),
                     "the traversal allocates no terrain data; the upsample task does"
@@ -1722,9 +2291,9 @@ mod tests {
     fn traverse_terrain_sse_leaf_fetches_dem_while_still_upsampling() {
         let (mut app, root) = terrain_app_with_root();
         app.insert_resource(TargetHandle(root));
-        // z=2 is over max zoom: the z=1 tiles are the deepest fetchable level
-        // and all four straddle the horizon, so none is prefetched as occluded.
-        spawn_raster_dem_terrain(&mut app, 2);
+        // The z=1 tiles are the deepest fetchable level and all four straddle
+        // the horizon, so none is prefetched as occluded.
+        spawn_raster_dem_terrain(&mut app, 1);
         seed_real_terrain(&mut app, root);
         let root_mesh = spawn_mesh(&mut app, true);
         seed_rendered(&mut app, root, root_mesh, true);
@@ -1807,7 +2376,7 @@ mod tests {
         };
         app.insert_resource(TargetHandle(target));
         // z=5 children, z=6 grandchildren (the leaves), z=7 over max.
-        spawn_raster_dem_terrain(&mut app, 7);
+        spawn_raster_dem_terrain(&mut app, 6);
         seed_real_terrain(&mut app, target);
         app.insert_resource(TraverseConfig {
             max_sse: 0.,
@@ -1919,8 +2488,8 @@ mod tests {
             qt.qt.initialize_leaf((8, 8, 4), &new_tile).unwrap()
         };
         app.insert_resource(TargetHandle(root));
-        // z=7 tiles are the leaves (fetchable); z=8 is over max (`z >= max_zoom`).
-        spawn_raster_dem_terrain(&mut app, 8);
+        // z=7 tiles are the leaves (fetchable); z=8 is over max.
+        spawn_raster_dem_terrain(&mut app, 7);
         seed_real_terrain(&mut app, root);
         let root_mesh = spawn_mesh(&mut app, true);
         seed_rendered(&mut app, root, root_mesh, true);
@@ -1947,7 +2516,10 @@ mod tests {
                     "every level under the shown target is spawned at once"
                 );
                 assert_eq!(
-                    qt.qt.get(h).unwrap().find_upsample_source(qt, false, true),
+                    qt.qt
+                        .get(h)
+                        .unwrap()
+                        .find_upsample_source(qt, |_| false, false, true),
                     Some(root),
                     "each level upsamples from the real target, not an upsampled parent"
                 );
@@ -2050,7 +2622,7 @@ mod tests {
                 qt.qt
                     .get(*handle)
                     .unwrap()
-                    .find_upsample_source(qt, false, true),
+                    .find_upsample_source(qt, |_| false, false, true),
                 Some(root),
                 "spawned levels upsample from the real target"
             );
@@ -2069,12 +2641,12 @@ mod tests {
             .handle();
         let out_of_bound_tile = qt.qt.get(out_of_bound).unwrap();
         assert_eq!(
-            out_of_bound_tile.find_upsample_source(qt, false, true),
+            out_of_bound_tile.find_upsample_source(qt, |_| false, false, true),
             None,
             "one level past the bound has no source while bounded"
         );
         assert_eq!(
-            out_of_bound_tile.find_upsample_source(qt, false, false),
+            out_of_bound_tile.find_upsample_source(qt, |_| false, false, false),
             Some(root),
             "the same ancestor serves once the bound is lifted"
         );
@@ -2107,7 +2679,7 @@ mod tests {
         };
         app.insert_resource(TargetHandle(target));
         // z=5 children, z=6 grandchildren (the leaves), z=7 over max.
-        spawn_layer(&mut app, raster_layer("a", 0, 7), Order(0));
+        spawn_layer(&mut app, raster_layer("a", 0, 6), Order(0));
         app.insert_resource(TraverseConfig {
             max_sse: 0.,
             fov: 60.0,
@@ -2251,7 +2823,7 @@ mod tests {
         };
         app.insert_resource(TargetHandle(target));
         // z=5 children are the leaves, z=6 over max.
-        spawn_layer(&mut app, raster_layer("a", 0, 6), Order(0));
+        spawn_layer(&mut app, raster_layer("a", 0, 5), Order(0));
         app.insert_resource(TraverseConfig {
             max_sse: 0.,
             fov: 60.0,
@@ -2417,11 +2989,14 @@ mod tests {
 
         app.update();
 
-        // z0..z2 are now renderable, so the traversal descends and creates the
-        // next rungs (z3..z5) but is gated again at z5 before creating z6.
+        // z0..z2 are now renderable, and z2's landed DEM is an upsample source
+        // for the levels within the bound below it. The traversal descends
+        // past them and creates the next rungs, but is gated again before
+        // creating the level after those.
+        use navara_tile_component::MAX_UPSAMPLE_DEPTH;
         assert_eq!(
             deepest_initialized_level(&app),
-            gated + MAX_LEVELS_WITHOUT_RENDERABLE_ANCESTOR as usize,
+            gated + MAX_UPSAMPLE_DEPTH + MAX_LEVELS_WITHOUT_RENDERABLE_ANCESTOR as usize,
             "the frontier advances by the ladder stride once a rung loads"
         );
     }
@@ -2516,7 +3091,8 @@ mod tests {
             let qt = app.world().resource::<TerrainTileQuadtree>();
             let tile = qt.qt.get(occluded).unwrap();
             assert!(
-                tile.find_upsample_source(qt, false, false).is_some(),
+                tile.find_upsample_source(qt, |_| false, false, false)
+                    .is_some(),
                 "precondition: the occluded tile is upsamplable from the root"
             );
             tile.terrain_data
@@ -2608,9 +3184,9 @@ mod tests {
             qt.qt.initialize_leaf((9, 8, 4), &new_tile).unwrap()
         };
         app.insert_resource(TargetHandle(target));
-        // max_zoom=6 bounds the forced subdivision: the z=5 children render,
+        // max_zoom=5 bounds the forced subdivision: the z=5 children render,
         // their z=6 grandchildren are over max → NotFound.
-        spawn_layer(&mut app, raster_layer("a", 0, 6), Order(0));
+        spawn_layer(&mut app, raster_layer("a", 0, 5), Order(0));
         // Zero threshold: the target never meets SSE, so it always subdivides.
         app.insert_resource(TraverseConfig {
             max_sse: 0.,

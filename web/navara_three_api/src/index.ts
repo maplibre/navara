@@ -44,6 +44,7 @@ export type {
 } from "@navaramap/core";
 export type { GeodeticPlacement } from "./frames";
 
+export * from "./featureGeometry";
 export * from "./intersection";
 export * from "./rte";
 export * from "./ellipsoidGeodesic";

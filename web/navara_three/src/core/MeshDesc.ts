@@ -8,6 +8,7 @@ import invariant from "tiny-invariant";
 
 import type ThreeView from "../index";
 import { applyLitOption } from "../material";
+import type { GBufferName } from "../material/gbufferLayout";
 import type { Scenes } from "../scene";
 
 import {
@@ -429,6 +430,22 @@ export abstract class MeshDesc<
   }
 
   /**
+   * The G-buffers this mesh's material samples, e.g. `globeNormal`. Must be
+   * derivable from the config alone, since it is read before
+   * {@link onCreate}. An override whose result changes after creation must
+   * emit `gbufferRequirementsChanged` on the context, unless the change
+   * comes with moving into or out of the draped pass.
+   *
+   * Defaults to `globeNormal` in the draped pass, where the render pass
+   * shades a lit material with the terrain normal. A draped mesh with an
+   * unlit material, or a lit one under `setDrapeGroundNormals(material,
+   * false)`, can return `[]` to skip the globe-normal copy.
+   */
+  getRequiredBuffers(): readonly GBufferName[] {
+    return this.getPassKey() === "draped" ? ["globeNormal"] : [];
+  }
+
+  /**
    * Factory method to create the Three.js 3D object.
    *
    * Override this to return your custom mesh. The returned object can be
@@ -501,6 +518,19 @@ export abstract class MeshDesc<
   }
 
   /**
+   * The transform {@link applyTransform} gives the object, as one matrix:
+   * `frame · T · R · S`, where the frame is `geodetic`, `matrixWorld` or
+   * `matrix` and identity when none is set.
+   */
+  protected composeTransform(): Matrix4 {
+    const frame = this.geodetic
+      ? this.resolveGeodeticFrame(this.geodetic)
+      : (this.matrixWorld ?? this.matrix);
+    const local = this.composeLocalTransform();
+    return frame ? new Matrix4().multiplyMatrices(frame, local) : local;
+  }
+
+  /**
    * Applies the configured transform to the underlying `Object3D`.
    *
    * When `matrixWorld` / `geodetic` (or `matrix`) is set together with any of
@@ -515,7 +545,7 @@ export abstract class MeshDesc<
    * one of `geodetic` / `matrixWorld` / `matrix` set — so an earlier branch
    * can never shadow a configured field.
    */
-  private applyTransform(): void {
+  protected applyTransform(): void {
     invariant(this.raw);
     const hasLocal =
       this.position != null || this.rotation != null || this.scale != null;
@@ -668,13 +698,19 @@ export abstract class MeshDesc<
 
   onPassKeyChange() {
     const nextPassKey = this.getPassKey();
-    if (this.prevPassKey === nextPassKey) return;
-    if (this.prevPassKey) {
-      this.removeFromScene(this.prevPassKey);
+    const prevPassKey = this.prevPassKey;
+    if (prevPassKey === nextPassKey) return;
+    if (prevPassKey) {
+      this.removeFromScene(prevPassKey);
     }
     this.prevPassKey = nextPassKey;
     this.addToScene(nextPassKey);
-    this.ctx.emit("meshPassKeyChanged");
+    if (
+      prevPassKey &&
+      (prevPassKey === "draped") !== (nextPassKey === "draped")
+    ) {
+      this.ctx.emit("gbufferRequirementsChanged");
+    }
   }
 
   onDestroy(): void {

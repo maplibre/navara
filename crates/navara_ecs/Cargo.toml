@@ -6,7 +6,7 @@ license.workspace = true
 
 [features]
 default = []
-debug = ["dep:bevy_log"]
+debug = ["dep:bevy_log", "navara_tile/debug"]
 
 [dependencies]
 bevy_app.workspace = true

@@ -82,8 +82,6 @@ ${ShadowMapDepthVertex}
     .replace(
       "void main() {",
       `
-#include <packing>
-
 ${MODEL_BASE_SHADER_MARKERS.fragment.UNIFORM_START}
 uniform float nvr_uPickable;
 // uEffectIdsMask is declared by overrideMaterialsForMRT (#ifdef USE_SELECTIVE_EFFECT block)

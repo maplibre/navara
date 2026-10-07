@@ -24,6 +24,10 @@ import {
   ArrowHelperDesc,
   ArclineMeshDesc,
   SmoothLineMeshDesc,
+  PolygonMeshDesc,
+  PolylineMeshDesc,
+  type PolygonMeshConfig,
+  type PolylineMeshConfig,
   type RainMeshConfig,
   type SnowMeshConfig,
   type SkyMeshConfig,
@@ -115,6 +119,8 @@ export class DefaultPlugin extends Plugin<
     view.registerMesh("axesHelper", AxesHelperDesc);
     view.registerMesh("arrowHelper", ArrowHelperDesc);
     view.registerMesh("arcLines", ArclineMeshDesc);
+    view.registerMesh("polygon", PolygonMeshDesc);
+    view.registerMesh("polyline", PolylineMeshDesc);
     view.registerMesh("smoothLines", SmoothLineMeshDesc);
     view.registerMesh("boxes", InstancedBoxMeshDesc);
     view.registerMesh("spheres", InstancedSphereMeshDesc);
@@ -268,6 +274,8 @@ export type DefaultEffectDescription =
   | ToneMappingConfig;
 
 export type DefaultMeshDescription =
+  | PolygonMeshConfig
+  | PolylineMeshConfig
   | RainMeshConfig
   | SnowMeshConfig
   | SkyMeshConfig

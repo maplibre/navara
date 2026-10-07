@@ -24,6 +24,8 @@ The following MeshDescriptor types are available in navara_three:
 | [InstancedGltfModelMeshDesc](../instanced-gltf-model-mesh-desc) | A GPU-instanced Descriptor that renders multiple copies of a GLTF/GLB model |
 | [GlowGlobeMeshDesc](../glow-globe-mesh-desc) | A Descriptor that displays a Fresnel-effect glow around the globe |
 | [PlaneMeshDesc](../plane-mesh-desc) | A Descriptor that draws plane geometry |
+| [PolygonMeshDesc](../polygon-mesh-desc) | A Descriptor that draws a single polygon from positions, flat or extruded, or clamped to the terrain |
+| [PolylineMeshDesc](../polyline-mesh-desc) | A Descriptor that draws a single polyline from positions, at a height or clamped to the terrain |
 | [InstancedPlaneMeshDesc](../instanced-plane-mesh-desc) | A GPU-instanced Descriptor that renders multiple planes in a single draw call |
 | [RainMeshDesc](../rain-mesh-desc) | A Descriptor that displays rain particle effects |
 | [SkyBoxMeshDesc](../sky-box-mesh-desc) | A Descriptor that draws a simple skybox |

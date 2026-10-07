@@ -209,10 +209,13 @@ node with no mesh and no DEM, and the group collapses to a coarse ancestor.
 Three subtleties make terrain + imagery work together:
 
 - **Upsample first, fetch later.** A tile that meets SSE but has no DEM of its
-  own does not wait for the network: if any ancestor holds a mesh built from
-  real heights it is **upsampled** from that ancestor immediately
-  (`UpsampleAncestors::source` picks the nearest real-data ancestor, falling
-  back to the nearest upsampled one; one task covers every level in between).
+  own does not wait for the network: if any ancestor holds real data it is
+  **upsampled** from that ancestor immediately (`UpsampleAncestors::source`
+  picks the nearest real-data ancestor, falling back to the nearest upsampled
+  one; one task covers every level in between). For raster DEM that is the
+  ancestor's own landed DEM, which the worker resamples, so an ancestor counts
+  before its mesh is built; quantized mesh clips the ancestor's mesh, so it
+  needs one built from its own data.
   The source may sit at most `MAX_UPSAMPLE_DEPTH` (2) levels up: clipping or
   resampling an ancestor many levels up yields a near-flat patch at an
   interpolated height, which a ground-level camera sees as terrain floating
@@ -220,21 +223,37 @@ Three subtleties make terrain + imagery work together:
   tile whose nearest real-data ancestor is farther up is not renderable, so
   the ladder below fetches real DEMs on the way down; the bound is lifted
   only where no DEM of the tile's own will ever land — the overscale band and
-  a failed DEM request (`TerrainTile::is_upsample_depth_bounded`).
+  a failed DEM request (`TerrainTile::is_upsample_depth_bounded`). Those two
+  never fetch a DEM that would replace the mesh they first got, so the tile
+  records the level it was built from (`TerrainTile::upsample_source_z`) and,
+  while it is on screen, the traversal flags it for a rebuild from a nearer
+  real-data ancestor (`TerrainTile::has_stale_upsample_source`; `transfer_mesh`
+  picks the flag up and upsamples again). The levels above turn real one at a
+  time, so a rebuild is spent only on a source that brings the tile within the
+  bound, on a jump of at least `MAX_UPSAMPLE_DEPTH` levels, or on the last
+  source the tile will ever get: every tile between it and the tile is in the
+  band or failed its request. Without the rebuild the tiles directly under a
+  ground-level camera keep a clip of a z12 surface while their parent already
+  shows z17 terrain, which reads as a tile-sized plane floating above (or sunk
+  below) the ground. The nearest level that can still hold real data for such
+  tiles is usually covered by them, and a covered tile is never an SSE leaf or
+  activated, so nothing else fetches its DEM: the traversal fetches it for any
+  covered tile with a child in the band or with a failed request
+  (`prepare_covered_anchor`). A quantized-mesh anchor is also spawned, hidden,
+  once its data lands, since its descendants clip its mesh.
   The traversal hands the nearest such ancestors down the recursion
   (`UpsampleAncestors::extend_with`), so readiness costs O(1) per tile;
   only the task dispatch walks the quadtree (`TerrainTile::find_upsample_source`),
   and only it allocates the tile's terrain-data placeholder. A child is spawned
-  as soon as *some* ancestor holds a mesh with
-  real heights (not necessarily its parent), so one traversal spawns every
-  level below a shown tile and they all build in parallel, nearest first; the
-  swap still applies top down, group by group, so the coarse ancestor covering
-  a region revealed by a zoom-out is replaced after one round trip rather than
-  one per level. Every intermediate level briefly *is* the activated SSE leaf
-  while its own children are still building, so it issues its own DEM fetch
-  before they replace it. Quantized-mesh tiles clip the ancestor's TIN down along the quadrant
+  as soon as *some* ancestor holds real data (not necessarily its parent), so
+  one traversal spawns every level below a shown tile and they all build in
+  parallel, nearest first; the swap still applies top down, group by group, so
+  the coarse ancestor covering a region revealed by a zoom-out is replaced
+  after one round trip rather than one per level. An intermediate level is
+  usually the activated SSE leaf for a moment while its own children are still
+  building, so it issues its own DEM fetch before they replace it. Quantized-mesh tiles clip the ancestor's TIN down along the quadrant
   path (an upsampled ancestor works as a source too); raster-DEM tiles instead
-  resample a real-DEM ancestor's pixels bilinearly and mesh them with martini
+  resample the ancestor's DEM pixels bilinearly and mesh them with martini
   at the tile's own level, so the upsampled tile looks like a lower-resolution
   real tile rather than a copy of the ancestor's coarser simplification. A
   rejected DEM request (rate limiter) only drops the requester; the tile keeps
@@ -259,7 +278,8 @@ Three subtleties make terrain + imagery work together:
   be baked onto the right-sized terrain tiles from a parent vector tile without
   ever showing a magnified parent.
 - **Upsampling to follow imagery.** A terrain tile keeps subdividing past its own
-  data's max zoom by **upsampling** (`overscaled_max_zoom`). This
+  data's max zoom by **upsampling** (`overscaled_max_zoom`; both bounds are
+  inclusive, so `max_zoom` is fetched and the band starts one level below). This
   is what lets fine raster (e.g. OSM z23) sit on coarse terrain (e.g.
   quantized-mesh z18): the terrain geometry is subdivided to z23 so there is a
   surface to drape the z23 texture onto. Keeping the terrain subdivided to the
@@ -274,15 +294,17 @@ Three subtleties make terrain + imagery work together:
 The mesh itself is built off the main thread: `transfer_mesh` spawns a worker
 task for every newly selected tile — an upsample from the nearest ready
 ancestor when the tile has no DEM yet, a construct from the DEM bytes otherwise
-— and moves the result onto a `TileMeshMarker` entity. An upsampled tile that
-later receives its DEM is flagged `RemeshPending` by `mark_landed_dem_for_remesh`
-(the only way a `Rendered` tile re-enters `transfer_mesh`) and goes through the
-construct path a second time, with the result written into the existing `Mesh`
-instead of a new entity. That rewrite waits until the web side has reported the
-mesh prepared: until then its queued `mesh_added` still names the buffers the
-rewrite frees. A re-mesh whose task fails drops the flag and keeps the
-upsampled mesh; a lost upsample makes the tile fetch its own DEM instead
-(`upsample_failed`), except in the overscale band, where it is retried.
+— and moves the result onto a `TileMeshMarker` entity. A `Rendered` tile
+re-enters `transfer_mesh` only when flagged `RemeshPending`: by
+`mark_landed_dem_for_remesh` when its own DEM lands under an upsampled mesh
+(a construct), or by the traversal for a stale upsample source (a fresh
+upsample). The result is written into the existing `Mesh` instead of a new
+entity, and that rewrite waits until the web side has reported the mesh
+prepared: until then its queued `mesh_added` still names the buffers the
+rewrite frees. The flag stays exactly while a task it started is in flight.
+A lost task leaves a tile that already shows a mesh on that mesh; a lost
+upsample also makes the tile fetch its own DEM instead (`upsample_failed`),
+except in the overscale band, where it is retried.
 Horizon-occluded prefetch only meshes tiles whose own DEM has landed (or that
 sit in the overscale band): upsampling a hidden tile would cost a second
 construct when its `Low`-priority DEM arrives.

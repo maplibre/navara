@@ -21,13 +21,13 @@ The `SSREffectDesc` class is a Descriptor that generates screen-space reflection
 
 **Type:** `Texture | null | undefined`
 
-**Description:** A custom geometry buffer used for reflection calculations. When unset or `null`, the engine's MRT normal buffer is used, so SSR applies wherever materials write reflectivity (e.g. `water: true` polygons). Supplying your own screen-aligned texture gives the application full control over where SSR applies (for example, dynamically drawn puddles).
+**Description:** A custom geometry buffer used for reflection calculations. When unset or `null`, the engine's MRT normal buffer is used, so SSR applies wherever a material writes a reflectance and a roughness below `1`: models and 3D Tiles (their glTF metalness), and polygons and terrain with `reflectivity` set (e.g. `water: true` polygons). Supplying your own screen-aligned texture gives the application full control over where SSR applies (for example, dynamically drawn puddles).
 
 Each texel must follow the engine's G-buffer encoding:
 
 - `.xy`: octahedral-packed **view-space** normal (`packNormalToVec2` from `@takram/three-geospatial/shaders` `packing`)
-- `.z`: reflectivity/metalness mask. SSR is skipped where the value is below `0.01`. The ray-tracing shader also uses `.z` as its roughness base value
-- `.w`: roughness. With cone tracing enabled (the default) it drives the blur cone angle, and with cone tracing disabled it multiplies `.z` to form the GGX ray-jitter roughness (`.z * .w`)
+- `.z`: reflectance at normal incidence (F0), for example `0.02` for water, `0.04` for other dielectrics and `1` for a mirror. It sets the Fresnel strength of the reflection, so a low value reflects faintly when viewed from above and strongly at grazing angles. SSR is skipped where the value is below `0.01`
+- `.w`: roughness. SSR is skipped where it is `1`. With cone tracing enabled (the default) it drives the blur cone angle, and with cone tracing disabled it multiplies `.z` to form the GGX ray-jitter roughness (`.z * .w`)
 
 The texture is sampled by normalized screen UV, so it should match the drawing-buffer size (use `HalfFloatType`. Packed normal values are signed). Keeping it sized correctly on resize is the application's responsibility. Updating the *contents* of the texture (render-to-texture every frame) takes effect automatically. Only swapping the texture *object* requires an `update()` call. Setting the option back to `null` resets SSR to the MRT normal buffer:
 
@@ -134,7 +134,7 @@ A full working example that draws animated puddles into a custom geometry buffer
 
 **Type:** `number | undefined`
 
-**Description:** Specifies the ray marching step size in pixels along screen space.
+**Description:** Specifies the ray marching step size in pixels along screen space. The step is multiplied by the renderer's pixel ratio, so `iterations` reaches the same share of the screen on any display density.
 
 **Default:** `5`
 
@@ -152,16 +152,16 @@ A full working example that draws animated puddles into a custom geometry buffer
 
 **Type:** `number | undefined`
 
-**Description:** Specifies the depth cutoff value for reducing pixel stride in distant areas.
+**Description:** Specifies the view distance over which `pixelStride` shrinks to 1 pixel. Rays cast from surfaces beyond this distance step one pixel at a time, so they reach at most `iterations` pixels; raise it when reflections from distant surfaces are cut short.
 
-**Default:** `500`
+**Default:** `1000`
 
 **Example:**
 
 ```typescript
 {
   ssr: {
-    pixelStrideZCutoff: 750,
+    pixelStrideZCutoff: 2000,
   }
 }
 ```
@@ -368,24 +368,6 @@ This property can only be set when creating the Descriptor. It cannot be changed
 {
   ssr: {
     coneTracingIteration: 8,
-  }
-}
-```
-
-### coneTracingIor
-
-**Type:** `number | undefined`
-
-**Description:** Specifies the Index of Refraction (IOR) for cone tracing. Typical values range from 1.0 to 2.0.
-
-**Default:** `1.5`
-
-**Example:**
-
-```typescript
-{
-  ssr: {
-    coneTracingIor: 1.5,
   }
 }
 ```

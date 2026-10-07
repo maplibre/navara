@@ -822,7 +822,7 @@ if (ground.height !== undefined) {
 
 ### observeTerrainHeightAt()
 
-Monitors terrain height changes at a specific position. The callback is invoked whenever the terrain data is updated.
+Monitors terrain height changes at a specific position. The callback is invoked once the height is first sampled, which happens right after registration when the terrain there is already loaded, and then whenever a terrain tile containing the position loads and changes it.
 
 **Syntax:**
 
@@ -851,6 +851,81 @@ const lng = 139.7671;
 const cleanup = view.observeTerrainHeightAt({ lat, lng }, (height) => {
   console.log(`Terrain height updated: ${height}m`);
 });
+
+// Stop monitoring later
+cleanup();
+```
+
+### sampleTerrainHeightRange()
+
+Synchronously gets the minimum and maximum height of the ground over a geographic extent. Like `sampleTerrainHeight()`, it reads only the terrain tiles already loaded for rendering, and it reports `0` for an area no terrain tile has loaded yet. Use it to size something that must enclose the ground, for example a volume reaching from below to above the terrain.
+
+**Syntax:**
+
+```tsx
+sampleTerrainHeightRange(
+  extent: GeographicExtent,
+): { min: number; max: number } | undefined
+```
+
+**Parameters:**
+
+- `extent`: Geographic bounds
+  - `west`: Western longitude (degrees)
+  - `south`: Southern latitude (degrees)
+  - `east`: Eastern longitude (degrees)
+  - `north`: Northern latitude (degrees)
+
+**Returns:**
+
+The minimum and maximum height (meters, relative to the ellipsoid), or `undefined` before the engine has set up its terrain
+
+**Example:**
+
+```tsx
+const range = view.sampleTerrainHeightRange({
+  west: 138.7,
+  south: 35.3,
+  east: 138.8,
+  north: 35.4,
+});
+
+if (range) {
+  console.log(`Ground spans ${range.min}m to ${range.max}m`);
+}
+```
+
+### observeTerrainHeightRange()
+
+Monitors the result of [`sampleTerrainHeightRange()`](#sampleterrainheightrange) over an extent. The callback is invoked once the range is first computed, and then whenever a terrain tile overlapping the extent loads and changes it.
+
+**Syntax:**
+
+```tsx
+observeTerrainHeightRange(
+  extent: GeographicExtent,
+  cb: (range: { min: number; max: number }) => void,
+): () => void
+```
+
+**Parameters:**
+
+- `extent`: Geographic bounds in degrees, as in `sampleTerrainHeightRange()`. `west` must not be greater than `east`, so an extent crossing the antimeridian is not supported.
+- `cb`: Callback receiving the minimum and maximum height (meters, relative to the ellipsoid)
+
+**Returns:**
+
+A cleanup function to stop monitoring
+
+**Example:**
+
+```tsx
+const cleanup = view.observeTerrainHeightRange(
+  { west: 138.7, south: 35.3, east: 138.8, north: 35.4 },
+  ({ min, max }) => {
+    console.log(`Ground spans ${min}m to ${max}m`);
+  },
+);
 
 // Stop monitoring later
 cleanup();

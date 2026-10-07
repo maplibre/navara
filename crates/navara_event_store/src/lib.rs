@@ -30,6 +30,7 @@ pub struct EventStore {
     pub renderable_feature_changed: Vec<Entity>,
     pub renderable_feature_removed: Vec<Entity>,
     pub update_sample_terrain_height: Vec<Entity>,
+    pub update_terrain_height_range: Vec<Entity>,
     pub hillshade_backfilled: Vec<Entity>,
     pub hillshade_canceled: Vec<Entity>,
 }
@@ -54,6 +55,7 @@ impl EventStore {
         self.renderable_feature_changed.clear();
         self.renderable_feature_removed.clear();
         self.update_sample_terrain_height.clear();
+        self.update_terrain_height_range.clear();
         self.hillshade_backfilled.clear();
         self.hillshade_canceled.clear();
     }

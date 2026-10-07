@@ -88,19 +88,20 @@ const run = async () => {
   });
   const boxMatrixWorld = northUpEastToFixedFrame(boxPosition);
 
-  // Box mesh descriptor
-  const boxLayer = view.addMesh<BoxMeshDesc>({
-    box: {
-      width: 1000,
-      height: 10000,
-      depth: 1000,
-      color: new Color().setHex(0xff4444),
-      castShadow: true,
-      receiveShadow: true,
-      draped: true,
-    },
-    matrixWorld: boxMatrixWorld,
-  });
+  // `draped` is fixed at creation, so toggling it re-adds the mesh.
+  const addBox = (draped: boolean) =>
+    view.addMesh<BoxMeshDesc>({
+      box: {
+        width: 1000,
+        height: 10000,
+        depth: 1000,
+        color: new Color().setHex(0xff4444),
+        castShadow: true,
+        receiveShadow: true,
+        draped,
+      },
+      matrixWorld: boxMatrixWorld,
+    });
 
   const cylinderPosition = geodeticToVector3({
     lat: 35.355,
@@ -109,20 +110,23 @@ const run = async () => {
   });
   const cylinderMatrixWorld = northUpEastToFixedFrame(cylinderPosition);
 
-  // Cylinder mesh descriptor
-  const cylinderLayer = view.addMesh<CylinderMeshDesc>({
-    cylinder: {
-      radiusTop: 500,
-      radiusBottom: 500,
-      height: 10000,
-      radialSegments: 32,
-      color: new Color().setHex(0x4488ff),
-      castShadow: true,
-      receiveShadow: true,
-      draped: true,
-    },
-    matrixWorld: cylinderMatrixWorld,
-  });
+  const addCylinder = (draped: boolean) =>
+    view.addMesh<CylinderMeshDesc>({
+      cylinder: {
+        radiusTop: 500,
+        radiusBottom: 500,
+        height: 10000,
+        radialSegments: 32,
+        color: new Color().setHex(0x4488ff),
+        castShadow: true,
+        receiveShadow: true,
+        draped,
+      },
+      matrixWorld: cylinderMatrixWorld,
+    });
+
+  let boxLayer = addBox(true);
+  let cylinderLayer = addCylinder(true);
 
   // Control panel
   const pane = new Pane({ title: "Draped Meshes" });
@@ -133,14 +137,16 @@ const run = async () => {
 
   const boxFolder = pane.addFolder({ title: "Box" });
   boxFolder.addBinding(boxParams, "draped").on("change", ({ value }) => {
-    boxLayer.update({ box: { draped: value } });
+    boxLayer.delete();
+    boxLayer = addBox(value);
   });
 
   const cylinderFolder = pane.addFolder({ title: "Cylinder" });
   cylinderFolder
     .addBinding(cylinderParams, "draped")
     .on("change", ({ value }) => {
-      cylinderLayer.update({ cylinder: { draped: value } });
+      cylinderLayer.delete();
+      cylinderLayer = addCylinder(value);
     });
 
   attribution?.add([TILE_DATASETS.openstreetmap, TERRAIN_DATASETS.gsi]);

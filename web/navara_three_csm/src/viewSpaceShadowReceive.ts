@@ -19,6 +19,9 @@ import { Matrix4, ShaderChunk, type DirectionalLight } from "three";
  * the exact quantity that renders stably, so it can never jitter relative to
  * the geometry — and a single patch covers every mesh type.
  */
+/** Defined in the fragment shader of a material patched for view-space shadows. */
+export const VIEW_SPACE_SHADOW_DEFINE = "NVR_VIEW_SPACE_SHADOW";
+
 export type ShadowMatricesViewUniform = { value: Matrix4[] };
 
 const SHADOW_MATRIX_VIEW_PARS_VERTEX = /* glsl */ `
@@ -72,10 +75,15 @@ function replaceOrThrow(
  * left untouched, as are shaders compiled for the shadow-map depth pass
  * (`USE_SHADOWMAP_DEPTH` — they never sample shadows and would upload the
  * uniform before the shadow maps for the frame are rendered).
+ *
+ * The fragment shader gets `NVR_VIEW_SPACE_SHADOW` defined, so code that
+ * computes shadow coordinates there (`chunks/ground_shadow_coord_fragment`)
+ * takes the same path.
  */
 export function applyViewSpaceShadowReceive(
   shader: {
     vertexShader: string;
+    fragmentShader: string;
     defines?: Record<string, unknown>;
     uniforms: Record<string, { value: unknown }>;
   },
@@ -85,6 +93,7 @@ export function applyViewSpaceShadowReceive(
   if (!shader.vertexShader.includes("#include <shadowmap_vertex>")) return;
 
   shader.uniforms.nvrCsmShadowMatrixView = uniform;
+  shader.fragmentShader = `#define ${VIEW_SPACE_SHADOW_DEFINE}\n${shader.fragmentShader}`;
 
   // Rewrite only the directional-light loop of three's shadowmap_vertex
   // chunk, preserving the unroll pragmas. Each line becomes a per-index

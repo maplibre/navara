@@ -2,7 +2,13 @@ import { EventHandler } from "@navaramap/core";
 import type { Core } from "@navaramap/engine";
 import type { ConcurrencyManager } from "@navaramap/worker";
 import type { Pass as PostProcessingPass } from "postprocessing";
-import type { Material, Object3D, Texture, WebGLRenderer } from "three";
+import type {
+  Material,
+  Matrix4,
+  Object3D,
+  Texture,
+  WebGLRenderer,
+} from "three";
 import invariant from "tiny-invariant";
 
 import type { LayersManager } from "../layersManager";
@@ -12,6 +18,7 @@ import type { RenderPassOrchestrator } from "../orchestrators";
 import type { CustomRenderPass } from "../passes";
 import type { Scenes } from "../scene";
 import type { MeshCache } from "../type";
+import type { CommonUniforms, RefThree } from "../uniforms";
 
 import type { EffectHandle, LightHandle, MeshHandle } from "./BaseHandle";
 import type { EffectDesc } from "./EffectDesc";
@@ -43,13 +50,7 @@ type ViewContextEvents = {
    */
   gbufferChanged: () => void;
   /**
-   * Emitted when a mesh moves between render scenes. The view re-derives the
-   * buffer configuration from it: draped meshes need the globe normal but,
-   * not being effects, cannot declare `requiredBuffers` themselves.
-   */
-  meshPassKeyChanged: () => void;
-  /**
-   * Emitted by an effect descriptor whose `getRequiredBuffers()` result
+   * Emitted by an effect or mesh descriptor whose `getRequiredBuffers()` result
    * changed after creation. The view re-derives the G-buffer configuration.
    */
   gbufferRequirementsChanged: () => void;
@@ -82,6 +83,7 @@ export class ViewContext extends EventHandler<ViewContextEvents> {
     private _concurrencyManager: ConcurrencyManager,
     private _core: Core,
     private _meshes: MeshCache,
+    private _commonUniforms: CommonUniforms,
   ) {
     super();
 
@@ -190,6 +192,49 @@ export class ViewContext extends EventHandler<ViewContextEvents> {
   getGlobeNormalTexture() {
     invariant(this._renderPass, "CustomRenderPass isn't initialized yet.");
     return this._renderPass.globeNormalCopyPass.texture;
+  }
+
+  // The `*Uniform` getters return refs the view updates every frame. Bind the
+  // ref itself to a material, not its current `value`.
+
+  /** Uniform ref to {@link getGlobeDepthTexture}. */
+  getGlobeDepthTextureUniform(): RefThree<Texture> {
+    return this._commonUniforms.tGlobeDepth;
+  }
+
+  /** Uniform ref to {@link getGlobeNormalTexture}. */
+  getGlobeNormalTextureUniform(): RefThree<Texture> {
+    return this._commonUniforms.tGlobeNormal;
+  }
+
+  /** Uniform ref to the sky environment map. */
+  getSkyEnvMapTextureUniform(): RefThree<Texture> {
+    return this._commonUniforms.tSkyEnvMap;
+  }
+
+  /** Uniform ref to `[width, height, pixelRatio]` of the viewport in CSS pixels. */
+  getViewportAndPixelRatioUniform(): RefThree<[number, number, number]> {
+    return this._commonUniforms.viewportAndPixelRatio;
+  }
+
+  /** Uniform ref to the camera's `[near, far]`. */
+  getFrustumNearFarUniform(): RefThree<[number, number]> {
+    return this._commonUniforms.frustumNearFar;
+  }
+
+  /** Uniform ref to the camera frustum's `[top, bottom, right, left]` on the near plane. */
+  getFrustumRatioUniform(): RefThree<[number, number, number, number]> {
+    return this._commonUniforms.frustumRatio;
+  }
+
+  /** Uniform ref to the camera's inverse projection matrix. */
+  getInverseProjectionMatrixUniform(): RefThree<Matrix4> {
+    return this._commonUniforms.inverseProjectionMatrix;
+  }
+
+  /** Uniform ref to the frame timestamp passed to `preUpdate`. */
+  getTimeUniform(): RefThree<number> {
+    return this._commonUniforms.time;
   }
 
   /**

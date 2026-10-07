@@ -1179,6 +1179,157 @@ scene.add(line);
 geodesic.dispose();
 ```
 
+## Feature Geometry
+
+Geometry builders for a single polygon or polyline, using the same construction as a `vector` layer. They back [`PolygonMeshDesc`](../../../three_default_descs/mesh-desc/polygon-mesh-desc) and [`PolylineMeshDesc`](../../../three_default_descs/mesh-desc/polyline-mesh-desc), which are the simpler way to draw one shape. Use these functions to build the vertex data for a custom mesh Descriptor.
+
+Positions in the result are RTE encoded: each one is split into a `High` and a `Low` `Float32Array` (see [RTE Rendering](#rte-relative-to-eye-rendering)).
+
+### buildPolygonGeometry(rings, geocentric, material)
+
+Builds the geometry of one polygon.
+
+**Syntax:**
+
+```typescript
+function buildPolygonGeometry(
+  rings: readonly Float64Array[],
+  geocentric: boolean,
+  material: PolygonGeometryMaterial,
+): PolygonGeometryData | undefined
+```
+
+**Parameters:**
+
+- `rings`: The outer ring first, then the holes. Each ring is a flat `[lng, lat, height, ...]` array in degrees and meters, or `[x, y, z, ...]` in ECEF meters when `geocentric` is `true`
+- `geocentric`: Reads the positions as ECEF meters instead of longitude and latitude
+- `material`: A [`polygon`](../../../three/material/polygon-material/) layer material as a plain object, with colors as numbers. `clampToGround`, `height` and `perPositionHeight` shape the geometry, and the outline options are ignored
+
+**Returns:**
+
+`positionHigh`, `positionLow`, `normal` (absent for a `clampToGround` polygon), `scaleNormalAndCap` (the extrusion direction in `xyz`, and `w` set to `0` on the bottom cap and `1` on the top), `indices` and the geographic `extent` in degrees. Returns `undefined` when the outer ring has fewer than three vertices or all of them are collinear. Throws when `material` is not a valid polygon material.
+
+**Example:**
+
+```typescript
+import { buildPolygonGeometry } from "@navaramap/three-api";
+
+const outer = new Float64Array([
+  139.76, 35.68, 0,
+  139.77, 35.68, 0,
+  139.77, 35.69, 0,
+  139.76, 35.68, 0,
+]);
+const geometry = buildPolygonGeometry([outer], false, {
+  clampToGround: false,
+  height: 10,
+});
+```
+
+### buildPolylineGeometry(positions, geocentric, ring, material)
+
+Builds the geometry of one polyline.
+
+**Syntax:**
+
+```typescript
+function buildPolylineGeometry(
+  positions: Float64Array,
+  geocentric: boolean,
+  ring: boolean,
+  material: PolylineGeometryMaterial,
+): PolylineGeometryData | undefined
+```
+
+**Parameters:**
+
+- `positions`: Flat `[lng, lat, height, ...]` in degrees and meters, or `[x, y, z, ...]` in ECEF meters when `geocentric` is `true`
+- `geocentric`: Reads the positions as ECEF meters instead of longitude and latitude
+- `ring`: Joins a repeated first position as a seam instead of two end caps
+- `material`: A [`polyline`](../../../three/material/polyline-material/) layer material as a plain object, with colors as numbers
+
+**Returns:**
+
+The vertex attributes of the line volume (`position`, the RTE encoded `positionHigh` / `positionLow`, `startHigh` / `startLow`, `endHigh` / `endLow`, `startNormal`, `endNormalAndTextureCoordinateNormalizationX`, `rightNormalAndTextureCoordinateNormalizationY`), `indices` and the geographic `extent` in degrees. Returns `undefined` when fewer than two distinct positions remain. Throws when `material` is not a valid polyline material.
+
+**Example:**
+
+```typescript
+import { buildPolylineGeometry } from "@navaramap/three-api";
+
+const positions = new Float64Array([
+  139.76, 35.68, 0,
+  139.78, 35.68, 0,
+]);
+const geometry = buildPolylineGeometry(positions, false, false, {
+  clampToGround: true,
+  width: 3,
+});
+```
+
+### polygonGroundVolume(range, extent)
+
+Computes the height span a clamped polygon's volume over `extent` must cover to enclose ground heights within `range`. The flat caps of the polygon geometry dip below the curved ground between their vertices, so the span is wider than `range`.
+
+**Syntax:**
+
+```typescript
+function polygonGroundVolume(
+  range: HeightRange,
+  extent: GeographicExtent,
+): [number, number]
+```
+
+**Parameters:**
+
+- `range`: Ground heights to enclose, for example from [`ThreeView.sampleTerrainHeightRange()`](../threeview-functions/#sampleterrainheightrange)
+- `extent`: The polygon's extent in degrees, as returned by `buildPolygonGeometry()`
+
+**Returns:**
+
+`[min, max]` heights in meters, relative to the ellipsoid
+
+**Example:**
+
+```typescript
+import { buildPolygonGeometry, polygonGroundVolume } from "@navaramap/three";
+
+// `view` is an initialized ThreeView
+const outer = new Float64Array([
+  138.72, 35.36, 0,
+  138.75, 35.36, 0,
+  138.75, 35.38, 0,
+  138.72, 35.36, 0,
+]);
+const geometry = buildPolygonGeometry([outer], false, { clampToGround: true });
+if (geometry) {
+  const range = view.sampleTerrainHeightRange(geometry.extent) ?? { min: 0, max: 0 };
+  const [min, max] = polygonGroundVolume(range, geometry.extent);
+}
+```
+
+### polylineGroundVolume(range, extent)
+
+Computes the height span a clamped polyline's volume over `extent` must cover to enclose ground heights within `range`, given the straight segments `buildPolylineGeometry()` produces.
+
+**Syntax:**
+
+```typescript
+function polylineGroundVolume(
+  range: HeightRange,
+  extent: GeographicExtent,
+): [number, number]
+```
+
+**Parameters:**
+
+- `range`: Ground heights to enclose
+- `extent`: The polyline's extent in degrees, as returned by `buildPolylineGeometry()`
+
+**Returns:**
+
+`[min, max]` heights in meters, relative to the ellipsoid
+
 ## Types
 
 ### LatLngHeight
@@ -1191,6 +1342,30 @@ interface LatLngHeight {
   lng: number; // Longitude (degrees)
   height: number; // Height (meters)
 }
+```
+
+### GeographicExtent
+
+A geographic bounding box.
+
+```typescript
+type GeographicExtent = {
+  west: number;  // Western longitude (degrees)
+  south: number; // Southern latitude (degrees)
+  east: number;  // Eastern longitude (degrees)
+  north: number; // Northern latitude (degrees)
+};
+```
+
+### HeightRange
+
+A height range relative to the ellipsoid.
+
+```typescript
+type HeightRange = {
+  min: number; // Minimum height (meters)
+  max: number; // Maximum height (meters)
+};
 ```
 
 ### LatLng

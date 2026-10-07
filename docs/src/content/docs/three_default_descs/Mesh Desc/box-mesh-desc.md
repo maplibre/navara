@@ -226,7 +226,9 @@ import { Color } from "@navaramap/three";
 
 **Description:** Paints the shape onto the terrain instead of rendering it as a volume. The mesh must fully cover the ground it should cover: the drape is the intersection of the volume with the terrain, computed with a stencil test.
 
-A draped shape is shaded from the **terrain's** normal, not its own, so it reads as a decal lying on the ground rather than a solid. For the same reason it does **not** receive shadows: the drape is drawn without a depth test, so a shadow lookup (which depends on world position) would differ between the overlapping faces of the volume and the far one would show through. `receiveShadow` is ignored while `draped` is `true`. The terrain underneath keeps its own shadows.
+A draped shape is shaded from the **terrain's** normal and position, not its own, so it reads as a decal lying on the ground rather than a solid. With `receiveShadow`, it receives the directional light's shadows at the ground under each pixel. It casts no shadow while draped, since its volume extends far above and below the ground.
+
+`draped` is set at creation and cannot be changed with `update()`. To change it, delete the mesh and add it again.
 
 **Default:** `false`
 

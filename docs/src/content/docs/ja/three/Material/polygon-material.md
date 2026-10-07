@@ -343,7 +343,7 @@ import { Color } from "@navaramap/three";
 
 **Type:** `number | undefined`
 
-**Description:** ポストプロセスまたは環境マップ用の反射率を指定します。
+**Description:** SSR と aerial perspective の `specular` が読む垂直入射時の反射率（F0）を指定します。例えば水は `0.02` です。`0.01` 未満では両方とも無効になります。環境マップが設定されている場合はその重みにもなります。
 
 **Default:** `undefined`
 

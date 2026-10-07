@@ -107,9 +107,6 @@ export class SSREffectDesc extends EffectDesc<SSRConfig, SSRUpdate, SSR> {
     if (config.coneTracingIteration !== undefined) {
       this._instance.coneTracingIteration = config.coneTracingIteration;
     }
-    if (config.coneTracingIor !== undefined) {
-      this._instance.coneTracingIor = config.coneTracingIor;
-    }
     if (config.resolveKernelSize !== undefined) {
       this._instance.resolveKernelSize = config.resolveKernelSize;
     }

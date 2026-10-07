@@ -30,6 +30,7 @@ const DEFAULT_BASE_REFS: PolylineBaseRefs = {
   uEffectIdsMask: { value: 0 },
   uEmissiveColor: { value: new ThreeVector3(0, 0, 0) },
   uEmissiveIntensity: { value: 0 },
+  uOpacity: { value: 1 },
   nvr_uPickingCoord: { value: new ThreeVector2(-1, -1) },
   uDrapeRtSize: { value: DEFAULT_BASE_PROPS.drapeRtSize },
 };
@@ -75,6 +76,7 @@ export const createBaseMutates = (useRTE: boolean): PolylineBaseMutates => {
         (c & 0xff) / 255,
       );
       refs.uEmissiveIntensity.value = state.emissiveIntensity;
+      refs.uOpacity.value = state.opacity;
       refs.uDrapeRtSize.value = state.drapeRtSize;
 
       // Update color uniform using Color.setHex()
@@ -93,6 +95,7 @@ export const createBaseMutates = (useRTE: boolean): PolylineBaseMutates => {
       uniforms.uEffectIdsMask = refs.uEffectIdsMask;
       uniforms.uEmissiveColor = refs.uEmissiveColor;
       uniforms.uEmissiveIntensity = refs.uEmissiveIntensity;
+      uniforms.uOpacity = refs.uOpacity;
       uniforms.nvr_uPickingCoord = refs.nvr_uPickingCoord;
       uniforms.uDrapeRtSize = refs.uDrapeRtSize;
 
@@ -124,6 +127,19 @@ export const createBaseMutates = (useRTE: boolean): PolylineBaseMutates => {
       if (refs.frustumRatio) {
         uniforms.frustumRatio = refs.frustumRatio;
       }
+
+      // Ground culling reads the globe depth buffer and unprojects it.
+      if (
+        state.groundCulling &&
+        refs.tGlobeDepth &&
+        refs.inverseProjectionMatrix
+      ) {
+        uniforms.tGlobeDepth = refs.tGlobeDepth;
+        uniforms.inverseProjectionMatrix = refs.inverseProjectionMatrix;
+        if (state.useGroundNormals && refs.tGlobeNormal) {
+          uniforms.tGlobeNormal = refs.tGlobeNormal;
+        }
+      }
     },
     setBatchDataTexture: (texture: UniformValue<Texture | null>): void => {
       refs.batchDataTexture = texture;
@@ -140,6 +156,9 @@ export const createBaseMutates = (useRTE: boolean): PolylineBaseMutates => {
       frustumRatio?: {
         value: [x: number, y: number, z: number, w: number] | undefined | null;
       };
+      globeDepth?: { value: Texture | null | undefined };
+      globeNormal?: { value: Texture | null | undefined };
+      inverseProjectionMatrix?: { value: ThreeMatrix4 | null | undefined };
     }): void => {
       if (externalRefs.batchDataTexture) {
         refs.batchDataTexture = externalRefs.batchDataTexture;
@@ -152,6 +171,15 @@ export const createBaseMutates = (useRTE: boolean): PolylineBaseMutates => {
       }
       if (externalRefs.frustumRatio) {
         refs.frustumRatio = externalRefs.frustumRatio;
+      }
+      if (externalRefs.globeDepth) {
+        refs.tGlobeDepth = externalRefs.globeDepth;
+      }
+      if (externalRefs.globeNormal) {
+        refs.tGlobeNormal = externalRefs.globeNormal;
+      }
+      if (externalRefs.inverseProjectionMatrix) {
+        refs.inverseProjectionMatrix = externalRefs.inverseProjectionMatrix;
       }
     },
     updateRteUniforms: (

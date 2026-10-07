@@ -243,7 +243,8 @@ Two gestures trigger a pick: a click (emitting `"featureClick"`) and hovering (e
 1. The user clicks on the canvas.
 2. `PickHelper` converts the click coordinates to WebGL pixel space (Y-flipped) and sets a scissor rect to limit the GPU work to a single pixel.
 3. All registered pickable meshes are temporarily re-parented into a dedicated pick scene. Each mesh's `onBeforePicking()` callback activates the picking shader branch.
-4. The pick scene is rendered with a black clear color (batch ID 0 = miss).
+4. The target is cleared to black (batch ID 0 = miss) and rendered in the main pass's order: the terrain tiles (the globe scene's pickables, which carry texture-draped vector features), then the enabled `DrapedMesh` pickables, then the pick scene.
+   A draped mesh stays out of the pick scene: the packed globe depth is written into the pick target's depth buffer and the mesh runs its stencil passes (`DrapedMesh.process`) against it, so it is hit only where its volume meets the terrain. Its final pass has no depth test, so it must come after the terrain and before the pickables standing in front of the ground. The depth buffer then goes back to the pickable terrain alone (redrawn depth-only), so the remaining pickables are occluded only by pickable terrain, whether or not a draped pickable exists.
 5. The single pixel is read back and decoded: `batchId = (R << 16) + (G << 8) + B`.
 6. `onAfterPicking()` restores each mesh's normal rendering state, and all meshes are re-parented to their original scenes.
 7. A `"featureClick"` event is emitted with the decoded `PickedFeature` (batch ID, layer ID, properties).

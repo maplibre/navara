@@ -29,6 +29,23 @@ export type PolylineBaseProps = {
   // Picking
   pickable?: boolean;
 
+  /**
+   * Draw the line on the terrain: keep fragments whose ground point, read from
+   * the globe depth, lies within half a line width of the segment. Needs
+   * `globeDepth`, `inverseProjectionMatrix`, and a `minMaxHeight` enclosing
+   * the terrain.
+   */
+  groundCulling?: boolean;
+
+  /**
+   * Light a `groundCulling` line with the terrain normal. Needs
+   * `globeNormal`.
+   */
+  useGroundNormals?: boolean;
+  globeDepth?: { value: Texture | null | undefined };
+  globeNormal?: { value: Texture | null | undefined };
+  inverseProjectionMatrix?: { value: Matrix4 | null | undefined };
+
   // SelectiveEffect
   effectIdsMask?: number;
   emissiveColor?: number;
@@ -64,6 +81,8 @@ export type PolylineBaseState = Readonly<{
   isTexturized: boolean;
   drapeRtSize: number;
   pickable: boolean;
+  groundCulling: boolean;
+  useGroundNormals: boolean;
   effectIdsMask: number;
   emissiveColor: number;
   emissiveIntensity: number;
@@ -72,6 +91,7 @@ export type PolylineBaseState = Readonly<{
   width: number;
   maxWidth: number;
   color: number;
+  opacity: number;
   // Batch texture state - when true, material.color is white and colors come from batch texture
   batchColorEnabled: boolean;
 }>;
@@ -93,11 +113,15 @@ export type PolylineBaseRefs = {
   uEffectIdsMask: UniformValue<number>;
   uEmissiveColor: UniformValue<Vector3>;
   uEmissiveIntensity: UniformValue<number>;
+  uOpacity: UniformValue<number>;
   nvr_uPickingCoord: UniformValue<Vector2>;
   uDrapeRtSize: UniformValue<number>;
 
   // Optional uniforms
   batchDataTexture?: UniformValue<Texture | null>;
+  tGlobeDepth?: { value: Texture | null | undefined };
+  tGlobeNormal?: { value: Texture | null | undefined };
+  inverseProjectionMatrix?: { value: Matrix4 | null | undefined };
 
   // External shared uniforms (references passed from CommonUniforms)
   // Note: These use tuple types matching CommonUniforms, not Three.js Vector types
@@ -166,6 +190,9 @@ export type PolylineBaseMutates = Mutates<
       frustumRatio?: {
         value: [x: number, y: number, z: number, w: number] | undefined | null;
       };
+      globeDepth?: { value: Texture | null | undefined };
+      globeNormal?: { value: Texture | null | undefined };
+      inverseProjectionMatrix?: { value: Matrix4 | null | undefined };
     }) => void;
   }
 >;

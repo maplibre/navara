@@ -135,7 +135,7 @@ pub fn traverse_raster(
         .iter()
         .filter(|(t, _)| t.hillshade_config.is_none())
         .filter_map(|(t, _)| t.source_id.as_deref().and_then(|id| source_store.get(id)))
-        .any(|s| !s.is_over_max_zoom(coords_z));
+        .any(|s| !s.is_over_max_zoom(coords_z + 1));
     if meets_sse || !any_under_max {
         return;
     }

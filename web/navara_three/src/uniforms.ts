@@ -1,7 +1,7 @@
 import type { Matrix4, Texture } from "three";
 
 type Ref<K extends string, T> = Record<K, T | undefined | null>;
-type RefThree<T> = Ref<"value", T>;
+export type RefThree<T> = Ref<"value", T>;
 
 // TODO: Separate as individual library
 export type CommonUniforms = {

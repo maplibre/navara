@@ -1,22 +1,59 @@
 import {
+  AlwaysDepth,
   WebGLRenderer,
   WebGLRenderTarget,
+  Mesh,
   PerspectiveCamera,
   Object3D,
+  PlaneGeometry,
   RGBAFormat,
   Color,
   Scene,
+  ShaderMaterial,
   Vector2,
+  type Texture,
 } from "three";
 
 import { BufferView } from "../bufferView";
+import { DrapedMesh } from "../mesh/DrapedMesh";
 import { isPickableMesh, type PickableMesh } from "../mesh/pickableMesh";
 import { TileScene } from "../scene";
 import type { MeshCache } from "../type";
+import type { RefThree } from "../uniforms";
 
 export type PickHelperOptions = {
   debug: boolean;
 };
+
+/**
+ * Writes the packed globe depth into the depth buffer, so draped meshes can
+ * be stencil-clipped against the terrain as in the main pass.
+ */
+function createGlobeDepthScene(globeDepth: RefThree<Texture>): Scene {
+  const material = new ShaderMaterial({
+    uniforms: { tGlobeDepth: globeDepth },
+    vertexShader: /* glsl */ `
+      void main() {
+        gl_Position = vec4(position.xy, 0.0, 1.0);
+      }
+    `,
+    fragmentShader: /* glsl */ `
+      #include <packing>
+      uniform sampler2D tGlobeDepth;
+      void main() {
+        vec2 uv = gl_FragCoord.xy / vec2(textureSize(tGlobeDepth, 0));
+        gl_FragDepth = unpackRGBAToDepth(texture2D(tGlobeDepth, uv));
+      }
+    `,
+    colorWrite: false,
+    depthFunc: AlwaysDepth,
+  });
+  const quad = new Mesh(new PlaneGeometry(2, 2), material);
+  quad.frustumCulled = false;
+  const scene = new Scene();
+  scene.add(quad);
+  return scene;
+}
 
 /**
  * Travel tolerance in CSS pixels between pointerdown and pointerup to count as a click.
@@ -85,6 +122,13 @@ export class PickHelper {
 
   /** Dedicated scene used only during the pick render. */
   private readonly pickScene = new Scene();
+  /** The terrain tiles, drawn before the draped pickables. */
+  private readonly groundScene = new Scene();
+  /** The main pass's globe scene, which holds the terrain tiles. */
+  private readonly globeScene: Scene;
+  /** Holds one draped pickable at a time for its stencil passes. */
+  private readonly drapedScene = new Scene();
+  private readonly globeDepthScene: Scene;
 
   private debugBufferView?: BufferView;
   private debugRenderTarget?: WebGLRenderTarget;
@@ -116,6 +160,8 @@ export class PickHelper {
     onHoverCallback: (pickArr: number[]) => void,
     shouldClickPick: () => boolean,
     shouldHoverPick: () => boolean,
+    globeDepth: RefThree<Texture>,
+    globeScene: Scene,
     options?: PickHelperOptions,
   ) {
     this.element = element;
@@ -127,6 +173,8 @@ export class PickHelper {
     this.onHoverCallback = onHoverCallback;
     this.shouldClickPick = shouldClickPick;
     this.shouldHoverPick = shouldHoverPick;
+    this.globeDepthScene = createGlobeDepthScene(globeDepth);
+    this.globeScene = globeScene;
 
     this.pointerDownHandler = (event: PointerEvent) =>
       this.onPointerDown(event);
@@ -142,7 +190,7 @@ export class PickHelper {
     this.pickRenderTarget = new WebGLRenderTarget(width, height, {
       format: RGBAFormat,
       depthBuffer: true,
-      stencilBuffer: false,
+      stencilBuffer: true,
     });
 
     if (options?.debug) {
@@ -150,7 +198,7 @@ export class PickHelper {
       this.debugRenderTarget = new WebGLRenderTarget(width, height, {
         format: RGBAFormat,
         depthBuffer: true,
-        stencilBuffer: false,
+        stencilBuffer: true,
       });
     }
   }
@@ -265,12 +313,17 @@ export class PickHelper {
   /**
    * Moves every pickable raw (visible, currently parented) into the
    * dedicated `pickScene` and activates the picking uniforms on its
-   * wrapper. Returns a teardown callback that restores original parents
-   * and deactivates the uniforms.
+   * wrapper. Terrain tiles go to `groundScene` instead, and draped meshes
+   * are returned, to be stencil-clipped between the two. `teardown` restores
+   * original parents and deactivates the uniforms.
    */
-  private stagePickables(pickingCoord?: Vector2): () => void {
+  private stagePickables(pickingCoord?: Vector2): {
+    teardown: () => void;
+    draped: [DrapedMesh, Object3D][];
+  } {
     const restoreParents: [Object3D, Object3D][] = [];
     const activated: PickableMesh[] = [];
+    const draped: [DrapedMesh, Object3D][] = [];
 
     for (const [_key, obj] of this._meshes) {
       if (!isPickableMesh(obj)) continue;
@@ -296,6 +349,19 @@ export class PickHelper {
       // pickScene, where they depth-fight with the terrain.
       if (originalParent instanceof TileScene) continue;
 
+      // Drawn as is, the stencil volume would be pickable over its whole
+      // height range rather than where it meets the ground.
+      if (raw instanceof DrapedMesh && raw.enabled()) {
+        draped.push([raw, originalParent]);
+        continue;
+      }
+
+      if (originalParent === this.globeScene) {
+        this.groundScene.add(raw);
+        restoreParents.push([raw, originalParent]);
+        continue;
+      }
+
       // Scene.add auto-removes from the previous parent. Both parents
       // are pass scenes with identity world transforms, so the raw's
       // world matrix is unaffected.
@@ -303,10 +369,40 @@ export class PickHelper {
       restoreParents.push([raw, originalParent]);
     }
 
-    return () => {
-      for (const [raw, parent] of restoreParents) parent.add(raw);
-      for (const w of activated) w.onAfterPicking();
+    return {
+      teardown: () => {
+        for (const [raw, parent] of restoreParents) parent.add(raw);
+        for (const w of activated) w.onAfterPicking();
+      },
+      draped,
     };
+  }
+
+  /**
+   * Draws each draped pickable where its volume meets the globe, then puts
+   * back the depth of the pickable terrain alone, so the remaining pickables
+   * are occluded the same with or without draped ones.
+   */
+  private renderDraped(draped: readonly [DrapedMesh, Object3D][]) {
+    this._renderer.clear(false, true, true);
+    this._renderer.render(this.globeDepthScene, this._camera);
+
+    for (const [mesh, parent] of draped) {
+      this.drapedScene.add(mesh);
+      mesh.process(() => this._renderer.render(this.drapedScene, this._camera));
+      parent.add(mesh);
+    }
+
+    this._renderer.clear(false, true, true);
+    if (this.groundScene.children.length > 0) {
+      // Locked, since every material sets its own `colorWrite`.
+      const colorBuffer = this._renderer.state.buffers.color;
+      colorBuffer.setMask(false);
+      colorBuffer.setLocked(true);
+      this._renderer.render(this.groundScene, this._camera);
+      colorBuffer.setLocked(false);
+      colorBuffer.setMask(true);
+    }
   }
 
   /**
@@ -321,12 +417,21 @@ export class PickHelper {
     const origRenderTarget = this._renderer.getRenderTarget();
     const origAutoClear = this._renderer.autoClear;
 
-    const teardown = this.stagePickables(pickingCoord);
+    const { teardown, draped } = this.stagePickables(pickingCoord);
 
     this._renderer.setClearColor(0x000000, 1);
     this._renderer.setRenderTarget(target);
-    this._renderer.autoClear = true;
-    this._renderer.clear(true, true, false);
+    // Terrain, then draped, then the rest, as in the main pass: a draped
+    // mesh draws without a depth test, so it must cover the terrain but come
+    // before the pickables that stand in front of it.
+    this._renderer.autoClear = false;
+    this._renderer.clear(true, true, true);
+    if (this.groundScene.children.length > 0) {
+      this._renderer.render(this.groundScene, this._camera);
+    }
+    if (draped.length > 0) {
+      this.renderDraped(draped);
+    }
     this._renderer.render(this.pickScene, this._camera);
 
     teardown();

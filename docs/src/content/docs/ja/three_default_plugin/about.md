@@ -37,7 +37,7 @@ await view.init({ canvas: document.getElementById("canvas") });
 
 プラグインの `init()` で以下のDescriptorが自動的に登録されます：
 
-**メッシュ（22 種）:** `rain`, `snow`, `sky`, `skyBox`, `stars`, `box`, `sphere`, `glowGlobe`, `cylinder`, `tube`, `plane`, `gltfModel`, `splat`, `axesHelper`, `arrowHelper`, `arcLines`, `smoothLines`, `boxes`, `spheres`, `planes`, `cylinders`, `gltfModels`
+**メッシュ（24 種）:** `rain`, `snow`, `sky`, `skyBox`, `stars`, `box`, `sphere`, `glowGlobe`, `cylinder`, `tube`, `plane`, `gltfModel`, `splat`, `axesHelper`, `arrowHelper`, `arcLines`, `polygon`, `polyline`, `smoothLines`, `boxes`, `spheres`, `planes`, `cylinders`, `gltfModels`
 
 **エフェクト（14 種）:** `aerialPerspective`, `rainDrop`, `selectiveBloom`, `selectiveOutline`, `clouds`, `fogLight`, `lensFlare`, `ssao`, `ssr`, `depthOfField`, `colorGradingLUT`, `toneMapping`, `smaa`, `fxaa`
 

@@ -15,10 +15,12 @@ export type SSROptions = {
    * Each texel must follow the engine's G-buffer encoding:
    * `.xy` = octahedral-packed view-space normal (`packNormalToVec2` from
    * `@takram/three-geospatial/shaders` `packing`);
-   * `.z` = reflectivity/metalness mask — SSR is skipped where `.z < 0.01`,
-   * and the ray-tracing shader also uses `.z` as its roughness base;
-   * `.w` = roughness — with cone tracing (default) it drives the blur cone
-   * angle, without cone tracing it multiplies `.z` for the GGX ray jitter.
+   * `.z` = reflectance at normal incidence (F0), e.g. 0.02 for water, 0.04
+   * for other dielectrics and 1 for a mirror — it sets the Fresnel strength
+   * of the reflection, and SSR is skipped where `.z < 0.01`;
+   * `.w` = roughness — SSR is skipped where it is 1; with cone tracing
+   * (default) it drives the blur cone angle, without cone tracing it
+   * multiplies `.z` for the GGX ray jitter.
    *
    * Updating the *contents* of the texture (render-to-texture) takes effect
    * automatically; only swapping the texture *object* requires an update call.
@@ -32,9 +34,17 @@ export type SSROptions = {
   binarySearchIterations?: number;
   /** Depth buffer precision threshold for pixel rejection */
   pixelZSize?: number;
-  /** Step size in pixels for ray marching along screen space */
+  /**
+   * Step size in pixels for ray marching along screen space. It is scaled
+   * by the renderer's pixel ratio, so `iterations` reaches the same share of
+   * the screen on any display density.
+   */
   pixelStride?: number;
-  /** Depth cutoff value for reducing pixel stride in distant areas */
+  /**
+   * View distance over which `pixelStride` shrinks to 1 pixel. Rays cast from
+   * surfaces beyond it step one pixel at a time, so they reach at most
+   * `iterations` pixels.
+   */
   pixelStrideZCutoff?: number;
   /** Maximum distance a reflection ray can travel in world units */
   maxRayDistance?: number;
@@ -64,7 +74,6 @@ export type SSROptions = {
   coneTracingMaxDistance?: number;
   /** The number of iteration to accumulate the cone tracing */
   coneTracingIteration?: number;
-  coneTracingIor?: number;
   /**
    * Width, in ray-buffer texels, of the neighbourhood the resolve gathers when
    * cone tracing is enabled. One ray per pixel makes reflecting a binary
@@ -84,7 +93,7 @@ export const DEFAULT_SSR_OPTIONS: Required<SSROptions> = {
   binarySearchIterations: 4,
   pixelZSize: 100,
   pixelStride: 5,
-  pixelStrideZCutoff: 500,
+  pixelStrideZCutoff: 1000,
   maxRayDistance: 5000,
   screenEdgeFadeStart: 0.75,
   eyeFadeStart: 0,
@@ -96,7 +105,6 @@ export const DEFAULT_SSR_OPTIONS: Required<SSROptions> = {
   coneTracingFadeEnd: ssrEffectOptionsDefaults.coneTracingFadeEnd,
   coneTracingMaxDistance: ssrEffectOptionsDefaults.coneTracingMaxDistance,
   coneTracingIteration: ssrEffectOptionsDefaults.coneTracingIteration,
-  coneTracingIor: ssrEffectOptionsDefaults.coneTracingIor,
   resolveKernelSize: ssrEffectOptionsDefaults.resolveKernelSize,
 };
 
@@ -122,7 +130,6 @@ export class SSR extends Effect<SSREffectImpl, SSROptions> {
       coneTracingFadeEnd: options.coneTracingFadeEnd,
       coneTracingMaxDistance: options.coneTracingMaxDistance,
       coneTracingIteration: options.coneTracingIteration,
-      coneTracingIor: options.coneTracingIor,
       resolveKernelSize: options.resolveKernelSize,
     });
 
@@ -372,16 +379,6 @@ export class SSR extends Effect<SSREffectImpl, SSROptions> {
     if (!this.rawEffect) return;
     this.options.coneTracingIteration = v;
     this.rawEffect.coneTracingIteration = v;
-    this.emit("needsUpdate");
-  }
-
-  get coneTracingIor(): number {
-    return this.options.coneTracingIor ?? DEFAULT_SSR_OPTIONS.coneTracingIor;
-  }
-  set coneTracingIor(v: number) {
-    if (!this.rawEffect) return;
-    this.options.coneTracingIor = v;
-    this.rawEffect.coneTracingIor = v;
     this.emit("needsUpdate");
   }
 

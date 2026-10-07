@@ -108,6 +108,34 @@ describe("polylineBaseEnhancer", () => {
     });
   });
 
+  describe("transformShader", () => {
+    it("removes ground defines once their condition is turned off", () => {
+      enhancer.mount({ groundCulling: true, useGroundNormals: true });
+      // A ShaderMaterial's compile reuses the same defines object.
+      const defines: Record<string, unknown> = {};
+      const shader = {
+        uniforms: {},
+        vertexShader: "",
+        fragmentShader: "",
+        defines,
+      } as WebGLProgramParametersWithUniforms;
+
+      enhancer.transformShader(shader);
+      expect(defines.NVR_GROUND_POLYLINE).toBe(true);
+      expect(defines.NVR_GROUND_POLYLINE_NORMALS).toBe(true);
+
+      enhancer.update({ useGroundNormals: false });
+      enhancer.transformShader(shader);
+      expect(defines.NVR_GROUND_POLYLINE).toBe(true);
+      expect(defines).not.toHaveProperty("NVR_GROUND_POLYLINE_NORMALS");
+
+      enhancer.update({ groundCulling: false, useGroundNormals: true });
+      enhancer.transformShader(shader);
+      expect(defines).not.toHaveProperty("NVR_GROUND_POLYLINE");
+      expect(defines).not.toHaveProperty("NVR_GROUND_POLYLINE_NORMALS");
+    });
+  });
+
   describe("programCacheKey", () => {
     it("should return cache key based on shader-affecting state", () => {
       enhancer.mount({
@@ -120,8 +148,22 @@ describe("polylineBaseEnhancer", () => {
 
       expect(parsed).toEqual({
         isTexturized: true,
+        groundCulling: false,
+        useGroundNormals: false,
         useRTE: true,
       });
+    });
+
+    it("should change the cache key with ground culling", () => {
+      enhancer.mount({});
+      const flat = enhancer.programCacheKey();
+
+      enhancer.update({ groundCulling: true });
+      const ground = enhancer.programCacheKey();
+      expect(ground).not.toBe(flat);
+
+      enhancer.update({ useGroundNormals: true });
+      expect(enhancer.programCacheKey()).not.toBe(ground);
     });
 
     it("should return different cache keys for different userData defines", () => {

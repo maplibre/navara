@@ -274,7 +274,7 @@ import { Color } from "@navaramap/three";
 
 **Type:** `number | undefined`
 
-**Description:** マテリアルの金属度を指定します。0.0 から 1.0 の範囲で指定します。
+**Description:** マテリアルの金属度を指定します。0.0 から 1.0 の範囲で指定します。SSR と aerial perspective の `specular` はこの値をそのまま垂直入射時の反射率として読みます。`0` は反射せず、`1` は鏡のように反射します。
 
 **Default:** `undefined`
 

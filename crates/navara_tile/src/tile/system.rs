@@ -19,6 +19,7 @@ use navara_memory::{
 
 use navara_mesh::{CachedMeshHandle, Mesh, MeshBundle, ObjectBundle};
 use navara_occluder::ellipsoidal_occluder::EllipsoidalOccluder;
+use navara_quadtree::decode_quadleaf_handle;
 
 use navara_camera::{CameraFrustum, CameraMarker};
 use navara_tile_component::{
@@ -425,8 +426,7 @@ pub fn transfer_mesh(
     mut tc: ResMut<TileCacheManager>,
     mut qt: ResMut<TerrainTileQuadtree>,
     mut terrain_qt: ResMut<TerrainInformationQuadtree>,
-    // Tiles still waiting for their first mesh, plus `Rendered` tiles flagged
-    // by `mark_landed_dem_for_remesh` (an upsampled mesh whose real DEM landed).
+    // Tiles still waiting for their first mesh, plus `Rendered` tiles flagged `RemeshPending` for a new one.
     mut rendered_tiles: Query<
         (
             Entity,
@@ -442,6 +442,7 @@ pub fn transfer_mesh(
     terrain_layer: Query<&TerrainLayer>,
     terrain_mesh_constructors: Query<&ConstructTerrainMeshResult, Without<Deleted>>,
     terrain_mesh_upsamplers: Query<&UpsampleTerrainMeshResult, Without<Deleted>>,
+    upsample_parameters: Query<&UpsampleTerrainMeshParameters>,
     globe: Res<navara_globe::Globe>,
     source_store: Res<navara_source::SourceStore>,
     mut swap: TerrainMeshSwap,
@@ -469,7 +470,8 @@ pub fn transfer_mesh(
         // A task that failed was despawned by the worker plugin; drop the
         // dangling reference so the tile can move on. A lost re-mesh keeps
         // the upsampled mesh on screen rather than respawning the task every
-        // run. A lost upsample makes the tile fetch its own DEM instead (see
+        // run, and so does a lost upsample on a tile that already shows a
+        // mesh. A lost upsample makes the tile fetch its own DEM instead (see
         // `TerrainTile::upsample_failed`); in the overscale band there is no
         // DEM to fetch, so it retries.
         if rendered_tile
@@ -478,7 +480,6 @@ pub fn transfer_mesh(
         {
             rendered_tile.terrain_mesh_constructor = None;
             if remesh_pending {
-                commands.entity(rendered_tile_id).remove::<RemeshPending>();
                 continue;
             }
         }
@@ -493,13 +494,32 @@ pub fn transfer_mesh(
                 t.upsample_failed = true;
             }
             tc.is_updated_in_this_frame = true;
+            if tc
+                .rendered_tile_caches
+                .get(&rendered_tile.tile_handle)
+                .is_some_and(|c| c.mesh_entity.is_some())
+            {
+                continue;
+            }
         }
         let tile = qt.qt.get(rendered_tile.tile_handle).unwrap();
 
+        let terrain_req = match tile.terrain_data.as_ref() {
+            Some(t) => t
+                .data_requester_entity_id()
+                .and_then(|e| terrain_data_requester.get(e).map_or(None, |v| Some(v.1))),
+            None => None,
+        };
+        let dem_ready = terrain_req.as_ref().is_some_and(|r| r.is_succeeded());
+
         // A pending re-mesh only needs a visit to spawn its task and to pick
-        // up the result; the in-flight frames are skipped.
+        // up the result; the in-flight frames are skipped. A landed DEM is
+        // the exception: it supersedes an upsample still in flight (see the
+        // construct path below).
         let needs_update = rendered_tile.is_added()
-            || (remesh_pending && rendered_tile.terrain_mesh_constructor.is_none())
+            || (remesh_pending
+                && rendered_tile.terrain_mesh_constructor.is_none()
+                && (rendered_tile.terrain_mesh_upsampler.is_none() || dem_ready))
             || rendered_tile
                 .terrain_mesh_constructor
                 .is_some_and(|c| terrain_mesh_constructors.contains(c))
@@ -535,6 +555,11 @@ pub fn transfer_mesh(
         let is_quantized_mesh = terrain_layer
             .map(|l| matches!(l.terrain_type, navara_layer::TerrainDataType::QuantizedMesh))
             .unwrap_or(false);
+        // Which ancestors hold real data (see `UpsampleAncestors::real`).
+        let resamples_dem = terrain_layer
+            .is_some_and(|l| matches!(l.terrain_type, navara_layer::TerrainDataType::RasterDEM));
+        let dem_landed =
+            |t: &TerrainTile| resamples_dem && t.is_terrain_ready(&terrain_data_requester);
         let qm_geographic = terrain_source.is_some_and(|s| s.tiling_scheme().is_geographic());
         let qm_tms = terrain_source.is_some_and(|s| s.tiling_scheme().tms());
 
@@ -657,17 +682,15 @@ pub fn transfer_mesh(
             terrain_lat_range: None,
         };
 
-        let terrain_req = match tile.terrain_data.as_ref() {
-            Some(t) => t
-                .data_requester_entity_id()
-                .and_then(|e| terrain_data_requester.get(e).map_or(None, |v| Some(v.1))),
-            None => None,
-        };
         let is_terrain_failed = matches!(
             terrain_req.map(|t| &t.status),
             Some(&DataRequesterStatus::Fail)
         );
 
+        // Same depth bound as the traversal (`TerrainTile::is_upsample_depth_bounded`):
+        // lifted only where no DEM of the tile's own will ever land.
+        let upsample_depth_bounded = !is_terrain_failed
+            && !terrain_source.is_some_and(|s| s.should_overscale(tile.coords.z));
         // Upsample whenever the tile's own DEM has not landed (pending,
         // deferred, or failed) and an ancestor mesh — or an upsample already in
         // flight — can stand in. This is deliberately looser than
@@ -675,17 +698,17 @@ pub fn transfer_mesh(
         // selected, while here the tile is already rendering and an upsampled
         // mesh is always better than none (e.g. the result of an upsample
         // started before the tile's children were activated).
-        let dem_ready = terrain_req.as_ref().is_some_and(|r| r.is_succeeded());
-        // Same depth bound as the traversal (`TerrainTile::is_upsample_depth_bounded`):
-        // lifted only where no DEM of the tile's own will ever land.
-        let upsample_depth_bounded = !is_terrain_failed
-            && !terrain_source.is_some_and(|s| s.should_overscale(tile.coords.z));
         let should_upsample_terrain = terrain_layer.is_some()
             && !dem_ready
             && !tile.upsample_failed
             && (rendered_tile.terrain_mesh_upsampler.is_some()
                 || tile
-                    .find_upsample_source(&qt, is_quantized_mesh, upsample_depth_bounded)
+                    .find_upsample_source(
+                        &qt,
+                        dem_landed,
+                        is_quantized_mesh,
+                        upsample_depth_bounded,
+                    )
                     .is_some());
 
         if !should_render_terrain
@@ -782,6 +805,15 @@ pub fn transfer_mesh(
             ));
 
             if let Some(cache) = tc.rendered_tile_caches.get_mut(&rendered_tile.tile_handle) {
+                // Spawned, not swapped in place: a tile that already shows a
+                // mesh keeps it (see the lost-task handling above).
+                #[cfg(feature = "debug")]
+                if let Some(live) = cache.mesh_entity {
+                    bevy_log::error!(
+                        "terrain tile {:?} got a flat mesh over its live mesh {live:?}, which is orphaned",
+                        decode_quadleaf_handle::<usize>(rendered_tile.tile_handle)
+                    );
+                }
                 cache.mesh_entity = Some(e.id());
             } else {
                 panic!("Mesh duplication error");
@@ -822,9 +854,12 @@ pub fn transfer_mesh(
             let terrain_mesh_upsampler_id = match rendered_tile.terrain_mesh_upsampler {
                 Some(e) => e,
                 None => {
-                    let Some(source_tile_handle) =
-                        tile.find_upsample_source(&qt, is_quantized_mesh, upsample_depth_bounded)
-                    else {
+                    let Some(source_tile_handle) = tile.find_upsample_source(
+                        &qt,
+                        dem_landed,
+                        is_quantized_mesh,
+                        upsample_depth_bounded,
+                    ) else {
                         continue;
                     };
                     // The worker reads the tile's terrain data (decoder /
@@ -865,6 +900,17 @@ pub fn transfer_mesh(
                 continue;
             };
 
+            // Replacing a live mesh the web side has not built yet: its queued
+            // `mesh_added` still names the buffers freed below, so the swap
+            // waits for the prepared event (which re-triggers this system).
+            if tc
+                .rendered_tile_caches
+                .get(&rendered_tile.tile_handle)
+                .is_some_and(|c| c.mesh_entity.is_some() && !c.mesh_prepared)
+            {
+                continue;
+            }
+
             rendered_tile.terrain_mesh_upsampler = None;
             // The result's handles move into the tile mesh below, so mark the
             // task consumed or its `on_remove` hook would free live buffers.
@@ -875,6 +921,14 @@ pub fn transfer_mesh(
             let min_height = terrain_mesh_upsampler.min_height;
             let max_height = terrain_mesh_upsampler.max_height;
             let rtc_translation = terrain_mesh_upsampler.rtc_translation.unwrap_or_default();
+            // The level this mesh is a clip of, decoded from the source's
+            // handle: the source tile itself may be gone by now.
+            let (_, _, upsample_source_z) = decode_quadleaf_handle::<usize>(
+                upsample_parameters
+                    .get(terrain_mesh_upsampler_id)
+                    .expect("an upsample task keeps its parameters")
+                    .source_tile_handle,
+            );
 
             let vhandle = terrain_mesh_upsampler.geometry.vertices;
             let ihandle = terrain_mesh_upsampler.geometry.indices;
@@ -892,6 +946,7 @@ pub fn transfer_mesh(
                         watermask: terrain_mesh_upsampler.watermask,
                     });
                     t.upsampled = true;
+                    t.upsample_source_z = Some(upsample_source_z);
                 };
             }
 
@@ -992,9 +1047,6 @@ pub fn transfer_mesh(
         }
 
         rendered_tile.terrain_mesh_constructor = None;
-        if remesh_pending {
-            commands.entity(rendered_tile_id).remove::<RemeshPending>();
-        }
         // The result's handles move into the tile mesh below, so mark the
         // task consumed or its `on_remove` hook would free live buffers.
         commands
@@ -1023,6 +1075,7 @@ pub fn transfer_mesh(
                     watermask: terrain_mesh_constructor.watermask,
                 });
                 t.upsampled = false;
+                t.upsample_source_z = None;
             };
         }
 
@@ -1061,6 +1114,18 @@ pub fn transfer_mesh(
         let tile = qt.qt.get_mut(rendered_tile.tile_handle).unwrap();
         let terrain_info = terrain_qt.qt.get_mut(rendered_tile.tile_handle).unwrap();
         postupdate_tile(tile, terrain_info, max_height, min_height);
+    }
+
+    // A re-mesh flag lives only while a task it started is in flight: a visit
+    // that leaves the tile without one has served the flag, or found nothing
+    // to serve it with.
+    for (rendered_tile_id, rendered_tile, _, remesh_pending) in &rendered_tiles {
+        if remesh_pending
+            && rendered_tile.terrain_mesh_constructor.is_none()
+            && rendered_tile.terrain_mesh_upsampler.is_none()
+        {
+            commands.entity(rendered_tile_id).remove::<RemeshPending>();
+        }
     }
 }
 
@@ -1763,6 +1828,9 @@ pub fn handle_prepared_mesh_event(
     }
 }
 
+/// Re-run the tile systems in the frame a terrain mesh task completes. A
+/// result `transfer_mesh` holds back (the mesh it replaces is not prepared
+/// yet) is re-triggered by the prepared event, so only the completion counts.
 #[allow(clippy::type_complexity)]
 pub fn handle_tile_worker_task_completed(
     mut tc: ResMut<TileCacheManager>,
@@ -1773,7 +1841,7 @@ pub fn handle_tile_worker_task_completed(
                 With<ConstructTerrainMeshMarker>,
                 With<UpsampleTerrainMeshMarker>,
             )>,
-            With<WorkerTaskCompleted>,
+            Added<WorkerTaskCompleted>,
         ),
     >,
 ) {
@@ -3471,8 +3539,8 @@ mod remesh_tests {
     use navara_tile_component::{RasterDEMData, TerrainDataRequesterMarker};
 
     /// Register the raster-DEM terrain source `"dem"` with the given zoom
-    /// bounds (`max_zoom` is exclusive for fetches; the band up to
-    /// `overscaled_max_zoom` is upsampled).
+    /// bounds (`max_zoom` is the deepest fetched level; the band past it, up
+    /// to `overscaled_max_zoom`, is upsampled).
     fn add_raster_dem_source(app: &mut App, max_zoom: usize, overscaled_max_zoom: usize) {
         app.world_mut().resource_mut::<SourceStore>().add(
             "dem".to_string(),
@@ -3511,12 +3579,29 @@ mod remesh_tests {
     /// A tile that already renders an UPSAMPLED mesh (`Rendered`, mesh entity
     /// live) whose own DEM request has just succeeded.
     fn setup_upsampled_tile_with_landed_dem(app: &mut App) -> Setup {
+        setup_upsampled_tile_with_landed_dem_at(app, None)
+    }
+
+    /// As above for a tile at `coords` rather than the root — the overscale
+    /// band starts past `max_zoom`, so a band tile is never the root.
+    fn setup_upsampled_tile_with_landed_dem_at(
+        app: &mut App,
+        coords: Option<(usize, usize, usize)>,
+    ) -> Setup {
         spawn_raster_dem_terrain(app, 8);
 
         let mut qt = TerrainTileQuadtree::new_with_linear_qt();
         qt.qt
             .initialize_zero(&|(x, y, z)| TerrainTile::new(TileXYZ { x, y, z }, 0., 0.));
-        let handle = qt.qt.zero().unwrap().handle();
+        let handle = match coords {
+            Some(c) => qt
+                .qt
+                .initialize_leaf(c, &|(x, y, z)| {
+                    TerrainTile::new(TileXYZ { x, y, z }, 0., 0.)
+                })
+                .unwrap(),
+            None => qt.qt.zero().unwrap().handle(),
+        };
 
         let (old_vertices, old_indices, old_uvs, old_heights, bytes) = {
             let mut buf = app.world_mut().resource_mut::<BufferStore>();
@@ -3637,11 +3722,223 @@ mod remesh_tests {
         app
     }
 
+    /// A rendered overscale-band tile showing a mesh clipped from level
+    /// `source_z`, three levels below a root that carries real data. Its own
+    /// parent is upsampled, so the nearest real ancestor is two levels up.
+    /// Being in the band it never fetches a DEM of its own. Returns its
+    /// rendered-tile entity.
+    fn setup_band_tile_upsampled_from(app: &mut App, source_z: usize) -> Entity {
+        // Fetchable down to the leaf's parent; the leaf itself is in the band.
+        setup_tile_upsampled_from(app, source_z, 2, 8)
+    }
+
+    /// As above, with the source's zoom bounds spelled out: the leaf is in the
+    /// band only past `max_zoom`.
+    fn setup_tile_upsampled_from(
+        app: &mut App,
+        source_z: usize,
+        max_zoom: usize,
+        overscaled_max_zoom: usize,
+    ) -> Entity {
+        add_raster_dem_source(app, max_zoom, overscaled_max_zoom);
+        app.world_mut().spawn(TerrainLayer {
+            layer_id: "terrain".to_string(),
+            source_id: Some("dem".to_string()),
+            terrain_type: navara_layer::TerrainDataType::RasterDEM,
+            appearance: None,
+        });
+
+        let mut qt = TerrainTileQuadtree::new_with_linear_qt();
+        qt.qt
+            .initialize_zero(&|(x, y, z)| TerrainTile::new(TileXYZ { x, y, z }, 0., 0.));
+        for coords in [(0, 0, 1), (0, 0, 2), (0, 0, 3)] {
+            qt.qt
+                .initialize_leaf(coords, &|(x, y, z)| {
+                    TerrainTile::new(TileXYZ { x, y, z }, 0., 0.)
+                })
+                .unwrap();
+        }
+        let band = qt.qt.leaf((0, 0, 3)).unwrap().handle();
+
+        let mesh_handle = |app: &mut App| {
+            let mut buf = app.world_mut().resource_mut::<BufferStore>();
+            CachedMeshHandle {
+                vertices: buf.new_f32(vec![0.; 9]),
+                indices: buf.new_u32(vec![0, 1, 2]),
+                uvs: buf.new_f32(vec![0.; 6]),
+                heights: Some(buf.new_f32(vec![0.; 3])),
+                normals: None,
+                watermask: None,
+            }
+        };
+        // The top two levels hold real meshes and the third an upsampled one,
+        // so the leaf's nearest real ancestor is two levels up.
+        for (coords, upsampled) in [((0, 0, 0), false), ((0, 0, 1), false), ((0, 0, 2), true)] {
+            let mesh = mesh_handle(app);
+            let handle = qt.qt.leaf(coords).unwrap().handle();
+            let tile = qt.qt.get_mut(handle).unwrap();
+            tile.upsampled = upsampled;
+            tile.cached_mesh_handle = Some(mesh);
+        }
+        {
+            let mesh = mesh_handle(app);
+            let tile = qt.qt.get_mut(band).unwrap();
+            tile.upsampled = true;
+            tile.upsample_source_z = Some(source_z);
+            tile.cached_mesh_handle = Some(mesh);
+        }
+
+        let mesh_entity = app
+            .world_mut()
+            .spawn((
+                TileMeshMarker {
+                    handle: band,
+                    ready_parent_tile_handle: None,
+                },
+                Mesh {
+                    fill_quadrants: 0,
+                    vertices: 0,
+                    uvs: 0,
+                    indices: 0,
+                    active: true,
+                    render_order: 0,
+                    aabb: Aabb::default(),
+                    normals: None,
+                    skirt_vertices: None,
+                    skirt_uvs: None,
+                    skirt_indices: None,
+                    skirt_normals: None,
+                    watermask: None,
+                },
+                Transform::default(),
+            ))
+            .id();
+
+        let rendered_tile_entity = app
+            .world_mut()
+            .spawn((
+                RenderedTile {
+                    tile_handle: band,
+                    terrain_mesh_constructor: None,
+                    terrain_mesh_upsampler: None,
+                },
+                OrderByDistance {
+                    sse: 0.,
+                    distance: 0.,
+                },
+                Rendered,
+            ))
+            .id();
+
+        let mut tc = TileCacheManager::default();
+        tc.rendered_tile_caches.insert(
+            band,
+            RenderedTileCache {
+                mesh_entity: Some(mesh_entity),
+                ready_parent_tile_handle: None,
+                layer_parents: None,
+                rendered_tile_entity,
+                mesh_prepared: true,
+                needs_material_update: false,
+                prefetched: false,
+            },
+        );
+        tc.is_updated_in_this_frame = true;
+        app.insert_resource(tc);
+        app.insert_resource(qt);
+
+        rendered_tile_entity
+    }
+
     fn constructor_entities(app: &mut App) -> Vec<Entity> {
         let mut q = app
             .world_mut()
             .query_filtered::<Entity, With<ConstructTerrainMeshMarker>>();
         q.iter(app.world()).collect()
+    }
+
+    fn mesh_entity_count(app: &mut App) -> usize {
+        let mut q = app
+            .world_mut()
+            .query_filtered::<Entity, With<TileMeshMarker>>();
+        q.iter(app.world()).count()
+    }
+
+    fn upsampler_entities(app: &mut App) -> Vec<Entity> {
+        let mut q = app
+            .world_mut()
+            .query_filtered::<Entity, (With<UpsampleTerrainMeshMarker>, Without<Deleted>)>();
+        q.iter(app.world()).collect()
+    }
+
+    /// Run a frame with nothing to update, so the rendered tiles a setup
+    /// spawned are no longer new (`Added`) to `transfer_mesh`.
+    fn settle_new_tiles(app: &mut App) {
+        app.world_mut()
+            .resource_mut::<TileCacheManager>()
+            .is_updated_in_this_frame = false;
+        app.update();
+    }
+
+    /// Run a frame in which `transfer_mesh` revisits its tiles.
+    fn update_tiles(app: &mut App) {
+        app.world_mut()
+            .resource_mut::<TileCacheManager>()
+            .is_updated_in_this_frame = true;
+        app.update();
+    }
+
+    /// The worker hands back `upsampler`'s mesh; returns its vertex buffer.
+    fn complete_upsample(app: &mut App, upsampler: Entity) -> navara_buffer_store::Handle {
+        let (vertices, indices, uvs, heights) = {
+            let mut buf = app.world_mut().resource_mut::<BufferStore>();
+            (
+                buf.new_f32(vec![1.; 9]),
+                buf.new_u32(vec![0, 1, 2]),
+                buf.new_f32(vec![1.; 6]),
+                buf.new_f32(vec![1.; 3]),
+            )
+        };
+        app.world_mut()
+            .entity_mut(upsampler)
+            .insert(UpsampleTerrainMeshResult {
+                geometry: TransferableGeometry {
+                    vertices,
+                    uvs,
+                    indices,
+                    normals: None,
+                    skirt_vertices: None,
+                    skirt_uvs: None,
+                    skirt_indices: None,
+                    skirt_normals: None,
+                },
+                heights,
+                min_height: 1.,
+                max_height: 2.,
+                rtc_translation: None,
+                watermask: None,
+            });
+        vertices
+    }
+
+    fn rendered_tile(app: &App, entity: Entity) -> &RenderedTile {
+        app.world().get::<RenderedTile>(entity).unwrap()
+    }
+
+    fn remesh_pending(app: &App, entity: Entity) -> bool {
+        app.world().get::<RemeshPending>(entity).is_some()
+    }
+
+    fn cached_vertices(app: &App, handle: TileHandle) -> navara_buffer_store::Handle {
+        app.world()
+            .resource::<TerrainTileQuadtree>()
+            .qt
+            .get(handle)
+            .unwrap()
+            .cached_mesh_handle
+            .as_ref()
+            .unwrap()
+            .vertices
     }
 
     /// Upsample-first, second half: a tile already `Rendered` with an
@@ -3933,8 +4230,9 @@ mod remesh_tests {
     #[test]
     fn transfer_mesh_retries_a_lost_upsample_in_the_overscale_band() {
         let mut app = new_app();
-        let setup = setup_upsampled_tile_with_landed_dem(&mut app);
-        // The root (z=0) sits in the overscale band.
+        // A z1 tile in the overscale band: the band starts past `max_zoom`,
+        // so the root is never in it.
+        let setup = setup_upsampled_tile_with_landed_dem_at(&mut app, Some((0, 0, 1)));
         add_raster_dem_source(&mut app, 0, 8);
         {
             let mut qt = app.world_mut().resource_mut::<TerrainTileQuadtree>();
@@ -4098,6 +4396,423 @@ mod remesh_tests {
         );
         let qt = app.world().resource::<TerrainTileQuadtree>();
         assert!(!qt.qt.get(child).unwrap().upsample_failed);
+    }
+
+    /// An overscale-band tile flagged for a re-mesh has no DEM of its own to
+    /// construct from, so `transfer_mesh` rebuilds it with a fresh upsample —
+    /// from the nearest real-data ancestor, not the coarse one it was showing.
+    /// The traversal sets the flag (see
+    /// `traverse_terrain_flags_a_stale_band_upsample`).
+    #[test]
+    fn flagged_band_upsample_is_rebuilt_from_the_nearer_real_ancestor() {
+        let mut app = new_app();
+        // Built from the root: three levels up, past MAX_UPSAMPLE_DEPTH.
+        let rendered_tile_entity = setup_band_tile_upsampled_from(&mut app, 0);
+        let handle = rendered_tile(&app, rendered_tile_entity).tile_handle;
+        app.add_systems(Update, transfer_mesh);
+        settle_new_tiles(&mut app);
+
+        update_tiles(&mut app);
+        assert!(
+            upsampler_entities(&mut app).is_empty(),
+            "a rendered tile is revisited only when flagged"
+        );
+
+        app.world_mut()
+            .entity_mut(rendered_tile_entity)
+            .insert(RemeshPending);
+        update_tiles(&mut app);
+
+        let upsampler = rendered_tile(&app, rendered_tile_entity)
+            .terrain_mesh_upsampler
+            .expect("a fresh upsample task was spawned");
+        let source_handle = app
+            .world()
+            .get::<UpsampleTerrainMeshParameters>(upsampler)
+            .unwrap()
+            .source_tile_handle;
+        assert_eq!(
+            app.world()
+                .resource::<TerrainTileQuadtree>()
+                .qt
+                .get(source_handle)
+                .unwrap()
+                .coords
+                .z,
+            1,
+            "rebuilt from the nearest real-data ancestor, not the root"
+        );
+        assert!(
+            remesh_pending(&app, rendered_tile_entity),
+            "the flag stays while its task is in flight"
+        );
+
+        // --- The worker result lands: the mesh and the recorded level are
+        // rewritten, and the flag is dropped ---
+        let vertices = complete_upsample(&mut app, upsampler);
+        update_tiles(&mut app);
+
+        assert_eq!(cached_vertices(&app, handle), vertices);
+        assert_eq!(
+            app.world()
+                .resource::<TerrainTileQuadtree>()
+                .qt
+                .get(handle)
+                .unwrap()
+                .upsample_source_z,
+            Some(1),
+            "the tile now records the level it was rebuilt from"
+        );
+        assert!(!remesh_pending(&app, rendered_tile_entity));
+
+        // --- ...so the next frame does not start the rebuild over again ---
+        update_tiles(&mut app);
+        assert!(
+            upsampler_entities(&mut app).is_empty(),
+            "no second task: a flag left behind would re-dispatch every frame"
+        );
+    }
+
+    /// The level a mesh was clipped from is known even when the source tile
+    /// is gone by the time the result lands (evicted mid flight): without it
+    /// the tile could never be found stale again.
+    #[test]
+    fn transfer_mesh_records_the_source_level_of_a_vanished_source() {
+        let mut app = new_app();
+        let rendered_tile_entity = setup_band_tile_upsampled_from(&mut app, 0);
+        let handle = rendered_tile(&app, rendered_tile_entity).tile_handle;
+        app.world_mut()
+            .entity_mut(rendered_tile_entity)
+            .insert(RemeshPending);
+        app.add_systems(Update, transfer_mesh);
+        update_tiles(&mut app);
+        let upsampler = rendered_tile(&app, rendered_tile_entity)
+            .terrain_mesh_upsampler
+            .unwrap();
+
+        let source = app
+            .world()
+            .get::<UpsampleTerrainMeshParameters>(upsampler)
+            .unwrap()
+            .source_tile_handle;
+        app.world_mut()
+            .resource_mut::<TerrainTileQuadtree>()
+            .qt
+            .remove(source);
+        complete_upsample(&mut app, upsampler);
+        update_tiles(&mut app);
+
+        assert_eq!(
+            app.world()
+                .resource::<TerrainTileQuadtree>()
+                .qt
+                .get(handle)
+                .unwrap()
+                .upsample_source_z,
+            Some(1)
+        );
+    }
+
+    /// A rebuild whose task is lost leaves the tile on the mesh it shows. Its
+    /// own DEM request failed (the other case where the bound is lifted), so
+    /// with the upsample lost too it has nothing to build from — but it has a
+    /// mesh, and the flat last-resort mesh is only for a tile without one.
+    #[test]
+    fn transfer_mesh_keeps_the_mesh_when_a_rebuild_task_is_lost() {
+        let mut app = new_app();
+        // Fetchable past this level, so the tile is an ordinary one.
+        let rendered_tile_entity = setup_tile_upsampled_from(&mut app, 0, 8, 8);
+        let handle = rendered_tile(&app, rendered_tile_entity).tile_handle;
+        let mut requester = DataRequester::new(
+            0,
+            "https://example.com/3/0/0.png".to_string(),
+            DataRequesterExtension::Png,
+        );
+        requester.status = DataRequesterStatus::Fail;
+        let requester = app
+            .world_mut()
+            .spawn((TerrainDataRequesterMarker(handle), requester))
+            .id();
+        {
+            let mut qt = app.world_mut().resource_mut::<TerrainTileQuadtree>();
+            qt.qt.get_mut(handle).unwrap().terrain_data = Some(Box::new(RasterDEMData {
+                data_requester_entity_id: Some(requester),
+                ..Default::default()
+            }));
+        }
+        let lost = app.world_mut().spawn_empty().id();
+        app.world_mut().despawn(lost);
+        app.world_mut()
+            .get_mut::<RenderedTile>(rendered_tile_entity)
+            .unwrap()
+            .terrain_mesh_upsampler = Some(lost);
+        app.world_mut()
+            .entity_mut(rendered_tile_entity)
+            .insert(RemeshPending);
+        let vertices = cached_vertices(&app, handle);
+        let meshes = mesh_entity_count(&mut app);
+        app.add_systems(Update, transfer_mesh);
+
+        update_tiles(&mut app);
+
+        assert_eq!(cached_vertices(&app, handle), vertices, "the mesh is kept");
+        assert_eq!(mesh_entity_count(&mut app), meshes, "no flat mesh is added");
+        assert!(!remesh_pending(&app, rendered_tile_entity));
+        assert!(
+            app.world()
+                .resource::<TerrainTileQuadtree>()
+                .qt
+                .get(handle)
+                .unwrap()
+                .upsample_failed
+        );
+    }
+
+    /// In the overscale band a lost rebuild is not retried on the spot: the
+    /// tile keeps its mesh and drops the flag, and a fresh flag from the
+    /// traversal starts the retry, with the flag held until its task lands.
+    #[test]
+    fn transfer_mesh_retries_a_lost_band_rebuild_once_flagged_again() {
+        let mut app = new_app();
+        let rendered_tile_entity = setup_band_tile_upsampled_from(&mut app, 0);
+        let handle = rendered_tile(&app, rendered_tile_entity).tile_handle;
+        let lost = app.world_mut().spawn_empty().id();
+        app.world_mut().despawn(lost);
+        app.world_mut()
+            .get_mut::<RenderedTile>(rendered_tile_entity)
+            .unwrap()
+            .terrain_mesh_upsampler = Some(lost);
+        app.world_mut()
+            .entity_mut(rendered_tile_entity)
+            .insert(RemeshPending);
+        let vertices = cached_vertices(&app, handle);
+        app.add_systems(Update, transfer_mesh);
+
+        update_tiles(&mut app);
+
+        assert!(upsampler_entities(&mut app).is_empty());
+        assert!(!remesh_pending(&app, rendered_tile_entity));
+        assert_eq!(cached_vertices(&app, handle), vertices);
+        assert!(
+            !app.world()
+                .resource::<TerrainTileQuadtree>()
+                .qt
+                .get(handle)
+                .unwrap()
+                .upsample_failed,
+            "no DEM exists in the overscale band: the rebuild may be retried"
+        );
+
+        app.world_mut()
+            .entity_mut(rendered_tile_entity)
+            .insert(RemeshPending);
+        update_tiles(&mut app);
+        update_tiles(&mut app);
+
+        assert_eq!(upsampler_entities(&mut app).len(), 1);
+        assert!(
+            remesh_pending(&app, rendered_tile_entity),
+            "the flag outlives the frames its task is in flight"
+        );
+    }
+
+    /// A tile whose own DEM lands while its first upsample is still in flight
+    /// starts the real mesh right away: the upsample is cancelled rather than
+    /// waited for and then thrown away.
+    #[test]
+    fn transfer_mesh_constructs_a_landed_dem_without_waiting_for_the_upsample() {
+        let mut app = new_app();
+        let setup = setup_upsampled_tile_with_landed_dem(&mut app);
+        // Not rendered yet: no mesh, its first upsample in flight.
+        app.world_mut()
+            .entity_mut(setup.rendered_tile_entity)
+            .remove::<Rendered>();
+        {
+            let mut qt = app.world_mut().resource_mut::<TerrainTileQuadtree>();
+            let tile = qt.qt.get_mut(setup.handle).unwrap();
+            tile.upsampled = false;
+            tile.cached_mesh_handle = None;
+        }
+        app.world_mut()
+            .resource_mut::<TileCacheManager>()
+            .rendered_tile_caches
+            .get_mut(&setup.handle)
+            .unwrap()
+            .mesh_entity = None;
+        let upsampler = app
+            .world_mut()
+            .spawn((WorkerTaskMarker, UpsampleTerrainMeshMarker))
+            .id();
+        app.world_mut()
+            .get_mut::<RenderedTile>(setup.rendered_tile_entity)
+            .unwrap()
+            .terrain_mesh_upsampler = Some(upsampler);
+        app.add_systems(Update, transfer_mesh);
+        settle_new_tiles(&mut app);
+
+        // What `mark_landed_dem_for_remesh` does when the DEM lands.
+        app.world_mut()
+            .entity_mut(setup.rendered_tile_entity)
+            .insert(RemeshPending);
+        update_tiles(&mut app);
+
+        assert_eq!(constructor_entities(&mut app).len(), 1);
+        assert!(app.world().get::<Deleted>(upsampler).is_some());
+        assert_eq!(
+            rendered_tile(&app, setup.rendered_tile_entity).terrain_mesh_upsampler,
+            None
+        );
+    }
+
+    /// A finished task re-runs the tile systems in the frame it completes, not
+    /// every frame after: one `transfer_mesh` holds back is re-triggered by
+    /// the prepared event instead.
+    #[test]
+    fn a_completed_terrain_task_triggers_one_update() {
+        let mut app = new_app();
+        app.insert_resource(TileCacheManager::default());
+        app.add_systems(Update, handle_tile_worker_task_completed);
+        app.world_mut()
+            .spawn((UpsampleTerrainMeshMarker, WorkerTaskCompleted));
+
+        app.update();
+        assert!(
+            app.world()
+                .resource::<TileCacheManager>()
+                .is_updated_in_this_frame
+        );
+
+        app.world_mut()
+            .resource_mut::<TileCacheManager>()
+            .is_updated_in_this_frame = false;
+        app.update();
+        assert!(
+            !app.world()
+                .resource::<TileCacheManager>()
+                .is_updated_in_this_frame
+        );
+    }
+
+    /// A rebuild waits for the web side to report the live mesh prepared, as
+    /// the construct path does: the finished upsample is held, not dropped —
+    /// its task entity keeps the buffers and is applied once the mesh is
+    /// prepared.
+    #[test]
+    fn transfer_mesh_waits_for_the_web_mesh_before_replacing_an_upsample() {
+        let mut app = new_app();
+        let rendered_tile_entity = setup_band_tile_upsampled_from(&mut app, 0);
+        let handle = app
+            .world()
+            .get::<RenderedTile>(rendered_tile_entity)
+            .unwrap()
+            .tile_handle;
+        let old_vertices = app
+            .world()
+            .resource::<TerrainTileQuadtree>()
+            .qt
+            .get(handle)
+            .unwrap()
+            .cached_mesh_handle
+            .as_ref()
+            .unwrap()
+            .vertices;
+        app.world_mut()
+            .resource_mut::<TileCacheManager>()
+            .rendered_tile_caches
+            .get_mut(&handle)
+            .unwrap()
+            .mesh_prepared = false;
+        app.world_mut()
+            .entity_mut(rendered_tile_entity)
+            .insert(RemeshPending);
+        app.add_systems(Update, transfer_mesh);
+
+        app.update();
+        let upsamplers = upsampler_entities(&mut app);
+        assert_eq!(upsamplers.len(), 1, "the rebuild task starts right away");
+
+        let (vertices, indices, uvs, heights) = {
+            let mut buf = app.world_mut().resource_mut::<BufferStore>();
+            (
+                buf.new_f32(vec![1.; 9]),
+                buf.new_u32(vec![0, 1, 2]),
+                buf.new_f32(vec![1.; 6]),
+                buf.new_f32(vec![1.; 3]),
+            )
+        };
+        app.world_mut()
+            .entity_mut(upsamplers[0])
+            .insert(UpsampleTerrainMeshResult {
+                geometry: TransferableGeometry {
+                    vertices,
+                    uvs,
+                    indices,
+                    normals: None,
+                    skirt_vertices: None,
+                    skirt_uvs: None,
+                    skirt_indices: None,
+                    skirt_normals: None,
+                },
+                heights,
+                min_height: 1.,
+                max_height: 2.,
+                rtc_translation: None,
+                watermask: None,
+            });
+        app.world_mut()
+            .resource_mut::<TileCacheManager>()
+            .is_updated_in_this_frame = true;
+        app.update();
+
+        assert_eq!(
+            app.world()
+                .resource::<TerrainTileQuadtree>()
+                .qt
+                .get(handle)
+                .unwrap()
+                .cached_mesh_handle
+                .as_ref()
+                .unwrap()
+                .vertices,
+            old_vertices,
+            "the mesh the web side has not built yet is left alone"
+        );
+        assert_eq!(
+            upsampler_entities(&mut app),
+            upsamplers,
+            "the finished task is kept, buffers and all, for the retry"
+        );
+
+        // The web side reports the mesh prepared: the held result goes in.
+        app.world_mut()
+            .resource_mut::<TileCacheManager>()
+            .rendered_tile_caches
+            .get_mut(&handle)
+            .unwrap()
+            .mesh_prepared = true;
+        app.world_mut()
+            .resource_mut::<TileCacheManager>()
+            .is_updated_in_this_frame = true;
+        app.update();
+
+        assert_eq!(
+            app.world()
+                .resource::<TerrainTileQuadtree>()
+                .qt
+                .get(handle)
+                .unwrap()
+                .cached_mesh_handle
+                .as_ref()
+                .unwrap()
+                .vertices,
+            vertices,
+            "the held rebuild lands once the mesh is prepared"
+        );
+        assert!(
+            app.world()
+                .get::<RemeshPending>(rendered_tile_entity)
+                .is_none()
+        );
     }
 
     /// A `Rendered` tile that already holds a real-DEM mesh is never revisited:

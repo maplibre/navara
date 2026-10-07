@@ -138,7 +138,6 @@ const addSSRControls = (view: ThreeView<CustomDescriptions>, pane: Pane) => {
     coneTracingFadeEnd: ssrLayer.ref.raw?.coneTracingFadeEnd ?? 0,
     coneTracingMaxDistance: ssrLayer.ref.raw?.coneTracingMaxDistance ?? 0,
     coneTracingIteration: ssrLayer.ref.raw?.coneTracingIteration ?? 0,
-    coneTracingIor: ssrLayer.ref.raw?.coneTracingIor ?? 0,
   };
 
   const fields: FolderFields<typeof ssrParams> = [
@@ -278,19 +277,6 @@ const addSSRControls = (view: ThreeView<CustomDescriptions>, pane: Pane) => {
       params: { min: 0, step: 1 },
       onChange: (v) => {
         ssrParams.coneTracingIteration = v.value;
-        ssrLayer.update({ ssr: ssrParams });
-      },
-    },
-    {
-      name: "coneTracingIor",
-      params: {
-        color: {
-          alpha: false,
-          type: "int",
-        },
-      },
-      onChange: (v) => {
-        ssrParams.coneTracingIor = v.value;
         ssrLayer.update({ ssr: ssrParams });
       },
     },

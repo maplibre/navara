@@ -39,6 +39,7 @@ pub struct Events {
     renderable_feature_changed: Vec<RenderableFeatureChangedEvent>,
     renderable_feature_removed: Vec<RenderableFeatureRemovedEvent>,
     update_sample_terrain_height: Vec<TerrainHeightUpdatedEvent>,
+    update_terrain_height_range: Vec<TerrainHeightRangeUpdatedEvent>,
     hillshade_backfilled: Vec<HillshadeBackfilledEvent>,
     hillshade_canceled: Vec<EntityEvent>,
 }
@@ -102,6 +103,9 @@ impl Events {
     }
     pub fn take_update_sample_terrain_height(&mut self) -> Vec<TerrainHeightUpdatedEvent> {
         std::mem::take(&mut self.update_sample_terrain_height)
+    }
+    pub fn take_update_terrain_height_range(&mut self) -> Vec<TerrainHeightRangeUpdatedEvent> {
+        std::mem::take(&mut self.update_terrain_height_range)
     }
     pub fn take_hillshade_backfilled(&mut self) -> Vec<HillshadeBackfilledEvent> {
         std::mem::take(&mut self.hillshade_backfilled)
@@ -271,6 +275,14 @@ pub struct TerrainHeightUpdatedEvent {
 
 #[wasm_bindgen]
 #[derive(Debug, Clone, Serialize)]
+pub struct TerrainHeightRangeUpdatedEvent {
+    pub bits: u64,
+    pub min: f64,
+    pub max: f64,
+}
+
+#[wasm_bindgen]
+#[derive(Debug, Clone, Serialize)]
 pub struct EntityEvent {
     pub ind: u32,
     pub r#gen: u32,
@@ -371,6 +383,11 @@ impl From<navara_event::Events<'_>> for Events {
                 .into_iter()
                 .map(|ev| ev.into())
                 .collect(),
+            update_terrain_height_range: ev
+                .update_terrain_height_range
+                .into_iter()
+                .map(|ev| ev.into())
+                .collect(),
             hillshade_backfilled: ev
                 .hillshade_backfilled
                 .into_iter()
@@ -412,6 +429,30 @@ impl<'a>
             bits: ev.bits,
             lle: ev.comp.lle.into(),
             height: ev.comp.height,
+        }
+    }
+}
+
+impl<'a>
+    From<
+        navara_event_store::ReconstructableComponentEvent<
+            &'a navara_tile_component::TerrainHeightRangeObserver,
+        >,
+    > for TerrainHeightRangeUpdatedEvent
+{
+    fn from(
+        ev: navara_event_store::ReconstructableComponentEvent<
+            &'a navara_tile_component::TerrainHeightRangeObserver,
+        >,
+    ) -> Self {
+        let (min, max) = ev
+            .comp
+            .range
+            .expect("the range is set before the event is pushed");
+        Self {
+            bits: ev.bits,
+            min,
+            max,
         }
     }
 }

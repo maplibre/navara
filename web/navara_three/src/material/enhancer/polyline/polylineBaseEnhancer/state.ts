@@ -8,6 +8,9 @@ export const DEFAULT_BASE_PROPS: Required<
     | "viewportAndPixelRatio"
     | "frustumNearFar"
     | "frustumRatio"
+    | "globeDepth"
+    | "globeNormal"
+    | "inverseProjectionMatrix"
   >
 > = {
   color: 0xffffff,
@@ -20,6 +23,8 @@ export const DEFAULT_BASE_PROPS: Required<
   isTexturized: false,
   drapeRtSize: 512,
   pickable: false,
+  groundCulling: false,
+  useGroundNormals: false,
   effectIdsMask: 0,
   emissiveColor: 0,
   emissiveIntensity: 0,
@@ -33,6 +38,8 @@ export const DEFAULT_BASE_STATE: PolylineBaseState = {
   isTexturized: DEFAULT_BASE_PROPS.isTexturized,
   drapeRtSize: DEFAULT_BASE_PROPS.drapeRtSize,
   pickable: DEFAULT_BASE_PROPS.pickable,
+  groundCulling: DEFAULT_BASE_PROPS.groundCulling,
+  useGroundNormals: DEFAULT_BASE_PROPS.useGroundNormals,
   effectIdsMask: DEFAULT_BASE_PROPS.effectIdsMask,
   emissiveColor: DEFAULT_BASE_PROPS.emissiveColor,
   emissiveIntensity: DEFAULT_BASE_PROPS.emissiveIntensity,
@@ -41,6 +48,7 @@ export const DEFAULT_BASE_STATE: PolylineBaseState = {
   width: DEFAULT_BASE_PROPS.width,
   maxWidth: DEFAULT_BASE_PROPS.maxWidth,
   color: DEFAULT_BASE_PROPS.color,
+  opacity: DEFAULT_BASE_PROPS.opacity,
   batchColorEnabled: DEFAULT_BASE_PROPS.batchColorEnabled,
 };
 
@@ -64,6 +72,8 @@ export const updateState = (
     isTexturized,
     drapeRtSize: props.drapeRtSize ?? currentState.drapeRtSize,
     pickable: props.pickable ?? currentState.pickable,
+    groundCulling: props.groundCulling ?? currentState.groundCulling,
+    useGroundNormals: props.useGroundNormals ?? currentState.useGroundNormals,
     effectIdsMask: props.effectIdsMask ?? currentState.effectIdsMask,
     emissiveColor: props.emissiveColor ?? currentState.emissiveColor,
     emissiveIntensity:
@@ -73,6 +83,7 @@ export const updateState = (
     width: props.width ?? currentState.width,
     maxWidth: props.maxWidth ?? currentState.maxWidth,
     color: props.color ?? currentState.color,
+    opacity: props.opacity ?? currentState.opacity,
     // batchColorEnabled can only transition from false to true, never back
     batchColorEnabled:
       currentState.batchColorEnabled || !!props.batchColorEnabled,

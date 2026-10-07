@@ -274,7 +274,7 @@ import { Color } from "@navaramap/three";
 
 **Type:** `number | undefined`
 
-**Description:** Specifies the metalness of the material. Specified in the range of 0.0 to 1.0.
+**Description:** Specifies the metalness of the material. Specified in the range of 0.0 to 1.0. SSR and the aerial perspective's `specular` term read it as is as the reflectance at normal incidence: `0` does not reflect, and `1` reflects like a mirror.
 
 **Default:** `undefined`
 

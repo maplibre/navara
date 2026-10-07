@@ -30,6 +30,7 @@ import {
 } from "../material/gbufferLayout";
 import { DrapedMesh, setupMaterialForDrape } from "../mesh/DrapedMesh";
 import type { Scenes } from "../scene";
+import type { RefThree } from "../uniforms";
 
 import { AllDepthCopyPass, NormalCopyPass, RenderTargetCopyPass } from ".";
 
@@ -101,10 +102,13 @@ export class CustomRenderPass extends RenderPass {
   // shared one would skip the G-buffer defines for a material first seen in
   // the opaque scene that later moves to the MRT pass.
   private litStamped = new WeakSet<Material>();
-  // Drives the globe-normal copy target, which stays 1x1 until a draped mesh
-  // exists. Tracked here because setSize can arrive while it is inactive.
+  // Drives the globe-normal copy target, which stays 1x1 until a descriptor
+  // requires `globeNormal`. Tracked here because setSize can arrive while it
+  // is inactive.
   private globeNormalActive = false;
-  private readonly globeNormalUniform: { value: Texture | null };
+  // Bound by draped materials; pointed at the copy targets every frame.
+  private readonly globeDepthUniform: RefThree<Texture> = { value: null };
+  private readonly globeNormalUniform: RefThree<Texture> = { value: null };
   private width = 1;
   private height = 1;
 
@@ -164,9 +168,6 @@ export class CustomRenderPass extends RenderPass {
     this.allowTransparent = options?.allowTransparent ?? true;
 
     this.globeNormalCopyPass = new NormalCopyPass();
-    // The copy target keeps its Texture identity across setSize, so draped
-    // materials can bind this ref once.
-    this.globeNormalUniform = { value: this.globeNormalCopyPass.texture };
     if (options?.debugNormal) {
       this.debugNormalCopyPass = new NormalCopyPass();
       this.debugNormalCopyPass.unpackNormal = true;
@@ -279,7 +280,11 @@ export class CustomRenderPass extends RenderPass {
     // into the draped scene picks it up wherever it came from.
     this._scenes.draped.traverse((object) => {
       this.forEachMaterial(object, (m) =>
-        setupMaterialForDrape(m, this.globeNormalUniform),
+        setupMaterialForDrape(
+          m,
+          this.globeNormalUniform,
+          this.globeDepthUniform,
+        ),
       );
     });
   }
@@ -380,6 +385,8 @@ export class CustomRenderPass extends RenderPass {
     inputBuffer: WebGLRenderTarget | null,
     _outputBuffer: WebGLRenderTarget | null,
   ) {
+    this.globeDepthUniform.value = this.globeDepthCopyPass.texture;
+    this.globeNormalUniform.value = this.globeNormalCopyPass.texture;
     this.stampGBufferDefines();
 
     const shouldDrapeByStencilTest = this._scenes.draped.children.length !== 0;
@@ -416,11 +423,11 @@ export class CustomRenderPass extends RenderPass {
 
     this._renderWithLight(renderer, this._scenes.globe);
 
-    // Draped meshes read it and draw further down, so the copy still happens
-    // before its consumer; effects opt in through `requiredBuffers`.
+    // Draped meshes and ground polylines read it further down, so the copy
+    // happens before its consumers. Effects and meshes opt in through
+    // `getRequiredBuffers()`.
     const needsGlobeNormal =
-      (shouldDrapeByStencilTest || this.buffers.globeNormal) &&
-      this.textureIndex.normal !== undefined;
+      !!this.buffers.globeNormal && this.textureIndex.normal !== undefined;
     this.setGlobeNormalActive(needsGlobeNormal);
     if (needsGlobeNormal) {
       this.globeNormalCopyPass.render(renderer, null, null);

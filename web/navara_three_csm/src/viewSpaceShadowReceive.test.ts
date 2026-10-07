@@ -12,6 +12,7 @@ import { describe, expect, it } from "vitest";
 import {
   applyViewSpaceShadowReceive,
   composeViewSpaceShadowMatrices,
+  VIEW_SPACE_SHADOW_DEFINE,
 } from "./viewSpaceShadowReceive";
 
 function makeLightWithShadowMatrix(matrix: Matrix4): DirectionalLight {
@@ -100,12 +101,16 @@ describe("applyViewSpaceShadowReceive", () => {
   it("rewrites the directional shadow loop against the view-space matrices", () => {
     const shader = {
       vertexShader: litVertexShader,
+      fragmentShader: "",
       uniforms: {} as Record<string, { value: unknown }>,
     };
 
     applyViewSpaceShadowReceive(shader, uniform);
 
     expect(shader.uniforms.nvrCsmShadowMatrixView).toBe(uniform);
+    expect(shader.fragmentShader).toContain(
+      `#define ${VIEW_SPACE_SHADOW_DEFINE}`,
+    );
     // Sized to the cascade count: additional shadow-casting directional
     // lights beyond the cascades are not part of the composed array.
     expect(shader.vertexShader).toContain(
@@ -127,6 +132,7 @@ describe("applyViewSpaceShadowReceive", () => {
   it("keeps the stock path for extra directional lights and point shadows", () => {
     const shader = {
       vertexShader: litVertexShader,
+      fragmentShader: "",
       uniforms: {} as Record<string, { value: unknown }>,
     };
 
@@ -158,6 +164,7 @@ describe("applyViewSpaceShadowReceive", () => {
   it("skips shadow-map depth pass variants", () => {
     const shader = {
       vertexShader: litVertexShader,
+      fragmentShader: "",
       defines: { USE_SHADOWMAP_DEPTH: 1 } as Record<string, unknown>,
       uniforms: {} as Record<string, { value: unknown }>,
     };
@@ -172,12 +179,14 @@ describe("applyViewSpaceShadowReceive", () => {
     const source = "#include <common>\nvoid main() {}";
     const shader = {
       vertexShader: source,
+      fragmentShader: "",
       uniforms: {} as Record<string, { value: unknown }>,
     };
 
     applyViewSpaceShadowReceive(shader, uniform);
 
     expect(shader.vertexShader).toBe(source);
+    expect(shader.fragmentShader).toBe("");
     expect(shader.uniforms.nvrCsmShadowMatrixView).toBeUndefined();
   });
 
@@ -208,6 +217,7 @@ describe("applyViewSpaceShadowReceive", () => {
     (name) => {
       const shader = {
         vertexShader: ShaderLib[name].vertexShader,
+        fragmentShader: ShaderLib[name].fragmentShader,
         uniforms: {} as Record<string, { value: unknown }>,
       };
 
@@ -233,6 +243,7 @@ describe("applyViewSpaceShadowReceive", () => {
       const source = ShaderLib[name as keyof typeof ShaderLib].vertexShader;
       const shader = {
         vertexShader: source,
+        fragmentShader: "",
         uniforms: {} as Record<string, { value: unknown }>,
       };
 

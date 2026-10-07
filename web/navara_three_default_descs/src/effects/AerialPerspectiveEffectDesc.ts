@@ -144,15 +144,7 @@ export class AerialPerspectiveEffectDesc extends EffectDesc<
     if (enabled && !wasEnabled) {
       // Allocates the shadow attachment before the shader reads it; the
       // depth texture identity survives the MRT rebuild.
-      try {
-        this.ctx.emit("gbufferRequirementsChanged");
-      } catch (error) {
-        // A rejected attachment (MAX_DRAW_BUFFERS) must not leave the terms
-        // on, or every later re-derivation fails too.
-        this.shadowTerm = false;
-        this.specularTerm = false;
-        throw error;
-      }
+      this.ctx.emit("gbufferRequirementsChanged");
     }
     effect.shadowTerm = this.shadowTerm;
     effect.specularTerm = this.specularTerm;

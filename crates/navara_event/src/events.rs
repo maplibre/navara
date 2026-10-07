@@ -15,7 +15,7 @@ use navara_mesh::Mesh;
 use navara_texture_fragment::TextureFragment;
 use navara_tile_component::{
     HillshadeBackfillEventData, HillshadeBackfillEvents, OverscaledTileHandle,
-    TerrainHeightObserver, TileMeshMarker,
+    TerrainHeightObserver, TerrainHeightRangeObserver, TileMeshMarker,
 };
 use navara_worker::DelegatedWorkerTasksParameters;
 
@@ -69,6 +69,8 @@ pub struct Events<'a> {
     >,
     pub renderable_feature_removed: Vec<ReconstructableComponentEvent<&'a LayerId>>,
     pub update_sample_terrain_height: Vec<ReconstructableComponentEvent<&'a TerrainHeightObserver>>,
+    pub update_terrain_height_range:
+        Vec<ReconstructableComponentEvent<&'a TerrainHeightRangeObserver>>,
     pub hillshade_backfilled: Vec<ReconstructableComponentEvent<&'a HillshadeBackfillEventData>>,
     pub hillshade_canceled: Vec<EntityEvent>,
 }
@@ -189,6 +191,13 @@ impl<'a> Events<'a> {
         for e in store.update_sample_terrain_height.iter() {
             if let Some(e) = ReconstructableComponentEvent::from_world(*e, world) {
                 events.update_sample_terrain_height.push(e);
+                is_changed = true;
+            }
+        }
+
+        for e in store.update_terrain_height_range.iter() {
+            if let Some(e) = ReconstructableComponentEvent::from_world(*e, world) {
+                events.update_terrain_height_range.push(e);
                 is_changed = true;
             }
         }

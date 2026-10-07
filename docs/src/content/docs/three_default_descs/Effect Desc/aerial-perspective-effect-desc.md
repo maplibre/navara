@@ -262,7 +262,7 @@ Objects with `lit: true` keep their forward shading, and transparent surfaces ar
 
 **Description:** Adds the sun's specular reflection with a GGX microfacet lobe. The [`irradiance`](#irradiance) lighting path is diffuse only, so reflective materials stay matte without this option. The highlight is lit by the same sunlight the [`shadow`](#shadow) term dims, so it disappears in shadow and under cloud shadows.
 
-How much a surface reflects is a material property, not an effect option. It is the glTF metalness for models and 3D Tiles and the material reflectivity elsewhere, and roughness sets how wide the highlight spreads. Anything below `0.01` reflectance is skipped, so terrain, polylines, sprites and text stay matte unless their material says otherwise.
+How much a surface reflects is a material property, not an effect option. It is the glTF metalness for models and 3D Tiles and the material reflectivity elsewhere, read as is as the reflectance at normal incidence, and roughness sets how wide the highlight spreads. Anything below `0.01` reflectance is skipped, so terrain, polylines, sprites and text stay matte unless their material says otherwise.
 
 Requires `irradiance: true` and [`useNormalBuffer`](#usenormalbuffer), like [`shadow`](#shadow). [`albedoScale`](#albedoscale) dims the reflection together with the diffuse light.
 

@@ -50,6 +50,7 @@ uniform float binarySearchIterations;
 uniform float pixelZSize;
 uniform float pixelStride;
 uniform float pixelStrideZCutoff;
+uniform float pixelRatio;
 uniform float maxRayDistance;
 uniform float screenEdgeFadeStart;
 uniform float eyeFadeStart;
@@ -98,10 +99,11 @@ float distanceSquared(vec2 a, vec2 b) {
   return dot(a, a);
 }
 
-bool rayIntersectsDepth(float zA, float zB, vec2 uv) {
-  float sceneZMax = getViewZ(
-    reverseLogDepth(readDepth(uv), cameraNear, cameraFar)
-  );
+float readSceneViewZ(vec2 uv) {
+  return getViewZ(reverseLogDepth(readDepth(uv), cameraNear, cameraFar));
+}
+
+bool rayIntersectsDepth(float zA, float zB, float sceneZMax) {
   float sceneZMin = sceneZMax - pixelZSize;
   return zB >= sceneZMin && zA <= sceneZMax;
 }
@@ -177,7 +179,9 @@ bool traceScreenSpaceRay(
   // performance). This also helps mitigate artifacts on distance reflections
   // when we use a large pixel stride.
   float strideScaler = 1.0 - min(1.0, -rayOrigin.z / pixelStrideZCutoff);
-  float pixelStride = 1.0 + strideScaler * pixelStride;
+  // In device pixels, so a fixed iteration budget reaches the same share of
+  // the screen whatever the display density.
+  float pixelStride = (1.0 + strideScaler * pixelStride) * pixelRatio;
 
   // Scale derivatives by the desired pixel stride and then offset the starting
   // values by the jitter fraction.
@@ -195,6 +199,8 @@ bool traceScreenSpaceRay(
   vec4 PQK = vec4(P0, Q0.z, k0);
   vec4 dPQK = vec4(dP, dQ.z, dk);
   bool intersect = false;
+  bool refined = false;
+  bool wasInFront = true;
 
   float count = 0.0;
   for (int i = 0; i < MAX_ITERATIONS; ++i) {
@@ -212,15 +218,54 @@ bool traceScreenSpaceRay(
 
     hitPixel = permute ? PQK.yx : PQK.xy;
     hitPixel *= texelSize;
-    intersect = rayIntersectsDepth(zA, zB, hitPixel);
+    float sceneZ = readSceneViewZ(hitPixel);
+    intersect = rayIntersectsDepth(zA, zB, sceneZ);
+
+    // A strided step can carry the ray from in front of a surface to further
+    // behind it than pixelZSize, which the test above reads as passing behind
+    // an occluder. Surfaces seen edge-on change depth that fast, so bisect the
+    // step and test the thickness where the ray actually crosses.
+    float rayZ = PQK.z / PQK.w;
+    if (!intersect && wasInFront && rayZ <= sceneZ) {
+      vec4 front = PQK - dPQK;
+      vec4 behind = PQK;
+      for (int j = 0; j < MAX_BINARY_SEARCH_ITERATIONS; ++j) {
+        if (float(j) >= binarySearchIterations) {
+          break;
+        }
+        vec4 mid = 0.5 * (front + behind);
+        vec2 midPixel = (permute ? mid.yx : mid.xy) * texelSize;
+        if (mid.z / mid.w <= readSceneViewZ(midPixel)) {
+          behind = mid;
+        } else {
+          front = mid;
+        }
+      }
+
+      vec2 behindPixel = (permute ? behind.yx : behind.xy) * texelSize;
+      float behindZ = behind.z / behind.w;
+      if (rayIntersectsDepth(behindZ, behindZ, readSceneViewZ(behindPixel))) {
+        intersect = true;
+        refined = true;
+        PQK = behind;
+        hitPixel = behindPixel;
+      }
+    }
+    wasInFront = rayZ > sceneZ;
 
     count = float(i);
   }
 
   // Binary search refinement
-  if (pixelStride > 1.0 && intersect) {
+  if (pixelStride > 1.0 && intersect && !refined) {
     float originalStride = pixelStride * 0.5;
     float stride = originalStride;
+
+    // The search can end on a probe that does not intersect, which near a
+    // silhouette lies off the object the ray hit. Report the closest probe
+    // that did.
+    vec4 hitPQK = PQK;
+    vec2 hitPQKPixel = hitPixel;
 
     PQK -= dPQK;
     dPQK /= pixelStride;
@@ -241,10 +286,17 @@ bool traceScreenSpaceRay(
       hitPixel *= texelSize;
 
       originalStride *= 0.5;
-      stride = rayIntersectsDepth(zA, zB, hitPixel)
-        ? -originalStride
-        : originalStride;
+      if (rayIntersectsDepth(zA, zB, readSceneViewZ(hitPixel))) {
+        hitPQK = PQK;
+        hitPQKPixel = hitPixel;
+        stride = -originalStride;
+      } else {
+        stride = originalStride;
+      }
     }
+
+    PQK = hitPQK;
+    hitPixel = hitPQKPixel;
   }
 
   Q0.xy += dQ.xy * count;
@@ -324,13 +376,14 @@ vec3 sampleGGX(const vec3 n, const vec2 u, float roughness) {
 
 void main() {
   vec4 geometry = texture2D(geometryBuffer, vUv);
-  float metalness = geometry.z;
+  float reflectance = geometry.z;
   float roughness = geometry.w;
   // Every early-out below must still write gl_FragColor. The output target is
   // never cleared (postprocessing's ShaderPass doesn't clear and the composer
   // disables autoClear), so a bare return leaves the fragment undefined, which
   // surfaces as tile-shaped garbage on tiled GPUs.
-  if (metalness < 0.01) {
+  // Same gate as coneTracing.frag.glsl, which reads this buffer's misses.
+  if (reflectance < 0.01 || roughness >= 1.0) {
     gl_FragColor = SSR_NO_HIT;
     return;
   }
@@ -356,9 +409,9 @@ void main() {
   vec3 rayDirection = reflect(normalize(rayOrigin), viewNormal);
 
   #ifndef GENERATE_RAY_TRACING_BUFFER
-    // Scale the GGX lobe by the reflectivity mask so barely-reflective
-    // surfaces don't scatter their rays.
-    float scaledRoughness = metalness * roughness;
+    // Scale the GGX lobe by the reflectance so barely-reflective surfaces
+    // don't scatter their rays.
+    float scaledRoughness = reflectance * roughness;
     if (scaledRoughness > 0.0001) {
       rayDirection = sampleGGX(
         rayDirection,
@@ -404,6 +457,14 @@ void main() {
     rayDirection
   );
 
+  // A hit the fades cancel must read as a miss: the resolve pass averages the
+  // hit coordinates of every valid neighbour, and a ray that ran to the screen
+  // border would drag that average off the reflected object.
+  if (alpha <= 0.0) {
+    gl_FragColor = SSR_NO_HIT;
+    return;
+  }
+
   // Ref: https://willpgfx.com/2015/07/screen-space-glossy-reflections/
   #ifdef GENERATE_RAY_TRACING_BUFFER
 
@@ -419,8 +480,10 @@ void main() {
     float hitDepth = readDepth(hitPixel);
     gl_FragColor = vec4(hitPixel.x, hitPixel.y, hitDepth, rdotv * alpha);
   #else
-    // Premultiplied, matching the cone tracing path so that either buffer can
-    // be composited with the same blend and filtered without haloing.
+    // Premultiplied, with the Fresnel term in alpha, matching the cone
+    // tracing path so that either buffer composites the same way.
+    float dotNV = clamp(abs(dot(viewNormal, -normalize(viewPosition))), 0.0, 1.0);
+    alpha *= F_Schlick(vec3(reflectance), 1.0, dotNV).g;
     vec3 color = texture2D(inputBuffer, hitPixel).rgb;
     gl_FragColor = vec4(color * alpha, alpha);
   #endif

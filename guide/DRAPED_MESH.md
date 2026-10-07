@@ -90,7 +90,7 @@ To add draping support to a custom mesh descriptor:
 
 1. Use `DrapedMesh` as the instance type
 2. Override `getPassKey()` to return `"draped"` when draping is enabled
-3. Switch materials between lit (normal) and unlit (draped) modes
+3. Optionally use an unlit material while draped, when the drape should ignore lighting, or shade a lit one with the ellipsoid normal via `setDrapeGroundNormals(material, false)`. Then override `getRequiredBuffers()` to return `[]`: the base class requires `globeNormal` in the draped pass, since a lit drape reads the terrain normal from the globe-normal copy by default
 
 ```typescript
 import {
@@ -98,24 +98,23 @@ import {
   DrapedMesh,
   type MeshConfig,
   type MeshUpdate,
+  type GBufferName,
   type PassKey,
   type ViewContext,
   Color,
 } from "@navaramap/three";
 import { BoxGeometry, MeshBasicMaterial, MeshLambertMaterial } from "three";
 
-type MyDescription = {
-  myBox?: {
-    width?: number;
-    height?: number;
-    depth?: number;
-    color?: Color;
-    draped?: boolean;
-  };
+type MyProperties = {
+  width?: number;
+  height?: number;
+  depth?: number;
+  color?: Color;
 };
 
-type MyConfig = MeshConfig & MyDescription;
-type MyUpdate = MeshUpdate & MyDescription;
+// `draped` is creation-only, so it is left out of the update type.
+type MyConfig = MeshConfig & { myBox?: MyProperties & { draped?: boolean } };
+type MyUpdate = MeshUpdate & { myBox?: MyProperties };
 
 class MyDrapedDesc extends MeshDesc<
   MyConfig,
@@ -138,7 +137,7 @@ class MyDrapedDesc extends MeshDesc<
       cfg.depth ?? 1000,
     );
 
-    // Use unlit material when draped (no lighting on terrain surface)
+    // Unlit while draped, so the drape ignores the terrain lighting
     const material = draped
       ? new MeshBasicMaterial({ color: cfg.color?.raw ?? 0xffffff })
       : new MeshLambertMaterial({ color: cfg.color?.raw ?? 0xffffff });
@@ -154,36 +153,31 @@ class MyDrapedDesc extends MeshDesc<
     return super.getPassKey();
   }
 
-  onUpdateConfig(updates: MyUpdate): void {
-    if (updates.myBox?.draped !== undefined && this._instance) {
-      this._instance.drapedEnable = updates.myBox.draped;
-      // Swap material for appropriate lighting mode
-    }
-    super.onUpdateConfig(updates);
+  // The unlit drape samples no G-buffer.
+  override getRequiredBuffers(): readonly GBufferName[] {
+    return [];
   }
 }
 ```
 
-### Dynamic Toggling
+### Changing the Draped State
 
-The `draped` property can be changed at runtime. When toggling, you need to:
+The render pass patches a draped material's shader once and never reverts it, so a material cannot leave the draped pass. `BoxMeshDesc` and `CylinderMeshDesc` therefore fix `draped` at creation; delete the mesh and add it again to change it.
+
+A descriptor that changes it in `onUpdateConfig()` must, before calling `super.onUpdateConfig()`:
 
 1. Update `drapedEnable` on the DrapedMesh instance
-2. Swap the material (draped meshes use unlit materials since they render on the terrain surface)
-3. Call `onPassKeyChange()` (handled by the base class when config changes trigger `getPassKey()` to return a different value)
+2. Replace the material with a new one, re-applying everything set up on the old one (shadow material, selective-effect uniforms, picking hooks)
 
-```typescript
-// Toggle draping at runtime
-layer.update({ myBox: { draped: true } });
-
-// Toggle back to normal rendering
-layer.update({ myBox: { draped: false } });
-```
+The base class then moves the mesh to the new scene and re-derives the G-buffer configuration. When the `globeNormal` copy would add a normal attachment past the device's `MAX_DRAW_BUFFERS`, the view logs an error and keeps the previous buffers, so the drape is shaded with a stale terrain normal. `PolygonMeshDesc` does this for `clampToGround`.
 
 ### Constraints
 
 - **The mesh must cover the terrain geometry.** The stencil test works by detecting where the mesh volume intersects the terrain surface. If the mesh does not extend through the terrain, nothing will be rendered.
-- **Draped meshes use unlit materials.** Since the draped result is painted onto the terrain surface, standard lighting on the mesh itself is not meaningful. Use `MeshBasicMaterial` instead of lit materials like `MeshLambertMaterial` or `MeshStandardMaterial`.
+- **The material's depth is clamped to the far plane.** The render pass patches every draped material shaped like three's `ShaderLib` ones so a volume reaching past the far plane is not clipped (see RENDERING_PIPELINE.md §7). A custom `ShaderMaterial` is not patched, so its volume must stay within the far plane.
+- **Lit materials are shaded at the terrain.** The render pass rewrites a draped lit material shaped like three's `ShaderLib` ones (see `setupMaterialForDrape` for the shader chunks it needs) to use the terrain normal and the ground position under each pixel (`setDrapeGroundNormals(material, false)` switches to the ellipsoid normal there, so the descriptor need not require `globeNormal`), including directional shadows when `receiveShadow` is set (see RENDERING_PIPELINE.md §7). Point and spot light shadows and `envMap` are not supported. `DrapedMesh` casts no shadow while draped, since its volume extends far above and below the ground; `castShadow` takes effect when `drapedEnable` is `false`.
+- **A custom `ShaderMaterial` is shaded on its volume.** It is not rewritten, so anything depending on the fragment's position (lighting, textures by world position) follows whichever back face is drawn at the pixel.
+- **Picking needs no extra work.** A `DrapedMesh` that implements `PickableMesh` is stencil-clipped against the globe depth in the pick render too, so it is hit only where it meets the terrain.
 
 ## Built-in Support
 
@@ -203,7 +197,4 @@ const layer = view.addLayer<BoxMeshDesc>({
   },
   matrixWorld: someMatrix,
 });
-
-// Dynamic toggle
-layer.update({ box: { draped: false } });
 ```

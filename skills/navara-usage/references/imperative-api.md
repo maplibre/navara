@@ -42,6 +42,7 @@ const ecef = view.pickTerrainPosition(x, y);                  // terrain only
 const ecef2 = view.pickDepthPosition(x, y);                   // anything in the depth buffer
 const h = view.sampleTerrainHeight({ lat, lng });             // degrees in
 const unobserve = view.observeTerrainHeightAt({ lat, lng }, (height) => { ... });
+const stop = view.observeTerrainHeightRange(extent, ({ min, max }) => { ... }); // min/max ground height over an extent (degrees); fires as overlapping tiles load
 const [g] = await view.sampleTerrainMostDetailed(terrainSource, [{ lat, lng }]); // fetches max-LOD tiles; g.height / g.level
 ```
 

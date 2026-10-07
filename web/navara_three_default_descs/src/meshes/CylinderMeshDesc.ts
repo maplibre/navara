@@ -38,16 +38,20 @@ type Description = {
     castShadow?: boolean;
     receiveShadow?: boolean;
     effectIds?: string[];
-    /**
-     * To drape the mesh properly on the terrain,
-     * the mesh must cover the terrain.
-     */
-    draped?: boolean;
   };
 };
 
-export type CylinderMeshConfig = MeshConfigWithSelectiveEffect &
-  Description & { pickable?: boolean };
+export type CylinderMeshConfig = MeshConfigWithSelectiveEffect & {
+  cylinder?: Description["cylinder"] & {
+    /**
+     * To drape the mesh properly on the terrain,
+     * the mesh must cover the terrain. Fixed at creation; remove and re-add
+     * the mesh to change it.
+     */
+    draped?: boolean;
+  };
+  pickable?: boolean;
+};
 
 export type CylinderMeshUpdate = MeshUpdateWithSelectiveEffect & Description;
 
@@ -144,30 +148,6 @@ export class CylinderMeshDesc extends MeshDescWithSelectiveEffect<
     if (updates.cylinder && this._instance) {
       const cfg = updates.cylinder;
       const origin = this.config.cylinder;
-
-      // Handle draped change BEFORE super.onUpdateConfig() so getPassKey() returns correct value
-      if (cfg.draped !== undefined && origin) {
-        const wasChanged = origin.draped !== cfg.draped;
-        origin.draped = cfg.draped;
-        this._instance.drapedEnable = cfg.draped;
-
-        // Swap material between lit and unlit
-        if (wasChanged) {
-          this.ctx.removeShadowMaterial(this._instance.material);
-          this._instance.material.dispose();
-          const newMaterial = this.createMaterial(origin);
-          this._instance.material = newMaterial;
-          if (!cfg.draped) {
-            this.ctx.applyShadowMaterial(newMaterial);
-          }
-          // Re-setup SelectiveEffect uniforms for the new material
-          if (newMaterial instanceof MeshLambertMaterial) {
-            setupSelectiveEffectUniforms(newMaterial);
-          }
-          // Re-inject picking hooks into the new material (preserves batchId)
-          this.pickWrapper?.syncMaterials();
-        }
-      }
 
       // Update geometry if dimensions changed
       if (

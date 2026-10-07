@@ -14,7 +14,7 @@ use navara_camera::{
 };
 use navara_component::{Deleted, Rendered};
 use navara_core::{
-    CRS, ElevationDecoder, LLE, LngLat, Radians, WGS84_64, WGS84_A_64, camera_zoom_level,
+    CRS, ElevationDecoder, Extent, LLE, LngLat, Radians, WGS84_64, WGS84_A_64, camera_zoom_level,
     zoom_level_to_camera_height,
 };
 use navara_data_requester::DataRequester;
@@ -35,8 +35,9 @@ use navara_math::{FloatType, Transform, Vec3};
 use navara_source::{Source, SourceStore};
 use navara_texture_fragment::{TextureFragmentLoadedEvent, TextureFragmentStatus};
 use navara_tile_component::{
-    MartiniComponent, RasterTileQuadtree, TerrainHeightObserver, TerrainTile, TerrainTileQuadtree,
-    TileHandle, TileTerrainDataRequesterQuery, VectorTileQuadtree, compute_terrain_height_at_point,
+    MartiniComponent, RasterTileQuadtree, TerrainHeightObserver, TerrainHeightRangeObserver,
+    TerrainTile, TerrainTileQuadtree, TileHandle, TileTerrainDataRequesterQuery,
+    VectorTileQuadtree, compute_terrain_height_at_point, terrain_height_range,
 };
 use navara_vector_tile::{LayerResources, VectorResolveRevision, resolve_vector_tile_states};
 use navara_window::{Window, WindowResizeEvent};
@@ -1219,6 +1220,16 @@ impl App {
             .write_message(CameraEvent::RotateAroundAxis { axis, angle });
     }
 
+    /// See [`terrain_height_range`]. `None` before the terrain quadtree
+    /// exists.
+    pub fn sample_terrain_height_range(
+        &self,
+        extent: Extent<FloatType, Radians>,
+    ) -> Option<(FloatType, FloatType)> {
+        let qt = self.app.world().get_resource::<TerrainTileQuadtree>()?;
+        Some(terrain_height_range(qt, extent))
+    }
+
     pub fn sample_terrain_height(&mut self, lle: LLE<FloatType, Radians>) -> Option<FloatType> {
         let world = self.app.world_mut();
 
@@ -1249,6 +1260,28 @@ impl App {
             .id();
 
         e_id.to_bits()
+    }
+
+    pub fn add_terrain_height_range_observer(&mut self, extent: Extent<FloatType, Radians>) -> u64 {
+        let world = self.app.world_mut();
+
+        let e_id = world
+            .commands()
+            .spawn(TerrainHeightRangeObserver {
+                extent,
+                range: None,
+            })
+            .id();
+
+        e_id.to_bits()
+    }
+
+    pub fn remove_terrain_height_range_observer(&mut self, bits: u64) {
+        let world = self.app.world_mut();
+        let entity = Entity::from_bits(bits);
+        if world.get_entity(entity).is_ok() {
+            world.commands().entity(entity).despawn();
+        }
     }
 
     pub fn remove_terrain_height_observer(&mut self, bits: u64) {

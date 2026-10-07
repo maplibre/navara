@@ -112,6 +112,7 @@ export class SSRMaterial extends ShaderMaterial {
         pixelZSize: new Uniform(pixelZSize),
         pixelStride: new Uniform(pixelStride),
         pixelStrideZCutoff: new Uniform(pixelStrideZCutoff),
+        pixelRatio: new Uniform(1),
         maxRayDistance: new Uniform(maxRayDistance),
         screenEdgeFadeStart: new Uniform(screenEdgeFadeStart),
         eyeFadeStart: new Uniform(eyeFadeStart),

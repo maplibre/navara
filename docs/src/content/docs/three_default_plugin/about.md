@@ -37,7 +37,7 @@ await view.init({ canvas: document.getElementById("canvas") });
 
 The following descriptors are automatically registered during the plugin's `init()`:
 
-**Mesh descriptors (22 types):** `rain`, `snow`, `sky`, `skyBox`, `stars`, `box`, `sphere`, `glowGlobe`, `cylinder`, `tube`, `plane`, `gltfModel`, `splat`, `axesHelper`, `arrowHelper`, `arcLines`, `smoothLines`, `boxes`, `spheres`, `planes`, `cylinders`, `gltfModels`
+**Mesh descriptors (24 types):** `rain`, `snow`, `sky`, `skyBox`, `stars`, `box`, `sphere`, `glowGlobe`, `cylinder`, `tube`, `plane`, `gltfModel`, `splat`, `axesHelper`, `arrowHelper`, `arcLines`, `polygon`, `polyline`, `smoothLines`, `boxes`, `spheres`, `planes`, `cylinders`, `gltfModels`
 
 **Effect descriptors (14 types):** `aerialPerspective`, `rainDrop`, `selectiveBloom`, `selectiveOutline`, `clouds`, `fogLight`, `lensFlare`, `ssao`, `ssr`, `depthOfField`, `colorGradingLUT`, `toneMapping`, `smaa`, `fxaa`
 

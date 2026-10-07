@@ -262,7 +262,7 @@ sidebar:
 
 **Description:** 太陽の鏡面反射を GGX のマイクロファセットローブで加算します。[`irradiance`](#irradiance) のライティングパスは拡散光だけなので、このオプションが無いと反射的なマテリアルもつや消しのままになります。ハイライトは [`shadow`](#shadow) の項が弱めるのと同じ太陽光で照らされるため、影の中や雲の影の下では消えます。
 
-面がどれだけ反射するかはエフェクトのオプションではなくマテリアルの性質です。model と 3D Tiles では glTF の metalness、それ以外では material の reflectivity が使われ、roughness がハイライトの広がりを決めます。反射率が `0.01` 未満の面は計算されないため、地形、polyline、sprite、text はマテリアルが指定しない限りつや消しのままです。
+面がどれだけ反射するかはエフェクトのオプションではなくマテリアルの性質です。model と 3D Tiles では glTF の metalness、それ以外では material の reflectivity がそのまま垂直入射時の反射率として使われ、roughness がハイライトの広がりを決めます。反射率が `0.01` 未満の面は計算されないため、地形、polyline、sprite、text はマテリアルが指定しない限りつや消しのままです。
 
 [`shadow`](#shadow) と同様に `irradiance: true` と [`useNormalBuffer`](#usenormalbuffer) が必要です。[`albedoScale`](#albedoscale) は反射と拡散光を一緒に暗くします。
 

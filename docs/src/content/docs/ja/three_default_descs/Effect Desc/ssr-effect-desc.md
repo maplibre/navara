@@ -21,13 +21,13 @@ sidebar:
 
 **Type:** `Texture | null | undefined`
 
-**Description:** 反射計算に使用するカスタムのジオメトリバッファです。未指定または`null`の場合はエンジンのMRTノーマルバッファが使用され、マテリアルがreflectivityを書き込んだ場所（例: `water: true`のポリゴン）にSSRが適用されます。独自のスクリーンアラインドテクスチャを渡すことで、SSRを適用する場所をアプリケーション側で完全に制御できます。例えば動的に描画される水たまりなどです。
+**Description:** 反射計算に使用するカスタムのジオメトリバッファです。未指定または`null`の場合はエンジンのMRTノーマルバッファが使用され、マテリアルが反射率と`1`未満のroughnessを書き込んだ場所にSSRが適用されます。model と 3D Tiles（glTF の metalness）、`reflectivity`を指定したポリゴンと地形（例: `water: true`のポリゴン）が該当します。独自のスクリーンアラインドテクスチャを渡すことで、SSRを適用する場所をアプリケーション側で完全に制御できます。例えば動的に描画される水たまりなどです。
 
 各テクセルはエンジンのGバッファエンコーディングに従う必要があります:
 
 - `.xy`: octahedralパックされた**ビュー空間**法線（`@takram/three-geospatial/shaders`の`packing`チャンクの`packNormalToVec2`）
-- `.z`: reflectivity/metalnessマスク。値が`0.01`未満のピクセルではSSRがスキップされます。またレイトレーシングシェーダはこの`.z`をroughnessのベース値としても使用します
-- `.w`: roughness。cone tracing有効時（既定）はブラーのコーン角を制御し、cone tracing無効時は`.z`に乗算されてGGXレイジッタのroughness（`.z * .w`）になります
+- `.z`: 垂直入射時の反射率（F0）。例えば水は`0.02`、その他の誘電体は`0.04`、鏡は`1`です。反射のフレネル強度を決めるため、値が小さいと真上から見たときは弱く、浅い角度から見たときは強く反射します。値が`0.01`未満のピクセルではSSRがスキップされます
+- `.w`: roughness。値が`1`のピクセルではSSRがスキップされます。cone tracing有効時（既定）はブラーのコーン角を制御し、cone tracing無効時は`.z`に乗算されてGGXレイジッタのroughness（`.z * .w`）になります
 
 テクスチャは正規化スクリーンUVでサンプリングされるため、描画バッファと同じサイズにしてください（パックされた法線は符号付きの値なので`HalfFloatType`を使用します）。リサイズ時にサイズを追従させるのはアプリケーションの責任です。テクスチャの*内容*の更新（毎フレームのrender-to-texture）は自動的に反映されます。`update()`呼び出しが必要なのはテクスチャ*オブジェクト*を差し替える場合のみです。オプションを`null`に戻すとMRTノーマルバッファにリセットされます:
 
@@ -134,7 +134,7 @@ const sceneNormals = mrtPass?.normalBuffer; // Texture | undefined
 
 **Type:** `number | undefined`
 
-**Description:** スクリーンスペースに沿ったレイマーチングのステップサイズをピクセル単位で指定します。
+**Description:** スクリーンスペースに沿ったレイマーチングのステップサイズをピクセル単位で指定します。ステップにはレンダラーのピクセル比が掛かるため、`iterations` が届く画面上の範囲はディスプレイの解像度密度によらず同じになります。
 
 **Default:** `5`
 
@@ -152,16 +152,16 @@ const sceneNormals = mrtPass?.normalBuffer; // Texture | undefined
 
 **Type:** `number | undefined`
 
-**Description:** 遠方エリアでピクセルストライドを減らすための深度カットオフ値を指定します。
+**Description:** `pixelStride` が 1 ピクセルまで縮む視距離を指定します。この距離より遠い面から出るレイは 1 ピクセルずつ進むため、届く範囲は最大 `iterations` ピクセルになります。遠い面の反射が途中で切れる場合は大きくしてください。
 
-**Default:** `500`
+**Default:** `1000`
 
 **Example:**
 
 ```typescript
 {
   ssr: {
-    pixelStrideZCutoff: 750,
+    pixelStrideZCutoff: 2000,
   }
 }
 ```
@@ -368,24 +368,6 @@ const sceneNormals = mrtPass?.normalBuffer; // Texture | undefined
 {
   ssr: {
     coneTracingIteration: 8,
-  }
-}
-```
-
-### coneTracingIor
-
-**Type:** `number | undefined`
-
-**Description:** コーントレーシングの屈折率(IOR: Index of Refraction)を指定します。一般的な値は1.0から2.0の範囲です。
-
-**Default:** `1.5`
-
-**Example:**
-
-```typescript
-{
-  ssr: {
-    coneTracingIor: 1.5,
   }
 }
 ```

@@ -127,6 +127,19 @@ export {
   type InstancedGltfModelEvent,
 } from "./InstancedGltfModelMeshDesc";
 
+export {
+  PolygonMeshDesc,
+  type PolygonMeshConfig,
+  type PolygonMeshStyle,
+  type PolygonMeshUpdate,
+} from "./PolygonMeshDesc";
+export {
+  PolylineMeshDesc,
+  type PolylineMeshConfig,
+  type PolylineMeshStyle,
+  type PolylineMeshUpdate,
+} from "./PolylineMeshDesc";
+
 // Mesh implementations
 export { SkyMesh, type SkyMeshOptions } from "./skyMesh";
 export { RainMesh, type RainConfig, DefaultRainConfig } from "./rain";

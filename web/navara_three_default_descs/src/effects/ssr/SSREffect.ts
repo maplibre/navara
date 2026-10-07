@@ -43,7 +43,6 @@ export type SSREffectOptions = {
   coneTracingFadeEnd?: number;
   coneTracingMaxDistance?: number;
   coneTracingIteration?: number;
-  coneTracingIor?: number;
   resolveKernelSize?: number;
 } & Omit<SSRMaterialParameters, "inputBuffer" | "depthBuffer">;
 
@@ -77,7 +76,6 @@ export class SSREffect extends Effect {
       coneTracingFadeEnd,
       coneTracingMaxDistance,
       coneTracingIteration,
-      coneTracingIor,
       resolveKernelSize,
       useConeTracing,
       ...others
@@ -124,7 +122,6 @@ export class SSREffect extends Effect {
       specularBuffer: null,
       indirectSpecularBuffer: null,
       iteration: coneTracingIteration,
-      ior: coneTracingIor,
       resolveKernelSize,
     });
 
@@ -200,6 +197,8 @@ export class SSREffect extends Effect {
     inputBuffer: WebGLRenderTarget,
     deltaTime?: number,
   ): void {
+    this.ssrMaterial.uniforms.pixelRatio.value = renderer.getPixelRatio();
+
     // First pass: ray tracing
     this.ssrPass.render(renderer, inputBuffer, this.renderTarget);
 
@@ -374,13 +373,6 @@ export class SSREffect extends Effect {
   }
   set coneTracingIteration(value: number) {
     this.coneTracingPass.coneTracingMaterial.iteration = value;
-  }
-
-  get coneTracingIor(): number {
-    return this.coneTracingPass.coneTracingMaterial.ior;
-  }
-  set coneTracingIor(value: number) {
-    this.coneTracingPass.coneTracingMaterial.ior = value;
   }
 
   get resolveKernelSize(): number {

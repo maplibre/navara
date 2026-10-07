@@ -27,9 +27,8 @@ import type {
  * - Batch texture attributes (color, show, height, lineWidth)
  * - RTE (Relative-To-Eye) support for high-precision coordinates
  *
- * Supports ShaderMaterial with custom polyline shaders.
- * Note: Unlike polygon materials, polylines don't support opacity/transparent/wireframe
- * as these are managed via shader uniforms and custom shader code.
+ * Supports ShaderMaterial with custom polyline shaders. `opacity` reaches the
+ * volume shader as a uniform; it blends only with `transparent`.
  *
  * @param material - The Three.js ShaderMaterial to enhance
  */
@@ -76,6 +75,9 @@ export function createPolylineBaseEnhancer(
         viewportAndPixelRatio: props.viewportAndPixelRatio,
         frustumNearFar: props.frustumNearFar,
         frustumRatio: props.frustumRatio,
+        globeDepth: props.globeDepth,
+        globeNormal: props.globeNormal,
+        inverseProjectionMatrix: props.inverseProjectionMatrix,
       });
       updateMaterialProps(material, mergedProps, state.isTexturized);
     },
@@ -85,12 +87,18 @@ export function createPolylineBaseEnhancer(
 
       // Capture previous state for shader-affecting properties
       const prevIsTexturized = state.isTexturized;
+      const prevGroundCulling = state.groundCulling;
+      const prevUseGroundNormals = state.useGroundNormals;
 
       state = updateState(props, state);
       mutates.update(state);
 
       // Trigger shader recompilation if shader-affecting state changed
-      if (state.isTexturized !== prevIsTexturized) {
+      if (
+        state.isTexturized !== prevIsTexturized ||
+        state.groundCulling !== prevGroundCulling ||
+        state.useGroundNormals !== prevUseGroundNormals
+      ) {
         material.needsUpdate = true;
       }
 
@@ -116,6 +124,8 @@ export function createPolylineBaseEnhancer(
       // Return cache key based on state that affects shader sources/defines.
       return JSON.stringify({
         isTexturized: state.isTexturized,
+        groundCulling: state.groundCulling,
+        useGroundNormals: state.useGroundNormals,
         useRTE: state.useRTE,
         // Custom defines that may influence shader variants
         userDataDefines: material.userData?.defines ?? undefined,

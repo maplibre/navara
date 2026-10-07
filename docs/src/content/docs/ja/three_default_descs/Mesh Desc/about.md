@@ -24,6 +24,8 @@ navara_threeでは、以下のMeshDescタイプが利用可能です:
 | [InstancedGltfModelMeshDesc](../instanced-gltf-model-mesh-desc) | GPU インスタンシングを使用して GLTF/GLB モデルの複数コピーをレンダリングするDescriptor    |
 | [GlowGlobeMeshDesc](../glow-globe-mesh-desc)       | 地球の周りにフレネル効果による光彩(グロー)を表示するDescriptor                            |
 | [PlaneMeshDesc](../plane-mesh-desc)                | 平面(Plane)ジオメトリを描画するDescriptor                                                 |
+| [PolygonMeshDesc](../polygon-mesh-desc) | 座標列から単一のポリゴンを描画するDescriptor。平面・押し出し・地形へのクランプに対応 |
+| [PolylineMeshDesc](../polyline-mesh-desc) | 座標列から単一のポリラインを描画するDescriptor。指定の高さまたは地形へのクランプに対応 |
 | [InstancedPlaneMeshDesc](../instanced-plane-mesh-desc) | GPU インスタンシングを使用して複数の平面を1回の描画コールでレンダリングするDescriptor       |
 | [RainMeshDesc](../rain-mesh-desc)                  | 雨のパーティクルエフェクトを表示するDescriptor                                            |
 | [SkyBoxMeshDesc](../sky-box-mesh-desc)             | シンプルなスカイボックスを描画するDescriptor                                              |

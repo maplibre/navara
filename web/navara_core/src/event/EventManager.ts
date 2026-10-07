@@ -96,6 +96,7 @@ export class EventManager {
     texture_fragment_removed: [],
     texture_fragment_requested: [],
     update_sample_terrain_height: [],
+    update_terrain_height_range: [],
     worker_task_delegated: [],
     worker_task_removed: [],
     hillshade_backfilled: [],

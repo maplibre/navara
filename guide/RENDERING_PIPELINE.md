@@ -116,13 +116,13 @@ Attachment indices are **dynamic and packed** — three.js cannot express sparse
 MRT attachments, so enabled buffers are packed in a fixed order with no gaps
 and no placeholder textures:
 
-| attachment  | content                                                                                            | type               | when                      |
-| ----------- | -------------------------------------------------------------------------------------------------- | ------------------ | ------------------------- |
-| 0 `color`   | forward color (or albedo — see `lit`)                                                              | HalfFloat          | always                    |
-| 1 `normal`  | RG = octahedral view-space normal, B = metalness/reflectivity, A = roughness _(and blend factor!)_ | HalfFloat          | always                    |
-| packed next | `effectIds` — R = selective-effect bitmask                                                         | HalfFloat, Nearest | `buffers.selectiveEffect` |
-| packed next | `emissive` — RGB = HDR emissive                                                                    | HalfFloat          | `buffers.emissive`        |
-| packed next | `shadow` — R = shadow amount (0 = lit .. 1 = shadowed), G = albedo-output flag                     | UnsignedByte       | `buffers.shadow`          |
+| attachment  | content                                                                        | type               | when                      |
+| ----------- | ------------------------------------------------------------------------------ | ------------------ | ------------------------- |
+| 0 `color`   | forward color (or albedo — see `lit`)                                          | HalfFloat          | always                    |
+| 1 `normal`  | RG = octahedral view-space normal, B = F0, A = roughness _(and blend factor!)_ | HalfFloat          | always                    |
+| packed next | `effectIds` — R = selective-effect bitmask                                     | HalfFloat, Nearest | `buffers.selectiveEffect` |
+| packed next | `emissive` — RGB = HDR emissive                                                | HalfFloat          | `buffers.emissive`        |
+| packed next | `shadow` — R = shadow amount (0 = lit .. 1 = shadowed), G = albedo-output flag | UnsignedByte       | `buffers.shadow`          |
 
 Because indices shift, shader `layout(location = …)` values are delivered per
 material as defines (`GBUFFER_EFFECT_ID_LOCATION` etc.,
@@ -133,24 +133,27 @@ read `CustomRenderPass.textureIndex`, the `MRTPassEffectDesc` getters, or the
 disabled buffers. Fetch them **every frame** — a configuration change rebuilds
 the render target with new texture objects.
 
-**The normal buffer's B and A are not uniform quantities.** What lands there
-depends entirely on which material wrote the pixel, and nothing in the buffer
-says which:
+**The normal buffer's B is read as the reflectance at normal incidence (F0),
+and A as the roughness.** Writers store their material's own reflectance input
+there unconverted, so a model's metalness reaches readers as its F0 as is:
 
-| writer                                                               | B                                           | A                                                                  |
-| -------------------------------------------------------------------- | ------------------------------------------- | ------------------------------------------------------------------ |
-| model / 3D Tiles glTF (`MeshStandard`/`Physical`)                    | real `metalnessFactor`                      | real `roughnessFactor`                                             |
-| polygon                                                              | `reflectivity` ref, **default 0**           | `roughness` ref, **default `GBUFFER_PHONG_ROUGHNESS`**             |
-| terrain tile, `useNormal` on                                         | `tileReflectivity`, **default 0**           | draped slot's roughness, **default `GBUFFER_PHONG_ROUGHNESS`**     |
-| terrain watermask ocean                                              | 0.02 (water's F0)                           | 0.4 (Cox-Munk wave slopes)                                         |
-| terrain tile, `useNormal` off (`MeshBasicMaterial`)                  | forced 0                                    | 1.0, and **RG is NaN** (no `normal` attribute)                     |
-| polyline, outline, sprite, SDF text, points, custom `ShaderMaterial` | 0                                           | 1.0                                                                |
-| any other Lambert/Basic/Phong                                        | `reflectivity` (three's default is **1.0**) | 1.0                                                                |
-| any `transparent` material                                           | unchanged                                   | **forced 1.0** (`NVR_BLENDED`)                                     |
+| writer                                                               | B                                                                        | A                                                              |
+| -------------------------------------------------------------------- | ------------------------------------------------------------------------ | -------------------------------------------------------------- |
+| model / 3D Tiles glTF (`MeshStandard`/`Physical`)                    | real `metalnessFactor`                                                   | real `roughnessFactor`                                         |
+| polygon                                                              | `reflectivity` ref, **default 0**                                        | `roughness` ref, **default `GBUFFER_PHONG_ROUGHNESS`**         |
+| terrain tile, `useNormal` on                                         | `tileReflectivity`, **default 0**                                        | draped slot's roughness, **default `GBUFFER_PHONG_ROUGHNESS`** |
+| terrain watermask ocean                                              | 0.02 (water's F0)                                                        | 0.4 (Cox-Munk wave slopes)                                     |
+| terrain tile, `useNormal` off (`MeshBasicMaterial`)                  | 0                                                                        | 1.0, and **RG is NaN** (no `normal` attribute)                 |
+| polyline, outline, sprite, SDF text, points, custom `ShaderMaterial` | 0                                                                        | 1.0                                                            |
+| any other Lambert/Basic/Phong                                        | 0 (three's `reflectivity` is an env-map weight, not an F0)               | 1.0                                                            |
+| any `transparent` material                                           | unchanged                                                                | **forced 1.0** (`NVR_BLENDED`)                                 |
 
-So B is readable only as _one reflectance_ behind a small "is this reflective
-at all" threshold, which is how `ssr.frag.glsl`, `coneTracing.frag.glsl` and
-the aerial perspective's specular term all use it.
+B is a scalar and nothing derives a dielectric's 0.04 or a metal's tint from
+it: metalness 0 does not reflect and 1 is an untinted mirror. B below 0.01
+means "not reflective"; `ssr.frag.glsl`, `coneTracing.frag.glsl` and the
+aerial perspective's specular term all skip it, and feed B into a Schlick
+Fresnel term otherwise. SSR also skips A = 1, where its roughness fade is
+already zero, so the default glTF roughness costs no rays.
 
 A can be read at face value, and 0 means a mirror. That holds only because
 every writer without a real roughness defaults to a meaningful one CPU-side:
@@ -165,23 +168,34 @@ hole with its own floor only hides it from itself.
 ### Derived configuration
 
 There is no user-facing buffers option. The configuration is the **union of
-active effects' `getRequiredBuffers()`** (`selectiveBloom` →
+active effects' and meshes' `getRequiredBuffers()`** (`selectiveBloom` →
 `["selectiveEffect", "emissive"]`, `selectiveOutline` → `["selectiveEffect"]`,
-`aerialPerspective` with a lighting term → `["normal", "shadow"]`). The
-instance method defaults to the class's `static requiredBuffers`. A descriptor
-whose needs depend on its own configuration overrides it instead (the override
-shadows the static, so it declares no static) and emits
+`aerialPerspective` with a lighting term → `["normal", "shadow"]`, a draped
+`box`/`cylinder`/`polygon` mesh or a `polyline` mesh with `useGroundNormals` →
+`["globeNormal"]`). For effects the
+instance method defaults to the class's `static requiredBuffers`; for meshes it
+defaults to `["globeNormal"]` in the draped pass and `[]` elsewhere, since the
+render pass shades a draped lit material with the globe normal (§7). A
+descriptor whose needs depend on its own configuration overrides it instead
+(the override shadows the static, so it declares no static) and emits
 `gbufferRequirementsChanged` on the `ViewContext` whenever an update changes
-the result.
+the result. `MeshDesc.onPassKeyChange()` emits it for a mesh moving into or
+out of the draped pass. The result must follow from the config alone,
+because `addEffect`/`addMesh` read it for the `MAX_DRAW_BUFFERS` check before
+`onCreate()`.
 
-`ThreeView._syncGBuffers()` re-derives on `addEffect`, on handle deletion and
-on that event, then pushes the result to `CustomRenderPass.setBuffers()`. That
+`ThreeView._syncGBuffers()` re-derives on `addEffect`, on effect deletion, on
+`addMesh` and mesh deletion when that mesh has requirements, and on that
+event, then pushes the result to `CustomRenderPass.setBuffers()`. That
 rebuilds the render target **as a fresh object** (reconfiguring a live target
 in place leaves the renderer's cached GL state sampling a texture the
 framebuffer no longer writes) while keeping the color/normal/depth `Texture`
-identities, which effects like SSR capture at creation. Every derivation
-asserts the device's `gl.MAX_DRAW_BUFFERS`, so exceeding it throws from
-`addEffect` or from `update()` instead of producing an incomplete framebuffer.
+identities, which effects like SSR capture at creation. `addEffect` and
+`addMesh` throw for a descriptor whose buffers would exceed the device's
+`gl.MAX_DRAW_BUFFERS`. A requirement that grows later (an `update()`) is
+logged with `console.error` and the previous configuration is kept, rather
+than producing an incomplete framebuffer; the next re-derivation that fits
+applies.
 
 A configuration change reallocates attachments and recompiles shaders — add
 effects once and tune them via `update()`, don't add/remove per frame.
@@ -272,6 +286,11 @@ cost is the traversal alone.
   the G-buffer: it injects the pars chunk, the normal/effect/shadow writes at
   the end of `main()`, and the albedo-output override just before
   `#include <opaque_fragment>`.
+  It also adds three's `#include <packing>` to the lit fragment shaders
+  (lambert/phong/basic/standard/physical), which three omits. Patches to these
+  materials can call `unpackRGBAToDepth` and friends, and must not include
+  `<packing>` again: a second copy fails to compile. A custom
+  `ShaderMaterial` includes it itself.
 - Custom `ShaderMaterial` / `LineMaterial` bypass `ShaderLib` and opt in via
   `setupMaterialForMRT(material, { normal })`.
 - Raw `.glsl` shaders (`polyline`, `instancedSprite`, `sdfText`, tile chunks)
@@ -300,31 +319,75 @@ the ordering.
 
 `DrapedMesh.process()` paints a volume onto the terrain with a three-pass
 stencil test (depth-fail counting, then a final pass with
-`stencilFunc = NotEqual`, `side = BackSide`, `depthTest = false`).
+`stencilFunc = NotEqual`, `side = BackSide`, `depthTest = false`). The volume
+must be closed with outward-facing triangles: the counting relies on every
+view ray leaving through a back face.
+
+The back face a ray leaves through can lie far beyond the far plane, which
+drops to 1000 km near the ground: a wide clamp-to-ground volume reaches
+hundreds of kilometres below it (see `navara_geometry::ground_volume`). A
+clipped back face is never counted, and the drape vanishes around the camera.
+`setupMaterialForDrape` therefore clamps every draped material's depth to the
+far plane (`chunks/drape_depth_clamp_*`, after `<logdepthbuf_vertex>` /
+`<logdepthbuf_fragment>`): `gl_Position.z` is capped at `w` so nothing is
+clipped, and the depth is written per fragment, from the log depth's `w` or
+from the unclamped window depth, saturating at the far plane, which is still
+behind the terrain.
 
 The consequence that governs everything else: **the final pass has no depth
 test, so one pixel can be covered by several back faces** where the volume
-folds over a peak or the shape is non-convex. Every one of them is drawn, and
-the last wins. The drape therefore only looks like a flat decal while its
-shading is a pure function of screen position:
+folds over a peak or the shape is non-convex. Only the first one in triangle
+order is drawn, since it zeroes the stencil and the rest fail the test, and
+which one that is is arbitrary. The drape therefore only looks like a flat
+decal while its shading is a pure function of screen position.
+`setupMaterialForDrape` (in `mesh/DrapedMesh.ts`) makes it one by shading at
+the ground point under the pixel, reconstructed from the globe-depth copy along
+the fragment's view ray.
 
-- **Normal** — `setupMaterialForDrape` (in `mesh/DrapedMesh.ts`) swaps in the
-  terrain normal, sampled from the globe-normal copy at `gl_FragCoord`. The
-  mesh's own back-face normals describe the volume, not the ground.
-- **Shadows** — forced off (`receiveShadow` is an own accessor on `DrapedMesh`
-  that reports `false` while draped). The shadow lookup is driven by a
-  world-position varying, which is the one lighting input that still differs
-  between overlapping faces.
+It patches lit materials shaped like three's `ShaderLib` ones (the anchors are
+listed on the function) and leaves the rest shaded on the volume:
+`chunks/drape_ground_pars_fragment` goes right before `main`, and
+`chunks/drape_ground_fragment` right after `#include <normal_fragment_begin>`,
+so everything that reads `normal` or `vViewPosition` afterwards sees the
+ground: normal maps, the polygon enhancer's `origNormal` snapshot (its G-buffer
+normal and specular), and the lighting. The depth-to-eye-distance inverse,
+including the logarithmic depth case, is `chunks/globe_depth_pars_fragment`,
+shared with the ground `PolylineMeshDesc`. The drape binds the render pass's
+own refs to its copy targets, and the polyline binds the view's
+(`ViewContext.getGlobeDepthTextureUniform()`/`getGlobeNormalTextureUniform()`).
+Both are pointed at the copy targets every frame.
 
-Anything else world-position dependent reintroduces the artefact: point/spot
-lights, an `envMap`, or three's `fog` (unused here — atmospheric haze is the
-screen-space `aerialPerspective` effect, which is per-pixel and therefore
-safe).
+- **Normal** — the terrain normal, sampled from the globe-normal copy at
+  `gl_FragCoord`, used as is. A normal facing away from the camera is a real
+  terrain normal (e.g. a steep hillshade slope), not a missing one: an
+  unwritten texel decodes to the camera-facing (0, 0, 1). A globe that
+  writes no normals leaves the drape shaded with that. With
+  `NVR_DRAPE_ELLIPSOID_NORMAL` (set by `setDrapeGroundNormals(material,
+  false)`), the ellipsoid normal at the ground point is used instead and the
+  globe-normal copy is not read.
+- **Position** — `vViewPosition` is redefined to the ground point, so light
+  directions and CSM cascade selection use it.
+- **Directional shadows** — `chunks/ground_shadow_coord_fragment` computes
+  the shadow coordinates in the fragment shader from the ground point and the
+  terrain normal (for the normal bias), with the same matrices as
+  `<shadowmap_vertex>`: the stock `directionalShadowMatrix`, or
+  `nvrCsmShadowMatrixView` where navara_three_csm's view-space patch defines
+  `NVR_VIEW_SPACE_SHADOW` in the fragment shader. A program shares uniforms
+  between its stages, so no varying is needed. The ground `PolylineMeshDesc`
+  uses the same chunk.
 
-The globe-normal copy is produced by `globeNormalCopyPass` right after the
-globe render and before `_renderDrapedMesh`, so the ordering already works. It
-is kept at 1x1 unless a draped mesh exists or an effect declares
-`requiredBuffers: ["globeNormal"]`.
+`DrapedMesh` reports `castShadow` as `false` while draped (an own accessor),
+since the volume would cast its own shape.
+
+Point and spot light *shadows* and an `envMap` still read the volume's
+position and reintroduce the artefact. Three's `fog` is unused here
+(atmospheric haze is the screen-space `aerialPerspective` effect, which is
+per-pixel and therefore safe).
+
+The globe-normal and globe-depth copies are produced right after the globe
+render and before `_renderDrapedMesh`, so the ordering already works. The
+globe-normal copy is kept at 1x1 unless an effect or mesh requires
+`globeNormal`.
 
 ## 8. The `lit` system (deferred-lighting groundwork)
 

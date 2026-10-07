@@ -106,6 +106,10 @@ export function processEvent(ctx: EventContext, event: Events | undefined) {
     viewEvents.emit("_sample_terrain_height_received", ev),
   );
 
+  eventManager.forEachStack("update_terrain_height_range", (ev) =>
+    viewEvents.emit("_terrain_height_range_received", ev),
+  );
+
   // Process cancels before backfills, synchronously. Each cancel drops its
   // own matching pending backfills from the stack (see processHillshadeCanceled),
   // so the subsequent forEachStack only iterates surviving events.

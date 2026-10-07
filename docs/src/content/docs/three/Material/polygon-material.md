@@ -343,7 +343,7 @@ import { Color } from "@navaramap/three";
 
 **Type:** `number | undefined`
 
-**Description:** Specifies the reflectivity for post-processing or environment maps.
+**Description:** Specifies the reflectance at normal incidence (F0) that SSR and the aerial perspective's `specular` term read, for example `0.02` for water. Values below `0.01` disable both. It also weights the environment map when one is set.
 
 **Default:** `undefined`
 

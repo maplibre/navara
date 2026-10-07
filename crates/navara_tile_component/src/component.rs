@@ -58,6 +58,14 @@ pub struct TerrainHeightObserver {
     pub height: Option<FloatType>,
 }
 
+/// Watches the [`crate::terrain_height_range`] of `extent`. `range` is `None`
+/// until first computed.
+#[derive(Component, Debug, Clone)]
+pub struct TerrainHeightRangeObserver {
+    pub extent: Extent<FloatType, Radians>,
+    pub range: Option<(FloatType, FloatType)>,
+}
+
 /// Data for a single hillshade backfill event
 /// Contains all information needed to update hillshade textures in JS
 #[derive(Debug, Clone, Copy)]

@@ -745,7 +745,7 @@ if (ground.height !== undefined) {
 
 ### observeTerrainHeightAt()
 
-特定の位置での地形高さの変更を監視します。地形データが更新されるたびにコールバックが呼び出されます。
+特定の位置での地形高さの変更を監視します。コールバックは高さが最初にサンプリングされたときに呼ばれ、その位置の地形が読み込み済みなら登録直後に呼ばれます。その後は、位置を含む地形タイルが読み込まれて高さが変わるたびに呼ばれます。
 
 **Syntax:**
 
@@ -774,6 +774,81 @@ const lng = 139.7671;
 const cleanup = view.observeTerrainHeightAt({ lat, lng }, (height) => {
   console.log(`地形の高さが更新されました: ${height}m`);
 });
+
+// 後で監視を停止
+cleanup();
+```
+
+### sampleTerrainHeightRange()
+
+地理的な範囲内の地面の最低・最高の高さを同期的に取得します。`sampleTerrainHeight()` と同じくレンダリング用に読み込み済みの地形タイルだけを読み、地形タイルがまだ読み込まれていない範囲は `0` として扱います。地面を包み込む必要があるもの、たとえば地形の下から上まで届くボリュームの大きさを決めるときに使います。
+
+**Syntax:**
+
+```tsx
+sampleTerrainHeightRange(
+  extent: GeographicExtent,
+): { min: number; max: number } | undefined
+```
+
+**Parameters:**
+
+- `extent`: 地理的な範囲
+  - `west`: 西端の経度（度）
+  - `south`: 南端の緯度（度）
+  - `east`: 東端の経度（度）
+  - `north`: 北端の緯度（度）
+
+**Returns:**
+
+最低・最高の高さ（メートル、楕円体基準）。エンジンが地形をまだセットアップしていない場合は `undefined`
+
+**Example:**
+
+```tsx
+const range = view.sampleTerrainHeightRange({
+  west: 138.7,
+  south: 35.3,
+  east: 138.8,
+  north: 35.4,
+});
+
+if (range) {
+  console.log(`地面の高さ: ${range.min}m から ${range.max}m`);
+}
+```
+
+### observeTerrainHeightRange()
+
+範囲内の [`sampleTerrainHeightRange()`](#sampleterrainheightrange) の結果を監視します。コールバックは範囲が最初に計算されたときに呼ばれ、その後は範囲に重なる地形タイルが読み込まれて値が変わるたびに呼ばれます。
+
+**Syntax:**
+
+```tsx
+observeTerrainHeightRange(
+  extent: GeographicExtent,
+  cb: (range: { min: number; max: number }) => void,
+): () => void
+```
+
+**Parameters:**
+
+- `extent`: `sampleTerrainHeightRange()` と同じ、度単位の地理的な範囲。`west` は `east` 以下である必要があり、日付変更線をまたぐ範囲には対応していません。
+- `cb`: 最低・最高の高さ（メートル、楕円体基準）を受け取るコールバック
+
+**Returns:**
+
+監視を停止するクリーンアップ関数
+
+**Example:**
+
+```tsx
+const cleanup = view.observeTerrainHeightRange(
+  { west: 138.7, south: 35.3, east: 138.8, north: 35.4 },
+  ({ min, max }) => {
+    console.log(`地面の高さ: ${min}m から ${max}m`);
+  },
+);
 
 // 後で監視を停止
 cleanup();

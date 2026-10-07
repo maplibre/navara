@@ -107,13 +107,6 @@ function injectNormal(shader: ShaderLibShader): ShaderLibShader {
       /* glsl */ `#include <normal_pars_fragment>`,
     )
     .replace(
-      /* glsl */ `#include <common>`,
-      /* glsl */ `
-        #include <common>
-        #include <packing>
-      `,
-    )
-    .replace(
       /* glsl */ `#include <specularmap_fragment>`,
       /* glsl */ `
         #include <specularmap_fragment>
@@ -174,6 +167,15 @@ function injectGBuffer(
     ${packing}
     ${
       createReplacer(shader.fragmentShader)
+        // ShaderLib's lit materials lack <packing>. It is added once here, so
+        // patches must not include it again: a second copy fails to compile.
+        .replace(
+          /* glsl */ `#include <common>`,
+          /* glsl */ `
+            #include <common>
+            #include <packing>
+          `,
+        )
         .replace(
           /* glsl */ `#include <opaque_fragment>`,
           /* glsl */ `

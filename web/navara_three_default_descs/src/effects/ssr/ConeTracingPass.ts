@@ -1,7 +1,14 @@
-import { ShaderPass, CopyPass } from "postprocessing";
+import vertexShader from "@shaders/glsl/coneTracing.vert.glsl?raw";
+import fragmentShader from "@shaders/glsl/coneTracingPrefilter.frag.glsl?raw";
+import { ShaderPass } from "postprocessing";
 import {
   LinearMipmapLinearFilter,
+  NoBlending,
+  ShaderMaterial,
   Texture,
+  Uniform,
+  UnsignedByteType,
+  Vector2,
   WebGLRenderTarget,
   type WebGLRenderer,
   type TextureDataType,
@@ -19,7 +26,6 @@ export type ConeTracingPassOptions = {
   coneTracingFadeEnd?: number;
   coneTracingMaxDistance?: number;
   coneTracingIteration?: number;
-  coneTracingIor?: number;
   rayTracingBuffer?: Texture | null;
   normalBuffer?: Texture | null;
 } & ConeTracingMaterialParameters;
@@ -29,7 +35,6 @@ export const coneTracingPassOptionsDefaults = {
   coneTracingFadeEnd: coneTracingMaterialParametersDefaults.fadeEnd,
   coneTracingMaxDistance: coneTracingMaterialParametersDefaults.maxDistance,
   coneTracingIteration: coneTracingMaterialParametersDefaults.iteration,
-  coneTracingIor: coneTracingMaterialParametersDefaults.ior,
   resolveKernelSize: coneTracingMaterialParametersDefaults.resolveKernelSize,
   rayTracingBuffer: null,
   normalBuffer: null,
@@ -38,8 +43,11 @@ export const coneTracingPassOptionsDefaults = {
 export class ConeTracingPass extends ShaderPass {
   readonly coneTracingMaterial: ConeTracingMaterial;
 
-  readonly copyPass: CopyPass;
+  readonly prefilterMaterial: ShaderMaterial;
+  readonly prefilterPass: ShaderPass;
   readonly mippedRenderTarget: WebGLRenderTarget;
+
+  private compressColor = false;
 
   constructor(options?: ConeTracingPassOptions) {
     const { rayTracingBuffer, normalBuffer, ...others } = {
@@ -68,7 +76,22 @@ export class ConeTracingPass extends ShaderPass {
       minFilter: LinearMipmapLinearFilter,
     });
     material.colorBuffer = this.mippedRenderTarget.texture;
-    this.copyPass = new CopyPass(this.mippedRenderTarget, false);
+    this.prefilterMaterial = new ShaderMaterial({
+      name: "ConeTracingPrefilterMaterial",
+      fragmentShader,
+      vertexShader,
+      uniforms: {
+        inputBuffer: new Uniform(null),
+        depthBuffer: new Uniform(null),
+        exposure: new Uniform(1),
+        resolution: new Uniform(new Vector2(1, 1)),
+      },
+      blending: NoBlending,
+      toneMapped: false,
+      depthWrite: false,
+      depthTest: false,
+    });
+    this.prefilterPass = new ShaderPass(this.prefilterMaterial);
   }
 
   update(
@@ -76,7 +99,10 @@ export class ConeTracingPass extends ShaderPass {
     inputBuffer: WebGLRenderTarget,
     _deltaTime?: number,
   ) {
-    this.copyPass.render(renderer, inputBuffer, null);
+    const exposure = this.compressColor ? renderer.toneMappingExposure : 0;
+    this.prefilterMaterial.uniforms.exposure.value = exposure;
+    this.coneTracingMaterial.uniforms.uPrefilterExposure.value = exposure;
+    this.prefilterPass.render(renderer, inputBuffer, this.mippedRenderTarget);
   }
 
   override initialize(
@@ -85,7 +111,14 @@ export class ConeTracingPass extends ShaderPass {
     frameBufferType: TextureDataType,
   ): void {
     super.initialize(renderer, alpha, frameBufferType);
-    this.copyPass.initialize(renderer, alpha, frameBufferType);
+    this.prefilterPass.initialize(renderer, alpha, frameBufferType);
+    if (frameBufferType !== undefined) {
+      this.mippedRenderTarget.texture.type = frameBufferType;
+    }
+    // The compressed colour spans only [0, 1 / exposure), which 8-bit would
+    // quantise into a few dozen levels that the inverse then stretches.
+    this.compressColor =
+      this.mippedRenderTarget.texture.type !== UnsignedByteType;
   }
 
   setDepthTexture(
@@ -93,6 +126,7 @@ export class ConeTracingPass extends ShaderPass {
     _depthPacking?: DepthPackingStrategies,
   ): void {
     this.coneTracingMaterial.depthBuffer = depthTexture;
+    this.prefilterMaterial.uniforms.depthBuffer.value = depthTexture;
   }
 
   /**
@@ -106,6 +140,7 @@ export class ConeTracingPass extends ShaderPass {
   override setSize(width: number, height: number): void {
     this.coneTracingMaterial.setSize(width, height);
     this.mippedRenderTarget.setSize(width, height);
+    this.prefilterMaterial.uniforms.resolution.value.set(width, height);
 
     // Calculate number of mip levels
     const numMips = Math.floor(Math.log2(Math.max(width, height))) + 1;

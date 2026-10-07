@@ -2,7 +2,7 @@
 // TS-side mirror: web/navara_three/src/material/gbufferLayout.ts.
 //
 //   location 0: gl_FragColor (color)
-//   location 1: normalBuffer (RG=packed view-space normal, B=metalness/reflectivity, A=roughness)
+//   location 1: normalBuffer (RG=packed view-space normal, B=reflectance at normal incidence (F0), A=roughness)
 //   optional, packed after the fixed ones at computed locations:
 //     effectIdBuffer (R=selective-effect bitmask) – USE_GBUFFER_SELECTIVE_EFFECT
 //     emissiveBuffer (RGB=emissive, HDR half-float) – USE_GBUFFER_EMISSIVE
@@ -46,7 +46,7 @@ layout(location = GBUFFER_NORMAL_LOCATION) out vec4 normalBuffer;
 #endif
 
 // Every normal write goes through this, so the output can be compiled out
-// wholesale. `blue` is metalness/reflectivity; unlit writers pass 0.0 and an
+// wholesale. `blue` is the reflectance at normal incidence (F0); unlit writers pass 0.0 and an
 // alpha of 1.0 (they have no roughness to store).
 #define GBUFFER_WRITE_NORMAL(n, blue, roughnessValue) normalBuffer = vec4(packNormalToVec2(n), blue, GBUFFER_NORMAL_ALPHA(roughnessValue));
 #else

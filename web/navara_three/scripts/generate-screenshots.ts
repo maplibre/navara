@@ -173,7 +173,7 @@ const PAGE_CONFIGS: Record<string, PageConfig> = {
     waitTime: 10000,
   },
   "effect/ssr": {
-    waitTime: 15000,
+    waitTime: 60000,
   },
 };
 

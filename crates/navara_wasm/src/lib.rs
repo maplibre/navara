@@ -1006,6 +1006,17 @@ impl Core {
         self.app.sample_terrain_height((&lle).into())
     }
 
+    /// `[min, max]` height of the ground rendered over `extent` (radians).
+    #[wasm_bindgen(js_name = sampleTerrainHeightRange)]
+    pub fn sample_terrain_height_range(
+        &mut self,
+        extent: navara_wasm_types::ExtentRadianF32,
+    ) -> Option<Vec<FloatType>> {
+        self.app
+            .sample_terrain_height_range(extent.into())
+            .map(|(min, max)| vec![min, max])
+    }
+
     #[wasm_bindgen(js_name = registerSampleTerrainHeightEvent)]
     pub fn register_sample_terrain_height_event(&mut self, lle: LLE) -> u64 {
         self.app.add_terrain_height_observer((&lle).into())
@@ -1014,6 +1025,19 @@ impl Core {
     #[wasm_bindgen(js_name = unregisterSampleTerrainHeightEvent)]
     pub fn unregister_sample_terrain_height_event(&mut self, bits: u64) {
         self.app.remove_terrain_height_observer(bits);
+    }
+
+    #[wasm_bindgen(js_name = registerTerrainHeightRangeEvent)]
+    pub fn register_terrain_height_range_event(
+        &mut self,
+        extent: navara_wasm_types::ExtentRadianF32,
+    ) -> u64 {
+        self.app.add_terrain_height_range_observer(extent.into())
+    }
+
+    #[wasm_bindgen(js_name = unregisterTerrainHeightRangeEvent)]
+    pub fn unregister_terrain_height_range_event(&mut self, bits: u64) {
+        self.app.remove_terrain_height_range_observer(bits);
     }
 
     #[wasm_bindgen(js_name = setFrustum)]

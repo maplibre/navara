@@ -2741,7 +2741,9 @@ version = "0.1.0"
 dependencies = [
  "navara_camera",
  "navara_core",
+ "navara_feature_component",
  "navara_geometry",
+ "navara_material",
  "navara_math",
  "navara_wasm_types",
  "navara_wasm_utils",

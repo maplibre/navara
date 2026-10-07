@@ -53,6 +53,7 @@
     "@navaramap/core": "workspace:*",
     "@navaramap/three": "workspace:*",
     "@navaramap/three-csm": "workspace:*",
+    "@types/geojson": "7946.0.16",
     "@types/three": "0.185.4",
     "postprocessing": "6.39.4",
     "three": "0.185.1",

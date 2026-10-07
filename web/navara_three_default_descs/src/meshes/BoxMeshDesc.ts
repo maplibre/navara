@@ -36,16 +36,20 @@ type Description = {
     castShadow?: boolean;
     receiveShadow?: boolean;
     effectIds?: string[];
-    /**
-     * To drape the mesh properly on the terrain,
-     * the mesh must cover the terrain.
-     */
-    draped?: boolean;
   };
 };
 
-export type BoxMeshConfig = MeshConfigWithSelectiveEffect &
-  Description & { pickable?: boolean };
+export type BoxMeshConfig = MeshConfigWithSelectiveEffect & {
+  box?: Description["box"] & {
+    /**
+     * To drape the mesh properly on the terrain,
+     * the mesh must cover the terrain. Fixed at creation; remove and re-add
+     * the mesh to change it.
+     */
+    draped?: boolean;
+  };
+  pickable?: boolean;
+};
 
 export type BoxMeshUpdate = MeshUpdateWithSelectiveEffect & Description;
 
@@ -141,32 +145,6 @@ export class BoxMeshDesc extends MeshDescWithSelectiveEffect<
     if (updates.box && this._instance) {
       const cfg = updates.box;
       const origin = this.config.box;
-
-      // Handle draped change BEFORE super.onUpdateConfig() so getPassKey() returns correct value
-      if (cfg.draped !== undefined && origin) {
-        const wasChanged = origin.draped !== cfg.draped;
-        origin.draped = cfg.draped;
-        this._instance.drapedEnable = cfg.draped;
-
-        // Swap material between lit and unlit
-        if (wasChanged) {
-          this.ctx.removeShadowMaterial(this._instance.material);
-          this._instance.material.dispose();
-          const newMaterial = this.createMaterial(origin);
-          this._instance.material = newMaterial;
-          if (!cfg.draped) {
-            this.ctx.applyShadowMaterial(newMaterial);
-          }
-          // Re-setup SelectiveEffect uniforms for the new material
-          if (newMaterial instanceof MeshLambertMaterial) {
-            newMaterial.emissive.set(origin.emissiveColor?.raw ?? 0x000000);
-            newMaterial.emissiveIntensity = origin.emissiveIntensity ?? 0;
-            setupSelectiveEffectUniforms(newMaterial);
-          }
-          // Re-inject picking hooks into the new material (preserves batchId)
-          this.pickWrapper?.syncMaterials();
-        }
-      }
 
       // Update geometry if dimensions changed
       if (

@@ -58,6 +58,12 @@ export class LayersManager {
     }
   }
 
+  *getHandles(): Generator<BaseHandle> {
+    for (const handle of this.layers.values()) {
+      if (handle instanceof BaseHandle) yield handle;
+    }
+  }
+
   *getEffectDescs(): Generator<EffectHandle> {
     for (const handle of this.layers.values()) {
       if (!(handle instanceof BaseHandle)) continue;

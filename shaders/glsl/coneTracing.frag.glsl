@@ -11,13 +11,14 @@ uniform sampler2D uColorBuffer;             // Color buffer (mipmapped, pre-conv
 uniform sampler2D uRayTracingBuffer;        // Ray tracing results from SSR pass
 uniform sampler2D uNormalBuffer;            // View-space normals
 // Declared to match ConeTracingMaterial's public parameters; nothing reads
-// them yet - F0 comes from the `ior` uniform and there is no fallback probe.
+// them yet - F0 comes from the normal buffer and there is no fallback probe.
 uniform sampler2D uSpecularBuffer;          // rgb=F0 (or IOR-converted), a=roughness
 uniform sampler2D uIndirectSpecularBuffer;  // Fallback indirect specular
 
 uniform vec2  uBufferSize;          // (width, height) of uColorBuffer in pixels
 uniform vec2  uRayTexelSize;        // 1 / (width, height) of uRayTracingBuffer
 uniform int   uNumMips;             // total mip levels in uColorBuffer
+uniform float uPrefilterExposure;   // exposure uColorBuffer was compressed with
 uniform float uFadeStart;           // cb_fadeStart
 uniform float uFadeEnd;             // cb_fadeEnd
 uniform float uMaxDistance;         // cb_maxDistance
@@ -25,7 +26,6 @@ uniform float cameraNear;
 uniform float cameraFar;
 uniform mat4  inverseProjectionMatrix; // inverse of projection matrix
 uniform mat4  projectionMatrix; // inverse of projection matrix
-uniform vec3  ior; // TODO: Use specular map.
 
 in vec2 vUv;
 
@@ -88,12 +88,13 @@ float readViewZ(const vec2 uv) {
 void main() {
     vec2 pixel = vUv;
 
-    vec4 packedNormal = texture2D(uNormalBuffer, pixel); // xy: compressed normal, z: metalness, w: roughness
+    vec4 packedNormal = texture2D(uNormalBuffer, pixel); // xy: compressed normal, z: F0, w: roughness
 
     // Nothing reflective here, so no neighbour can lend this pixel a
     // reflection either. Bailing on one fetch keeps the gather below off the
-    // sky and every opaque surface, which is most of the screen.
-    if (packedNormal.z < 0.01) {
+    // sky and every opaque surface, which is most of the screen. Roughness 1
+    // zeroes fadeOnRoughness below, so it is skipped here as well.
+    if (packedNormal.z < 0.01 || packedNormal.w >= 1.0) {
         gl_FragColor = vec4(0.0);
         return;
     }
@@ -172,27 +173,33 @@ void main() {
 
     vec3 normalVS = unpackVec2ToNormal(packedNormal.xy);
 
-    vec4 specularAll = vec4(ior, packedNormal.w);
+    // B is the surface's reflectance at normal incidence (F0).
+    vec4 specularAll = vec4(vec3(packedNormal.z), packedNormal.w);
 
     vec3 toViewPosition = normalize(viewPosition);
 
     float gloss = 1.0 - specularAll.a;
     float specularPower = roughnessToSpecularPower(specularAll.a);
-    // The 0.5 is not in the derivation — specularPowerToConeAngle already
+    // The 0.25 is not in the derivation — specularPowerToConeAngle already
     // returns a half-angle, of the cone holding ~76% of the lobe's energy.
-    // Dropping it visibly over-blurs reflections, because the roughness the
-    // G-buffer carries for water (0.2) is far above real water (0.02–0.05) and
-    // this factor has been compensating for it. Fix the material value before
-    // touching this.
-    float coneTheta = specularPowerToConeAngle(specularPower) * 0.5;
+    // Without it reflections visibly over-blur, because the roughness the
+    // G-buffer carries for water (0.4, sized for the wave slopes the sun glint
+    // needs) is far above what a mirror-like reflection wants (0.02–0.05), and
+    // the mips the cone reads average across depth, so a wide cone melts
+    // neighbouring surfaces into each other.
+    float coneTheta = specularPowerToConeAngle(specularPower) * 0.25;
 
-    // P1 = current uv, P2 = hitUV (resolved hit point)
-    vec2 deltaP = hitUV - vUv;
+    // P1 = current pixel, P2 = resolved hit. The cone is laid out in pixels:
+    // UV units are anisotropic, so a disc radius measured in them over- or
+    // under-states the blur depending on the ray's screen direction.
+    vec2 deltaP = (hitUV - vUv) * uBufferSize;
     float adjacentLength = length(deltaP);
     vec2 adjacentUnit = (adjacentLength > 0.0) ? (deltaP / adjacentLength) : vec2(0.0);
+    // The resolved hit can land on this very pixel; a zero-height triangle
+    // has no incircle (0 / 0), so keep the cone a sliver long.
+    adjacentLength = max(adjacentLength, 1e-3);
 
-    vec3 colorSum = vec3(0.0);
-    float weightSum = 0.0;
+    vec4 colorSum = vec4(0.0);
     float remaining = 1.0;
     float maxMipLevel = float(uNumMips) - 1.0;
     float glossMult = gloss;
@@ -202,18 +209,16 @@ void main() {
         float oppositeLength = isoscelesTriangleOpposite(adjacentLength, coneTheta);
         float incircleSize = isoscelesTriangleInRadius(oppositeLength, adjacentLength);
 
-        vec2 samplePos = vUv + adjacentUnit * (adjacentLength - incircleSize);
+        vec2 samplePos = vUv + adjacentUnit * (adjacentLength - incircleSize) / uBufferSize;
 
-        float pxRadius = incircleSize * max(uBufferSize.x, uBufferSize.y);
-        float mipChannel = clamp(log2(pxRadius), 0.0, maxMipLevel);
+        float mipChannel = clamp(log2(incircleSize), 0.0, maxMipLevel);
 
         // Clip the last disc against what is left of the budget so the weights
         // sum to exactly 1 once the cone is covered. The previous form scaled
         // only the colour by `1 - abs(remainingAlpha)`, which is not the factor
         // that closes the sum, and left the accumulated weight overshooting.
         float weight = min(glossMult, remaining);
-        colorSum += textureLod(uColorBuffer, samplePos, mipChannel).rgb * weight;
-        weightSum += weight;
+        colorSum += textureLod(uColorBuffer, samplePos, mipChannel) * weight;
         remaining -= weight;
 
         if (remaining <= 0.0) {
@@ -250,17 +255,27 @@ void main() {
     float fadeOnRoughness    = clamp(mix(0.0, 1.0, clamp(gloss * 4.0, 0.0, 1.0)), 0.0, 1.0);
     float totalFade = coverage * fadeOnBorder * fadeOnDistance * fadeOnPerpendicular * fadeOnRoughness;
 
-    // Weighted average of the cone's discs. The division matters once the
+    // Weighted average of the cone's discs, normalised by the accumulated
+    // alpha: that is the sum of the weights wherever the footprint is all
+    // geometry, and otherwise renormalises over the geometry left once the
+    // prefilter's sky mask drops the rest. The division matters once the
     // gloss^k series stops reaching 1, which happens below gloss 0.5 (roughness
-    // above 0.5): the sum would otherwise stay scaled by a weight under one and
-    // the old code multiplied by that same weight again as a fade, dimming
-    // rough reflections by its square. Where the cone does get covered the
-    // weights close on 1 and this is exact.
-    vec3 conedColor = colorSum / max(weightSum, 1e-4);
+    // above 0.5): the colour would otherwise stay scaled by a weight under one.
+    vec3 conedColor = colorSum.rgb / max(colorSum.a, 1e-4);
+    // Share of the footprint that is geometry. A footprint all on sky has
+    // nothing to reflect, and must not replace the surface colour with black.
+    float geometryCoverage = colorSum.a / max(1.0 - remaining, 1e-4);
+    // Undo the prefilter's compression (coneTracingPrefilter.frag.glsl).
+    float conedLuma = dot(conedColor, vec3(0.2126, 0.7152, 0.0722));
+    conedColor /= max(1.0 - conedLuma * uPrefilterExposure, 1e-4);
 
     // Premultiplied so the composite can filter this buffer when it upsamples:
     // interpolating a premultiplied colour across the edge of a reflection is
     // exact, whereas straight colour would drag reflection into pixels whose
     // coverage is on its way to zero.
-    gl_FragColor = vec4(conedColor * specularF * totalFade, totalFade);
+    // Alpha carries the Fresnel term too, so the composite replaces only the
+    // share of the surface colour that is specular reflection - at normal
+    // incidence water keeps its own colour and reflects 2%.
+    float reflectance = specularF.g * totalFade * geometryCoverage;
+    gl_FragColor = vec4(conedColor * reflectance, reflectance);
 }

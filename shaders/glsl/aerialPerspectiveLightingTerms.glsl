@@ -105,7 +105,7 @@ vec3 nvrGetSunSkyIrradiance(
 
   #ifdef NVR_SPECULAR
   if (deferredLit) {
-    // Normal buffer: B = metalness or reflectivity, A = roughness
+    // Normal buffer: B = reflectance at normal incidence (F0), A = roughness
     vec4 surface = texture(normalBuffer, uv);
     float reflectance = surface.b;
     float roughness = surface.a;

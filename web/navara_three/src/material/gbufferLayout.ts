@@ -41,8 +41,8 @@ export const GBUFFER_ATTACHMENT_NAMES = [
  */
 export type GBufferOptions = {
   /**
-   * The view-space normal buffer (RG=octahedral normal, B=metalness or
-   * reflectivity, A=roughness *and* the blend factor). Required by every
+   * The view-space normal buffer (RG=octahedral normal, B=reflectance at
+   * normal incidence (F0), A=roughness *and* the blend factor). Required by every
    * normal-reading effect (aerial perspective, SSR, fog light) and,
    * via {@link globeNormal}, by draped meshes.
    */
@@ -223,6 +223,8 @@ export const GBUFFER_PHONG_ROUGHNESS = Math.sqrt(Math.sqrt(2 / 52));
 
 /**
  * `normalBuffer` write for physically-based materials (standard/physical).
+ * B is the material's metalness as is, so readers take it as the F0 directly:
+ * 0 does not reflect and 1 is a mirror.
  * `modelBaseEnhancer` matches/replaces this exact string.
  */
 export const GBUFFER_NORMAL_WRITE_PHYSICAL =
@@ -230,10 +232,12 @@ export const GBUFFER_NORMAL_WRITE_PHYSICAL =
 
 /**
  * `normalBuffer` write for non-physical materials (basic/lambert/phong).
- * `polygonBaseEnhancer` matches/replaces this exact string.
+ * These have no reflectance at normal incidence — three's `reflectivity` is an
+ * env-map mix weight defaulting to 1 — so B is 0; `polygonBaseEnhancer` and
+ * the tile mesh match/replace this exact string to write their own.
  */
 export const GBUFFER_NORMAL_WRITE_BASIC =
-  "GBUFFER_WRITE_NORMAL(normal, reflectivity, roughnessFactor)";
+  "GBUFFER_WRITE_NORMAL(normal, 0.0, roughnessFactor)";
 
 /**
  * Selective-effect writes for built-in `ShaderLib` materials. The tile mesh

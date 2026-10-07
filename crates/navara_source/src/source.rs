@@ -111,15 +111,18 @@ impl Source {
         z >= self.min_zoom()
     }
 
-    /// Whether `z` is at or beyond this source's maximum zoom (exclusive upper
-    /// bound for new tile requests).
+    /// Whether `z` is past this source's maximum zoom. `max_zoom` is the
+    /// deepest level the source has tiles for and is fetched like any other,
+    /// as `min_zoom` is the shallowest — the TileJSON reading, which is what
+    /// a `maxZoom` written against a real tile set means.
     pub fn is_over_max_zoom(&self, z: usize) -> bool {
-        z >= self.max_zoom()
+        z > self.max_zoom()
     }
 
-    /// Whether `z` is at or beyond this source's overscaled maximum zoom.
+    /// Whether `z` is past this source's overscaled maximum zoom, the deepest
+    /// level tiles are upsampled to (inclusive, like `max_zoom`).
     pub fn is_over_overscaled_max_zoom(&self, z: usize) -> bool {
-        z >= self.overscaled_max_zoom()
+        z > self.overscaled_max_zoom()
     }
 
     /// Whether tiles at `z` should reuse an overscaled parent tile: past

@@ -27,6 +27,7 @@ in vec4 right_normal_and_texture_coordinate_normalization_y;
 #include <common>
 #include <color_pars_vertex>
 #include <shadowmap_pars_vertex>
+#include <logdepthbuf_pars_vertex>
 #include chunks/batch_texture_pars_vertex;
 
 uniform vec3 minMaxHeightAndWidth;
@@ -157,13 +158,17 @@ void main() {
     // Extrudes height
     vec3 heightNormal = normalize(nvr_branchFreeTernary(absStartPlaneDistance < absEndPlaneDistance, cross(v_rightPlaneEC.xyz, startPlaneEC.xyz), cross(endPlaneEC.xyz, v_rightPlaneEC.xyz)));
     #ifdef USE_RTE
-        // Calculate distance from reference points to determine vertex type
-        vec3 ecCurPoint = nvr_branchFreeTernary(absStartPlaneDistance < absEndPlaneDistance, ecStart, ecEnd);
-        vec3 distToRef = normalize(positionEC.xyz - ecCurPoint);
-
-        // Use mix for branchless selection: mix(bottom, top, step(threshold, distance))
-        // step(THRESHOLD, distToRef) returns 0.0 for bottom vertices, 1.0 for top vertices
-        vec3 height = heightNormal * nvr_branchFreeTernary(dot(distToRef, heightNormal) > 0., minMaxHeightAndWidth.y, minMaxHeightAndWidth.x);
+        // The wall is 1 m tall with its bottom on the segment end, below the
+        // f32 step of eye coordinates at globe distances, so top and bottom
+        // are told apart in world space, where the high/low difference is
+        // exact. `heightNormal` is then oriented up for the same reason.
+        bool atStart = absStartPlaneDistance < absEndPlaneDistance;
+        vec3 wallOffset = (position_3d_high - nvr_branchFreeTernary(atStart, start_3d_high, end_3d_high)) * u_rteOne
+            + (position_3d_low - nvr_branchFreeTernary(atStart, start_3d_low, end_3d_low));
+        bool isTop = dot(wallOffset, wallOffset) > 0.25;
+        vec3 upEC = mat3(modelViewMatrixRTE) * normalize(nvr_branchFreeTernary(atStart, segmentStartAbs, segmentEndAbs));
+        heightNormal *= sign(dot(heightNormal, upEC));
+        vec3 height = heightNormal * nvr_branchFreeTernary(isTop, minMaxHeightAndWidth.y, minMaxHeightAndWidth.x);
         positionEC.xyz += height;
     #else
         vec3 cur_point = nvr_branchFreeTernary(absStartPlaneDistance < absEndPlaneDistance, start, start + forward_offset);
@@ -214,6 +219,7 @@ void main() {
 
     positionEC.xyz += lineWidth * normalEC;
     gl_Position = projectionMatrix * positionEC;
+    #include <logdepthbuf_vertex>
     vViewPosition = -positionEC.xyz;
 
     // Alias for three's chunk convention: the CSM view-space shadow patch

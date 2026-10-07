@@ -18,6 +18,9 @@ pub struct PolygonGeometry {
     pub indices: Vec<u32>,
 }
 
+/// Longest cap triangle edge, in radians, unless the options set one.
+pub const DEFAULT_POLYGON_GRANULARITY: f32 = RADIANS_PER_DEGREE as f32;
+
 pub struct PolygonGeometryOptions {
     pub hierarchy: HierarchyDVec3,
     pub granularity: f32,
@@ -38,7 +41,7 @@ impl Default for PolygonGeometryOptions {
                 holes: None,
                 expected_winding_order: WindingOrder::Unknown,
             },
-            granularity: RADIANS_PER_DEGREE as f32,
+            granularity: DEFAULT_POLYGON_GRANULARITY,
             crs: Default::default(),
             clamp_to_ground: false,
             extruded_height: 0.,
@@ -715,6 +718,51 @@ mod tests {
         .expect("polygon geometry")
         .outline
         .expect("outline geometry")
+    }
+
+    fn build_square(clamp_to_ground: bool) -> PolygonGeometryResult {
+        let mut polygon_resource = PolygonResource::new();
+        create_polygon_geometry(
+            PolygonGeometryOptions {
+                hierarchy: square_hierarchy(),
+                clamp_to_ground,
+                use_rte: true,
+                ..Default::default()
+            },
+            &mut polygon_resource,
+        )
+        .expect("polygon geometry")
+    }
+
+    #[test]
+    fn clamped_polygon_carries_no_shading_normals() {
+        assert!(build_square(true).geometry.attributes.normal.is_none());
+    }
+
+    #[test]
+    fn unclamped_polygon_carries_one_usable_normal_per_vertex() {
+        let result = build_square(false);
+        let attributes = &result.geometry.attributes;
+        let normal = attributes
+            .normal
+            .as_ref()
+            .expect("normal should be present when clamp_to_ground=false");
+        let positions = attributes
+            .position_3d_high
+            .as_ref()
+            .expect("position_3d_high");
+
+        assert_eq!(normal.size, 3);
+        assert_eq!(normal.data.len(), positions.data.len());
+        // Wall normals use the 1m edge between the caps, so a zero normal means
+        // the caps collapsed.
+        for (i, n) in normal.data.chunks(3).enumerate() {
+            let length = (n[0] * n[0] + n[1] * n[1] + n[2] * n[2]).sqrt();
+            assert!(
+                (length - 1.0).abs() < 1e-3,
+                "normal {i} should be unit length, got {length}"
+            );
+        }
     }
 
     #[test]
