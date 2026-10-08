@@ -2856,11 +2856,11 @@ export default class ThreeView<
   }
 
   /**
-   * Compute camera height required to achieve a target zoom level.
+   * Compute camera viewing distance required to achieve a target zoom level.
    *
    * This is the inverse of the camera's `zoom` property calculation. Given a
-   * Web Mercator zoom level and latitude, returns the camera height in meters
-   * above the ellipsoid that would produce that zoom level.
+   * Web Mercator zoom level and latitude, returns the camera viewing distance
+   * (camera-to-target distance) in meters that would produce that zoom level.
    *
    * Uses the current viewport height and camera FOV from the engine state,
    * unless overridden by the fovRad parameter.
@@ -2870,15 +2870,15 @@ export default class ThreeView<
    * @param tileSizePx - Tile size for zoom calculation. Defaults to 256 for backward compatibility.
    *                     Use 512 for MapLibre-compatible calculations.
    * @param fovRad - Optional FOV override in radians. If not provided, uses camera's current FOV.
-   * @returns Camera height in meters above the ellipsoid, or undefined if engine not initialized
+   * @returns Camera viewing distance to target in meters, or undefined if engine not initialized
    */
-  zoomLevelToCameraHeight(
+  zoomLevelToCameraDistance(
     zoomLevel: number,
     latDeg: number,
     tileSizePx?: number,
     fovRad?: number,
   ): number | undefined {
-    return this._core?.zoomLevelToCameraHeight(
+    return this._core?.zoomLevelToCameraDistance(
       zoomLevel,
       latDeg,
       tileSizePx,

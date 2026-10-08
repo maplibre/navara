@@ -12,13 +12,13 @@ import type ThreeView from "@navaramap/three";
 export const MAPLIBRE_TILE_SIZE = 512;
 
 /**
- * Convert Web Mercator zoom level to camera height above ellipsoid.
+ * Convert Web Mercator zoom level to camera viewing distance.
  *
  * In MapLibre, zoom defines the map scale at screen center regardless of pitch.
- * This function returns the camera height (altitude above ellipsoid) required to
- * achieve the given zoom level.
+ * This function returns the camera viewing distance (camera-to-target distance)
+ * required to achieve the given zoom level.
  *
- * Uses Navara engine's `zoomLevelToCameraHeight` function, which is the exact
+ * Uses Navara engine's `zoomLevelToCameraDistance` function, which is the exact
  * inverse of the engine's `camera_zoom_level` calculation.
  *
  * @param zoom - Web Mercator zoom level (typically 0-22)
@@ -26,9 +26,9 @@ export const MAPLIBRE_TILE_SIZE = 512;
  * @param latDeg - Latitude in degrees (affects scale due to Web Mercator projection)
  * @param tileSizePx - Tile size for zoom calculation.
  * @param fovRad - Optional FOV override in radians. If not provided, uses camera's current FOV.
- * @returns Camera height in meters above the ellipsoid
+ * @returns Camera viewing distance to target in meters
  */
-export function zoomToCameraHeight(
+export function zoomToCameraDistance(
   zoom: number,
   view: ThreeView,
   latDeg: number,
@@ -37,11 +37,18 @@ export function zoomToCameraHeight(
 ): number {
   // Use engine's inverse function for exact calculation
   // The engine gets FOV and viewport height from its internal state
-  const height = view.zoomLevelToCameraHeight(zoom, latDeg, tileSizePx, fovRad);
+  const distance = view.zoomLevelToCameraDistance(
+    zoom,
+    latDeg,
+    tileSizePx,
+    fovRad,
+  );
 
   // Fallback to approximation if engine function is not available
-  if (height === undefined) {
-    console.warn("zoomLevelToCameraHeight not available, using approximation");
+  if (distance === undefined) {
+    console.warn(
+      "zoomLevelToCameraDistance not available, using approximation",
+    );
 
     // Used only in fallback approximation when engine is not available.
     const WGS84_SEMI_MAJOR_AXIS = 6378137;
@@ -50,7 +57,7 @@ export function zoomToCameraHeight(
     return (WGS84_SEMI_MAJOR_AXIS * tileSizePx) / (256 * Math.pow(2, zoom));
   }
 
-  return height;
+  return distance;
 }
 
 /**

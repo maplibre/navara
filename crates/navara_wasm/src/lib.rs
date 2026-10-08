@@ -968,10 +968,10 @@ impl Core {
         self.app.get_zoom_level(tile_size_px)
     }
 
-    /// Compute camera height required to achieve a target zoom level.
+    /// Compute camera viewing distance required to achieve a target zoom level.
     ///
     /// This is the inverse of `getZoomLevel`. Given a Web Mercator zoom level
-    /// and latitude, returns the camera height in meters above the ellipsoid
+    /// and latitude, returns the camera-to-target viewing distance in meters
     /// that would produce that zoom level.
     ///
     /// Uses the current viewport height and camera FOV from the engine state.
@@ -979,11 +979,13 @@ impl Core {
     /// # Arguments
     /// * `zoom_level` - Target Web Mercator zoom level
     /// * `lat_deg` - Latitude in degrees (affects scale due to Web Mercator projection)
+    /// * `tile_size_px` - Tile size for zoom calculation (defaults to 256)
+    /// * `fov_rad` - Optional FOV override in radians
     ///
     /// # Returns
-    /// Camera height in meters above the ellipsoid, or `undefined` if inputs are invalid
-    #[wasm_bindgen(js_name = zoomLevelToCameraHeight)]
-    pub fn zoom_level_to_camera_height(
+    /// Camera viewing distance to target in meters, or `undefined` if inputs are invalid
+    #[wasm_bindgen(js_name = zoomLevelToCameraDistance)]
+    pub fn zoom_level_to_camera_distance(
         &mut self,
         zoom_level: FloatType,
         lat_deg: FloatType,
@@ -993,7 +995,7 @@ impl Core {
         // Default to 256 for backward compatibility
         let tile_size = tile_size_px.unwrap_or(256.0);
         self.app
-            .zoom_level_to_camera_height(zoom_level, lat_deg, tile_size, fov_rad)
+            .zoom_level_to_camera_distance(zoom_level, lat_deg, tile_size, fov_rad)
     }
 
     #[wasm_bindgen(js_name = rotateAroundAxis)]

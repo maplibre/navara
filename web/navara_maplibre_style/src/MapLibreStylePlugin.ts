@@ -29,7 +29,7 @@ import { JsStyleEngine } from "./engine/JsStyleEngine";
 import type { ParsedStyle, StyleLayer } from "./engine/types";
 import { convertFontFacesToFontFamilies } from "./fontHelper";
 import {
-  zoomToCameraHeight,
+  zoomToCameraDistance,
   maplibrePitchToNavaraPitch,
   MAPLIBRE_TILE_SIZE,
 } from "./utils/cameraHelpers";
@@ -519,6 +519,10 @@ export class MapLibreStylePlugin extends Plugin<ThreeView, ViewContext> {
         if (this.backgroundHandler?.needsZoomUpdate()) {
           this.backgroundHandler.apply(view, currentZoom);
         }
+        // On initial zoom, also update zoom-dependent features
+        for (const layer of this.zoomDependentLayers) {
+          layer.forceUpdate();
+        }
         return;
       }
 
@@ -539,9 +543,13 @@ export class MapLibreStylePlugin extends Plugin<ThreeView, ViewContext> {
       }
     };
 
-    // Register the listener on camera move event
-    // This fires when camera movement ends (position changes that affect zoom)
+    // Register the listener on multiple camera events to catch all zoom changes:
+    // - move: camera position changes during drag/pan
+    // - moveend: camera stops moving (catches idle startup and instantaneous setCamera)
+    // - frustumChanged: FOV or viewport size changes
     view.camera.on("move", this.zoomChangeListener);
+    view.camera.on("moveend", this.zoomChangeListener);
+    view.camera.on("frustumChanged", this.zoomChangeListener);
   }
 
   /**
@@ -840,7 +848,8 @@ export class MapLibreStylePlugin extends Plugin<ThreeView, ViewContext> {
       evaluator: FeatureEvaluator;
     }) => {
       // Get camera zoom once before evaluate to avoid recursive WASM borrowing
-      const cameraZoom = this.view?.camera.zoom ?? 0;
+      // Use MapLibre tile size (512px) to match background layer zoom calculations
+      const cameraZoom = this.view?.getZoomLevel(MAPLIBRE_TILE_SIZE) ?? 0;
 
       evaluator.evaluate(
         ({ properties, meshGeomType: meshGeometryType }: FeatureInfo) => {
@@ -917,8 +926,8 @@ export class MapLibreStylePlugin extends Plugin<ThreeView, ViewContext> {
 
     const [lng, lat] = center;
 
-    // Convert zoom to camera height (altitude above ellipsoid)
-    const cameraHeight = zoomToCameraHeight(
+    // Convert zoom to camera viewing distance (camera-to-target distance)
+    const cameraDistance = zoomToCameraDistance(
       zoom,
       view,
       lat,
@@ -936,7 +945,7 @@ export class MapLibreStylePlugin extends Plugin<ThreeView, ViewContext> {
       lng, // Target point longitude
       lat, // Target point latitude
       height: centerAltitude ?? 0, // Target point altitude (ground elevation)
-      distance: cameraHeight, // Camera height above ellipsoid (works as distance when pitch = -90°)
+      distance: cameraDistance, // Camera-to-target viewing distance
       // MapLibre uses 'bearing' which maps to Navara's 'heading'
       heading: bearing ?? 0,
       pitch: navaraPitch,
@@ -953,9 +962,11 @@ export class MapLibreStylePlugin extends Plugin<ThreeView, ViewContext> {
    * Call this method when removing the plugin to prevent memory leaks.
    */
   dispose(): void {
-    // Clean up zoom change listener
+    // Clean up zoom change listener (registered on three events)
     if (this.view && this.zoomChangeListener) {
       this.view.camera.off("move", this.zoomChangeListener);
+      this.view.camera.off("moveend", this.zoomChangeListener);
+      this.view.camera.off("frustumChanged", this.zoomChangeListener);
       this.zoomChangeListener = undefined;
     }
 

@@ -103,7 +103,7 @@ function createMockView(initialZoom = 10): ThreeView {
     camera: mockCamera,
     getZoomLevel: vi.fn(() => mockCamera.zoom),
     setCamera: vi.fn(),
-    zoomLevelToCameraHeight: vi.fn((zoom: number) => {
+    zoomLevelToCameraDistance: vi.fn((zoom: number) => {
       // Simple mock: return a distance based on zoom
       // Higher zoom = smaller distance
       return 10000000 / Math.pow(2, zoom);
@@ -745,7 +745,7 @@ describe("MapLibreStylePlugin", () => {
   });
 
   describe("Zoom Change Detection", () => {
-    it("should register move listener for zoom changes", async () => {
+    it("should register multiple event listeners for zoom changes", async () => {
       const style: StyleSpecification = {
         version: 8,
         sources: {},
@@ -756,8 +756,16 @@ describe("MapLibreStylePlugin", () => {
       const view = createMockView();
       await plugin.init(view, mockViewContext);
 
-      // Verify move listener was registered on camera
+      // Verify all three event listeners were registered on camera
       expect(view.camera.on).toHaveBeenCalledWith("move", expect.any(Function));
+      expect(view.camera.on).toHaveBeenCalledWith(
+        "moveend",
+        expect.any(Function),
+      );
+      expect(view.camera.on).toHaveBeenCalledWith(
+        "frustumChanged",
+        expect.any(Function),
+      );
     });
   });
 
@@ -894,24 +902,35 @@ describe("MapLibreStylePlugin", () => {
 
       await plugin.init(view, mockViewContext);
 
-      // Get the frustumChanged listener
-      const frustumChangedCall = (view.camera.on as any).mock.calls.find(
+      // Get all frustumChanged listeners (there are two: camera ready + zoom change)
+      const onMock = view.camera.on as any;
+      const frustumChangedCalls = onMock.mock.calls.filter(
         (call: any) => call[0] === "frustumChanged",
       );
-      expect(frustumChangedCall).toBeDefined();
-      const listener = frustumChangedCall[1];
+      expect(frustumChangedCalls.length).toBeGreaterThanOrEqual(1);
 
       // Camera becomes ready
       (view.getZoomLevel as any).mockReturnValue(12);
 
-      // Invoke listener
-      listener();
+      // Invoke all frustumChanged listeners to trigger camera ready
+      frustumChangedCalls.forEach((call: any) => call[1]());
 
       // Now setCamera should have been called
       expect(view.setCamera).toHaveBeenCalled();
 
-      // Listener should be removed
-      expect(view.camera.off).toHaveBeenCalledWith("frustumChanged", listener);
+      // Verify that off was called for frustumChanged (the camera ready listener removed itself)
+      const offMock = view.camera.off as any;
+      const offCalls = offMock.mock.calls;
+      const frustumOffCall = offCalls.find(
+        (call: any) => call[0] === "frustumChanged",
+      );
+      expect(frustumOffCall).toBeDefined();
+      // Verify it's one of the registered listeners
+      const removedListener = frustumOffCall[1];
+      const wasRegistered = frustumChangedCalls.some(
+        (call: any) => call[1] === removedListener,
+      );
+      expect(wasRegistered).toBe(true);
     });
 
     it("should clean up frustumChanged listener on dispose", async () => {
@@ -1254,7 +1273,7 @@ describe("MapLibreStylePlugin", () => {
   });
 
   describe("Cleanup", () => {
-    it("should remove zoom listener on dispose", async () => {
+    it("should remove zoom listeners on dispose", async () => {
       const style: StyleSpecification = {
         version: 8,
         sources: {},
@@ -1265,12 +1284,24 @@ describe("MapLibreStylePlugin", () => {
       const view = createMockView();
       await plugin.init(view, mockViewContext);
 
+      // Capture the exact listener functions registered
+      const onCalls = (view.camera.on as any).mock.calls;
+      const moveListener = onCalls.find((call: any) => call[0] === "move")?.[1];
+      const moveendListener = onCalls.find(
+        (call: any) => call[0] === "moveend",
+      )?.[1];
+      const frustumListener = onCalls.find(
+        (call: any) => call[0] === "frustumChanged",
+      )?.[1];
+
       plugin.dispose();
 
-      // Verify listener was removed from camera
+      // Verify the exact same function references were removed
+      expect(view.camera.off).toHaveBeenCalledWith("move", moveListener);
+      expect(view.camera.off).toHaveBeenCalledWith("moveend", moveendListener);
       expect(view.camera.off).toHaveBeenCalledWith(
-        "move",
-        expect.any(Function),
+        "frustumChanged",
+        frustumListener,
       );
     });
 

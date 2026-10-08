@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
   maplibrePitchToNavaraPitch,
-  zoomToCameraHeight,
+  zoomToCameraDistance,
   MAPLIBRE_TILE_SIZE,
 } from "./cameraHelpers";
 
@@ -11,7 +11,7 @@ const createMockView = (fov = 60, viewportHeight = 800) => {
   return {
     camera: { fov },
     renderer: { domElement: { height: viewportHeight } },
-    zoomLevelToCameraHeight: vi.fn((zoom, lat, tileSizePx = 256, fovRad) => {
+    zoomLevelToCameraDistance: vi.fn((zoom, lat, tileSizePx = 256, fovRad) => {
       // Simulate the engine's calculation
       // Engine uses internal viewport height and FOV
       const EARTH_RADIUS = 6378137;
@@ -31,11 +31,11 @@ const createMockView = (fov = 60, viewportHeight = 800) => {
 };
 
 describe("cameraHelpers", () => {
-  describe("zoomToCameraHeight", () => {
-    it("should use engine's zoomLevelToCameraHeight function", () => {
+  describe("zoomToCameraDistance", () => {
+    it("should use engine's zoomLevelToCameraDistance function", () => {
       const view = createMockView();
-      zoomToCameraHeight(5, view, 0, MAPLIBRE_TILE_SIZE);
-      expect(view.zoomLevelToCameraHeight).toHaveBeenCalledWith(
+      zoomToCameraDistance(5, view, 0, MAPLIBRE_TILE_SIZE);
+      expect(view.zoomLevelToCameraDistance).toHaveBeenCalledWith(
         5,
         0,
         MAPLIBRE_TILE_SIZE,
@@ -43,45 +43,55 @@ describe("cameraHelpers", () => {
       );
     });
 
-    it("should convert zoom 0 to a very large height", () => {
+    it("should convert zoom 0 to a very large distance", () => {
       const view = createMockView();
-      const height = zoomToCameraHeight(0, view, 0, MAPLIBRE_TILE_SIZE);
+      const distance = zoomToCameraDistance(0, view, 0, MAPLIBRE_TILE_SIZE);
       // At zoom 0, we should see the whole Earth
       // The actual value depends on FOV and viewport, can be quite high
-      expect(height).toBeGreaterThan(50_000_000); // > 50,000 km
-      expect(height).toBeLessThan(200_000_000); // < 200,000 km
+      expect(distance).toBeGreaterThan(50_000_000); // > 50,000 km
+      expect(distance).toBeLessThan(200_000_000); // < 200,000 km
     });
 
-    it("should convert higher zoom levels to smaller heights", () => {
+    it("should convert higher zoom levels to smaller distances", () => {
       const view = createMockView();
-      const height0 = zoomToCameraHeight(0, view, 0, MAPLIBRE_TILE_SIZE);
-      const height5 = zoomToCameraHeight(5, view, 0, MAPLIBRE_TILE_SIZE);
-      const height10 = zoomToCameraHeight(10, view, 0, MAPLIBRE_TILE_SIZE);
-      const height15 = zoomToCameraHeight(15, view, 0, MAPLIBRE_TILE_SIZE);
+      const distance0 = zoomToCameraDistance(0, view, 0, MAPLIBRE_TILE_SIZE);
+      const distance5 = zoomToCameraDistance(5, view, 0, MAPLIBRE_TILE_SIZE);
+      const distance10 = zoomToCameraDistance(10, view, 0, MAPLIBRE_TILE_SIZE);
+      const distance15 = zoomToCameraDistance(15, view, 0, MAPLIBRE_TILE_SIZE);
 
-      // Height should decrease as zoom increases
-      expect(height5).toBeLessThan(height0);
-      expect(height10).toBeLessThan(height5);
-      expect(height15).toBeLessThan(height10);
+      // Distance should decrease as zoom increases
+      expect(distance5).toBeLessThan(distance0);
+      expect(distance10).toBeLessThan(distance5);
+      expect(distance15).toBeLessThan(distance10);
     });
 
     it("should account for latitude", () => {
       const view = createMockView();
-      const heightEquator = zoomToCameraHeight(5, view, 0, MAPLIBRE_TILE_SIZE);
-      const height45deg = zoomToCameraHeight(5, view, 45, MAPLIBRE_TILE_SIZE);
+      const distanceEquator = zoomToCameraDistance(
+        5,
+        view,
+        0,
+        MAPLIBRE_TILE_SIZE,
+      );
+      const distance45deg = zoomToCameraDistance(
+        5,
+        view,
+        45,
+        MAPLIBRE_TILE_SIZE,
+      );
 
       // At higher latitudes, scale is different due to Web Mercator
-      expect(heightEquator).not.toBe(height45deg);
+      expect(distanceEquator).not.toBe(distance45deg);
     });
 
-    it("should forward fovRad override and affect computed height", () => {
+    it("should forward fovRad override and affect computed distance", () => {
       const view = createMockView(60); // Default FOV = 60 degrees
       const zoom = 5;
       const lat = 0;
       const customFov = Math.PI / 4; // 45 degrees in radians (different from default 60)
 
       // Call with custom FOV
-      const heightWithCustomFov = zoomToCameraHeight(
+      const distanceWithCustomFov = zoomToCameraDistance(
         zoom,
         view,
         lat,
@@ -90,7 +100,7 @@ describe("cameraHelpers", () => {
       );
 
       // Verify the custom FOV was passed to the engine function
-      expect(view.zoomLevelToCameraHeight).toHaveBeenCalledWith(
+      expect(view.zoomLevelToCameraDistance).toHaveBeenCalledWith(
         zoom,
         lat,
         MAPLIBRE_TILE_SIZE,
@@ -98,7 +108,7 @@ describe("cameraHelpers", () => {
       );
 
       // Call with default FOV (no override)
-      const heightWithDefaultFov = zoomToCameraHeight(
+      const distanceWithDefaultFov = zoomToCameraDistance(
         zoom,
         view,
         lat,
@@ -106,32 +116,32 @@ describe("cameraHelpers", () => {
       );
 
       // Verify undefined was passed when no override
-      expect(view.zoomLevelToCameraHeight).toHaveBeenCalledWith(
+      expect(view.zoomLevelToCameraDistance).toHaveBeenCalledWith(
         zoom,
         lat,
         MAPLIBRE_TILE_SIZE,
         undefined,
       );
 
-      // Height should differ when using different FOV values
-      // Smaller FOV (45°) requires greater camera height for same zoom level
-      expect(heightWithCustomFov).not.toBe(heightWithDefaultFov);
-      expect(heightWithCustomFov).toBeGreaterThan(heightWithDefaultFov);
-      expect(heightWithCustomFov).toBeGreaterThan(0);
-      expect(heightWithDefaultFov).toBeGreaterThan(0);
+      // Distance should differ when using different FOV values
+      // Smaller FOV (45°) requires greater camera distance for same zoom level
+      expect(distanceWithCustomFov).not.toBe(distanceWithDefaultFov);
+      expect(distanceWithCustomFov).toBeGreaterThan(distanceWithDefaultFov);
+      expect(distanceWithCustomFov).toBeGreaterThan(0);
+      expect(distanceWithDefaultFov).toBeGreaterThan(0);
     });
 
     it("should fallback to approximation if engine function unavailable", () => {
       const view = createMockView();
-      view.zoomLevelToCameraHeight = vi.fn(() => undefined);
+      view.zoomLevelToCameraDistance = vi.fn(() => undefined);
 
       const consoleSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
-      const height = zoomToCameraHeight(5, view, 0, MAPLIBRE_TILE_SIZE);
+      const distance = zoomToCameraDistance(5, view, 0, MAPLIBRE_TILE_SIZE);
 
       expect(consoleSpy).toHaveBeenCalledWith(
-        "zoomLevelToCameraHeight not available, using approximation",
+        "zoomLevelToCameraDistance not available, using approximation",
       );
-      expect(height).toBeGreaterThan(0);
+      expect(distance).toBeGreaterThan(0);
 
       consoleSpy.mockRestore();
     });

@@ -11,3 +11,4 @@ pub use comp::*;
 pub use event::*;
 pub use helpers::*;
 pub use plugin::CameraPlugin;
+pub use system::calc_camera_target_and_distance;
