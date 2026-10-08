@@ -898,9 +898,10 @@ describe("MapLibreStylePlugin", () => {
       const view = createMockView();
 
       // Start with camera not ready
-      (view.getZoomLevel as any).mockReturnValueOnce(undefined);
+      (view.getZoomLevel as any).mockReturnValue(undefined);
 
       await plugin.init(view, mockViewContext);
+      expect(view.setCamera).not.toHaveBeenCalled();
 
       // Get all frustumChanged listeners (there are two: camera ready + zoom change)
       const onMock = view.camera.on as any;
@@ -949,10 +950,11 @@ describe("MapLibreStylePlugin", () => {
       await plugin.init(view, mockViewContext);
 
       // Get the registered listener
-      const frustumChangedCall = (view.camera.on as any).mock.calls.find(
+      const frustumChangedCalls = (view.camera.on as any).mock.calls.filter(
         (call: any) => call[0] === "frustumChanged",
       );
-      const listener = frustumChangedCall[1];
+      expect(frustumChangedCalls).toHaveLength(2);
+      const listener = frustumChangedCalls[1][1];
 
       plugin.dispose();
 

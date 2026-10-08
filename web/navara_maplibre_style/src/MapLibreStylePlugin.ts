@@ -391,6 +391,10 @@ export class MapLibreStylePlugin extends Plugin<ThreeView, ViewContext> {
    * - Listener is invoked immediately after registration to catch already-ready state
    */
   private setupCameraFromStyle(view: ThreeView): void {
+    if (!this.parsedStyle?.center || this.parsedStyle?.zoom === undefined) {
+      return;
+    }
+
     // MapLibre uses a fixed FOV of 0.6435011087932844 radians (≈36.87°)
     const MAPLIBRE_FOV_RAD = 0.6435011087932844;
 

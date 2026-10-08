@@ -16,7 +16,7 @@ await view.init();
 
 ## Documentation
 
-For detailed usage, supported features, and known limitations, see the [MapLibre Style documentation](https://navara.world/docs/maplibre-style/).
+For detailed usage, supported features, and known limitations, see the [MapLibre Style documentation](https://navara.world/docs/maplibre_style/about/).
 
 ## License
 
