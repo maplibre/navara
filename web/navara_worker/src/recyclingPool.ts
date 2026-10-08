@@ -88,7 +88,7 @@ const createPool = (url: string) =>
   workerpool.pool(url, {
     // One worker per pool so each worker can be recycled independently.
     maxWorkers: 1,
-    // Avoid oversubscribing CPU when combined with other systems (e.g., DRACO loader).
+    // Avoid oversubscribing CPU when combined with other systems (e.g., the font worker).
     minWorkers: 0,
     workerTerminateTimeout: WORKER_TERMINATE_TIMEOUT_MS,
     workerOpts: {

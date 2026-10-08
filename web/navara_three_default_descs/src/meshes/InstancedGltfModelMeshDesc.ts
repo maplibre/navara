@@ -12,6 +12,7 @@ import {
   type PassKey,
   type RTEUserData,
   type ViewContext,
+  createGltfLoader,
 } from "@navaramap/three";
 import ProjectVertexRteModel from "@shaders/glsl/chunks/project_vertex_rte_model.glsl";
 import RteUniformParsVertex from "@shaders/glsl/chunks/rte_uniform_pars_vertex.glsl";
@@ -37,7 +38,6 @@ import {
   Vector3,
   type NormalBufferAttributes,
 } from "three";
-import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import type { GLTF } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { clone as cloneSkinned } from "three/examples/jsm/utils/SkeletonUtils.js";
 import invariant from "tiny-invariant";
@@ -185,7 +185,7 @@ export class InstancedGltfModelMeshDesc extends MeshDesc<
   InstancedGltfModelEvent
 > {
   private config: InstancedGltfModelMeshConfig;
-  private loader = new GLTFLoader();
+  private loader = createGltfLoader();
   private gltf: GLTF | null = null;
 
   // Non-skinned (instanced) path

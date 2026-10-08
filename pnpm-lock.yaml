@@ -314,6 +314,9 @@ importers:
       astronomy-engine:
         specifier: 2.1.19
         version: 2.1.19
+      draco3d:
+        specifier: 1.5.7
+        version: 1.5.7
       stats.js:
         specifier: 0.17.0
         version: 0.17.0
@@ -363,6 +366,9 @@ importers:
       '@tweakpane/core':
         specifier: 2.0.5
         version: 2.0.5
+      '@types/draco3d':
+        specifier: 1.4.10
+        version: 1.4.10
       '@types/geojson':
         specifier: 7946.0.16
         version: 7946.0.16
@@ -519,6 +525,9 @@ importers:
       '@navaramap/three':
         specifier: workspace:*
         version: link:../navara_three
+      '@navaramap/three-default-descs':
+        specifier: workspace:*
+        version: link:../navara_three_default_descs
       '@navaramap/three-default-plugin':
         specifier: workspace:*
         version: link:../navara_three_default_plugin
@@ -14824,7 +14833,7 @@ snapshots:
   vite@8.2.2(@types/node@26.2.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.43.1)(tsx@4.23.12):
     dependencies:
       lightningcss: 1.33.0
-      picomatch: 4.0.5
+      picomatch: 4.0.7
       postcss: 8.5.26
       rolldown: 1.2.5
       tinyglobby: 0.2.17

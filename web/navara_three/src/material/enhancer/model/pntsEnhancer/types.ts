@@ -8,7 +8,7 @@ export type PntsProps = {
   color?: number;
   pointSize?: number;
   height?: number;
-  divideColor?: boolean;
+  srgbVertexColor?: boolean;
   geodeticNormal?: { x: number; y: number; z: number };
 };
 
@@ -18,7 +18,7 @@ export type PntsProps = {
 export type PntsState = Readonly<{
   height: number;
   geodeticNormal: { x: number; y: number; z: number };
-  divideColor: boolean;
+  srgbVertexColor: boolean;
 }>;
 
 /**

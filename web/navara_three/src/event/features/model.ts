@@ -1,4 +1,7 @@
-import { ModelMesh as NavaraModelMesh } from "@navaramap/engine";
+import type {
+  DracoAttributeId,
+  ModelMesh as NavaraModelMesh,
+} from "@navaramap/engine";
 import { degreeToRadian } from "@navaramap/three-api";
 import {
   BufferGeometry,
@@ -13,14 +16,12 @@ import {
   Sphere,
 } from "three";
 
+import { createGltfLoader } from "../../loaders";
+import type { DracoDecodeConfig } from "../../loaders/dracoGeometry";
 import { ModelMesh } from "../../mesh/model";
+import { decodeDracoAsync } from "../../tasks/decodeDracoAsync";
 import { toCreasedNormalsAsync } from "../../tasks/toCreasedNormalsAsync";
 import type { EventContext } from "../context";
-import {
-  initializeGltfLoader,
-  initializeDracoLoader,
-  decompressDraco,
-} from "../loaders";
 
 /**
  * Recompute vertex normals via `toCreasedNormalsAsync` for every Mesh in the
@@ -45,6 +46,37 @@ async function applyCreasedNormals(
   );
 }
 
+// ref: https://github.com/CesiumGS/3d-tiles/blob/main/specification/TileFormats/PointCloud/README.adoc#semantics
+const PNTS_DRACO_ATTRIBUTES: Record<
+  string,
+  [name: string, type: DracoDecodeConfig["attributeTypes"][string]]
+> = {
+  POSITION: ["position", "Float32Array"],
+  RGB: ["color", "Uint8Array"],
+  RGBA: ["color", "Uint8Array"],
+  NORMAL: ["normal", "Float32Array"],
+};
+
+/**
+ * Maps PNTS feature table semantics to three.js attributes; others are
+ * skipped. Frees the given attribute ids.
+ */
+function pntsDracoDecodeConfig(
+  dracoAttributes: DracoAttributeId[],
+): DracoDecodeConfig {
+  const config: DracoDecodeConfig = { attributeIDs: {}, attributeTypes: {} };
+  for (const dracoAttribute of dracoAttributes) {
+    const attribute = PNTS_DRACO_ATTRIBUTES[dracoAttribute.semantic];
+    if (attribute) {
+      const [name, type] = attribute;
+      config.attributeIDs[name] = dracoAttribute.uniqueId;
+      config.attributeTypes[name] = type;
+    }
+    dracoAttribute.free();
+  }
+  return config;
+}
+
 export async function renderModel(ctx: EventContext, m: NavaraModelMesh) {
   const { rawScene, credit } = await (async () => {
     if (m.bin) {
@@ -60,22 +92,19 @@ export async function renderModel(ctx: EventContext, m: NavaraModelMesh) {
       // bin here is the extracted position buffer (Draco blob or raw f32), not glTF.
       // 3D Tiles 1.1 glTF tiles (point cloud or not) take the GLTFLoader path below.
       if (internal?.pointCloud) {
-        let geometry: BufferGeometry | undefined;
+        let geometry: BufferGeometry;
         const material = new PointsMaterial({
           size: m.material.pointSize,
           vertexColors: true,
           sizeAttenuation: false,
         });
 
-        if (internal.dracoCompressed) {
-          const { decoder, dispose } = initializeDracoLoader();
-          geometry = await (async () => {
-            try {
-              return await decompressDraco(bin.buffer as ArrayBuffer, decoder);
-            } finally {
-              dispose();
-            }
-          })();
+        const dracoAttributes = internal.dracoAttributes;
+        if (dracoAttributes) {
+          geometry = await decodeDracoAsync(
+            bin.buffer as ArrayBuffer,
+            pntsDracoDecodeConfig(dracoAttributes),
+          );
         } else {
           geometry = new BufferGeometry();
           geometry.setAttribute(
@@ -85,43 +114,39 @@ export async function renderModel(ctx: EventContext, m: NavaraModelMesh) {
         }
 
         const group = new Group();
-        if (geometry) {
-          const points: Points = new Points(geometry, material);
-          group.add(points);
+        const points: Points = new Points(geometry, material);
+        group.add(points);
 
-          // Add bounding box helper using the precomputed AABB
-          const aabb_center = new Vector3(
-            m.aabb.center.x,
-            m.aabb.center.y,
-            m.aabb.center.z,
-          );
-          const aabb_extent = new Vector3(
-            m.aabb.extent.x,
-            m.aabb.extent.y,
-            m.aabb.extent.z,
-          );
+        // Add bounding box helper using the precomputed AABB
+        const aabb_center = new Vector3(
+          m.aabb.center.x,
+          m.aabb.center.y,
+          m.aabb.center.z,
+        );
+        const aabb_extent = new Vector3(
+          m.aabb.extent.x,
+          m.aabb.extent.y,
+          m.aabb.extent.z,
+        );
 
-          geometry.boundingBox = new Box3(
-            aabb_center.clone().sub(aabb_extent),
-            aabb_center.clone().add(aabb_extent),
-          );
+        geometry.boundingBox = new Box3(
+          aabb_center.clone().sub(aabb_extent),
+          aabb_center.clone().add(aabb_extent),
+        );
 
-          geometry.boundingSphere = new Sphere(
-            aabb_center,
-            aabb_extent.length(),
-          );
+        geometry.boundingSphere = new Sphere(aabb_center, aabb_extent.length());
 
-          if (m.material.showBoundingBox) {
-            const boxHelper = new Box3Helper(geometry.boundingBox, 0xff0000);
-            group.add(boxHelper);
-          }
+        if (m.material.showBoundingBox) {
+          const boxHelper = new Box3Helper(geometry.boundingBox, 0xff0000);
+          group.add(boxHelper);
         }
         return { rawScene: group };
       }
 
-      const { loader, dispose } = initializeGltfLoader();
-      const model = await loader.parseAsync(bin.buffer as ArrayBuffer, "");
-      dispose();
+      const model = await createGltfLoader().parseAsync(
+        bin.buffer as ArrayBuffer,
+        "",
+      );
       if (m.material.showBoundingBox) {
         model.scene.traverse((child) => {
           if (child instanceof Mesh) {
@@ -142,15 +167,12 @@ export async function renderModel(ctx: EventContext, m: NavaraModelMesh) {
       if (!m.material.url) {
         return {};
       }
-      const { loader, dispose } = initializeGltfLoader();
       let model;
       try {
-        model = await loader.loadAsync(m.material.url);
+        model = await createGltfLoader().loadAsync(m.material.url);
       } catch (e) {
         console.warn(`Failed to load model: ${m.material.url}`, e);
         return {};
-      } finally {
-        dispose();
       }
       if (m.material.showBoundingBox) {
         model.scene.traverse((child) => {

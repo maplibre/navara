@@ -22,9 +22,9 @@ testShaderCompatibility(
       },
     },
     {
-      name: "With divideColor",
+      name: "With srgbVertexColor",
       props: {
-        divideColor: true,
+        srgbVertexColor: true,
       },
     },
   ],

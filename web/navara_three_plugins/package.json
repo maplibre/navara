@@ -31,11 +31,13 @@
   },
   "peerDependencies": {
     "@navaramap/three": "workspace:*",
+    "@navaramap/three-default-descs": "workspace:*",
     "@navaramap/three-default-plugin": "workspace:*",
     "three": ">=0.183.0"
   },
   "devDependencies": {
     "@navaramap/three": "workspace:*",
+    "@navaramap/three-default-descs": "workspace:*",
     "@navaramap/three-default-plugin": "workspace:*",
     "@types/three": "0.185.4",
     "three": "0.185.1"

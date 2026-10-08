@@ -229,6 +229,7 @@ export * from "./shaders";
 export * from "./material";
 export * from "./core";
 export { BufferView } from "./bufferView";
+export { createGltfLoader } from "./loaders";
 export * from "./plugins";
 export * from "./layers";
 export * from "./passes";

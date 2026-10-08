@@ -151,7 +151,7 @@ export class ModelMesh
       pointSize: meshMaterial.pointSize ?? 1,
       height: meshMaterial.height ?? 0,
       geodeticNormal,
-      divideColor: meshMaterial.__internal__?.pointCloud,
+      srgbVertexColor: meshMaterial.__internal__?.pointCloud,
     };
 
     this.traverse((object: Object3D) => {

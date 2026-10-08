@@ -5,14 +5,12 @@ import { createReplacer } from "../../../../utils";
 
 import type { PntsMutates, PntsState } from "./types";
 
-const COLOR_DIVISOR = 65535.0;
-
 /**
  * Transform shader with PNTS-specific modifications.
  *
  * Vertex shader changes:
  * - Adds uAddHeight and uGeodeticNormal uniforms
- * - When `divideColor` is `true`, scales vertex colors by 1/65535 (PNTS color range normalization)
+ * - When `srgbVertexColor` is `true`, decodes sRGB vertex colors to linear
  * - Offsets vertex position along geodetic normal by uAddHeight
  */
 export const transformShader = (
@@ -25,19 +23,27 @@ export const transformShader = (
   mutates.updateUniforms(shader.uniforms, state);
 
   shader.vertexShader = createReplacer(shader.vertexShader)
-    .replaceWithCondition(
-      "#include <color_vertex>",
-      createReplacer(ShaderChunk.color_vertex).replace(
-        "vColor = vec4( 1.0 );",
-        `vColor = vec4( 1.0 / ${COLOR_DIVISOR}.0 );`,
-      ).source,
-      state.divideColor,
-    )
     .replace(
       "#include <common>",
       `#include <common>
-uniform float uAddHeight;
-uniform vec3 uGeodeticNormal;`,
+    uniform float uAddHeight;
+    uniform vec3 uGeodeticNormal;`,
+    )
+    // The chunk only defines the color space transfer functions, so it is
+    // valid in a vertex shader too.
+    .replaceWithCondition(
+      "#include <common>",
+      `#include <common>
+    #include <colorspace_pars_fragment>`,
+      state.srgbVertexColor,
+    )
+    .replaceWithCondition(
+      "#include <color_vertex>",
+      `#include <color_vertex>
+#if defined( USE_COLOR ) || defined( USE_COLOR_ALPHA )
+vColor = sRGBTransferEOTF( vColor );
+#endif`,
+      state.srgbVertexColor,
     )
     .replace(
       "#include <project_vertex>",

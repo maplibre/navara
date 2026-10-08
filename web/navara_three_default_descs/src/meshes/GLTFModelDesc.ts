@@ -17,6 +17,7 @@ import {
   encodePositionRTE,
   composeWorldMatrixForRTE,
   RTE_ONE_UNIFORM,
+  createGltfLoader,
 } from "@navaramap/three";
 import ProjectVertexRteModel from "@shaders/glsl/chunks/project_vertex_rte_model.glsl";
 import RteUniformParsVertex from "@shaders/glsl/chunks/rte_uniform_pars_vertex.glsl";
@@ -37,8 +38,10 @@ import {
   RGBADepthPacking,
   ShaderChunk,
 } from "three";
-import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
-import type { GLTF } from "three/examples/jsm/loaders/GLTFLoader.js";
+import type {
+  GLTF,
+  GLTFLoader,
+} from "three/examples/jsm/loaders/GLTFLoader.js";
 
 type Description = {
   gltfModel?: {
@@ -162,7 +165,7 @@ export class GLTFModelDesc extends MeshDesc<
         ...config.gltfModel,
       },
     };
-    this.loader = new GLTFLoader();
+    this.loader = createGltfLoader();
   }
 
   /**

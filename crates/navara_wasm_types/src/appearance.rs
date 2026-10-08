@@ -1577,9 +1577,9 @@ pub struct ModelInternalMaterial {
     #[wasm_bindgen(getter_with_clone, js_name = pointCloud)]
     #[serde(rename = "pointCloud")]
     pub point_cloud: bool,
-    #[wasm_bindgen(getter_with_clone, js_name = dracoCompressed)]
-    #[serde(rename = "dracoCompressed")]
-    pub draco_compressed: bool,
+    #[wasm_bindgen(getter_with_clone, js_name = dracoAttributes)]
+    #[serde(rename = "dracoAttributes")]
+    pub draco_attributes: Option<Vec<DracoAttributeId>>,
     #[wasm_bindgen(getter_with_clone, js_name = pointCloudGeodeticNormal)]
     #[serde(rename = "pointCloudGeodeticNormal")]
     pub point_cloud_geodetic_normal: WasmVec3,
@@ -1587,9 +1587,16 @@ pub struct ModelInternalMaterial {
 
 impl<'a> From<&'a navara_material::ModelInternalMaterial> for ModelInternalMaterial {
     fn from(value: &'a navara_material::ModelInternalMaterial) -> ModelInternalMaterial {
+        let draco_attributes = value.draco_attributes.as_ref().map(|attributes| {
+            let mut converted = Vec::with_capacity(attributes.len());
+            for attribute in attributes {
+                converted.push(attribute.into());
+            }
+            converted
+        });
         ModelInternalMaterial {
             point_cloud: value.point_cloud,
-            draco_compressed: value.draco_compressed,
+            draco_attributes,
             point_cloud_geodetic_normal: value.point_cloud_geodetic_normal.into(),
         }
     }
@@ -1597,10 +1604,47 @@ impl<'a> From<&'a navara_material::ModelInternalMaterial> for ModelInternalMater
 
 impl From<ModelInternalMaterial> for navara_material::ModelInternalMaterial {
     fn from(value: ModelInternalMaterial) -> navara_material::ModelInternalMaterial {
+        let draco_attributes = value.draco_attributes.map(|attributes| {
+            let mut converted = Vec::with_capacity(attributes.len());
+            for attribute in attributes {
+                converted.push(attribute.into());
+            }
+            converted
+        });
         navara_material::ModelInternalMaterial {
             point_cloud: value.point_cloud,
-            draco_compressed: value.draco_compressed,
+            draco_attributes,
             point_cloud_geodetic_normal: value.point_cloud_geodetic_normal.into(),
+        }
+    }
+}
+
+/// Maps a 3D Tiles feature table semantic (`POSITION`, `RGB`, ...) to its
+/// Draco unique attribute id.
+#[wasm_bindgen]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DracoAttributeId {
+    #[wasm_bindgen(getter_with_clone)]
+    pub semantic: String,
+    #[wasm_bindgen(js_name = uniqueId)]
+    #[serde(rename = "uniqueId")]
+    pub unique_id: u32,
+}
+
+impl From<&navara_material::DracoAttributeId> for DracoAttributeId {
+    fn from(value: &navara_material::DracoAttributeId) -> Self {
+        DracoAttributeId {
+            semantic: value.semantic.clone(),
+            unique_id: value.unique_id,
+        }
+    }
+}
+
+impl From<DracoAttributeId> for navara_material::DracoAttributeId {
+    fn from(value: DracoAttributeId) -> Self {
+        navara_material::DracoAttributeId {
+            semantic: value.semantic,
+            unique_id: value.unique_id,
         }
     }
 }

@@ -21,6 +21,7 @@ export default defineConfig((env) => {
         ...common.build.rollupOptions,
         external: [
           "@navaramap/three",
+          "@navaramap/three-default-descs",
           "@navaramap/three-default-plugin",
           "three",
         ],

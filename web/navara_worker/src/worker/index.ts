@@ -5,6 +5,7 @@ import { commonTasks } from "../tasks";
 export { type CommonTasks } from "../tasks";
 
 export * from "./transfer";
+export { registerWasmMemoryProbe } from "../tasks/waitWasm";
 
 let isInitialized = false;
 export const registerTasks = (

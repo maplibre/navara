@@ -66,7 +66,7 @@ describe("pntsEnhancer/state", () => {
       const currentState: PntsState = {
         height: 150,
         geodeticNormal: { x: 0.1, y: 0.2, z: 0.3 },
-        divideColor: false,
+        srgbVertexColor: false,
       };
       const result = updateState({}, currentState);
       expect(result.height).toBe(150);
@@ -77,7 +77,7 @@ describe("pntsEnhancer/state", () => {
       const currentState: PntsState = {
         height: 150,
         geodeticNormal: { x: 0.1, y: 0.2, z: 0.3 },
-        divideColor: false,
+        srgbVertexColor: false,
       };
       const result = updateState({ height: 300 }, currentState);
       expect(result.height).toBe(300);

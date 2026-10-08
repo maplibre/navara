@@ -15,6 +15,49 @@ sidebar:
 | `url`    | `string`     | （必須） | `tileset.json` の URL。  |
 | `crs`    | `string`     | —          | コンテンツの座標参照系。 |
 
+## 対応仕様
+
+### 3D Tiles 1.0
+
+| タイルフォーマット             | 説明                                                        |
+| ------------------------------ | ----------------------------------------------------------- |
+| b3dm (Batched 3D Model)        | 建物などのバッチ化された 3D モデル。                        |
+| pnts (Point Cloud)             | 点群データ。[PNTS の属性](#pnts-の属性)を参照してください。 |
+| Google Photorealistic 3D Tiles | Google Maps Platform が提供するフォトリアリスティックタイル。 |
+
+### PNTS の属性
+
+Navara が読み取るのは pnts の feature table の一部です。点の色は sRGB として扱われます。位置を `POSITION_QUANTIZED` でしか持たないタイルは描画されません。
+
+| セマンティクス                    | 対応状況                                  |
+| --------------------------------- | ----------------------------------------- |
+| `POSITION`                        | ✅                                        |
+| `POSITION_QUANTIZED`              | ❌                                        |
+| `RTC_CENTER`                      | ✅                                        |
+| `RGB`                             | ⚠️ Draco 圧縮されたタイルのみ             |
+| `RGBA`                            | ⚠️ Draco 圧縮されたタイルのみ             |
+| `RGB565`                          | ❌                                        |
+| `CONSTANT_RGBA`                   | ❌                                        |
+| `NORMAL` / `NORMAL_OCT16P`        | ❌                                        |
+| `BATCH_ID` と batch table         | ❌                                        |
+| `3DTILES_draco_point_compression` | ⚠️ `POSITION`、`RGB`、`RGBA` のみ         |
+
+### 3D Tiles 1.1
+
+| 機能                         | 説明                                                                                        |
+| ---------------------------- | ------------------------------------------------------------------------------------------- |
+| GLB コンテンツ               | GLB（バイナリ glTF）をコンテンツフォーマットとして使用するタイル。                          |
+| GLB POINTS プリミティブ      | `mode: POINTS` の glTF メッシュを点群として描画（3D Tiles 1.1 の点群対応）。               |
+| `EXT_mesh_features`          | glTF メッシュ内の FeatureId セットによるフィーチャー識別。                                  |
+| `EXT_structural_metadata`    | glTF アセットに埋め込まれたプロパティテーブルによるフィーチャーごとのメタデータへのアクセス。 |
+| `KHR_draco_mesh_compression` | Draco 圧縮されたメッシュデータのデコード。                                                  |
+| `KHR_mesh_quantization`      | 量子化された頂点属性によるコンパクトな glTF アセットへの対応。                              |
+| `EXT_meshopt_compression`    | meshopt 圧縮バッファのデコード。                                                            |
+
+:::note
+対応しているのは GLB（バイナリ glTF コンテナ）のコンテンツのみです。外部 `.bin` バッファを参照するプレーンな `.gltf` ファイルには未対応です。また Implicit tiling にも対応していないため、タイルセットは `tileset.json` で明示的なタイル階層を記述する必要があります。
+:::
+
 ## 使用例
 
 ```typescript

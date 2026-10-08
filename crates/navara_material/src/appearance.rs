@@ -755,8 +755,18 @@ impl ModelMaterial {
 #[derive(Debug, Clone, PartialEq)]
 pub struct ModelInternalMaterial {
     pub point_cloud: bool,
-    pub draco_compressed: bool,
+    /// Draco unique attribute ids of the point cloud bin; `Some` when the bin
+    /// is Draco-compressed.
+    pub draco_attributes: Option<Vec<DracoAttributeId>>,
     pub point_cloud_geodetic_normal: Vec3,
+}
+
+/// Maps a 3D Tiles feature table semantic (`POSITION`, `RGB`, ...) to its
+/// Draco unique attribute id.
+#[derive(Debug, Clone, PartialEq)]
+pub struct DracoAttributeId {
+    pub semantic: String,
+    pub unique_id: u32,
 }
 
 /// Render-only appearance for a `raster` layer's imagery. All fetch/tiling

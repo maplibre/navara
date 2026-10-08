@@ -5,14 +5,14 @@ export const DEFAULT_PNTS_PROPS: Required<PntsProps> = {
   pointSize: 1,
   height: 0,
   geodeticNormal: { x: 0, y: 0, z: 0 },
-  divideColor: false,
+  srgbVertexColor: false,
 };
 
 /** Default state derived from DEFAULT_PNTS_PROPS. */
 export const DEFAULT_PNTS_STATE: PntsState = {
   height: DEFAULT_PNTS_PROPS.height,
   geodeticNormal: DEFAULT_PNTS_PROPS.geodeticNormal,
-  divideColor: false,
+  srgbVertexColor: false,
 };
 
 /**
@@ -25,5 +25,5 @@ export const updateState = (
 ): PntsState => ({
   height: props.height ?? currentState.height,
   geodeticNormal: props.geodeticNormal ?? currentState.geodeticNormal,
-  divideColor: !!props.divideColor,
+  srgbVertexColor: !!props.srgbVertexColor,
 });

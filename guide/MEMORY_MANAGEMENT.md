@@ -356,7 +356,7 @@ single view of the device's memory:
 | Setting | Desktop | Mobile ≥ 4 GB (or iOS, which never reports `deviceMemory`) | Mobile < 4 GB |
 | --- | --- | --- | --- |
 | Tile-cache budget (`setCacheBytes`) | ¼ of device memory, capped at 2 GB | 512 MB | 256 MB |
-| Per-worker WASM heap cap (pool recycles above it) | ¼ of device memory ÷ pool size, clamped to [64, 256] MB | 64 MB (pinned) | 64 MB (pinned) |
+| Per-worker WASM heap cap (engine + Draco decoder heaps; pool recycles above it) | ¼ of device memory ÷ pool size, clamped to [64, 256] MB | 64 MB (pinned) | 64 MB (pinned) |
 | Font-worker budget | 64 MB | 32 MB | 16 MB |
 | In-flight fetch cap per pipeline (`setMaxPendingRequests`) | 50 | 16 | 8 |
 | SSE multiplier range (`setSseMultiplierRange`) | 1.0 – 16.0 | 4.0 – 32.0 | 8.0 – 64.0 |

@@ -76,14 +76,14 @@ pub fn construct_model_by_pnts_layer(
         let mut appearance = Appearance::clone_model_or_default(&layer.appearances);
         appearance.should_rotate_in_default = false;
 
-        let (draco_compressed, positions_center, positions_handle) =
+        let (draco_attributes, positions_center, positions_handle) =
             match get_geometry_info_from_pnts(&mut buf, req.handle) {
                 Some(r) => r,
                 None => continue,
             };
 
         appearance.internal = Some(ModelInternalMaterial {
-            draco_compressed,
+            draco_attributes,
             point_cloud: true,
             point_cloud_geodetic_normal: Vec3::ZERO,
         });

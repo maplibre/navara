@@ -821,22 +821,6 @@ pub fn transfer_mesh(
             continue;
         }
 
-        fn postupdate_tile(
-            tile: &mut TerrainTile,
-            terrain_info: &mut TerrainInformation,
-            max_height: FloatType,
-            min_height: FloatType,
-        ) {
-            if let Some(terrain_data) = tile.terrain_data.as_mut() {
-                terrain_data.set_current_max_height(max_height);
-                terrain_data.set_current_min_height(min_height);
-            }
-            tile.update_heights(max_height, min_height);
-
-            terrain_info.max_height = max_height;
-            terrain_info.min_height = min_height;
-        }
-
         // Get skirt settings from terrain layer
         let (skirt, skirt_exaggeration) = terrain_layer
             .and_then(|l| l.appearance.as_ref())
@@ -952,6 +936,14 @@ pub fn transfer_mesh(
 
             attach_rendered(&mut commands, rendered_tile_id);
 
+            let mesh_aabb = apply_built_heights(
+                &mut qt,
+                &mut terrain_qt,
+                rendered_tile.tile_handle,
+                max_height,
+                min_height,
+                rtc_translation,
+            );
             commit_tile_mesh(
                 &mut commands,
                 &mut tc,
@@ -966,11 +958,7 @@ pub fn transfer_mesh(
                     uvs: uvshandle,
                     active: false,
                     render_order,
-                    aabb: Aabb {
-                        center: Transform::from_translation(-rtc_translation)
-                            .transform_point(tile_aabb.center),
-                        extents: tile_aabb.extents,
-                    },
+                    aabb: mesh_aabb,
                     normals: terrain_mesh_upsampler.geometry.normals,
                     skirt_vertices: terrain_mesh_upsampler.geometry.skirt_vertices,
                     skirt_uvs: terrain_mesh_upsampler.geometry.skirt_uvs,
@@ -981,9 +969,6 @@ pub fn transfer_mesh(
                 appearance,
                 rtc_translation,
             );
-            let tile = qt.qt.get_mut(rendered_tile.tile_handle).unwrap();
-            let terrain_info = terrain_qt.qt.get_mut(rendered_tile.tile_handle).unwrap();
-            postupdate_tile(tile, terrain_info, max_height, min_height);
 
             continue;
         }
@@ -1081,6 +1066,14 @@ pub fn transfer_mesh(
 
         attach_rendered(&mut commands, rendered_tile_id);
 
+        let mesh_aabb = apply_built_heights(
+            &mut qt,
+            &mut terrain_qt,
+            rendered_tile.tile_handle,
+            max_height,
+            min_height,
+            rtc_translation,
+        );
         commit_tile_mesh(
             &mut commands,
             &mut tc,
@@ -1095,11 +1088,7 @@ pub fn transfer_mesh(
                 uvs: uvshandle,
                 active: false,
                 render_order,
-                aabb: Aabb {
-                    center: Transform::from_translation(-rtc_translation)
-                        .transform_point(tile_aabb.center),
-                    extents: tile_aabb.extents,
-                },
+                aabb: mesh_aabb,
                 normals: terrain_mesh_constructor.geometry.normals,
                 skirt_vertices: terrain_mesh_constructor.geometry.skirt_vertices,
                 skirt_uvs: terrain_mesh_constructor.geometry.skirt_uvs,
@@ -1110,10 +1099,6 @@ pub fn transfer_mesh(
             appearance,
             rtc_translation,
         );
-
-        let tile = qt.qt.get_mut(rendered_tile.tile_handle).unwrap();
-        let terrain_info = terrain_qt.qt.get_mut(rendered_tile.tile_handle).unwrap();
-        postupdate_tile(tile, terrain_info, max_height, min_height);
     }
 
     // A re-mesh flag lives only while a task it started is in flight: a visit
@@ -1126,6 +1111,38 @@ pub fn transfer_mesh(
         {
             commands.entity(rendered_tile_id).remove::<RemeshPending>();
         }
+    }
+}
+
+/// Record a freshly built mesh's height range on its tile and return the
+/// mesh's bounds in its RTC frame. The bounds must come from this build's
+/// heights, not the ones the tile carried before it (inherited from an
+/// ancestor, often still 0 m): the web side culls the mesh by them, so a
+/// stale range sinks them below the surface and a low-pitched camera
+/// frustum-culls the visible tile.
+fn apply_built_heights(
+    qt: &mut TerrainTileQuadtree,
+    terrain_qt: &mut TerrainInformationQuadtree,
+    tile_handle: TileHandle,
+    max_height: FloatType,
+    min_height: FloatType,
+    rtc_translation: navara_math::Vec3,
+) -> Aabb {
+    let tile = qt.qt.get_mut(tile_handle).unwrap();
+    if let Some(terrain_data) = tile.terrain_data.as_mut() {
+        terrain_data.set_current_max_height(max_height);
+        terrain_data.set_current_min_height(min_height);
+    }
+    tile.update_heights(max_height, min_height);
+
+    let terrain_info = terrain_qt.qt.get_mut(tile_handle).unwrap();
+    terrain_info.max_height = max_height;
+    terrain_info.min_height = min_height;
+
+    let tile_aabb = tile.aabb();
+    Aabb {
+        center: Transform::from_translation(-rtc_translation).transform_point(tile_aabb.center),
+        extents: tile_aabb.extents,
     }
 }
 
@@ -4470,6 +4487,72 @@ mod remesh_tests {
         assert!(
             upsampler_entities(&mut app).is_empty(),
             "no second task: a flag left behind would re-dispatch every frame"
+        );
+    }
+
+    /// A built mesh is bounded by the heights of its own build, not the range
+    /// the tile carried before it: the web side frustum-culls the mesh by
+    /// these bounds, and a stale range (inherited, often 0 m) sinks them below
+    /// the surface so a low-pitched camera culls a visible tile.
+    #[test]
+    fn transfer_mesh_bounds_a_built_mesh_by_its_own_heights() {
+        let mut app = new_app();
+        let rendered_tile_entity = setup_band_tile_upsampled_from(&mut app, 0);
+        let handle = rendered_tile(&app, rendered_tile_entity).tile_handle;
+        app.add_systems(Update, transfer_mesh);
+        settle_new_tiles(&mut app);
+
+        app.world_mut()
+            .entity_mut(rendered_tile_entity)
+            .insert(RemeshPending);
+        update_tiles(&mut app);
+        let upsampler = rendered_tile(&app, rendered_tile_entity)
+            .terrain_mesh_upsampler
+            .expect("a fresh upsample task was spawned");
+
+        let stale_aabb = app
+            .world()
+            .resource::<TerrainTileQuadtree>()
+            .qt
+            .get(handle)
+            .unwrap()
+            .aabb()
+            .clone();
+        complete_upsample(&mut app, upsampler);
+        {
+            let mut result = app
+                .world_mut()
+                .get_mut::<UpsampleTerrainMeshResult>(upsampler)
+                .unwrap();
+            result.min_height = 500.;
+            result.max_height = 600.;
+        }
+        update_tiles(&mut app);
+
+        let mesh_entity = app
+            .world()
+            .resource::<TileCacheManager>()
+            .rendered_tile_caches[&handle]
+            .mesh_entity
+            .unwrap();
+        let mesh_aabb = app.world().get::<Mesh>(mesh_entity).unwrap().aabb.clone();
+        let tile = app
+            .world()
+            .resource::<TerrainTileQuadtree>()
+            .qt
+            .get(handle)
+            .unwrap();
+        assert_eq!(tile.max_height, 600.);
+        assert_eq!(tile.min_height, 500.);
+        assert_eq!(
+            (mesh_aabb.center, mesh_aabb.extents),
+            (tile.aabb().center, tile.aabb().extents),
+            "the mesh is bounded by the heights it was built with"
+        );
+        assert_ne!(
+            (mesh_aabb.center, mesh_aabb.extents),
+            (stale_aabb.center, stale_aabb.extents),
+            "not by the range the tile carried before the build"
         );
     }
 

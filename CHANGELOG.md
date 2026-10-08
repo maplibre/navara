@@ -1,3 +1,69 @@
+## v0.2.1 - 2026-10-08
+
+### 🐛 Bug Fixes
+
+- Include navara_three_default_descs in navara_three_plugins ([#857](https://github.com/maplibre/navara/pull/857))
+
+## v0.2.0 - 2026-10-08
+
+### 🚀 Features
+
+- **BREAKING:** Improve selective bloom to use mipmap blur ([#832](https://github.com/maplibre/navara/pull/832))
+
+- Add scaleToGeodeticSurface function to project a position onto the geodetic surface ([#818](https://github.com/maplibre/navara/pull/818))
+- Enable SIMD ([#814](https://github.com/maplibre/navara/pull/814))
+- Add multiple layers to single source ([#824](https://github.com/maplibre/navara/pull/824))
+- Support specular and shadow lighting in AerialPerspectiveEffect ([#838](https://github.com/maplibre/navara/pull/838))
+- Add polygon and polyline meshes ([#852](https://github.com/maplibre/navara/pull/852))
+
+- **EXPERIMENTAL:** Support parsing and displaying maplibre's demo tiles ([#820](https://github.com/maplibre/navara/pull/820))
+- **EXPERIMENTAL:** Add rotation and facing options for text and sprites ([#833](https://github.com/maplibre/navara/pull/833))
+
+### 🐛 Bug Fixes
+
+- SSAO depth test error ([#812](https://github.com/maplibre/navara/pull/812))
+- Dynamic batch texture ([#813](https://github.com/maplibre/navara/pull/813))
+- Use batch texture for point-related meshes and support emissive ([#816](https://github.com/maplibre/navara/pull/816))
+- Hide texts at initialization when show=false ([#817](https://github.com/maplibre/navara/pull/817))
+- MSAA for texturized vector ([#819](https://github.com/maplibre/navara/pull/819))
+- Improve skybox mesh ([#822](https://github.com/maplibre/navara/pull/822))
+- Release global batch id properly ([#821](https://github.com/maplibre/navara/pull/821))
+- Join lines for a polygon ([#827](https://github.com/maplibre/navara/pull/827))
+- Polyline joint artifact ([#829](https://github.com/maplibre/navara/pull/829))
+- Fill poles  ([#828](https://github.com/maplibre/navara/pull/828))
+- Unify camera event emissions for instantaneous changes ([#831](https://github.com/maplibre/navara/pull/831))
+- Improve the performance of the terrain picking on the wheel event ([#834](https://github.com/maplibre/navara/pull/834))
+- Gbuffer stamping ([#835](https://github.com/maplibre/navara/pull/835))
+- Improve tile rendering structure ([#836](https://github.com/maplibre/navara/pull/836))
+- Restrict the max upsampling ([#845](https://github.com/maplibre/navara/pull/845))
+- Refactor background for maplibre style ([#846](https://github.com/maplibre/navara/pull/846))
+- Efficient upsampling ([#848](https://github.com/maplibre/navara/pull/848))
+- Improve SSR quality ([#849](https://github.com/maplibre/navara/pull/849))
+- Improve the Draco decoder and PNTS color ([#854](https://github.com/maplibre/navara/pull/854))
+- Outdated tile AABB ([#855](https://github.com/maplibre/navara/pull/855))
+
+### 📚 Documentation
+
+- Inconsistent wording
+- Add Azerbaijani landing page locale ([#815](https://github.com/maplibre/navara/pull/815))
+- Add brand assets page ([#837](https://github.com/maplibre/navara/pull/837))
+
+### 🧹 Miscellaneous
+
+- Cancel superseded pull request runs ([#811](https://github.com/maplibre/navara/pull/811))
+- Update dependency node to v24.20.0 ([#810](https://github.com/maplibre/navara/pull/810))
+- Update cargo dependencies ([#808](https://github.com/maplibre/navara/pull/808))
+- Update npm dependencies (patch) ([#809](https://github.com/maplibre/navara/pull/809))
+- Add examples (IBL, SSAO, feature evaluator for extruded height)
+- Enable dependabot ([#840](https://github.com/maplibre/navara/pull/840))
+- Fix dependabot for cargo ([#841](https://github.com/maplibre/navara/pull/841))
+- Bump the actions-minor group with 3 updates ([#843](https://github.com/maplibre/navara/pull/843))
+- Bump step-security/harden-runner in the actions-patch group ([#842](https://github.com/maplibre/navara/pull/842))
+- Add docs for maplibre_style. ([#839](https://github.com/maplibre/navara/pull/839))
+- Bump taiki-e/install-action ([#850](https://github.com/maplibre/navara/pull/850))
+- Feature emissive example ([#851](https://github.com/maplibre/navara/pull/851))
+- Add draw example ([#856](https://github.com/maplibre/navara/pull/856))
+
 ## v0.1.1 - 2026-08-30
 
 ### 🚀 Features

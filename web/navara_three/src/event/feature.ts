@@ -93,12 +93,8 @@ export function renderFeature(
   }
 }
 
-// Define whether the feature uses web worker internally.
-// - `model` feature uses Web worker internally to parse glTF and its compression.
-export const checkFeatureParallel = (feature: RenderableFeature): boolean => {
-  const { model } = feature;
-  return !!model;
-};
+export const isModelFeature = (feature: RenderableFeature): boolean =>
+  !!feature.model;
 
 export async function processRenderableFeatureAdded(
   ctx: EventContext,
@@ -111,7 +107,6 @@ export async function processRenderableFeatureAdded(
     featureHandler,
     viewEvents,
     layersManager,
-    viewContext,
     updatedAt,
     layerHandler,
   } = ctx;
@@ -140,42 +135,33 @@ export async function processRenderableFeatureAdded(
             ? "polygon"
             : undefined;
 
-  const useParallel = checkFeatureParallel(feature);
-
-  if (useParallel) {
-    // Start parallel process
-    viewContext.concurrencyManager.increment();
-  }
-
-  const obj = await renderFeature(ctx, feature, tileHandle, featureLayerId)
-    ?.then((r) => {
-      // The glTF/Draco decode happened on the JS side, so report the actual
-      // decoded GPU size back to the ledger (its compressed-payload estimate
-      // undercounts Draco content). Draco decode inflates geometry markedly.
-      if (model && r) {
-        featureHandler.reportFeatureGpuBytes(ev.bits, sumModelGpuBytes(r));
-      }
-      // The billboard image atlas (CPU pixel buffer + GPU texture) is
-      // allocated and grown lazily on the JS side as images load, so the
-      // mesh reports its measured footprint whenever it changes; the ledger
-      // folds it into the owning vector tile's cost. Capture `bits` as a
-      // plain number now: the reporter fires long after this WASM event
-      // object is freed (async image packs), and a deferred `ev.bits` read
-      // would throw "null pointer passed to rust".
-      if (billboard && r instanceof InstancedSpriteMesh) {
-        const featureBits = ev.bits;
-        r.setAtlasBytesReporter((bytes) =>
-          featureHandler.reportFeatureGpuBytes(featureBits, bytes),
-        );
-      }
-      return r;
-    })
-    .finally(() => {
-      if (useParallel) {
-        // End parallel process
-        viewContext.concurrencyManager.decrement();
-      }
-    });
+  const obj = await renderFeature(
+    ctx,
+    feature,
+    tileHandle,
+    featureLayerId,
+  )?.then((r) => {
+    // The glTF/Draco decode happened on the JS side, so report the actual
+    // decoded GPU size back to the ledger (its compressed-payload estimate
+    // undercounts Draco content). Draco decode inflates geometry markedly.
+    if (model && r) {
+      featureHandler.reportFeatureGpuBytes(ev.bits, sumModelGpuBytes(r));
+    }
+    // The billboard image atlas (CPU pixel buffer + GPU texture) is
+    // allocated and grown lazily on the JS side as images load, so the
+    // mesh reports its measured footprint whenever it changes; the ledger
+    // folds it into the owning vector tile's cost. Capture `bits` as a
+    // plain number now: the reporter fires long after this WASM event
+    // object is freed (async image packs), and a deferred `ev.bits` read
+    // would throw "null pointer passed to rust".
+    if (billboard && r instanceof InstancedSpriteMesh) {
+      const featureBits = ev.bits;
+      r.setAtlasBytesReporter((bytes) =>
+        featureHandler.reportFeatureGpuBytes(featureBits, bytes),
+      );
+    }
+    return r;
+  });
 
   if (!obj) {
     // renderFeature produced no mesh (e.g. empty geometry); still report

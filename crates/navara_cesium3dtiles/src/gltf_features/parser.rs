@@ -95,7 +95,7 @@ impl TileContentParser for GltfFeaturesParser {
             },
             appearance_modifier: Some(Box::new(|material: &mut navara_material::ModelMaterial| {
                 material.internal = Some(ModelInternalMaterial {
-                    draco_compressed: false,
+                    draco_attributes: None,
                     point_cloud: false,
                     point_cloud_geodetic_normal: Vec3::ZERO,
                 });
