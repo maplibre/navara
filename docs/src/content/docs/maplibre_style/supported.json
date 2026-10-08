@@ -613,7 +613,7 @@
       "status": "✅"
     },
     "centerAltitude": {
-      "status": "✅"
+      "status": "⚠️ Camera positions correctly, but zoom calculation uses sea-level distance"
     },
     "zoom": {
       "status": "✅"

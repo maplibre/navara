@@ -14,8 +14,8 @@ use bevy_input::{
     mouse::{MouseButton, MouseMotion, MouseWheel},
 };
 use navara_core::{
-    Angle, CRS, Ellipsoid, Ray, WGS84_64, ease_out_circ, east_north_up_to_fixed_frame, vec3_to_xyz,
-    xyz_to_vec3,
+    Angle, CRS, Ellipsoid, Ray, WGS84_64, ease_out_circ, east_north_up_to_fixed_frame,
+    ray_ellipsoid, vec3_to_xyz, xyz_to_vec3,
 };
 use navara_event_store::EventStore;
 use navara_frame::FrameManager;
@@ -1273,7 +1273,13 @@ pub fn calc_camera_target_and_distance(
             direction: camera_forward.normalize(),
         };
 
-        if let Some(distance) = ray_ellipsoid_intersect(&ray, ellipsoid) {
+        let intersection = ray_ellipsoid(&ray, ellipsoid);
+        let distance = if intersection.start > 0.0 {
+            intersection.start
+        } else {
+            intersection.end
+        };
+        if distance.is_finite() && distance > 0.0 {
             let target_point = ray.get_point(distance);
             return Some((target_point, distance));
         }

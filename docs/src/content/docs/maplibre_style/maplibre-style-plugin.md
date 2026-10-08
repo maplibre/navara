@@ -85,6 +85,8 @@ Both `center` and `zoom` must be specified for camera initialization to occur.
 
 The camera uses MapLibre's tile size of 512 pixels for zoom calculation, matching MapLibre GL JS behavior precisely. Camera position accounts for pitch: the same zoom level at different pitch angles produces the same map scale at the screen center.
 
+**Known Limitation**: When `centerAltitude` is set to a non-zero value, the camera positions correctly, but zoom level calculation currently uses sea-level distance rather than distance to the elevated target. This means `camera.zoom` and zoom-dependent features may report slightly different values than expected. For example, setting `centerAltitude: 1000` with zoom 15 may result in a reported zoom of ~15.24. This does not affect visual appearance but may affect zoom-dependent layer styling.
+
 ## Advanced Usage
 
 ### With Font Configuration
