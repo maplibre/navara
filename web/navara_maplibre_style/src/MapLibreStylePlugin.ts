@@ -41,6 +41,7 @@ import { expressionUsesZoom } from "./utils/expressionHelpers";
 type MapLibreStylePluginOptions = {
   overrides?: Partial<StyleSpecification>;
   tileJsonPlugin?: TileJsonPlugin;
+  forceMapLibreFov?: boolean;
 };
 
 export class MapLibreStylePlugin extends Plugin<ThreeView, ViewContext> {
@@ -70,6 +71,12 @@ export class MapLibreStylePlugin extends Plugin<ThreeView, ViewContext> {
    * Can be used to inject font configuration via font-faces.
    */
   private readonly overrides?: Partial<StyleSpecification>;
+  /**
+   * Whether to force MapLibre's FOV (field of view) when applying camera.
+   * When true, uses MapLibre's fixed FOV of ~36.87° for camera calculations.
+   * When false or undefined, uses Navara's default FOV.
+   */
+  private readonly forceMapLibreFov?: boolean;
   /**
    * Style engine for evaluating MapLibre expressions.
    * Uses JsStyleEngine internally.
@@ -112,6 +119,7 @@ export class MapLibreStylePlugin extends Plugin<ThreeView, ViewContext> {
    * @param options.overrides - Optional partial style overrides to merge with the base style.
    *                            Use fontFamilyToStyleOverrides([...fonts]) or fetchFontStyleOverrides() to inject font configuration.
    * @param options.tileJsonPlugin - Optional TileJsonPlugin instance. If not provided, a new one will be created internally and disposed when this plugin is disposed.
+   * @param options.forceMapLibreFov - When true, forces MapLibre's FOV (~36.87°) for camera calculations. When false or undefined, uses Navara's default FOV.
    *
    * @example
    * ```ts
@@ -138,6 +146,7 @@ export class MapLibreStylePlugin extends Plugin<ThreeView, ViewContext> {
     this.overrides = options?.overrides;
     this.tileJsonPlugin = options?.tileJsonPlugin ?? new TileJsonPlugin();
     this.ownsTileJsonPlugin = !options?.tileJsonPlugin;
+    this.forceMapLibreFov = options?.forceMapLibreFov;
   }
 
   /**
@@ -405,8 +414,15 @@ export class MapLibreStylePlugin extends Plugin<ThreeView, ViewContext> {
       if (view.getZoomLevel(MAPLIBRE_TILE_SIZE) !== undefined) {
         view.camera.off("frustumChanged", listener);
         this.cameraReadyListener = undefined;
-        view.camera.fov = radianToDegree(MAPLIBRE_FOV_RAD);
-        this.applyCamera(view, MAPLIBRE_FOV_RAD);
+
+        // Conditionally apply MapLibre's FOV based on forceMapLibreFov option
+        if (this.forceMapLibreFov) {
+          view.camera.fov = radianToDegree(MAPLIBRE_FOV_RAD);
+          this.applyCamera(view, MAPLIBRE_FOV_RAD);
+        } else {
+          // Use Navara's default FOV
+          this.applyCamera(view);
+        }
       }
     };
 

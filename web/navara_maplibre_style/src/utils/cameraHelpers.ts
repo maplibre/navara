@@ -44,17 +44,10 @@ export function zoomToCameraDistance(
     fovRad,
   );
 
-  // Fallback to approximation if engine function is not available
   if (distance === undefined) {
-    console.warn(
-      "zoomLevelToCameraDistance not available, using approximation",
+    throw new Error(
+      `zoomLevelToCameraDistance returned undefined for zoom=${zoom}, lat=${latDeg}`,
     );
-
-    // Used only in fallback approximation when engine is not available.
-    const WGS84_SEMI_MAJOR_AXIS = 6378137;
-
-    // Simplified approximation based on tile size
-    return (WGS84_SEMI_MAJOR_AXIS * tileSizePx) / (256 * Math.pow(2, zoom));
   }
 
   return distance;

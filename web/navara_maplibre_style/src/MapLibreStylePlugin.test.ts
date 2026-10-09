@@ -783,7 +783,9 @@ describe("MapLibreStylePlugin", () => {
         layers: [],
       };
 
-      const plugin = new MapLibreStylePlugin(style);
+      const plugin = new MapLibreStylePlugin(style, {
+        forceMapLibreFov: true,
+      });
       const view = createMockView();
       await plugin.init(view, mockViewContext);
 
@@ -802,6 +804,26 @@ describe("MapLibreStylePlugin", () => {
           roll: 5,
         }),
       );
+    });
+
+    it("should use Navara's default FOV when forceMapLibreFov is not set", async () => {
+      const style: StyleSpecification = {
+        version: 8,
+        center: [100, 50],
+        zoom: 5,
+        sources: {},
+        layers: [],
+      };
+
+      const plugin = new MapLibreStylePlugin(style);
+      const view = createMockView();
+      await plugin.init(view, mockViewContext);
+
+      // FOV should not be changed (remains at mock default of 50)
+      expect(view.camera.fov).toBe(50);
+
+      // setCamera should still be called
+      expect(view.setCamera).toHaveBeenCalled();
     });
 
     it("should use default values for omitted optional camera properties", async () => {

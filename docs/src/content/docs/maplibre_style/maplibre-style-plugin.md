@@ -47,46 +47,6 @@ await view.init();
 
 The plugin will fetch and parse the style during initialization.
 
-## Camera Initialization
-
-The plugin automatically initializes the camera from the style's root-level properties. When a style defines both `center` and `zoom`, the camera moves to that position on plugin initialization:
-
-```json
-{
-  "version": 8,
-  "center": [139.7, 35.7],
-  "zoom": 12,
-  "pitch": 60,
-  "bearing": 45,
-  "centerAltitude": 0,
-  "roll": 0,
-  "sources": { ... },
-  "layers": [ ... ]
-}
-```
-
-**Required properties:**
-
-| Property | Type | Description |
-|----------|------|-------------|
-| `center` | `[number, number]` | Initial view center as `[longitude, latitude]` in degrees |
-| `zoom` | `number` | Initial Web Mercator zoom level |
-
-Both `center` and `zoom` must be specified for camera initialization to occur.
-
-**Optional properties:**
-
-| Property | Type | Default | Description |
-|----------|------|---------|-------------|
-| `pitch` | `number` | `0` | Initial camera pitch in degrees (0 = straight down, 60 = towards horizon) |
-| `bearing` | `number` | `0` | Initial camera bearing (heading) in degrees (0 = north) |
-| `centerAltitude` | `number` | `0` | Altitude of the center point in meters above the ellipsoid |
-| `roll` | `number` | `0` | Initial camera roll in degrees |
-
-The camera uses MapLibre's tile size of 512 pixels for zoom calculation, matching MapLibre GL JS behavior precisely. Camera position accounts for pitch: the same zoom level at different pitch angles produces the same map scale at the screen center.
-
-**Known Limitation**: When `centerAltitude` is set to a non-zero value, the camera positions correctly, but zoom level calculation currently uses sea-level distance rather than distance to the elevated target. This means `camera.zoom` and zoom-dependent features may report slightly different values than expected. For example, setting `centerAltitude: 1000` with zoom 15 may result in a reported zoom of ~15.24. This does not affect visual appearance but may affect zoom-dependent layer styling.
-
 ## Advanced Usage
 
 ### With Font Configuration
@@ -176,6 +136,7 @@ Creates a new MapLibre Style plugin instance.
 type MapLibreStylePluginOptions = {
   overrides?: Partial<StyleSpecification>;
   tileJsonPlugin?: TileJsonPlugin;
+  forceMapLibreFov?: boolean;
 };
 ```
 
@@ -183,6 +144,7 @@ type MapLibreStylePluginOptions = {
 |--------|------|---------|-------------|
 | `overrides` | `Partial<StyleSpecification>` | `undefined` | Partial style overrides; currently the plugin merges only `font-faces`. |
 | `tileJsonPlugin` | `TileJsonPlugin` | `undefined` | Custom TileJsonPlugin instance. If not provided, a new one will be created and managed internally. |
+| `forceMapLibreFov` | `boolean` | `false` | When `true`, forces MapLibre's fixed FOV (~36.87°) for camera calculations. When `false` or `undefined`, uses Navara's default FOV. |
 
 ### Example
 

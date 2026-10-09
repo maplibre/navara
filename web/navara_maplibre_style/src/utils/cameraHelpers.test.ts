@@ -130,21 +130,6 @@ describe("cameraHelpers", () => {
       expect(distanceWithCustomFov).toBeGreaterThan(0);
       expect(distanceWithDefaultFov).toBeGreaterThan(0);
     });
-
-    it("should fallback to approximation if engine function unavailable", () => {
-      const view = createMockView();
-      view.zoomLevelToCameraDistance = vi.fn(() => undefined);
-
-      const consoleSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
-      const distance = zoomToCameraDistance(5, view, 0, MAPLIBRE_TILE_SIZE);
-
-      expect(consoleSpy).toHaveBeenCalledWith(
-        "zoomLevelToCameraDistance not available, using approximation",
-      );
-      expect(distance).toBeGreaterThan(0);
-
-      consoleSpy.mockRestore();
-    });
   });
 
   describe("maplibrePitchToNavaraPitch", () => {

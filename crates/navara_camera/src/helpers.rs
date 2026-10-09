@@ -126,16 +126,50 @@ pub fn get_roll(transform: &Transform) -> f64 {
     }
 }
 
+/// Find where the camera is looking on the ellipsoid and the distance to that point.
+///
+/// Used for zoom calculation based on viewing distance rather than altitude.
+/// Returns `None` if the camera is looking away from the ellipsoid.
+pub fn calc_camera_target_and_distance(
+    transform: &Transform,
+    ellipsoid: Ellipsoid<f64>,
+) -> Option<(Vec3, f64)> {
+    let camera_pos = transform.transform_point(Vec3::ZERO);
+    let camera_forward = transform.forward();
+
+    // Normalize forward direction to ensure ray intersection returns correct distances
+    let forward_length_sq = camera_forward.length_squared();
+    if forward_length_sq > 0.0 {
+        let ray = Ray {
+            origin: camera_pos,
+            direction: camera_forward.normalize(),
+        };
+
+        let intersection = ray_ellipsoid(&ray, ellipsoid);
+        let distance = if intersection.start > 0.0 {
+            intersection.start
+        } else {
+            intersection.end
+        };
+        if distance.is_finite() && distance > 0.0 {
+            let target_point = ray.get_point(distance);
+            return Some((target_point, distance));
+        }
+    }
+
+    None
+}
+
 #[cfg(test)]
 mod test {
     use approx::assert_abs_diff_eq;
-    use navara_core::Angle;
+    use navara_core::{Angle, WGS84_64};
     use navara_math::{AbsDiffEqVec3, Transform, Vec2, Vec3};
     use navara_window::Window;
 
     use crate::CameraFrustum;
 
-    use super::get_pick_ray_from_camera;
+    use super::{calc_camera_target_and_distance, get_pick_ray_from_camera};
 
     #[test]
     fn it_should_pick_ray_perspective() {
@@ -187,5 +221,45 @@ mod test {
         let ray = get_pick_ray_from_camera(&window, &camera, &frustum, position_2d);
         let slope = -ray.direction.y / -ray.direction.z;
         assert_abs_diff_eq!(slope, (frustum.fov * 0.5).tan(), epsilon = 1e-9);
+    }
+
+    #[test]
+    fn calc_camera_target_forward_ray_hits() {
+        // Camera 1000km above equator, looking down
+        let camera_pos = Vec3::new(7378137.0, 0.0, 0.0);
+        let mut transform = Transform::from_translation(camera_pos);
+        transform.look_to(-Vec3::X, Vec3::Z);
+
+        let result = calc_camera_target_and_distance(&transform, WGS84_64);
+        assert!(result.is_some(), "Forward ray should hit");
+        let (_target, distance) = result.unwrap();
+        assert!(distance > 0.0 && distance < 2_000_000.0);
+    }
+
+    #[test]
+    fn calc_camera_target_both_rays_miss() {
+        // Camera far from Earth, looking tangent (neither forward nor fallback hits)
+        // This is a rare edge case but important to handle
+        let camera_pos = Vec3::new(50_000_000.0, 50_000_000.0, 0.0);
+        let mut transform = Transform::from_translation(camera_pos);
+        // Look perpendicular to both the forward and radial directions
+        transform.look_to(Vec3::Z, Vec3::X);
+
+        // This may still hit depending on geometry, so we just verify no panic/NaN
+        let result = calc_camera_target_and_distance(&transform, WGS84_64);
+        if let Some((target, distance)) = result {
+            assert!(target.is_finite() && distance.is_finite());
+        }
+    }
+
+    #[test]
+    fn calc_camera_target_zero_position_no_nans() {
+        let mut transform = Transform::from_translation(Vec3::ZERO);
+        transform.look_to(Vec3::X, Vec3::Y);
+
+        let result = calc_camera_target_and_distance(&transform, WGS84_64);
+        if let Some((target, distance)) = result {
+            assert!(target.is_finite() && distance.is_finite() && distance >= 0.0);
+        }
     }
 }

@@ -31,6 +31,7 @@ export async function run() {
     "https://demotiles.maplibre.org/globe.json",
     {
       overrides: fontOverrides,
+      forceMapLibreFov: true,
     },
   );
   view.addPlugin(maplibrePlugin);

@@ -14,8 +14,8 @@ use bevy_input::{
     mouse::{MouseButton, MouseMotion, MouseWheel},
 };
 use navara_core::{
-    Angle, CRS, Ellipsoid, Ray, WGS84_64, ease_out_circ, east_north_up_to_fixed_frame,
-    ray_ellipsoid, vec3_to_xyz, xyz_to_vec3,
+    Angle, CRS, Ellipsoid, Ray, WGS84_64, ease_out_circ, east_north_up_to_fixed_frame, vec3_to_xyz,
+    xyz_to_vec3,
 };
 use navara_event_store::EventStore;
 use navara_frame::FrameManager;
@@ -1254,54 +1254,6 @@ pub fn update_frustum(
     }
 }
 
-/// Find where the camera is looking on the ellipsoid and the distance to that point.
-///
-/// Used for zoom calculation based on viewing distance rather than altitude.
-/// Returns `None` if the camera is looking away from the ellipsoid.
-pub fn calc_camera_target_and_distance(
-    transform: &Transform,
-    ellipsoid: Ellipsoid<f64>,
-) -> Option<(Vec3, f64)> {
-    let camera_pos = transform.transform_point(Vec3::ZERO);
-    let camera_forward = transform.forward();
-
-    // Normalize forward direction to ensure ray intersection returns correct distances
-    let forward_length_sq = camera_forward.length_squared();
-    if forward_length_sq > 0.0 {
-        let ray = Ray {
-            origin: camera_pos,
-            direction: camera_forward.normalize(),
-        };
-
-        let intersection = ray_ellipsoid(&ray, ellipsoid);
-        let distance = if intersection.start > 0.0 {
-            intersection.start
-        } else {
-            intersection.end
-        };
-        if distance.is_finite() && distance > 0.0 {
-            let target_point = ray.get_point(distance);
-            return Some((target_point, distance));
-        }
-    }
-
-    // Fallback: if forward ray misses, try ray from camera toward ellipsoid center
-    let camera_pos_length_sq = camera_pos.length_squared();
-    if camera_pos_length_sq > 0.0 {
-        let ray = Ray {
-            origin: camera_pos,
-            direction: -camera_pos.normalize(),
-        };
-
-        if let Some(distance) = ray_ellipsoid_intersect(&ray, ellipsoid) {
-            let target_point = ray.get_point(distance);
-            return Some((target_point, distance));
-        }
-    }
-
-    None
-}
-
 #[cfg(test)]
 mod test {
     use super::*;
@@ -1521,58 +1473,5 @@ mod test {
             ),
             vec![CameraStatusType::Rotate],
         );
-    }
-
-    #[test]
-    fn calc_camera_target_forward_ray_hits() {
-        // Camera 1000km above equator, looking down
-        let camera_pos = Vec3::new(7378137.0, 0.0, 0.0);
-        let mut transform = Transform::from_translation(camera_pos);
-        transform.look_to(-Vec3::X, Vec3::Z);
-
-        let result = calc_camera_target_and_distance(&transform, WGS84_64);
-        assert!(result.is_some(), "Forward ray should hit");
-        let (_target, distance) = result.unwrap();
-        assert!(distance > 0.0 && distance < 2_000_000.0);
-    }
-
-    #[test]
-    fn calc_camera_target_fallback_ray_hits() {
-        // Camera 1000km above equator, looking away into space
-        let camera_pos = Vec3::new(7378137.0, 0.0, 0.0);
-        let mut transform = Transform::from_translation(camera_pos);
-        transform.look_to(Vec3::X, Vec3::Z); // Look outward
-
-        let result = calc_camera_target_and_distance(&transform, WGS84_64);
-        assert!(result.is_some(), "Fallback ray should hit");
-        let (_target, distance) = result.unwrap();
-        assert!(distance > 0.0);
-    }
-
-    #[test]
-    fn calc_camera_target_both_rays_miss() {
-        // Camera far from Earth, looking tangent (neither forward nor fallback hits)
-        // This is a rare edge case but important to handle
-        let camera_pos = Vec3::new(50_000_000.0, 50_000_000.0, 0.0);
-        let mut transform = Transform::from_translation(camera_pos);
-        // Look perpendicular to both the forward and radial directions
-        transform.look_to(Vec3::Z, Vec3::X);
-
-        // This may still hit depending on geometry, so we just verify no panic/NaN
-        let result = calc_camera_target_and_distance(&transform, WGS84_64);
-        if let Some((target, distance)) = result {
-            assert!(target.is_finite() && distance.is_finite());
-        }
-    }
-
-    #[test]
-    fn calc_camera_target_zero_position_no_nans() {
-        let mut transform = Transform::from_translation(Vec3::ZERO);
-        transform.look_to(Vec3::X, Vec3::Y);
-
-        let result = calc_camera_target_and_distance(&transform, WGS84_64);
-        if let Some((target, distance)) = result {
-            assert!(target.is_finite() && distance.is_finite() && distance >= 0.0);
-        }
     }
 }

@@ -47,46 +47,6 @@ await view.init();
 
 プラグインは初期化中にスタイルを取得して解析します。
 
-## カメラの初期化
-
-プラグインはスタイルのルートレベルプロパティから自動的にカメラを初期化します。スタイルに `center` と `zoom` の両方が定義されている場合、プラグインの初期化時にカメラがその位置に移動します：
-
-```json
-{
-  "version": 8,
-  "center": [139.7, 35.7],
-  "zoom": 12,
-  "pitch": 60,
-  "bearing": 45,
-  "centerAltitude": 0,
-  "roll": 0,
-  "sources": { ... },
-  "layers": [ ... ]
-}
-```
-
-**必須プロパティ:**
-
-| プロパティ | 型 | 説明 |
-|-----------|------|-------------|
-| `center` | `[number, number]` | 初期表示の中心点を度単位の `[経度, 緯度]` として指定 |
-| `zoom` | `number` | 初期 Web Mercator ズームレベル |
-
-カメラの初期化が行われるためには、`center` と `zoom` の両方を指定する必要があります。
-
-**オプションプロパティ:**
-
-| プロパティ | 型 | デフォルト値 | 説明 |
-|-----------|------|---------|-------------|
-| `pitch` | `number` | `0` | 初期カメラピッチ（度単位、0 = 真下を向く、60 = 地平線方向を向く） |
-| `bearing` | `number` | `0` | 初期カメラベアリング（方位、度単位、0 = 北） |
-| `centerAltitude` | `number` | `0` | 中心点の楕円体からの高度（メートル単位） |
-| `roll` | `number` | `0` | 初期カメラロール（度単位） |
-
-カメラはズーム計算に MapLibre のタイルサイズ 512 ピクセルを使用し、MapLibre GL JS の動作と正確に一致します。カメラ位置はピッチを考慮します。異なるピッチ角度での同じズームレベルは、画面中央で同じ地図スケールを生成します。
-
-**既知の制限**: `centerAltitude` がゼロ以外の値に設定されている場合、カメラは正しく配置されますが、ズームレベルの計算は現在、高度のあるターゲットまでの距離ではなく海面距離を使用します。これは、`camera.zoom` やズーム依存の機能が期待値とわずかに異なる値を報告する可能性があることを意味します。例えば、`centerAltitude: 1000` でズーム 15 を設定すると、報告されるズームは約 15.24 になる場合があります。これは視覚的な外観には影響しませんが、ズーム依存のレイヤースタイリングに影響する可能性があります。
-
 ## 高度な使い方
 
 ### フォント設定を使用する
@@ -220,6 +180,7 @@ new MapLibreStylePlugin(
 type MapLibreStylePluginOptions = {
   overrides?: Partial<StyleSpecification>;
   tileJsonPlugin?: TileJsonPlugin;
+  forceMapLibreFov?: boolean;
 };
 ```
 
@@ -227,6 +188,7 @@ type MapLibreStylePluginOptions = {
 |--------|------|---------|-------------|
 | `overrides` | `Partial<StyleSpecification>` | `undefined` | 部分的なスタイルオーバーライド。現在、プラグインがマージするのは `font-faces` のみです。 |
 | `tileJsonPlugin` | `TileJsonPlugin` | `undefined` | カスタム TileJsonPlugin インスタンス。提供されない場合、新しいものが作成され内部で管理されます。 |
+| `forceMapLibreFov` | `boolean` | `false` | `true` の場合、カメラ計算に MapLibre の固定 FOV（~36.87°）を強制適用します。`false` または `undefined` の場合、Navara のデフォルト FOV を使用します。 |
 
 ### 例
 
