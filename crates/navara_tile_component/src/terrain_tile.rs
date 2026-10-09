@@ -11,11 +11,11 @@ use navara_geometry::{ReturnedConstructedTerrainMesh, UpsamplableTerrainGeometry
 use navara_math::{Transform, Vec3};
 
 use navara_mesh::CachedMeshHandle;
-use navara_quadtree::Coords;
+use navara_quadtree::{Coords, encode_quadleaf_handle};
 
 use crate::{
-    HillshadeCancelRequested, TerrainTileQuadtree, Tile, TileHandle, terrain::TerrainData,
-    terrain_data_requester::TileTerrainDataRequesterQuery,
+    HillshadeCancelRequested, TerrainExaggeration, TerrainTileQuadtree, Tile, TileHandle,
+    terrain::TerrainData, terrain_data_requester::TileTerrainDataRequesterQuery,
 };
 
 use navara_layer::{TerrainDataType, TerrainLayer, TilesLayer};
@@ -68,8 +68,13 @@ pub struct TerrainTile {
     /// flight, typically after a tiling rebuild). The tile stops counting as
     /// upsamplable and fetches its own DEM instead of retrying forever.
     pub upsample_failed: bool,
+    /// Unexaggerated terrain heights. The bounding volumes are built from
+    /// these mapped through `exaggeration`.
     pub max_height: f64,
     pub min_height: f64,
+    /// Exaggeration the bounding volumes were built with; the traversal syncs
+    /// it on every visit ([`Self::set_exaggeration`]).
+    pub exaggeration: TerrainExaggeration,
     pub distance_from_camera: FloatType,
     pub sse: FloatType,
     pub tiling_scheme: TilingScheme,
@@ -98,6 +103,7 @@ impl Clone for TerrainTile {
             upsample_failed: self.upsample_failed,
             max_height: self.max_height,
             min_height: self.min_height,
+            exaggeration: self.exaggeration,
             distance_from_camera: 0.,
             sse: 0.,
             tiling_scheme: self.tiling_scheme.clone(),
@@ -229,7 +235,7 @@ impl TerrainTile {
         let extent = tiling_scheme.tile_extent(coords);
         let sides = PoleSides::from_extent(&tiling_scheme, &extent);
         let bounds_extent = sides.extended_extent(extent);
-        let (bounds_min, bounds_max) = sides.height_range(min_height, max_height);
+        let (bounds_min, bounds_max) = sides.height_range(min_height, max_height, 0.);
 
         let mut bounding_region = TileBoundingRegion::from_extent_f64(bounds_extent, WGS84_64);
         bounding_region.minimum_height = bounds_min;
@@ -248,6 +254,7 @@ impl TerrainTile {
             aabb: Aabb::from_extent_f64(bounds_extent, bounds_min, bounds_max),
             bounding_region: Some(bounding_region),
             sse_bounding_region,
+            exaggeration: TerrainExaggeration::default(),
             rendered_at: 0,
             visited_at: 0,
             terrain_data: None,
@@ -266,6 +273,47 @@ impl TerrainTile {
             sse: 0.,
             tiling_scheme,
         }
+    }
+
+    /// Rebuild the bounding volumes for a new exaggeration. A no-op when it
+    /// is unchanged, so the traversal can call it on every visit.
+    pub fn set_exaggeration(&mut self, exaggeration: TerrainExaggeration) {
+        if self.exaggeration == exaggeration {
+            return;
+        }
+        self.exaggeration = exaggeration;
+        self.rebuild_bounds();
+    }
+
+    /// Unexaggerated bounds of a mesh whose terrain heights span
+    /// `min_height..=max_height`, i.e. of the geometry as uploaded (the
+    /// renderer adds the exaggeration on the GPU and widens its bounds itself).
+    pub fn mesh_bounds(&self, min_height: f64, max_height: f64) -> MeshBounds {
+        let sides = PoleSides::from_extent(&self.tiling_scheme, &self.extent);
+        let (min_height, max_height) = sides.height_range(min_height, max_height, 0.);
+        MeshBounds {
+            aabb: Aabb::from_extent_f64(sides.extended_extent(self.extent), min_height, max_height),
+            min_height,
+            max_height,
+        }
+    }
+
+    fn rebuild_bounds(&mut self) {
+        let max_height = self.exaggeration.apply(self.max_height);
+        let min_height = self.exaggeration.apply(self.min_height);
+        let sides = PoleSides::from_extent(&self.tiling_scheme, &self.extent);
+        let (min, max) = sides.height_range(min_height, max_height, self.exaggeration.apply(0.));
+        if let Some(bounding_region) = &mut self.bounding_region {
+            bounding_region.maximum_height = max;
+            bounding_region.minimum_height = min;
+        }
+        if let Some(region) = &mut self.sse_bounding_region {
+            region.maximum_height = max_height;
+            region.minimum_height = min_height;
+        }
+        self.aabb
+            .update(sides.extended_extent(self.extent), min, max);
+        self.occludee_point_in_scaled_space = None;
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -759,19 +807,7 @@ impl Tile for TerrainTile {
         }
         self.max_height = max_height;
         self.min_height = min_height;
-        let sides = PoleSides::from_extent(&self.tiling_scheme, &self.extent);
-        let (min, max) = sides.height_range(min_height, max_height);
-        if let Some(bounding_region) = &mut self.bounding_region {
-            bounding_region.maximum_height = max;
-            bounding_region.minimum_height = min;
-        }
-        if let Some(region) = &mut self.sse_bounding_region {
-            region.maximum_height = max_height;
-            region.minimum_height = min_height;
-        }
-        self.aabb
-            .update(sides.extended_extent(self.extent), min, max);
-        self.occludee_point_in_scaled_space = None;
+        self.rebuild_bounds();
     }
 
     fn has_terrain(&self) -> bool {
@@ -812,11 +848,12 @@ impl Tile for TerrainTile {
     }
 }
 
-/// Compute a terrain height at specified point.
+/// Height of the rendered (exaggerated) terrain surface at the given point.
 pub fn compute_terrain_height_at_point(
     qt: &mut TerrainTileQuadtree,
     buf: &mut BufferStore,
     terrain_data_requesters: &TileTerrainDataRequesterQuery,
+    exaggeration: &TerrainExaggeration,
     point: &LngLat<FloatType, Radians>,
 ) -> Option<FloatType> {
     let tile_handle = find_contained_child(
@@ -826,12 +863,10 @@ pub fn compute_terrain_height_at_point(
     )?;
     let tile = qt.qt.get_mut(tile_handle)?;
 
-    tile.terrain_data.as_mut()?.compute_height_at_point(
-        &tile.extent,
-        buf,
-        terrain_data_requesters,
-        point,
-    )
+    tile.terrain_data
+        .as_mut()?
+        .compute_height_at_point(&tile.extent, buf, terrain_data_requesters, point)
+        .map(|h| exaggeration.apply(h))
 }
 
 /// Merges the height range of `tile`'s loaded mesh into `range`.
@@ -879,9 +914,9 @@ fn loaded_terrain_height_range(
     range
 }
 
-/// Min and max height, relative to the ellipsoid, of the ground rendered over
-/// `extent`, or the ellipsoid surface (`(0, 0)`) before any terrain has
-/// loaded.
+/// Min and max height, relative to the ellipsoid, of the ground rendered
+/// (exaggerated) over `extent`, or the flat surface at height 0 (exaggerated
+/// like any terrain height) before any terrain has loaded.
 ///
 /// Reads every loaded tile over the extent, not only the deepest: a parent
 /// still renders the quadrants whose children have not loaded, and a coarser
@@ -889,6 +924,7 @@ fn loaded_terrain_height_range(
 /// ancestor's heights.
 pub fn terrain_height_range(
     qt: &TerrainTileQuadtree,
+    exaggeration: &TerrainExaggeration,
     extent: Extent<f64, Radians>,
 ) -> (FloatType, FloatType) {
     let mut range = None;
@@ -903,36 +939,19 @@ pub fn terrain_height_range(
         extend_with_mesh_heights(&mut range, tile);
         stack.extend(tile.children.iter().copied());
     }
-    range.unwrap_or((0., 0.))
+    let (min, max) = range.unwrap_or((0., 0.));
+    (exaggeration.apply(min), exaggeration.apply(max))
 }
 
-/// Compute a terrain height at specified point.
+/// Range `(min, max)` of the rendered (exaggerated) terrain surface within
+/// `extent`, or `None` when no ready terrain tile overlaps it.
 pub fn sample_terrain_height_within_extent(
-    qt: &mut TerrainTileQuadtree,
+    qt: &TerrainTileQuadtree,
+    exaggeration: &TerrainExaggeration,
     extent: Extent<f64, Radians>,
-) -> (FloatType, FloatType) {
-    let range = loaded_terrain_height_range(qt, extent);
-    let has_terrain_data = range.is_some();
-    let (mut min_height, mut max_height) =
-        range.map_or((9999., 0.), |(min, max)| (min.min(9999.), max.max(0.)));
-
-    // Extrude more
-    max_height *= 1.3;
-
-    // If the difference is close, then it should be expanded.
-    // Or set default height if terrain_data isn't found.
-    {
-        let diff = max_height - min_height;
-        // Need to investigate more why we need to extrude
-        // an additional height if the terrain closes to zero.
-        let distance_from_surface = 2000.0;
-        if diff <= distance_from_surface || !has_terrain_data {
-            min_height = -distance_from_surface / 2.;
-            max_height = distance_from_surface;
-        }
-    }
-
-    (min_height, max_height)
+) -> Option<(FloatType, FloatType)> {
+    loaded_terrain_height_range(qt, extent)
+        .map(|(min, max)| (exaggeration.apply(min), exaggeration.apply(max)))
 }
 
 /// Collect the deepest ready terrain tiles from the quadtree.
@@ -971,50 +990,118 @@ pub fn find_terrain_tile_for_extent(
     )
 }
 
-/// Terrain elevation `(max_height, min_height)` at the centre of `extent`, read
-/// from the deepest rendered terrain tile covering that point.
-///
-/// This is a point-in-tile lookup, so it works regardless of tiling scheme — a
-/// WebMercator raster tile can read the height of the Geographic (quantized-mesh)
-/// terrain it drapes onto, where a coordinate-identity lookup would fail. Used to
-/// keep the raster traversal's screen-space error in step with terrain elevation.
-/// Returns `None` when no rendered terrain covers the centre.
-pub fn terrain_height_for_extent(
-    qt: &TerrainTileQuadtree,
-    extent: &Extent<FloatType, Radians>,
-) -> Option<(FloatType, FloatType)> {
-    let center = LngLat {
-        lng: (extent.west + extent.east) * 0.5,
-        lat: (extent.south + extent.north) * 0.5,
-    };
-    let handle = find_contained_child(
-        qt,
-        &|t| t.extent.contains(&center) && t.cached_mesh_handle.is_some(),
-        &|t| t.extent.contains(&center),
-    )?;
-    let tile = qt.qt.get(handle)?;
-    Some((tile.max_height, tile.min_height))
+/// See [`TerrainTile::mesh_bounds`].
+pub struct MeshBounds {
+    pub aabb: Aabb,
+    /// Height range the geometry spans: the terrain heights, widened to
+    /// height 0 by a pole cap.
+    pub min_height: f64,
+    pub max_height: f64,
 }
 
-/// Compute terrain height for a single point from a known tile.
-/// Returns 0.0 if height cannot be determined.
+/// Rendered (exaggerated) terrain elevation `(max_height, min_height)` over the
+/// WebMercator tile `coords`: the range of the terrain tiles of the same size
+/// covering it, each replaced by its nearest ancestor with a mesh while it has
+/// none. Where no rendered terrain covers it, the surface is flat at height 0
+/// (exaggerated like any terrain height).
+pub fn terrain_height_for_tile(
+    qt: &TerrainTileQuadtree,
+    exaggeration: &TerrainExaggeration,
+    coords: TileXYZ,
+) -> (FloatType, FloatType) {
+    let mut range: Option<(FloatType, FloatType)> = None;
+    let mut extend = |c: TileXYZ| {
+        if let Some(tile) = nearest_tile_with_mesh(qt, c) {
+            range = Some(match range {
+                Some((max, min)) => (max.max(tile.max_height), min.min(tile.min_height)),
+                None => (tile.max_height, tile.min_height),
+            });
+        }
+    };
+
+    let scheme = encode_quadleaf_handle((0usize, 0, 0))
+        .and_then(|h| qt.qt.get(h))
+        .map(|root| &root.tiling_scheme);
+    match scheme {
+        Some(TilingScheme::WebMercator { .. }) => extend(coords),
+        Some(scheme @ TilingScheme::Geographic { .. }) => {
+            // Geographic level z-1 shares WebMercator level z's columns; a
+            // tile spans one or two of its rows. The corners are pulled inside
+            // so that an edge on a tile boundary does not select the neighbour.
+            let level = coords.z.saturating_sub(1);
+            let extent = TilingScheme::WebMercator { tms: false }.tile_extent(coords);
+            let inset_lng = (extent.east - extent.west) * 1e-6;
+            let inset_lat = (extent.north - extent.south) * 1e-6;
+            let north_west = scheme.position_to_tile_xy(
+                LngLat {
+                    lng: extent.west + inset_lng,
+                    lat: extent.north - inset_lat,
+                },
+                level,
+            );
+            let south_east = scheme.position_to_tile_xy(
+                LngLat {
+                    lng: extent.east - inset_lng,
+                    lat: extent.south + inset_lat,
+                },
+                level,
+            );
+            for x in north_west.x..=south_east.x {
+                for y in north_west.y..=south_east.y {
+                    extend(TileXYZ { x, y, z: level });
+                }
+            }
+        }
+        None => {}
+    }
+
+    let (max_height, min_height) = range.unwrap_or((0., 0.));
+    (
+        exaggeration.apply(max_height),
+        exaggeration.apply(min_height),
+    )
+}
+
+/// `coords`' tile, or its nearest ancestor, that has a mesh.
+fn nearest_tile_with_mesh(qt: &TerrainTileQuadtree, mut coords: TileXYZ) -> Option<&TerrainTile> {
+    loop {
+        if let Some(tile) = encode_quadleaf_handle((coords.x, coords.y, coords.z))
+            .and_then(|h| qt.qt.get(h))
+            .filter(|tile| tile.cached_mesh_handle.is_some())
+        {
+            return Some(tile);
+        }
+        if coords.z == 0 {
+            return None;
+        }
+        coords = TileXYZ {
+            x: coords.x >> 1,
+            y: coords.y >> 1,
+            z: coords.z - 1,
+        };
+    }
+}
+
+/// Rendered (exaggerated) terrain height for a single point from a known
+/// tile. A height that cannot be determined is taken as 0 before exaggeration.
 pub fn compute_terrain_height_by_tile_handle(
     qt: &mut TerrainTileQuadtree,
     buf: &mut BufferStore,
     terrain_data_requesters: &TileTerrainDataRequesterQuery,
+    exaggeration: &TerrainExaggeration,
     tile_handle: TileHandle,
     point: &LngLat<FloatType, Radians>,
 ) -> f64 {
-    let Some(tile) = qt.qt.get_mut(tile_handle) else {
-        return 0.0;
-    };
-    let extent = tile.extent;
-    let Some(terrain_data) = tile.terrain_data.as_mut() else {
-        return 0.0;
-    };
-    terrain_data
-        .compute_height_at_point(&extent, buf, terrain_data_requesters, point)
-        .unwrap_or(0.0)
+    let height = qt.qt.get_mut(tile_handle).and_then(|tile| {
+        let extent = tile.extent;
+        tile.terrain_data.as_mut()?.compute_height_at_point(
+            &extent,
+            buf,
+            terrain_data_requesters,
+            point,
+        )
+    });
+    exaggeration.apply(height.unwrap_or(0.0))
 }
 
 /// Collect handles of all root tiles based on the tiling scheme carried by the
@@ -1162,7 +1249,7 @@ mod test {
     use navara_core::{Angle, LngLat, TileRegion, TileXYZ, TilingScheme};
     use navara_quadtree::Coords;
 
-    use super::TerrainTileQuadtree;
+    use super::{TerrainExaggeration, TerrainTileQuadtree};
 
     use super::{
         MAX_UPSAMPLE_DEPTH, TerrainTile, TileHandle, UpsampleAncestors, find_contained_child,
@@ -1759,7 +1846,33 @@ mod test {
             .unwrap()
             .extent;
 
-        assert_eq!(super::terrain_height_range(&qt, extent), (-10., 3800.));
+        assert_eq!(
+            super::terrain_height_range(&qt, &TerrainExaggeration::default(), extent),
+            (-10., 3800.)
+        );
+    }
+
+    #[test]
+    fn terrain_height_range_is_exaggerated() {
+        let mut qt = setup_qt_with_ready_tiles();
+        let extent = qt
+            .qt
+            .get(qt.qt.leaf((1, 0, 1)).unwrap().handle())
+            .unwrap()
+            .extent;
+        let exaggeration = TerrainExaggeration::new(2., 100.);
+
+        // Before any terrain loads, the flat surface at height 0.
+        assert_eq!(
+            super::terrain_height_range(&qt, &exaggeration, extent),
+            (-100., -100.)
+        );
+
+        mark_tile_heights(&mut qt, (1, 0, 1), -10., 3600.);
+        assert_eq!(
+            super::terrain_height_range(&qt, &exaggeration, extent),
+            (-120., 7100.)
+        );
     }
 
     #[test]
@@ -1822,49 +1935,21 @@ mod test {
         assert_eq!(leaves.len(), 2);
     }
 
-    #[test]
-    fn terrain_height_for_extent_reads_covering_tile() {
-        use super::terrain_height_for_extent;
-
-        let mut qt = setup_qt_with_ready_tiles();
-        // Give a ready z=2 tile a known elevation.
-        mark_tile_ready(&mut qt, (3, 1, 2));
-        let handle = qt.qt.leaf((3, 1, 2)).unwrap().handle();
-        {
-            let t = qt.qt.get_mut(handle).unwrap();
-            t.max_height = 1500.;
-            t.min_height = -20.;
-        }
-
-        // An extent centred inside that tile resolves to its elevation
-        // (point-in-tile, independent of coordinate identity).
-        let extent = qt.qt.get(handle).unwrap().extent;
-        assert_eq!(terrain_height_for_extent(&qt, &extent), Some((1500., -20.)));
+    /// Give the tile at `coords` a mesh and the given unexaggerated heights.
+    fn mark_tile_height_fields(
+        qt: &mut TerrainTileQuadtree,
+        coords: Coords<usize>,
+        max_height: f64,
+        min_height: f64,
+    ) {
+        mark_tile_ready(qt, coords);
+        let t = qt.qt.get_mut(handle_of(qt, coords)).unwrap();
+        t.max_height = max_height;
+        t.min_height = min_height;
     }
 
-    #[test]
-    fn terrain_height_for_extent_none_without_ready_terrain() {
-        use super::terrain_height_for_extent;
-
-        // No tile has a cached mesh → nothing to read.
-        let qt = setup_qt_with_ready_tiles();
-        let extent = qt
-            .qt
-            .get(qt.qt.leaf((3, 1, 2)).unwrap().handle())
-            .unwrap()
-            .extent;
-        assert_eq!(terrain_height_for_extent(&qt, &extent), None);
-    }
-
-    /// Cross-scheme drape: a WebMercator vector tile reads the elevation of the
-    /// Geographic (quantized-mesh) terrain it overlaps. The vector traverse keys on
-    /// the extent's centre (point-in-tile), so it resolves even though the WM tile's
-    /// coordinates do not exist in the Geographic quadtree — the exact path that a
-    /// by-handle lookup got wrong, leaving the drape coarse.
-    #[test]
-    fn terrain_height_for_extent_reads_geographic_terrain_via_web_mercator_extent() {
-        use super::terrain_height_for_extent;
-
+    /// The two Geographic root tiles, without children.
+    fn geographic_roots_qt() -> TerrainTileQuadtree {
         let geo = TilingScheme::Geographic { tms: true };
         let mut qt = TerrainTileQuadtree::new_with_linear_qt();
         for root in geo.root_tiles() {
@@ -1881,27 +1966,124 @@ mod test {
                 )
             });
         }
-        // East root (1,0,0) covers lng 0..180°, lat -90..90°; give it a known elevation.
-        mark_tile_ready(&mut qt, (1, 0, 0));
-        let geo_handle = qt.qt.leaf((1, 0, 0)).unwrap().handle();
-        {
-            let t = qt.qt.get_mut(geo_handle).unwrap();
-            t.max_height = 3776.;
-            t.min_height = 0.;
-        }
+        qt
+    }
 
-        // A real WebMercator tile whose centre (~102°E, ~11°N) lands inside the
-        // eastern hemisphere. Its WM coordinates have no twin in the Geographic
-        // quadtree, so only the by-extent lookup can resolve it.
-        let wm_extent = TilingScheme::WebMercator { tms: false }.tile_extent(TileXYZ {
-            x: 200,
-            y: 120,
-            z: 8,
-        });
+    #[test]
+    fn terrain_height_for_tile_reads_the_same_web_mercator_tile() {
+        use super::terrain_height_for_tile;
+
+        let mut qt = setup_qt_with_ready_tiles();
+        mark_tile_height_fields(&mut qt, (3, 1, 2), 1500., -20.);
+
+        let coords = TileXYZ { x: 3, y: 1, z: 2 };
+        assert_eq!(
+            terrain_height_for_tile(&qt, &TerrainExaggeration::default(), coords),
+            (1500., -20.)
+        );
+        assert_eq!(
+            terrain_height_for_tile(&qt, &TerrainExaggeration::new(2., 100.), coords),
+            (2900., -140.)
+        );
+    }
+
+    #[test]
+    fn terrain_height_for_tile_prefers_the_same_size_tile_over_a_deeper_one() {
+        use super::terrain_height_for_tile;
+
+        let mut qt = setup_qt_with_ready_tiles();
+        mark_tile_height_fields(&mut qt, (1, 0, 1), 2000., -100.);
+        // A child covering only part of (1, 0, 1).
+        mark_tile_height_fields(&mut qt, (3, 1, 2), 500., 0.);
 
         assert_eq!(
-            terrain_height_for_extent(&qt, &wm_extent),
-            Some((3776., 0.))
+            terrain_height_for_tile(
+                &qt,
+                &TerrainExaggeration::default(),
+                TileXYZ { x: 1, y: 0, z: 1 }
+            ),
+            (2000., -100.)
+        );
+    }
+
+    #[test]
+    fn terrain_height_for_tile_falls_back_to_the_nearest_ancestor_with_a_mesh() {
+        use super::terrain_height_for_tile;
+
+        let mut qt = setup_qt_with_ready_tiles();
+        mark_tile_height_fields(&mut qt, (1, 0, 1), 2000., -100.);
+
+        // (3, 1, 2) exists without a mesh; (13, 5, 4) and its parent do not exist.
+        for coords in [TileXYZ { x: 3, y: 1, z: 2 }, TileXYZ { x: 13, y: 5, z: 4 }] {
+            assert_eq!(
+                terrain_height_for_tile(&qt, &TerrainExaggeration::default(), coords),
+                (2000., -100.)
+            );
+        }
+    }
+
+    #[test]
+    fn terrain_height_for_tile_flat_surface_without_ready_terrain() {
+        use super::terrain_height_for_tile;
+
+        let qt = setup_qt_with_ready_tiles();
+        let coords = TileXYZ { x: 3, y: 1, z: 2 };
+        assert_eq!(
+            terrain_height_for_tile(&qt, &TerrainExaggeration::default(), coords),
+            (0., 0.)
+        );
+        // Scale 5 around 2000 m moves height 0 to -8000 m.
+        assert_eq!(
+            terrain_height_for_tile(&qt, &TerrainExaggeration::new(5., 2000.), coords),
+            (-8000., -8000.)
+        );
+    }
+
+    /// A WebMercator tile has no twin in a Geographic quadtree: it reads the
+    /// Geographic tiles of its size, here falling back to the eastern root.
+    #[test]
+    fn terrain_height_for_tile_reads_geographic_terrain() {
+        use super::terrain_height_for_tile;
+
+        let mut qt = geographic_roots_qt();
+        // East root (1,0,0) covers lng 0..180°, lat -90..90°.
+        mark_tile_height_fields(&mut qt, (1, 0, 0), 3776., 0.);
+
+        // Centred around 102°E, 11°N.
+        assert_eq!(
+            terrain_height_for_tile(
+                &qt,
+                &TerrainExaggeration::default(),
+                TileXYZ {
+                    x: 200,
+                    y: 120,
+                    z: 8
+                }
+            ),
+            (3776., 0.)
+        );
+    }
+
+    #[test]
+    fn terrain_height_for_tile_spans_geographic_rows() {
+        use super::terrain_height_for_tile;
+
+        let mut qt = geographic_roots_qt();
+        setup_geographic_tile(&mut qt, (1, 0, 0));
+        setup_geographic_tile(&mut qt, (2, 0, 1));
+        // Geographic level 2 rows are 45° tall: (5, 0, 2) covers lat 45..90°N
+        // and (5, 1, 2) lat 0..45°N, both lng 45..90°E.
+        mark_tile_height_fields(&mut qt, (5, 0, 2), 3000., 100.);
+        mark_tile_height_fields(&mut qt, (5, 1, 2), 800., -50.);
+
+        // WebMercator (5, 2, 3) covers lng 45..90°E, lat ~41..67°N.
+        assert_eq!(
+            terrain_height_for_tile(
+                &qt,
+                &TerrainExaggeration::default(),
+                TileXYZ { x: 5, y: 2, z: 3 }
+            ),
+            (3000., -50.)
         );
     }
 
@@ -2588,5 +2770,148 @@ mod polar_bounds_tests {
             PoleSides::from_extent(&TilingScheme::Geographic { tms: false }, &e),
             PoleSides::default()
         );
+    }
+}
+
+#[cfg(test)]
+mod exaggeration_bounds_tests {
+    use super::*;
+
+    fn assert_aabb_eq(a: &Aabb, b: &Aabb) {
+        assert_eq!(a.center, b.center);
+        assert_eq!(a.extents, b.extents);
+    }
+
+    fn interior_tile() -> TerrainTile {
+        TerrainTile::new_with_scheme(
+            TileXYZ { x: 1, y: 1, z: 2 },
+            1000.,
+            -100.,
+            TilingScheme::WebMercator { tms: false },
+        )
+    }
+
+    #[test]
+    fn bounds_use_exaggerated_heights_and_keep_raw_heights() {
+        let mut tile = interior_tile();
+        tile.occludee_point_in_scaled_space = Some(Vec3::ONE);
+
+        tile.set_exaggeration(TerrainExaggeration::new(3., 0.));
+
+        let region = tile.bounding_region.as_ref().unwrap();
+        assert_eq!(region.maximum_height, 3000.);
+        assert_eq!(region.minimum_height, -300.);
+        assert_eq!(tile.max_height, 1000.);
+        assert_eq!(tile.min_height, -100.);
+        assert_eq!(tile.max_height(), 1000.);
+        assert!(tile.occludee_point_in_scaled_space.is_none());
+        assert_aabb_eq(
+            &tile.aabb,
+            &Aabb::from_extent_f64(tile.extent, -300., 3000.),
+        );
+    }
+
+    #[test]
+    fn height_updates_keep_the_current_exaggeration() {
+        let mut tile = interior_tile();
+        tile.set_exaggeration(TerrainExaggeration::new(2., 500.));
+
+        tile.update_heights(2500., 0.);
+
+        let region = tile.bounding_region.as_ref().unwrap();
+        assert_eq!(region.maximum_height, 4500.);
+        assert_eq!(region.minimum_height, -500.);
+    }
+
+    #[test]
+    fn unchanged_exaggeration_keeps_the_occludee_point() {
+        let mut tile = interior_tile();
+        tile.set_exaggeration(TerrainExaggeration::new(2., 0.));
+        tile.occludee_point_in_scaled_space = Some(Vec3::ONE);
+
+        tile.set_exaggeration(TerrainExaggeration::new(2., 0.));
+
+        assert_eq!(tile.occludee_point_in_scaled_space, Some(Vec3::ONE));
+    }
+
+    #[test]
+    fn polar_bounds_include_the_displaced_cap() {
+        let mut tile = TerrainTile::new_with_scheme(
+            TileXYZ { x: 3, y: 0, z: 3 },
+            1000.,
+            200.,
+            TilingScheme::WebMercator { tms: false },
+        );
+
+        tile.set_exaggeration(TerrainExaggeration::new(2., 1000.));
+
+        // The cap at height 0 is displaced to (0 - 1000) * 2 + 1000 = -1000.
+        let region = tile.bounding_region.as_ref().unwrap();
+        assert_eq!(region.minimum_height, -1000.);
+        assert_eq!(region.maximum_height, 1000.);
+        let sse_region = tile.sse_bounding_region.as_ref().unwrap();
+        assert_eq!(sse_region.minimum_height, -600.);
+        assert_eq!(sse_region.maximum_height, 1000.);
+    }
+
+    #[test]
+    fn mesh_bounds_stay_unexaggerated() {
+        let mut tile = interior_tile();
+        tile.set_exaggeration(TerrainExaggeration::new(3., 0.));
+
+        let bounds = tile.mesh_bounds(-100., 1000.);
+        assert_aabb_eq(
+            &bounds.aabb,
+            &Aabb::from_extent_f64(tile.extent, -100., 1000.),
+        );
+        assert_eq!((bounds.min_height, bounds.max_height), (-100., 1000.));
+    }
+
+    #[test]
+    fn polar_mesh_bounds_span_the_cap() {
+        let tile = TerrainTile::new_with_scheme(
+            TileXYZ { x: 3, y: 0, z: 3 },
+            1000.,
+            200.,
+            TilingScheme::WebMercator { tms: false },
+        );
+
+        let bounds = tile.mesh_bounds(200., 1000.);
+        assert_eq!((bounds.min_height, bounds.max_height), (0., 1000.));
+    }
+
+    /// A sea-level tile 313-470 km east of a camera 3 km above the equator
+    /// lies past the ellipsoid's horizon (~196 km). Sinking the sea to
+    /// -8000 m (scale 5 around 2000 m) brings it inside the horizon of the
+    /// sunken surface (~374 km), so it must no longer be horizon-culled.
+    #[test]
+    fn sunken_terrain_is_not_hidden_by_the_ellipsoid() {
+        use navara_core::{Angle, LLE, Meters, xyz_to_vec3};
+        use navara_occluder::ellipsoidal_occluder::EllipsoidalOccluder;
+
+        let camera = LLE {
+            lng: Angle::new(0.),
+            lat: Angle::new(0.),
+            height: Meters::new(3000.),
+        }
+        .to_xyz(WGS84_64);
+        let occluder = EllipsoidalOccluder::new(&xyz_to_vec3(camera), WGS84_64);
+        let mut tile = TerrainTile::new_with_scheme(
+            TileXYZ {
+                x: 130,
+                y: 127,
+                z: 8,
+            },
+            0.,
+            0.,
+            TilingScheme::WebMercator { tms: false },
+        );
+
+        tile.update_tile_occludee_point(&WGS84_64, &occluder);
+        assert!(tile.is_occluded_by_horizon(&occluder));
+
+        tile.set_exaggeration(TerrainExaggeration::new(5., 2000.));
+        tile.update_tile_occludee_point(&WGS84_64, &occluder);
+        assert!(!tile.is_occluded_by_horizon(&occluder));
     }
 }

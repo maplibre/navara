@@ -1,4 +1,5 @@
 use bevy_ecs::{
+    change_detection::DetectChanges,
     entity::Entity,
     query::{Added, With, Without},
     system::{Commands, Query, Res, ResMut},
@@ -20,7 +21,8 @@ use navara_window::Window;
 use navara_camera::{CameraFrustum, CameraMarker};
 use navara_occluder::ellipsoidal_occluder::EllipsoidalOccluder;
 use navara_tile_component::{
-    TerrainTileQuadtree, TileExtent, TileMeshMarker, TileTerrainDataRequesterQuery,
+    TerrainExaggeration, TerrainTileQuadtree, TileExtent, TileMeshMarker,
+    TileTerrainDataRequesterQuery,
 };
 
 use navara_feature_component::billboard::BillboardMarker;
@@ -123,6 +125,7 @@ pub fn update_height_by_terrain_for_batched(
     >,
     tile_meshes: Query<&TileMeshMarker, Added<TileMeshMarker>>,
     terrain_data_requester: TileTerrainDataRequesterQuery,
+    exaggeration: Res<TerrainExaggeration>,
     camera_query: Query<(&CameraFrustum, &Transform), With<CameraMarker>>,
     occluder_query: Query<&EllipsoidalOccluder>,
     window: Res<Window>,
@@ -163,6 +166,7 @@ pub fn update_height_by_terrain_for_batched(
             continue;
         };
         if !should_recalculate
+            && !(clamp_to_ground && exaggeration.is_changed())
             && !should_update_for_changed_terrain(
                 clamp_to_ground,
                 &changed_extents,
@@ -202,6 +206,7 @@ pub fn update_height_by_terrain_for_batched(
                         &mut qt,
                         &mut buf,
                         &terrain_data_requester,
+                        &exaggeration,
                         &mut positions,
                     );
                 } else {
@@ -220,6 +225,7 @@ pub fn update_height_by_terrain_for_batched(
                         &mut qt,
                         &mut buf,
                         &terrain_data_requester,
+                        &exaggeration,
                         &mut positions,
                     );
                 }

@@ -39,7 +39,12 @@ pub fn construct_quantized_mesh_terrain_mesh(
     let skirt_height = calculate_skirt_height(&WGS84_64, tile.coords.z, skirt_exaggeration);
     if skirt {
         let down_dir_fn = navara_geometry::make_wgs84_down_dir_fn(WGS84_64, result.rtc_translation);
-        navara_geometry::add_skirt_separate(&mut result.geometry, skirt_height, &down_dir_fn);
+        navara_geometry::add_skirt_separate(
+            &mut result.geometry,
+            &result.heights,
+            skirt_height,
+            &down_dir_fn,
+        );
     }
 
     // A payload that fails to decode yields an empty result with no RTC
@@ -47,6 +52,7 @@ pub fn construct_quantized_mesh_terrain_mesh(
     if let Some(rtc_translation) = result.rtc_translation {
         navara_geometry::add_pole_extension(
             &mut result.geometry,
+            &result.heights,
             WGS84_64,
             &ctx.extent,
             rtc_translation,

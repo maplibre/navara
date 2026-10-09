@@ -184,8 +184,8 @@ type CameraOptions = {
 | オプション | 型 | デフォルト | 説明 |
 |---|---|---|---|
 | `autoAdjustNearFar` | `boolean` | `true` | カメラの高度に応じてニア/ファークリッピングプレーンを自動調整する |
-| `minimumZoomDistance` | `number` | 約6,356,752 | 地球表面からの最小ズーム距離（メートル） |
-| `maximumZoomDistance` | `number` | 約63,567,523 | 地球表面からの最大ズーム距離（メートル） |
+| `minimumZoomDistance` | `number` | 約6,356,752 | ズームや移動でカメラが近づける、地球中心からの最小距離（メートル）。[`exaggeration`](../../../three/material/terrain-material/#exaggeration) によって海面が楕円体より下に移る場合は、沈んだ地形にカメラが届くよう、この下限も同じだけ下がります。 |
+| `maximumZoomDistance` | `number` | 約63,567,523 | ズームや移動でカメラが離れられる、地球中心からの最大距離（メートル） |
 | `spinSpeed` | `number` | `2.0` | マウスドラッグによる回転速度の倍率 |
 | `zoomSpeed` | `number` | `0.6` | スクロールホイールによるズーム速度の倍率 |
 | `spinDuration` | `number` | `500` | マウスドラッグを離した後のスピン慣性の持続時間（ミリ秒） |
@@ -212,10 +212,10 @@ view.camera.options = {
   translateDuration: 800,
 };
 
-// 固定高度アプリ向けにズーム範囲を制限
+// カメラを地表から約 500 km 以内に保つ
+// （ズーム距離は地球中心から測る）
 view.camera.options = {
-  minimumZoomDistance: 500,
-  maximumZoomDistance: 5_000_000,
+  maximumZoomDistance: 6_378_137 + 500_000,
 };
 ```
 

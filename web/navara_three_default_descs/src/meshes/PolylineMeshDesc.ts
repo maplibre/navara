@@ -196,6 +196,7 @@ export class PolylineMeshDesc extends MeshDescWithSelectiveEffect<
         viewportAndPixelRatio: this.ctx.getViewportAndPixelRatioUniform(),
         frustumNearFar: this.ctx.getFrustumNearFarUniform(),
         frustumRatio: this.ctx.getFrustumRatioUniform(),
+        horizonMinHeight: this.ctx.getHorizonMinHeightUniform(),
         globeDepth: this.ctx.getGlobeDepthTextureUniform(),
         globeNormal: this.ctx.getGlobeNormalTextureUniform(),
         inverseProjectionMatrix: this.ctx.getInverseProjectionMatrixUniform(),

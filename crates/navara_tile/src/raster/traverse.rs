@@ -11,8 +11,8 @@ use navara_memory::SseDegrade;
 use navara_occluder::ellipsoidal_occluder::EllipsoidalOccluder;
 use navara_source::SourceStore;
 use navara_tile_component::{
-    RasterTile, RasterTileQuadtree, TerrainTileQuadtree, Tile, TileHandle,
-    TileTextureFragmentQuery, terrain_height_for_extent,
+    RasterTile, RasterTileQuadtree, TerrainExaggeration, TerrainTileQuadtree, Tile, TileHandle,
+    TileTextureFragmentQuery, terrain_height_for_tile,
 };
 use navara_window::Window;
 
@@ -42,6 +42,7 @@ pub fn traverse_raster(
     qt: &mut RasterTileQuadtree,
     tc: &mut RasterTileCacheManager,
     terrain_qt: &TerrainTileQuadtree,
+    terrain_exaggeration: &TerrainExaggeration,
     frame: &FrameManager,
     camera: &Transform,
     frustum: &CameraFrustum,
@@ -55,16 +56,15 @@ pub fn traverse_raster(
     degrade: SseDegrade,
     terrain_present: bool,
 ) {
-    let extent = match qt.qt.get(handle) {
-        Some(tile) => tile.extent,
+    let coords = match qt.qt.get(handle) {
+        Some(tile) => tile.coords,
         None => return,
     };
 
-    // Borrow the terrain elevation (by extent, so it works on any terrain scheme
-    // including quantized-mesh/Geographic) so the SSE matches the terrain's
+    // Borrow the terrain elevation so the SSE matches the terrain's
     // subdivision depth instead of treating the tile as flat at sea level.
     let (max_height, min_height) =
-        terrain_height_for_extent(terrain_qt, &extent).unwrap_or((0., 0.));
+        terrain_height_for_tile(terrain_qt, terrain_exaggeration, coords);
 
     let tile = qt.qt.get_mut(handle).unwrap();
     tile.update_heights(max_height, min_height);
@@ -72,10 +72,7 @@ pub fn traverse_raster(
     tile.update_tile_occludee_point(ellipsoid, occluder);
     tc.active_handles.insert(handle);
 
-    let is_culled_by_occlusion = !tile
-        .occludee_point_in_scaled_space
-        .map(|p| occluder.is_scaled_space_point_visible(p))
-        .unwrap_or(true);
+    let is_culled_by_occlusion = tile.is_occluded_by_horizon(occluder);
     if is_culled_by_occlusion {
         return;
     }
@@ -155,6 +152,7 @@ pub fn traverse_raster(
                 qt,
                 tc,
                 terrain_qt,
+                terrain_exaggeration,
                 frame,
                 camera,
                 frustum,
@@ -187,7 +185,7 @@ mod tests {
     use navara_tile_component::{TerrainTile, TileTextureFragmentMarker};
 
     /// A terrain quadtree whose WebMercator root tile carries the given heights
-    /// and a (dummy) cached mesh, so `terrain_height_for_extent` resolves it.
+    /// and a (dummy) cached mesh, so `terrain_height_for_tile` resolves it.
     fn terrain_qt_with_root_height(max_height: f64, min_height: f64) -> TerrainTileQuadtree {
         let mut qt = TerrainTileQuadtree::new_with_linear_qt();
         qt.qt.initialize_zero(&|(x, y, z)| {
@@ -256,6 +254,7 @@ mod tests {
             &mut qt,
             &mut tc,
             &terrain_qt,
+            &TerrainExaggeration::default(),
             &frame,
             &camera,
             &frustum,

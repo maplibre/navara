@@ -1221,6 +1221,24 @@ mod tests {
     }
 
     #[test]
+    fn terrain_exaggeration_updates_independently() {
+        let old = terrain_desc(navara_material::TerrainMaterial {
+            exaggeration: 3.0,
+            exaggeration_relative_height: 500.0,
+            ..Default::default()
+        });
+        let mut desc = TerrainSourceLayerDescription {
+            terrain: Some(serde_json::from_str(r#"{"exaggeration": 5.0}"#).unwrap()),
+            ..Default::default()
+        };
+
+        let merged = desc.appearance(Some(&old));
+
+        assert_eq!(merged.exaggeration, 5.0);
+        assert_eq!(merged.exaggeration_relative_height, 500.0);
+    }
+
+    #[test]
     fn raster_heatmap_update_preserves_untouched_fields() {
         let old = navara_material::ElevationHeatmapConfig {
             max_height: 500.0,

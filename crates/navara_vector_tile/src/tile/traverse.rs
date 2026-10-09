@@ -13,8 +13,8 @@ use navara_memory::SseDegrade;
 use navara_layer::TerrainLayer;
 use navara_occluder::ellipsoidal_occluder::EllipsoidalOccluder;
 use navara_tile_component::{
-    TerrainTileQuadtree, Tile, TileHandle, VectorTile, VectorTileQuadtree,
-    terrain_height_for_extent,
+    TerrainExaggeration, TerrainTileQuadtree, Tile, TileHandle, VectorTile, VectorTileQuadtree,
+    terrain_height_for_tile,
 };
 use navara_window::Window;
 
@@ -61,6 +61,7 @@ pub fn traverse_tile(
     meets_sse_ancestors: bool,
     terrain_layer: &Option<&TerrainLayer>,
     terrain_tile_qt: &TerrainTileQuadtree,
+    terrain_exaggeration: &TerrainExaggeration,
     ready_parent_tile_handle: Option<TileHandle>,
     globe: &Globe,
     source: &mut dyn crate::source::VectorTileSource,
@@ -98,20 +99,13 @@ pub fn traverse_tile(
         return TraversalResult::NotFound;
     }
 
-    // Borrow the terrain elevation by EXTENT (scheme-agnostic point-in-tile walk),
-    // exactly like the raster traverse, so the SSE matches the terrain's subdivision
-    // depth instead of treating the tile as flat at sea level. A by-handle lookup
-    // would miss when the vector tile is WebMercator and the terrain is Geographic
-    // (quantized-mesh), which is what kept the drape coarse.
-    let extent = tile.extent;
+    // Borrow the terrain elevation so the SSE matches the terrain's subdivision
+    // depth instead of treating the tile as flat at sea level.
     let (max_height, min_height) =
-        terrain_height_for_extent(terrain_tile_qt, &extent).unwrap_or((0., 0.));
+        terrain_height_for_tile(terrain_tile_qt, terrain_exaggeration, tile.coords);
     begin_traverse_tile(ellipsoid, occluder, camera, tile, max_height, min_height);
 
-    let is_culled_by_occlusion = !tile
-        .occludee_point_in_scaled_space
-        .map(|p| occluder.is_scaled_space_point_visible(p))
-        .unwrap_or(true);
+    let is_culled_by_occlusion = tile.is_occluded_by_horizon(occluder);
     if is_culled_by_occlusion {
         return TraversalResult::Culled;
     }
@@ -305,6 +299,7 @@ pub fn traverse_tile(
                 meets_sse,
                 terrain_layer,
                 terrain_tile_qt,
+                terrain_exaggeration,
                 drape_source,
                 globe,
                 source,

@@ -97,6 +97,40 @@ The terrain only takes the lit path when the tiles have normals: use a [`quantiz
 { terrain: { skirtExaggeration: 1.5 } }
 ```
 
+### exaggeration
+
+**Type:** `number | undefined`
+
+**Default:** `1`
+
+**Description:** Vertical exaggeration of the terrain. Terrain heights are multiplied by this factor around [`exaggerationRelativeHeight`](#exaggerationrelativeheight), and level of detail and culling follow the exaggerated surface. `sampleTerrainHeight`, `observeTerrainHeightAt`, `sampleTerrainHeightRange`, `observeTerrainHeightRange`, and `sampleTerrainMostDetailed` return exaggerated heights, so clamp-to-ground features and meshes with `heightReference: "terrain"` stay on the surface. 3D Tiles and glTF models are not stretched, and elevation heatmaps and hillshade keep using the source heights. A negative value is treated as `0`, which flattens the terrain to `exaggerationRelativeHeight`. Can be changed at runtime with `layer.update()`, and the exaggeration is reset when the terrain layer is deleted.
+
+```typescript
+const terrainLayer = view.addLayer({
+  type: "terrain",
+  source: terrain,
+  terrain: { exaggeration: 2 },
+});
+
+// Change it at runtime
+terrainLayer.update({ terrain: { exaggeration: 3 } });
+```
+
+### exaggerationRelativeHeight
+
+**Type:** `number | undefined`
+
+**Default:** `0`
+
+**Description:** Height in meters that stays in place while the terrain is exaggerated. It is an absolute height measured like the terrain heights themselves (height above the WGS84 ellipsoid, which for a `raster-dem` source is the decoded elevation value as is), not an offset from the camera or the ground. A terrain height `h` is rendered at `(h - exaggerationRelativeHeight) * exaggeration + exaggerationRelativeHeight`. With the default `0`, high regions are lifted as a whole, so set it to the elevation of the ground you are looking at (for example a valley floor on a plateau, or the ground under 3D Tiles or models, which are not exaggerated) to emphasize the relief around it while that ground stays in place. Keep `0` when the view spans from the coast to the mountains, so the sea level does not move.
+
+```typescript
+// Exaggerate relief around a basin at 1000 m without moving the basin floor
+terrainLayer.update({
+  terrain: { exaggeration: 2, exaggerationRelativeHeight: 1000 },
+});
+```
+
 ## Combining with other layers
 
 A terrain layer provides only the 3D surface. Drape imagery or shaded relief on top with a [`raster`](../../../three/layer/raster-layer/) layer:

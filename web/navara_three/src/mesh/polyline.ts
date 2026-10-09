@@ -311,6 +311,7 @@ export class PolylineMesh extends BatchedFeatureMesh<
         viewportAndPixelRatio: uniforms.viewportAndPixelRatio,
         frustumNearFar: uniforms.frustumNearFar,
         frustumRatio: uniforms.frustumRatio,
+        horizonMinHeight: uniforms.horizonMinHeight,
       },
     });
 

@@ -2,7 +2,7 @@ use bevy_ecs::{
     change_detection::DetectChanges,
     entity::Entity,
     query::{Added, With, Without},
-    system::{Commands, Query, ResMut},
+    system::{Commands, Query, Res, ResMut},
 };
 use navara_buffer_store::BufferStore;
 use navara_component::{Deleted, OrderByDistance};
@@ -14,11 +14,11 @@ use navara_feature_component::{
 };
 use navara_layer::{LayerId, LayerStore};
 use navara_material::{PolylineInternalMaterial, PolylineMaterial};
-use navara_math::{Transform, Vec3};
+use navara_math::{FloatType, Transform, Vec3};
 
 use navara_feature_component::polyline::PolylineMarker;
 use navara_tile_component::{
-    OverscaledTileHandle, TerrainTileQuadtree, TileExtent, TileMeshMarker,
+    OverscaledTileHandle, TerrainExaggeration, TerrainTileQuadtree, TileExtent, TileMeshMarker,
     sample_terrain_height_within_extent,
 };
 use navara_worker::{
@@ -161,11 +161,12 @@ pub fn transfer_batched_mesh(
 //       to execute only when the layer's bounding box is within the camera frustum.
 #[allow(clippy::too_many_arguments)]
 pub fn update_height_by_terrain(
-    mut qt: ResMut<TerrainTileQuadtree>,
+    qt: Res<TerrainTileQuadtree>,
     mut renderable_features: Query<(&PolylineMarker, &mut RenderableFeature)>,
     tile_meshes: Query<&TileMeshMarker, Added<TileMeshMarker>>,
+    exaggeration: Res<TerrainExaggeration>,
 ) {
-    let is_tile_meshes_empty = tile_meshes.is_empty();
+    let is_terrain_unchanged = tile_meshes.is_empty() && !exaggeration.is_changed();
 
     for (_, mut feature) in &mut renderable_features {
         match feature.as_ref() {
@@ -179,7 +180,7 @@ pub fn update_height_by_terrain(
                     continue;
                 }
 
-                if is_tile_meshes_empty && material.clamp_to_ground {
+                if is_terrain_unchanged && material.clamp_to_ground {
                     continue;
                 }
 
@@ -204,8 +205,10 @@ pub fn update_height_by_terrain(
 
                 let (min_height, max_height) =
                     if material.clamp_to_ground && !render_info.should_be_texturized {
-                        let (min, max) = sample_terrain_height_within_extent(&mut qt, *extent);
-                        (min, max)
+                        clamp_volume_height_range(
+                            sample_terrain_height_within_extent(&qt, &exaggeration, *extent),
+                            &exaggeration,
+                        )
                     } else {
                         (0., 0.)
                     };
@@ -215,6 +218,26 @@ pub fn update_height_by_terrain(
             }
             _ => unreachable!(),
         };
+    }
+}
+
+/// Height range `(min, max)` of the volume a clamped polyline extrudes through
+/// the terrain: the terrain's range padded upward, or a fixed band around the
+/// rendered height 0 when the terrain is near-flat or not loaded.
+fn clamp_volume_height_range(
+    terrain: Option<(FloatType, FloatType)>,
+    exaggeration: &TerrainExaggeration,
+) -> (FloatType, FloatType) {
+    const MIN_VOLUME_HEIGHT: FloatType = 2000.;
+    match terrain.map(|(min, max)| (min, max + (max - min) * 0.3)) {
+        Some((min, max)) if max - min > MIN_VOLUME_HEIGHT => (min, max),
+        _ => {
+            let surface = exaggeration.apply(0.);
+            (
+                surface - MIN_VOLUME_HEIGHT / 2.,
+                surface + MIN_VOLUME_HEIGHT,
+            )
+        }
     }
 }
 
@@ -276,5 +299,33 @@ pub fn remove_batched_feature(
         batch_table_res.remove(&feature_batch_id.0);
         global_batch_ids.destroy(&mut buf, &mut batch_table_res);
         commands.entity(feature_id).despawn();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn clamp_volume_pads_the_terrain_range_upward() {
+        // Scale 5 around 2000 m maps terrain at 0..1500 m to -8000..-500 m.
+        let exaggeration = TerrainExaggeration::new(5., 2000.);
+        assert_eq!(
+            clamp_volume_height_range(Some((-8000., -500.)), &exaggeration),
+            (-8000., 1750.)
+        );
+    }
+
+    #[test]
+    fn clamp_volume_falls_back_to_a_band_around_the_rendered_height_zero() {
+        let exaggeration = TerrainExaggeration::new(5., 2000.);
+        assert_eq!(
+            clamp_volume_height_range(None, &exaggeration),
+            (-9000., -6000.)
+        );
+        assert_eq!(
+            clamp_volume_height_range(Some((100., 200.)), &exaggeration),
+            (-9000., -6000.)
+        );
     }
 }

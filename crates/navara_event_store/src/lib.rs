@@ -33,6 +33,7 @@ pub struct EventStore {
     pub update_terrain_height_range: Vec<Entity>,
     pub hillshade_backfilled: Vec<Entity>,
     pub hillshade_canceled: Vec<Entity>,
+    pub terrain_exaggeration_updated: Option<TerrainExaggerationUpdated>,
 }
 
 impl EventStore {
@@ -58,5 +59,6 @@ impl EventStore {
         self.update_terrain_height_range.clear();
         self.hillshade_backfilled.clear();
         self.hillshade_canceled.clear();
+        self.terrain_exaggeration_updated = None;
     }
 }

@@ -238,6 +238,15 @@ export class ViewContext extends EventHandler<ViewContextEvents> {
   }
 
   /**
+   * Uniform ref to the height (never positive) the ellipsoid is shrunk by
+   * for horizon culling, bound as `nvrHorizonMinHeight` by materials whose
+   * shaders horizon-cull.
+   */
+  getHorizonMinHeightUniform(): { value: number } {
+    return this._commonUniforms.horizonMinHeight;
+  }
+
+  /**
    * Gets the main render target which includes G-buffer.
    */
   getRenderTarget() {

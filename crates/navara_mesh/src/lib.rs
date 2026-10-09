@@ -53,6 +53,19 @@ pub struct Mesh {
     pub skirt_indices: Option<Handle>,
     /// Skirt normals, copied from corresponding edge vertices. Stride 3.
     pub skirt_normals: Option<Handle>,
+    /// Per-vertex terrain height (meters, unexaggerated), shared with the
+    /// tile's `CachedMeshHandle`. `None` for a flat tile, whose vertices all
+    /// sit at height 0.
+    pub heights: Option<Handle>,
+    /// Per-vertex terrain height of the skirt vertices. Set whenever
+    /// `skirt_vertices` is set.
+    pub skirt_heights: Option<Handle>,
+    /// Height range spanned by the geometry: the range of `heights` (both 0
+    /// for a flat tile), widened to height 0 by a pole cap. The renderer
+    /// widens its bounds by the displacement at either end when the terrain is
+    /// exaggerated.
+    pub min_height: f64,
+    pub max_height: f64,
     /// Watermask payload (1 byte for uniform, 65536 bytes for 256x256 grid).
     pub watermask: Option<Handle>,
 }

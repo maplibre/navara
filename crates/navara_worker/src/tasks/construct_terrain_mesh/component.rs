@@ -77,6 +77,7 @@ mod test {
                 skirt_uvs: None,
                 skirt_indices: None,
                 skirt_normals: None,
+                skirt_heights: None,
             },
             heights: buf.new_f32(vec![0.]),
             min_height: 0.,

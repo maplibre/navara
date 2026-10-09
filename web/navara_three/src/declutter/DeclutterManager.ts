@@ -60,8 +60,8 @@ export class DeclutterManager {
    *  update re-places even with a static camera. */
   private _dirty = true;
 
-  // Snapshot of the camera/viewport the last pass ran with.
-  private _prevCamera = new Float64Array(34).fill(Number.NaN);
+  // Snapshot of the camera/viewport/horizon minimum the last pass ran with.
+  private _prevCamera = new Float64Array(35).fill(Number.NaN);
   private _lastRunAt = Number.NEGATIVE_INFINITY;
   private _lastStepAt = Number.NaN;
 
@@ -144,22 +144,27 @@ export class DeclutterManager {
    * Run a placement pass if one is due, then advance any active show/hide
    * fades. `widthPx`/`heightPx` are the viewport in CSS pixels (matching the
    * `uScreenHeightPx` uniform); `nowMs` is the frame timestamp used for
-   * throttling and fade stepping.
+   * throttling and fade stepping; `horizonMinHeight` is the
+   * `nvrHorizonMinHeight` uniform the label shaders horizon-cull with.
    */
   update(
     camera: PerspectiveCamera,
     widthPx: number,
     heightPx: number,
     nowMs: number,
+    horizonMinHeight: number,
   ): DeclutterUpdateResult {
     if (this._participants.size === 0) return "idle";
 
     let ran = false;
     let throttled = false;
-    if (this._dirty || this._snapshotChanged(camera, widthPx, heightPx)) {
+    if (
+      this._dirty ||
+      this._snapshotChanged(camera, widthPx, heightPx, horizonMinHeight)
+    ) {
       if (nowMs - this._lastRunAt >= DeclutterManager.MIN_INTERVAL_MS) {
-        this._run(camera, widthPx, heightPx);
-        this._takeSnapshot(camera, widthPx, heightPx);
+        this._run(camera, widthPx, heightPx, horizonMinHeight);
+        this._takeSnapshot(camera, widthPx, heightPx, horizonMinHeight);
         this._dirty = false;
         this._lastRunAt = nowMs;
         ran = true;
@@ -192,6 +197,7 @@ export class DeclutterManager {
     camera: PerspectiveCamera,
     widthPx: number,
     heightPx: number,
+    horizonMinHeight: number,
   ): void {
     // Let participants start font/shape preparation for labels whose anchors
     // became potentially visible (text batches park preparation while an
@@ -257,6 +263,7 @@ export class DeclutterManager {
       // Plain math instead of @navaramap/three-api's degreeToRadian — that one
       // is a WASM call whose result we'd only marshal straight back in.
       (camera.fov * Math.PI) / 180.0,
+      horizonMinHeight,
       DeclutterManager.PADDING_PX,
       DeclutterManager.HYSTERESIS_PX,
     );
@@ -295,6 +302,7 @@ export class DeclutterManager {
     camera: PerspectiveCamera,
     widthPx: number,
     heightPx: number,
+    horizonMinHeight: number,
   ): boolean {
     const s = this._prevCamera;
     const world = camera.matrixWorld.elements;
@@ -302,18 +310,22 @@ export class DeclutterManager {
     for (let i = 0; i < 16; i++) {
       if (s[i] !== world[i] || s[16 + i] !== proj[i]) return true;
     }
-    return s[32] !== widthPx || s[33] !== heightPx;
+    return (
+      s[32] !== widthPx || s[33] !== heightPx || s[34] !== horizonMinHeight
+    );
   }
 
   private _takeSnapshot(
     camera: PerspectiveCamera,
     widthPx: number,
     heightPx: number,
+    horizonMinHeight: number,
   ): void {
     const s = this._prevCamera;
     s.set(camera.matrixWorld.elements, 0);
     s.set(camera.projectionMatrix.elements, 16);
     s[32] = widthPx;
     s[33] = heightPx;
+    s[34] = horizonMinHeight;
   }
 }

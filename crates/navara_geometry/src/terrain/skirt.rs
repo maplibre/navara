@@ -28,6 +28,9 @@ pub struct SkirtData {
     /// Optional skirt normals (stride 3), copied from corresponding edge vertices.
     /// Only populated when the source geometry has normals.
     pub normals: Option<Vec<f32>>,
+    /// Terrain height of each skirt vertex: its edge vertex's height minus the
+    /// skirt height.
+    pub heights: Vec<f32>,
 }
 
 /// Information about an edge during boundary detection.
@@ -112,15 +115,18 @@ fn get_texcoord(vertex_index: usize, uvs: &[f32]) -> [f32; 2] {
 /// 2. Copy normals from edge vertices to skirt vertices
 ///
 /// - `geometry`: the terrain geometry to generate skirts for.
+/// - `heights`: terrain height of each `geometry` vertex.
 /// - `skirt_height`: distance to move vertices along "down" direction.
 /// - `down_dir_fn`: callback providing "down" vector for each vertex.
 ///
 /// Returns `SkirtData` containing the skirt geometry.
 pub fn generate_skirt(
     geometry: &Geometry,
+    heights: &[f32],
     skirt_height: f32,
     down_dir_fn: &DownDirFn,
 ) -> SkirtData {
+    debug_assert_eq!(heights.len(), geometry.vertices.len() / 3);
     let boundary_edges = compute_boundary_edges(&geometry.indices);
     let original_vertex_count = geometry.vertices.len() / 3;
     let edge_count = boundary_edges.len();
@@ -128,6 +134,7 @@ pub fn generate_skirt(
     let mut skirt_vertices = Vec::with_capacity(edge_count * 2 * 3);
     let mut skirt_uvs = Vec::with_capacity(edge_count * 2 * 2);
     let mut skirt_indices = Vec::with_capacity(edge_count * 2 * 3);
+    let mut skirt_heights = Vec::with_capacity(edge_count * 2);
     let source_normals = geometry.normals.as_deref();
     let mut skirt_normals: Option<Vec<f32>> =
         source_normals.map(|_| Vec::with_capacity(edge_count * 2 * 3));
@@ -160,6 +167,8 @@ pub fn generate_skirt(
 
         skirt_vertices.extend_from_slice(&new_p0);
         skirt_vertices.extend_from_slice(&new_p1);
+        skirt_heights.push(heights[v0] - skirt_height);
+        skirt_heights.push(heights[v1] - skirt_height);
 
         // --- UVs ---
         let t0 = get_texcoord(v0, &geometry.uvs);
@@ -200,39 +209,29 @@ pub fn generate_skirt(
         uvs: skirt_uvs,
         indices: skirt_indices,
         normals: skirt_normals,
+        heights: skirt_heights,
     }
 }
 
 /// Add skirt data to geometry's optional skirt fields.
 ///
 /// - `geometry`: mutable Geometry struct to add skirt data to.
+/// - `heights`: terrain height of each `geometry` vertex.
 /// - `skirt_height`: distance to move vertices along "down" direction.
 /// - `down_dir_fn`: callback providing "down" vector for each vertex.
-pub fn add_skirt_separate(geometry: &mut Geometry, skirt_height: f32, down_dir_fn: &DownDirFn) {
-    let skirt_data = generate_skirt(geometry, skirt_height, down_dir_fn);
+pub fn add_skirt_separate(
+    geometry: &mut Geometry,
+    heights: &[f32],
+    skirt_height: f32,
+    down_dir_fn: &DownDirFn,
+) {
+    let skirt_data = generate_skirt(geometry, heights, skirt_height, down_dir_fn);
 
     geometry.skirt_vertices = Some(skirt_data.vertices);
     geometry.skirt_uvs = Some(skirt_data.uvs);
     geometry.skirt_indices = Some(skirt_data.indices);
     geometry.skirt_normals = skirt_data.normals;
-}
-
-/// Add skirts along all boundary edges of the mesh (legacy inline method).
-///
-/// This function modifies the geometry directly by appending skirt vertices
-/// and indices. For separate skirt handling (shadow maps, normals), use
-/// `add_skirt_separate` instead.
-///
-/// - `geometry`: mutable Geometry struct.
-/// - `skirt_height`: distance to move vertices along "down" direction.
-/// - `down_dir_fn`: callback providing "down" vector for each vertex.
-pub fn add_skirt(geometry: &mut Geometry, skirt_height: f32, down_dir_fn: &DownDirFn) {
-    let skirt_data = generate_skirt(geometry, skirt_height, down_dir_fn);
-
-    // Append skirt data to main geometry
-    geometry.vertices.extend_from_slice(&skirt_data.vertices);
-    geometry.uvs.extend_from_slice(&skirt_data.uvs);
-    geometry.indices.extend_from_slice(&skirt_data.indices);
+    geometry.skirt_heights = Some(skirt_data.heights);
 }
 
 /// Create a down direction function for WGS84 ellipsoid.
@@ -374,67 +373,6 @@ mod tests {
     }
 
     #[test]
-    fn test_add_skirt_single_triangle() {
-        // Create a simple triangle geometry
-        let mut geometry = Geometry {
-            vertices: vec![
-                0.0, 0.0, 0.0, // vertex 0
-                1.0, 0.0, 0.0, // vertex 1
-                0.5, 1.0, 0.0, // vertex 2
-            ],
-            uvs: vec![
-                0.0, 0.0, // uv 0
-                1.0, 0.0, // uv 1
-                0.5, 1.0, // uv 2
-            ],
-            indices: vec![0, 1, 2],
-            ..Default::default()
-        };
-
-        let skirt_height = 0.5;
-        let down_dir_fn = |_vertex_index: usize, _positions: &[f32]| -> [f32; 3] {
-            // Simple down direction (negative Z)
-            [0.0, 0.0, -1.0]
-        };
-
-        add_skirt(&mut geometry, skirt_height, &down_dir_fn);
-
-        // Original: 3 vertices
-        // Boundary edges: 3 (all edges are boundary)
-        // New vertices: 3 * 2 = 6
-        // Total vertices: 9
-        assert_eq!(geometry.vertices.len() / 3, 9);
-        assert_eq!(geometry.uvs.len() / 2, 9);
-
-        // Original: 1 triangle (3 indices)
-        // New triangles: 3 edges * 2 triangles = 6 triangles (18 indices)
-        // Total: 21 indices
-        assert_eq!(geometry.indices.len(), 21);
-    }
-
-    #[test]
-    fn test_add_skirt_preserves_original_geometry() {
-        let mut geometry = Geometry {
-            vertices: vec![0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.5, 1.0, 0.0],
-            uvs: vec![0.0, 0.0, 1.0, 0.0, 0.5, 1.0],
-            indices: vec![0, 1, 2],
-            ..Default::default()
-        };
-
-        let original_vertices = geometry.vertices.clone();
-        let original_uvs = geometry.uvs.clone();
-        let original_indices = geometry.indices.clone();
-
-        let down_dir_fn = |_: usize, _: &[f32]| [0.0, 0.0, -1.0];
-        add_skirt(&mut geometry, 0.5, &down_dir_fn);
-
-        // Check that original data is preserved at the beginning
-        assert_eq!(&geometry.vertices[..9], &original_vertices[..]);
-        assert_eq!(&geometry.uvs[..6], &original_uvs[..]);
-        assert_eq!(&geometry.indices[..3], &original_indices[..]);
-    }
-
-    #[test]
     fn test_generate_skirt_single_triangle() {
         // Create a simple triangle geometry
         let geometry = Geometry {
@@ -456,7 +394,7 @@ mod tests {
         let down_dir_fn =
             |_vertex_index: usize, _positions: &[f32]| -> [f32; 3] { [0.0, 0.0, -1.0] };
 
-        let skirt_data = generate_skirt(&geometry, skirt_height, &down_dir_fn);
+        let skirt_data = generate_skirt(&geometry, &[0.; 3], skirt_height, &down_dir_fn);
 
         // 3 boundary edges * 2 vertices per edge = 6 skirt vertices
         assert_eq!(skirt_data.vertices.len() / 3, 6);
@@ -477,7 +415,7 @@ mod tests {
 
         let original_geometry = geometry.clone();
         let down_dir_fn = |_: usize, _: &[f32]| [0.0, 0.0, -1.0];
-        let _skirt_data = generate_skirt(&geometry, 0.5, &down_dir_fn);
+        let _skirt_data = generate_skirt(&geometry, &[0.; 3], 0.5, &down_dir_fn);
 
         // Ensure original geometry is unchanged
         assert_eq!(geometry, original_geometry);
@@ -501,7 +439,7 @@ mod tests {
         };
 
         let down_dir_fn = |_: usize, _: &[f32]| [0.0, 0.0, -1.0];
-        add_skirt_separate(&mut geometry, 0.5, &down_dir_fn);
+        add_skirt_separate(&mut geometry, &[10., 20., 30.], 0.5, &down_dir_fn);
 
         // Main geometry should remain unchanged
         assert_eq!(geometry.vertices.len() / 3, 3);
@@ -520,6 +458,13 @@ mod tests {
         assert_eq!(skirt_vertices.len() / 3, 6);
         assert_eq!(skirt_uvs.len() / 2, 6);
         assert_eq!(skirt_indices.len(), 18);
+
+        // Each skirt vertex hangs `skirt_height` below its edge vertex.
+        let skirt_heights = geometry.skirt_heights.unwrap();
+        assert_eq!(skirt_heights.len(), 6);
+        let mut sorted = skirt_heights.clone();
+        sorted.sort_by(f32::total_cmp);
+        assert_eq!(sorted, vec![9.5, 9.5, 19.5, 19.5, 29.5, 29.5]);
     }
 
     #[test]

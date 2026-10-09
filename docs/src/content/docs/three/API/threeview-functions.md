@@ -731,7 +731,7 @@ view.cameraFreeLook(false);
 
 ### sampleTerrainHeight()
 
-Synchronously gets the terrain height at a specified geodetic position. Returns `undefined` if terrain data has not yet been loaded.
+Synchronously gets the terrain height at a specified geodetic position. Returns `undefined` if terrain data has not yet been loaded. When [`exaggeration`](../../../three/material/terrain-material/#exaggeration) is set, the returned heights are exaggerated to match the rendered surface.
 
 This reads only tiles already resident for rendering, so while the camera is far away it returns the height of a coarse LOD tile which can be tens of meters off the true ground height. When you need an accurate height regardless of the camera (for example to place an object on the ground), use [`sampleTerrainMostDetailed()`](#sampleterrainmostdetailed) instead.
 
@@ -769,7 +769,7 @@ if (height !== undefined) {
 
 ### sampleTerrainMostDetailed()
 
-Asynchronously samples terrain heights at the most detailed zoom level the terrain source provides, fetching the needed tiles over the network. Unlike `sampleTerrainHeight()`, which reads only tiles already resident for rendering, and therefore returns coarse heights (or `undefined`) while the camera is far away, this resolves accurate ground heights regardless of what the camera has streamed in. Use it to place objects on the ground before flying there.
+Asynchronously samples terrain heights at the most detailed zoom level the terrain source provides, fetching the needed tiles over the network. Unlike `sampleTerrainHeight()`, which reads only tiles already resident for rendering, and therefore returns coarse heights (or `undefined`) while the camera is far away, this resolves accurate ground heights regardless of what the camera has streamed in. Use it to place objects on the ground before flying there. When the terrain layer rendering `source` sets [`exaggeration`](../../../three/material/terrain-material/#exaggeration), the returned heights are exaggerated to match the rendered surface.
 
 Positions are grouped by tile and each unique tile is fetched once. Sampling starts at the source's `maxZoom` and falls back to parent tiles on 404 until data is found, so sources whose real coverage is shallower than the configured `maxZoom` still resolve. A `401`/`403` response rejects the whole call (a token problem should not silently degrade into coarse heights), while server errors are retried and then yield `height: undefined` for the affected positions.
 
@@ -822,7 +822,7 @@ if (ground.height !== undefined) {
 
 ### observeTerrainHeightAt()
 
-Monitors terrain height changes at a specific position. The callback is invoked once the height is first sampled, which happens right after registration when the terrain there is already loaded, and then whenever a terrain tile containing the position loads and changes it.
+Monitors terrain height changes at a specific position. The callback is invoked once the height is first sampled, which happens right after registration when the terrain there is already loaded, and then whenever a terrain tile containing the position loads or the terrain exaggeration changes, and the height changes with it. When [`exaggeration`](../../../three/material/terrain-material/#exaggeration) is set, the returned heights are exaggerated to match the rendered surface.
 
 **Syntax:**
 
@@ -858,7 +858,7 @@ cleanup();
 
 ### sampleTerrainHeightRange()
 
-Synchronously gets the minimum and maximum height of the ground over a geographic extent. Like `sampleTerrainHeight()`, it reads only the terrain tiles already loaded for rendering, and it reports `0` for an area no terrain tile has loaded yet. Use it to size something that must enclose the ground, for example a volume reaching from below to above the terrain.
+Synchronously gets the minimum and maximum height of the ground over a geographic extent. Like `sampleTerrainHeight()`, it reads only the terrain tiles already loaded for rendering, and it reports `0` for an area no terrain tile has loaded yet. Use it to size something that must enclose the ground, for example a volume reaching from below to above the terrain. When [`exaggeration`](../../../three/material/terrain-material/#exaggeration) is set, the range is exaggerated to match the rendered surface, and so is the `0` of an area not loaded yet.
 
 **Syntax:**
 
@@ -897,7 +897,7 @@ if (range) {
 
 ### observeTerrainHeightRange()
 
-Monitors the result of [`sampleTerrainHeightRange()`](#sampleterrainheightrange) over an extent. The callback is invoked once the range is first computed, and then whenever a terrain tile overlapping the extent loads and changes it.
+Monitors the result of [`sampleTerrainHeightRange()`](#sampleterrainheightrange) over an extent. The callback is invoked once the range is first computed, and then whenever a terrain tile overlapping the extent loads or the terrain exaggeration changes, and the range changes with it.
 
 **Syntax:**
 

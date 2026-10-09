@@ -6,8 +6,9 @@ use navara_feature_component::render::TransferablePointGeometry;
 use navara_math::{FloatType, Vec3};
 use navara_occluder::ellipsoidal_occluder::EllipsoidalOccluder;
 use navara_tile_component::{
-    TerrainTileQuadtree, TileExtent, TileMeshMarker, TileTerrainDataRequesterQuery,
-    collect_terrain_leaves, compute_terrain_height_by_tile_handle, find_terrain_tile_for_extent,
+    LOWEST_TERRAIN_HEIGHT, TerrainExaggeration, TerrainTileQuadtree, TileExtent, TileMeshMarker,
+    TileTerrainDataRequesterQuery, collect_terrain_leaves, compute_terrain_height_by_tile_handle,
+    find_terrain_tile_for_extent,
 };
 
 /// Holds position data encoded as either RTC or RTE f32 values.
@@ -132,6 +133,7 @@ pub fn resolve_tiled_heights_and_build_positions(
     qt: &mut TerrainTileQuadtree,
     buf: &mut BufferStore,
     terrain_data_requester: &TileTerrainDataRequesterQuery,
+    exaggeration: &TerrainExaggeration,
     positions: &mut PositionBuffer,
 ) {
     let tile_handle = if clamp_to_ground {
@@ -148,6 +150,7 @@ pub fn resolve_tiled_heights_and_build_positions(
                 qt,
                 buf,
                 terrain_data_requester,
+                exaggeration,
                 handle,
                 &lng_lat,
             );
@@ -193,6 +196,7 @@ pub fn resolve_absolute_heights_and_build_positions(
     qt: &mut TerrainTileQuadtree,
     buf: &mut BufferStore,
     terrain_data_requester: &TileTerrainDataRequesterQuery,
+    exaggeration: &TerrainExaggeration,
     positions: &mut PositionBuffer,
 ) {
     let leaf_handles = collect_terrain_leaves(qt);
@@ -215,6 +219,7 @@ pub fn resolve_absolute_heights_and_build_positions(
                 o,
                 camera_position,
                 screen_height,
+                exaggeration,
             )
         {
             positions.push_from_crs(*c, crs, 0.0, terrain_heights[i]);
@@ -230,6 +235,7 @@ pub fn resolve_absolute_heights_and_build_positions(
                     qt,
                     buf,
                     terrain_data_requester,
+                    exaggeration,
                     *handle,
                     &lng_lat,
                 )
@@ -241,11 +247,10 @@ pub fn resolve_absolute_heights_and_build_positions(
     }
 }
 
-/// Conservative terrain height range (meters) for visibility testing of clamp-to-ground
-/// features whose actual terrain height is not yet known.
-/// Covers from below sea level (Dead Sea: -430m) to Everest (8850m).
-const MIN_TERRAIN_HEIGHT: f32 = -500.0;
-const MAX_TERRAIN_HEIGHT: f32 = 8850.0;
+/// Highest unexaggerated terrain height (meters) for visibility testing of
+/// clamp-to-ground features whose actual terrain height is not yet known: above
+/// Everest (8849 m). The lowest is [`LOWEST_TERRAIN_HEIGHT`].
+const MAX_TERRAIN_HEIGHT: FloatType = 8850.0;
 
 /// Rust-side equivalent of `nvr_pxToWorld` in `shaders/glsl/chunks/pixelToWorld.glsl`.
 /// If the shader changes, update this function.
@@ -291,15 +296,18 @@ pub fn is_point_visible(
     occluder: &EllipsoidalOccluder,
     camera_position: Vec3,
     screen_height: FloatType,
+    exaggeration: &TerrainExaggeration,
 ) -> bool {
     // For clamp-to-ground, terrain height is unknown. Model the possible height range
     // as a sphere centered at the midpoint, with radius covering the full range.
-    let (test_height, height_radius) = {
-        let midpoint = (MIN_TERRAIN_HEIGHT + MAX_TERRAIN_HEIGHT) / 2.0;
-        let half_range = (MAX_TERRAIN_HEIGHT - MIN_TERRAIN_HEIGHT) / 2.0;
-        (material_height + midpoint, half_range as FloatType)
-    };
-    let world_pos = crs.to_vec3(WGS84_64, coords, test_height);
+    let min = exaggeration.apply(LOWEST_TERRAIN_HEIGHT);
+    let max = exaggeration.apply(MAX_TERRAIN_HEIGHT);
+    let height_radius = (max - min) / 2.0;
+    let world_pos = crs.to_vec3(
+        WGS84_64,
+        coords,
+        material_height + ((min + max) / 2.0) as f32,
+    );
 
     let sprite_radius = compute_sprite_radius(
         size,
@@ -316,11 +324,11 @@ pub fn is_point_visible(
         return false;
     }
 
-    // Horizon occlusion check — test at ground level (most conservative for occlusion)
-    let ground_pos = crs.to_vec3(WGS84_64, coords, material_height);
-    let scaled_pos =
-        Vec3::from_array(WGS84_64.transform_position_to_scaled_space(ground_pos.to_array()));
-    occluder.is_scaled_space_point_visible(scaled_pos)
+    // Horizon occlusion check at the highest possible ground, against a horizon
+    // lowered to the lowest, so that no possible terrain height is hidden.
+    let top_pos = crs.to_vec3(WGS84_64, coords, material_height + max as f32);
+    occluder
+        .is_point_visible_possibly_under_ellipsoid(top_pos, exaggeration.horizon_minimum_height())
 }
 
 #[cfg(test)]
@@ -691,6 +699,7 @@ mod tests {
             &occluder,
             cam_pos,
             800.0,
+            &TerrainExaggeration::default(),
         );
         assert!(visible, "point directly below camera should be visible");
     }
@@ -713,11 +722,48 @@ mod tests {
             &occluder,
             cam_pos,
             800.0,
+            &TerrainExaggeration::default(),
         );
         assert!(
             !visible,
             "point on opposite side of globe should not be visible"
         );
+    }
+
+    /// Terrain the exaggeration lifts above sea level is seen beyond the
+    /// sea-level horizon.
+    #[test]
+    fn is_point_visible_beyond_the_sea_level_horizon_on_raised_terrain() {
+        use navara_core::WGS84_A_64;
+        use navara_math::Transform;
+
+        // 1 km above (0°N, 0°E): the sea-level horizon is ~113 km away.
+        let camera_ecef = Vec3::new(WGS84_A_64 + 1000., 0., 0.);
+        // A point at sea level ~170 km east, beyond that horizon.
+        let lng = 1.53;
+        let target = CRS::Geographic.to_vec3(WGS84_64, Vec3::new(lng, 0., 0.), 0.);
+        let transform = Transform::from_translation(camera_ecef).looking_at(target, Vec3::Z);
+        let frustum = CameraFrustum::new(&transform, 0.1, 1e9, 60f64.to_radians(), 1.0);
+        let occluder = EllipsoidalOccluder::new(&camera_ecef, WGS84_64);
+        let visible = |exaggeration: &TerrainExaggeration| {
+            is_point_visible(
+                Vec3::new(lng, 0., 0.),
+                &CRS::Geographic,
+                0.0,
+                1.0,
+                true,
+                &frustum,
+                &occluder,
+                camera_ecef,
+                800.0,
+                exaggeration,
+            )
+        };
+
+        // Scale 0 lifts every surface to 1000 m, whose horizon reaches ~226 km.
+        assert!(visible(&TerrainExaggeration::new(0., 1000.)));
+        // Flattened onto the ellipsoid, the point is hidden.
+        assert!(!visible(&TerrainExaggeration::new(0., 0.)));
     }
 
     #[test]
@@ -738,6 +784,7 @@ mod tests {
             &occluder,
             cam_pos,
             800.0,
+            &TerrainExaggeration::default(),
         );
         assert!(!visible, "point past the horizon should be occluded");
     }

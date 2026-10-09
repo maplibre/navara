@@ -96,6 +96,8 @@ function makeTile(atlasSize = 512) {
 
   return {
     tile,
+    ctx,
+    meshAdded,
     texturizedScenes,
     renderVectorScenes,
     getVectorTileStates,
@@ -399,5 +401,20 @@ describe("TileMesh drape render-target lazy allocation + accounting", () => {
     // entity subtracts the cost from the ledger instead.
     expect(renderTargetCount(tile)).toBe(0);
     expect(reportDrapeGpuBytes.mock.calls.length).toBe(callsBeforeDispose);
+  });
+});
+
+describe("TileMesh handle registration", () => {
+  it("keeps the replacing mesh registered when the outgoing one is disposed", () => {
+    const { tile, ctx, meshAdded } = makeTile();
+    // A replacement mesh for the same position-stable handle is constructed
+    // before the outgoing one is disposed.
+    const incoming = new TileMesh(ctx, meshAdded);
+
+    tile.dispose(ctx.tileMapByHandle);
+    expect(ctx.tileMapByHandle.get(1n)).toBe(incoming);
+
+    incoming.dispose(ctx.tileMapByHandle);
+    expect(ctx.tileMapByHandle.has(1n)).toBe(false);
   });
 });

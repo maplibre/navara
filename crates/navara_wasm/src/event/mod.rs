@@ -42,6 +42,7 @@ pub struct Events {
     update_terrain_height_range: Vec<TerrainHeightRangeUpdatedEvent>,
     hillshade_backfilled: Vec<HillshadeBackfilledEvent>,
     hillshade_canceled: Vec<EntityEvent>,
+    terrain_exaggeration_updated: Option<TerrainExaggerationUpdatedEvent>,
 }
 
 // Move-out accessors: each hands the stack's ownership to JS (elements are
@@ -112,6 +113,9 @@ impl Events {
     }
     pub fn take_hillshade_canceled(&mut self) -> Vec<EntityEvent> {
         std::mem::take(&mut self.hillshade_canceled)
+    }
+    pub fn take_terrain_exaggeration_updated(&mut self) -> Option<TerrainExaggerationUpdatedEvent> {
+        self.terrain_exaggeration_updated.take()
     }
 }
 
@@ -192,6 +196,14 @@ pub struct Mesh {
     pub skirt_indices: Option<i32>,
     /// Skirt per-vertex normals handle.
     pub skirt_normals: Option<i32>,
+    /// Per-vertex terrain height handle (meters, unexaggerated). `None` for a
+    /// flat tile, whose vertices all sit at height 0.
+    pub heights: Option<i32>,
+    /// Skirt per-vertex terrain height handle; set whenever `skirt_vertices` is.
+    pub skirt_heights: Option<i32>,
+    /// Range of `heights` (both 0 for a flat tile).
+    pub min_height: f64,
+    pub max_height: f64,
     /// Watermask handle (1 byte uniform or 65536 byte grid).
     pub watermask: Option<i32>,
 }
@@ -398,8 +410,27 @@ impl From<navara_event::Events<'_>> for Events {
                 .into_iter()
                 .map(|ev| ev.into())
                 .collect(),
+            terrain_exaggeration_updated: ev.terrain_exaggeration_updated.map(|ev| {
+                TerrainExaggerationUpdatedEvent {
+                    scale: ev.scale,
+                    relative_height: ev.relative_height,
+                    horizon_minimum_height: ev.horizon_minimum_height,
+                }
+            }),
         }
     }
+}
+
+/// The terrain exaggeration in effect from this frame on (`h' = (h -
+/// relative_height) * scale + relative_height`), emitted when it changes.
+#[wasm_bindgen]
+#[derive(Debug, Clone, Copy, Serialize)]
+pub struct TerrainExaggerationUpdatedEvent {
+    pub scale: f64,
+    pub relative_height: f64,
+    /// Height (never positive) the ellipsoid is shrunk by for horizon culling
+    /// so that terrain sunk below it stays visible.
+    pub horizon_minimum_height: f64,
 }
 
 impl From<navara_event_store::EntityEvent> for EntityEvent {
@@ -554,6 +585,10 @@ impl<'a> From<&'a navara_mesh::Mesh> for Mesh {
             skirt_uvs: m.skirt_uvs,
             skirt_indices: m.skirt_indices,
             skirt_normals: m.skirt_normals,
+            heights: m.heights,
+            skirt_heights: m.skirt_heights,
+            min_height: m.min_height,
+            max_height: m.max_height,
             watermask: m.watermask,
         }
     }

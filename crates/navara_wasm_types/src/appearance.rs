@@ -2145,6 +2145,17 @@ pub struct TerrainMaterial {
     #[wasm_bindgen(js_name = skirtExaggeration)]
     #[serde(rename = "skirtExaggeration")]
     pub skirt_exaggeration: Option<f32>,
+    /// Vertical exaggeration of the terrain. Terrain heights are scaled by this
+    /// factor around `exaggerationRelativeHeight`. A negative value is treated
+    /// as 0, which flattens the terrain. Default: 1.
+    pub exaggeration: Option<f64>,
+    /// Height in meters that stays in place while the terrain is exaggerated:
+    /// a terrain height `h` is rendered at
+    /// `(h - exaggerationRelativeHeight) * exaggeration + exaggerationRelativeHeight`.
+    /// Default: 0.
+    #[wasm_bindgen(js_name = exaggerationRelativeHeight)]
+    #[serde(rename = "exaggerationRelativeHeight")]
+    pub exaggeration_relative_height: Option<f64>,
 }
 
 impl From<TerrainMaterial> for navara_material::TerrainMaterial {
@@ -2166,6 +2177,10 @@ impl TerrainMaterial {
             show_bounding_box: self.show_bounding_box.unwrap_or(other.show_bounding_box),
             skirt: self.skirt.unwrap_or(other.skirt),
             skirt_exaggeration: self.skirt_exaggeration.unwrap_or(other.skirt_exaggeration),
+            exaggeration: self.exaggeration.unwrap_or(other.exaggeration),
+            exaggeration_relative_height: self
+                .exaggeration_relative_height
+                .unwrap_or(other.exaggeration_relative_height),
         }
     }
 }

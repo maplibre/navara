@@ -55,7 +55,7 @@ const terrain = view.addSource({
   maxZoom: 18,
   requestVertexNormals: true,
 });
-view.addLayer({
+const terrainLayer = view.addLayer({
   type: "terrain",
   source: terrain,
   terrain: { castShadow: true, receiveShadow: true },
@@ -222,7 +222,9 @@ const addDraftPoint = (point: LatLngHeight) => {
       sphere: {
         color: markers.length === 0 ? START_MARKER_COLOR : MARKER_COLOR,
       },
-      geodetic: point,
+      // Placed on the terrain rather than at the picked height, so the marker
+      // follows the surface when the exaggeration changes.
+      geodetic: { lng: point.lng, lat: point.lat, heightReference: "terrain" },
       scale: markerScale(point),
       lit: false,
       // Only the start point is clicked, to close the ring.
@@ -479,6 +481,26 @@ function select(shape: Shape | undefined) {
 }
 
 refreshPanel();
+
+// Clamped shapes follow the exaggerated surface; unclamped ones keep their
+// height, and points drawn afterwards are picked on the exaggerated surface.
+const terrainParams = { exaggeration: 1, exaggerationRelativeHeight: 0 };
+const terrainFolder = pane.addFolder({ title: "Terrain" });
+terrainFolder
+  .addBinding(terrainParams, "exaggeration", { min: 0, max: 5, step: 0.1 })
+  .on("change", ({ value }) =>
+    terrainLayer.update({ terrain: { exaggeration: value } }),
+  );
+terrainFolder
+  .addBinding(terrainParams, "exaggerationRelativeHeight", {
+    label: "relative height",
+    min: 0,
+    max: 4000,
+    step: 50,
+  })
+  .on("change", ({ value }) =>
+    terrainLayer.update({ terrain: { exaggerationRelativeHeight: value } }),
+  );
 
 // Starts in the late morning in Japan, so the sun lights the extruded walls.
 addDateControl(view, pane, new Date("2026-07-16T01:00:00Z"));

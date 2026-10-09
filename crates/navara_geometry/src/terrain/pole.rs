@@ -28,8 +28,13 @@ const RING_LATITUDES: [f64; 5] = [86.0, 87.0, 88.0, 89.0, 89.6];
 /// `seam_skirt_height` hangs a curtain down those two edges — the wedges
 /// overlap instead of abutting, the same way the grid skirt hides the identical
 /// disagreement at ordinary tile boundaries.
+///
+/// `heights` is the terrain height of each main-grid vertex; the cap and its
+/// curtain get theirs appended to `skirt_heights`.
+#[allow(clippy::too_many_arguments)]
 pub fn add_pole_extension(
     geometry: &mut Geometry,
+    heights: &[f32],
     ellipsoid: Ellipsoid<FloatType>,
     extent: &Extent<FloatType, Radians>,
     rtc_translation: Vec3,
@@ -60,6 +65,7 @@ pub fn add_pole_extension(
         );
 
         let main_count = geometry.vertices.len() / 3;
+        debug_assert_eq!(heights.len(), main_count);
         let with_normals = geometry.normals.is_some();
         // Cap indices use the final combined numbering the web side assembles:
         // main grid first, then the whole skirt buffer (grid skirt, then cap).
@@ -133,6 +139,7 @@ pub fn add_pole_extension(
         let mut curtain_vertices: Vec<f32> = Vec::new();
         let mut curtain_uvs: Vec<f32> = Vec::new();
         let mut curtain_normals: Vec<f32> = Vec::new();
+        let mut curtain_heights: Vec<f32> = Vec::new();
         let mut curtain_indices: Vec<u32> = Vec::new();
         {
             let cap_count = vertices.len() / 3;
@@ -181,6 +188,12 @@ pub fn add_pole_extension(
                 for i in [edge.v0, edge.v1] {
                     let p = position_of(i);
                     let n = normal_of(i);
+                    let height = if (i as usize) < main_count {
+                        heights[i as usize]
+                    } else {
+                        0.
+                    };
+                    curtain_heights.push(height - seam_skirt_height);
                     curtain_vertices.extend_from_slice(&[
                         p[0] - n[0] * seam_skirt_height,
                         p[1] - n[1] * seam_skirt_height,
@@ -206,6 +219,9 @@ pub fn add_pole_extension(
         let skirt_indices = geometry.skirt_indices.get_or_insert_default();
         skirt_indices.extend_from_slice(&indices);
         skirt_indices.extend_from_slice(&curtain_indices);
+        let skirt_heights = geometry.skirt_heights.get_or_insert_default();
+        skirt_heights.resize(skirt_heights.len() + vertices.len() / 3, 0.);
+        skirt_heights.extend_from_slice(&curtain_heights);
         if with_normals {
             let skirt_normals = geometry.skirt_normals.get_or_insert_default();
             skirt_normals.extend_from_slice(&normals);
@@ -324,13 +340,15 @@ mod tests {
             let e = extent(1, y, 2);
             let (mut g, center) = tile_triangles_flat(WGS84_64, &e, 8, 120., true);
             g.normals = Some(vec![1.; g.vertices.len()]);
+            let heights = vec![120.; g.vertices.len() / 3];
             let main = g.clone();
-            add_skirt_separate(&mut g, SKIRT, &|_, _| [0., 0., -1.]);
+            add_skirt_separate(&mut g, &heights, SKIRT, &|_, _| [0., 0., -1.]);
             let skirt = g.clone();
             let first = g.skirt_indices.as_ref().unwrap().len();
             let first_vertex = g.skirt_vertices.as_ref().unwrap().len();
             add_pole_extension(
                 &mut g,
+                &heights,
                 WGS84_64,
                 &e,
                 center,
@@ -347,6 +365,29 @@ mod tests {
             assert_eq!(
                 g.skirt_normals.as_ref().unwrap().len(),
                 g.skirt_vertices.as_ref().unwrap().len()
+            );
+            // Grid skirt, then the height-zero cap surface, then the curtain
+            // hung from seam (120 m) and cap (0 m) vertices.
+            let skirt_heights = g.skirt_heights.as_ref().unwrap();
+            assert_eq!(
+                skirt_heights.len(),
+                g.skirt_vertices.as_ref().unwrap().len() / 3
+            );
+            assert!(
+                skirt_heights[..first_vertex / 3]
+                    .iter()
+                    .all(|&h| h == 120. - SKIRT)
+            );
+            let surface_end = first_vertex / 3 + surface_vertices(8);
+            assert!(
+                skirt_heights[first_vertex / 3..surface_end]
+                    .iter()
+                    .all(|&h| h == 0.)
+            );
+            assert!(
+                skirt_heights[surface_end..]
+                    .iter()
+                    .all(|&h| h == -SKIRT || h == 120. - SKIRT)
             );
             assert!(
                 g.skirt_uvs.as_ref().unwrap()[first_vertex / 3 * 2..]
@@ -369,8 +410,10 @@ mod tests {
     fn root_closes_both_poles_and_nonpolar_tiles_are_unchanged() {
         let e = extent(0, 0, 0);
         let (mut g, center) = tile_triangles_flat(WGS84_64, &e, 32, 0., true);
+        let heights = vec![0.; g.vertices.len() / 3];
         add_pole_extension(
             &mut g,
+            &heights,
             WGS84_64,
             &e,
             center,
@@ -389,7 +432,15 @@ mod tests {
         check_cap(&north, 0, 1., center);
         check_cap(&g, cap_indices, 0., center);
         let before = g.clone();
-        add_pole_extension(&mut g, WGS84_64, &e, center, PoleSides::default(), SKIRT);
+        add_pole_extension(
+            &mut g,
+            &heights,
+            WGS84_64,
+            &e,
+            center,
+            PoleSides::default(),
+            SKIRT,
+        );
         assert_eq!(g, before);
     }
 
@@ -399,12 +450,14 @@ mod tests {
             let mut meridians = Vec::new();
             for (e, u) in [(extent(1, coarse_y, 2), 1.), (extent(4, fine_y, 3), 0.)] {
                 let (mut g, _) = tile_triangles_flat(WGS84_64, &e, 4, 0., true);
+                let heights = vec![0.; g.vertices.len() / 3];
                 // A common RTC origin isolates exact ECEF construction from f32
                 // RTC rounding. The divergence that rounding causes between
                 // real per-tile frames is what the curtain exists to hide, and
                 // is measured in `neighbor_frames_diverge_within_curtain`.
                 add_pole_extension(
                     &mut g,
+                    &heights,
                     WGS84_64,
                     &e,
                     Vec3::ZERO,
@@ -440,8 +493,10 @@ mod tests {
         for x in [4, 5] {
             let e = extent(x, 0, 3);
             let (mut g, center) = tile_triangles_flat(WGS84_64, &e, 4, 0., true);
+            let heights = vec![0.; g.vertices.len() / 3];
             add_pole_extension(
                 &mut g,
+                &heights,
                 WGS84_64,
                 &e,
                 center,
@@ -466,8 +521,10 @@ mod tests {
         let parent_extent = extent(1, 0, 2);
         let child_extent = extent(2, 0, 3);
         let (mut parent, center) = tile_triangles_flat(WGS84_64, &parent_extent, 8, 50., true);
+        let heights = vec![50.; parent.vertices.len() / 3];
         add_pole_extension(
             &mut parent,
+            &heights,
             WGS84_64,
             &parent_extent,
             center,
@@ -477,7 +534,6 @@ mod tests {
             },
             SKIRT,
         );
-        let heights = vec![50.; parent.vertices.len() / 3];
         let mut child = UpsampledTerrainGeometry::new(
             UpsamplableTerrainGeometry {
                 uvs: &parent.uvs,
@@ -494,6 +550,7 @@ mod tests {
         let before = g.clone();
         add_pole_extension(
             &mut g,
+            &child_heights,
             WGS84_64,
             &child_extent,
             center,

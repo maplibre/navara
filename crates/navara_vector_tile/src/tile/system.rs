@@ -18,7 +18,8 @@ use navara_memory::{
     GPU_GEOMETRY_RESIDENCY_FACTOR, MemoryLedger, RetainedEntry, SseDegrade, SsePressure, TileCost,
 };
 use navara_tile_component::{
-    TerrainInformationQuadtree, TerrainTileQuadtree, VectorTile, VectorTileQuadtree,
+    TerrainExaggeration, TerrainInformationQuadtree, TerrainTileQuadtree, VectorTile,
+    VectorTileQuadtree,
 };
 use navara_window::Window;
 use rustc_hash::FxHashSet;
@@ -48,12 +49,13 @@ pub fn update_tiles(
     // heights read by extent — the scheme-agnostic source the raster traverse uses, so the
     // vector SSE follows the terrain's subdivision depth. `.2` is bumped whenever a traverse
     // actually runs so the web side can skip its per-tile `getVectorTileStates` FFI when the
-    // resolution is unchanged. Bundled as one tuple param to stay within Bevy's per-system
-    // parameter limit.
+    // resolution is unchanged. `.3` maps those heights onto the rendered surface. Bundled
+    // as one tuple param to stay within Bevy's per-system parameter limit.
     mut terrain: (
         Res<TerrainInformationQuadtree>,
         Res<TerrainTileQuadtree>,
         ResMut<VectorResolveRevision>,
+        Res<TerrainExaggeration>,
     ),
     mut qts: Query<&mut VectorTileQuadtree>,
     mut tcs: Query<&mut TileCacheManager>,
@@ -127,6 +129,7 @@ pub fn update_tiles(
                 || are_renderable_features_rendered
                 || source.is_added()
                 || terrain.0.is_changed()
+                || terrain.3.is_changed()
                 || is_fog_changed
                 || pressure.is_changed();
             if !needs_update {
@@ -205,6 +208,7 @@ pub fn update_tiles(
                 false,
                 &terrain_layer,
                 &terrain.1,
+                &terrain.3,
                 is_rendered.then_some(zero_tile_handle),
                 &globe,
                 &mut *tile_source.0,

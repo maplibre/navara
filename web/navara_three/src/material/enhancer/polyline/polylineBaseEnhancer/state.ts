@@ -8,6 +8,7 @@ export const DEFAULT_BASE_PROPS: Required<
     | "viewportAndPixelRatio"
     | "frustumNearFar"
     | "frustumRatio"
+    | "horizonMinHeight"
     | "globeDepth"
     | "globeNormal"
     | "inverseProjectionMatrix"

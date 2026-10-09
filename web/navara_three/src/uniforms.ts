@@ -1,5 +1,7 @@
 import type { Matrix4, Texture } from "three";
 
+import type { TerrainExaggeration } from "./terrain/exaggeration";
+
 type Ref<K extends string, T> = Record<K, T | undefined | null>;
 export type RefThree<T> = Ref<"value", T>;
 
@@ -17,4 +19,11 @@ export type CommonUniforms = {
   time: RefThree<number>;
   colorMapTexture: RefThree<Texture>;
   waterTexture: RefThree<Texture>;
+  /** Shared by every terrain tile material (`uTerrainExaggeration`). */
+  terrainExaggeration: { value: TerrainExaggeration };
+  /**
+   * Height (never positive) the ellipsoid is shrunk by for horizon culling
+   * (`nvrHorizonMinHeight`), shared by every material that horizon-culls.
+   */
+  horizonMinHeight: { value: number };
 };

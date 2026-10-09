@@ -217,7 +217,10 @@ they must track the shader, not the engine's own ellipsoid:
 
 Separately, `is_beyond_horizon` mirrors `horizon_culling_pars_vertex.glsl`: a
 cheap ellipsoid test for whether the anchor is geometrically hidden behind the
-Earth from the camera's viewpoint. This matters because **a label the GPU will
+Earth from the camera's viewpoint. Like the shader, it shrinks the ellipsoid by
+the `nvrHorizonMinHeight` uniform value (never positive, set from the terrain
+exaggeration), which `ThreeView` passes to `DeclutterManager.update` and on to
+`declutterPlace` every frame. This matters because **a label the GPU will
 cull must not claim screen space** — otherwise a label on the far side of the
 planet could sit at the same projected pixel as a real, visible label and evict
 it.
@@ -451,7 +454,7 @@ Two guards keep this cheap on an otherwise-idle camera:
 - **Change detection** (`_snapshotChanged`) — a pass only reruns when the
   label set changed (`markDirty()` was called — new/removed labels, text
   changes) **or** the camera's `matrixWorld` / `projectionMatrix` / viewport
-  size differ from a cached snapshot. A perfectly still camera with an
+  size / horizon minimum height differ from a cached snapshot. A perfectly still camera with an
   unchanged label set does no placement work at all.
 - **Throttling** — even when something changed, a full pass runs at most
   once per `MIN_INTERVAL_MS = 150`. Fast camera movement (drag, zoom) would

@@ -24,13 +24,26 @@ function makeCamera(): PerspectiveCamera {
  * caller-controlled hidden pattern.
  */
 class StubKernel implements DeclutterKernel {
-  calls: { candidates: Float64Array; n: number }[] = [];
+  calls: { candidates: Float64Array; n: number; horizonMinHeight: number }[] =
+    [];
   /** Override to control which candidates come back hidden. Default: all shown. */
   hiddenFor: (n: number) => Uint8Array = (n) => new Uint8Array(n);
 
-  place(candidates: Float64Array): Uint8Array {
+  place(
+    candidates: Float64Array,
+    _view: Float64Array,
+    _proj: Float64Array,
+    _cameraX: number,
+    _cameraY: number,
+    _cameraZ: number,
+    _near: number,
+    _widthPx: number,
+    _heightPx: number,
+    _fovRad: number,
+    horizonMinHeight: number,
+  ): Uint8Array {
     const n = candidates.length / CANDIDATE_STRIDE;
-    this.calls.push({ candidates: candidates.slice(), n });
+    this.calls.push({ candidates: candidates.slice(), n, horizonMinHeight });
     return this.hiddenFor(n);
   }
 }
@@ -101,7 +114,7 @@ describe("DeclutterManager", () => {
     ]);
     manager.register(p);
 
-    expect(manager.update(makeCamera(), 800, 600, 0)).toBe("ran");
+    expect(manager.update(makeCamera(), 800, 600, 0, 0)).toBe("ran");
 
     // Results applied by handle, in candidate order.
     expect(p.hidden.get(0)).toBe(false);
@@ -123,14 +136,27 @@ describe("DeclutterManager", () => {
     manager.register(p);
     const camera = makeCamera();
 
-    expect(manager.update(camera, 800, 600, 0)).toBe("ran");
-    expect(manager.update(camera, 800, 600, 50)).toBe("idle");
+    expect(manager.update(camera, 800, 600, 0, 0)).toBe("ran");
+    expect(manager.update(camera, 800, 600, 50, 0)).toBe("idle");
 
     manager.markDirty();
-    expect(manager.update(camera, 800, 600, 50)).toBe("throttled");
+    expect(manager.update(camera, 800, 600, 50, 0)).toBe("throttled");
     expect(
-      manager.update(camera, 800, 600, DeclutterManager.MIN_INTERVAL_MS),
+      manager.update(camera, 800, 600, DeclutterManager.MIN_INTERVAL_MS, 0),
     ).toBe("ran");
+  });
+
+  it("re-places with the new horizon minimum when it changes", () => {
+    const kernel = new StubKernel();
+    const manager = new DeclutterManager(kernel);
+    manager.register(new FakeParticipant([label({ handle: 0 })]));
+    const camera = makeCamera();
+    const later = DeclutterManager.MIN_INTERVAL_MS;
+
+    expect(manager.update(camera, 800, 600, 0, -500)).toBe("ran");
+    expect(manager.update(camera, 800, 600, later, -500)).toBe("idle");
+    expect(manager.update(camera, 800, 600, later, -10500)).toBe("ran");
+    expect(kernel.calls.map((c) => c.horizonMinHeight)).toEqual([-500, -10500]);
   });
 
   it("runs an immediate request inside the throttle window", () => {
@@ -138,9 +164,9 @@ describe("DeclutterManager", () => {
     manager.register(new FakeParticipant([label({ handle: 0 })]));
     const camera = makeCamera();
 
-    expect(manager.update(camera, 800, 600, 0)).toBe("ran");
+    expect(manager.update(camera, 800, 600, 0, 0)).toBe("ran");
     manager.markDirty(true);
-    expect(manager.update(camera, 800, 600, 50)).toBe("ran");
+    expect(manager.update(camera, 800, 600, 50, 0)).toBe("ran");
   });
 
   it("re-runs when the camera moves and stays idle when nothing changed", () => {
@@ -149,15 +175,15 @@ describe("DeclutterManager", () => {
     manager.register(p);
     const camera = makeCamera();
 
-    expect(manager.update(camera, 800, 600, 0)).toBe("ran");
-    expect(manager.update(camera, 800, 600, 1000)).toBe("idle");
+    expect(manager.update(camera, 800, 600, 0, 0)).toBe("ran");
+    expect(manager.update(camera, 800, 600, 1000, 0)).toBe("idle");
 
     camera.position.z += 1000;
     camera.updateMatrixWorld(true);
-    expect(manager.update(camera, 800, 600, 2000)).toBe("ran");
+    expect(manager.update(camera, 800, 600, 2000, 0)).toBe("ran");
 
     // A viewport resize also invalidates placement.
-    expect(manager.update(camera, 1024, 768, 3000)).toBe("ran");
+    expect(manager.update(camera, 1024, 768, 3000, 0)).toBe("ran");
   });
 
   it("reports 'animating' while fades are active, then settles", () => {
@@ -168,9 +194,9 @@ describe("DeclutterManager", () => {
 
     // The pass that (re)targets labels also starts their fade.
     p.fadeStepsLeft = 2;
-    expect(manager.update(camera, 800, 600, 0)).toBe("animating");
-    expect(manager.update(camera, 800, 600, 16)).toBe("animating");
-    expect(manager.update(camera, 800, 600, 32)).toBe("idle");
+    expect(manager.update(camera, 800, 600, 0, 0)).toBe("animating");
+    expect(manager.update(camera, 800, 600, 16, 0)).toBe("animating");
+    expect(manager.update(camera, 800, 600, 32, 0)).toBe("idle");
   });
 
   it("clamps fade steps after an idle gap", () => {
@@ -179,9 +205,9 @@ describe("DeclutterManager", () => {
     manager.register(p);
     const camera = makeCamera();
 
-    manager.update(camera, 800, 600, 0);
+    manager.update(camera, 800, 600, 0, 0);
     // 10s of engine idle must not advance a new fade by 10s worth.
-    manager.update(camera, 800, 600, 10_000);
+    manager.update(camera, 800, 600, 10_000, 0);
     for (const delta of p.fadeDeltas) {
       expect(delta).toBeLessThanOrEqual(DeclutterManager.MAX_FADE_STEP_MS);
     }
@@ -193,14 +219,14 @@ describe("DeclutterManager", () => {
     manager.register(p);
     const camera = makeCamera();
 
-    expect(manager.update(camera, 800, 600, 0)).toBe("ran");
+    expect(manager.update(camera, 800, 600, 0, 0)).toBe("ran");
     manager.markDirty();
     p.fadeStepsLeft = 1;
     // Dirty + inside the throttle window + fading: animating wins because its
     // prompt follow-ups re-enter update, which runs the pass once due.
-    expect(manager.update(camera, 800, 600, 50)).toBe("animating");
+    expect(manager.update(camera, 800, 600, 50, 0)).toBe("animating");
     expect(
-      manager.update(camera, 800, 600, DeclutterManager.MIN_INTERVAL_MS),
+      manager.update(camera, 800, 600, DeclutterManager.MIN_INTERVAL_MS, 0),
     ).toBe("ran");
   });
 
@@ -209,10 +235,10 @@ describe("DeclutterManager", () => {
     const p = new FakeParticipant([label({ handle: 0 })]);
     manager.register(p);
     const camera = makeCamera();
-    expect(manager.update(camera, 800, 600, 0)).toBe("ran");
+    expect(manager.update(camera, 800, 600, 0, 0)).toBe("ran");
 
     manager.unregister(p);
-    expect(manager.update(camera, 800, 600, 1000)).toBe("idle");
+    expect(manager.update(camera, 800, 600, 1000, 0)).toBe("idle");
   });
 
   it("reports the remaining throttle window since the last pass, not the full constant", () => {
@@ -221,9 +247,9 @@ describe("DeclutterManager", () => {
     manager.register(p);
     const camera = makeCamera();
 
-    expect(manager.update(camera, 800, 600, 0)).toBe("ran");
+    expect(manager.update(camera, 800, 600, 0, 0)).toBe("ran");
     manager.markDirty();
-    expect(manager.update(camera, 800, 600, 100)).toBe("throttled");
+    expect(manager.update(camera, 800, 600, 100, 0)).toBe("throttled");
     // 50ms of the 150ms window has already elapsed since the last pass.
     expect(manager.remainingThrottleMs(100)).toBe(
       DeclutterManager.MIN_INTERVAL_MS - 100,
@@ -237,10 +263,10 @@ describe("DeclutterManager", () => {
     const p = new FakeParticipant([label({ handle: 0 })]);
     manager.register(p);
     const camera = makeCamera();
-    expect(manager.update(camera, 800, 600, 0)).toBe("ran");
+    expect(manager.update(camera, 800, 600, 0, 0)).toBe("ran");
 
     manager.dispose();
-    expect(manager.update(camera, 800, 600, 1000)).toBe("idle");
+    expect(manager.update(camera, 800, 600, 1000, 0)).toBe("idle");
   });
 
   // Tile swaps replace a batch wholesale; the new batch's labels start hidden
@@ -257,7 +283,7 @@ describe("DeclutterManager", () => {
       // Nothing recorded before any pass ran.
       expect(manager.wasRecentlyShown("東京", R, 0, 0)).toBe(false);
 
-      manager.update(makeCamera(), 800, 600, 0);
+      manager.update(makeCamera(), 800, 600, 0, 0);
 
       expect(manager.wasRecentlyShown("東京", R, 0, 0)).toBe(true);
       // Same content, slightly offset anchor (a coarser tile's quantization).
@@ -275,7 +301,7 @@ describe("DeclutterManager", () => {
       const p = new FakeParticipant([label({ handle: 0, contentKey: "東京" })]);
       manager.register(p);
 
-      manager.update(makeCamera(), 800, 600, 0);
+      manager.update(makeCamera(), 800, 600, 0, 0);
 
       expect(manager.wasRecentlyShown("東京", R, 0, 0)).toBe(false);
     });
@@ -287,13 +313,13 @@ describe("DeclutterManager", () => {
       manager.register(p);
       const camera = makeCamera();
 
-      manager.update(camera, 800, 600, 0);
+      manager.update(camera, 800, 600, 0, 0);
       expect(manager.wasRecentlyShown("東京", R, 0, 0)).toBe(true);
 
       // The next pass hides it; the registry must forget it.
       kernel.hiddenFor = (n) => new Uint8Array(n).fill(1);
       manager.markDirty();
-      manager.update(camera, 800, 600, DeclutterManager.MIN_INTERVAL_MS);
+      manager.update(camera, 800, 600, DeclutterManager.MIN_INTERVAL_MS, 0);
       expect(manager.wasRecentlyShown("東京", R, 0, 0)).toBe(false);
     });
 
@@ -302,7 +328,7 @@ describe("DeclutterManager", () => {
       const p = new FakeParticipant([label({ handle: 0 })]);
       manager.register(p);
 
-      manager.update(makeCamera(), 800, 600, 0);
+      manager.update(makeCamera(), 800, 600, 0, 0);
 
       expect(manager.wasRecentlyShown("", R, 0, 0)).toBe(false);
     });

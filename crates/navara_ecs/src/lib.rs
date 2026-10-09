@@ -29,15 +29,16 @@ use navara_feature_component::{
 };
 use navara_frame::FrameManager;
 use navara_globe::Globe;
-use navara_layer::{LayerDescStore, LayerDescription, LayerId};
+use navara_layer::{LayerDescStore, LayerDescription, LayerId, TerrainLayer};
 use navara_material::{PolygonMaterial, PolylineMaterial};
 use navara_math::{FloatType, Transform, Vec3};
 use navara_source::{Source, SourceStore};
 use navara_texture_fragment::{TextureFragmentLoadedEvent, TextureFragmentStatus};
 use navara_tile_component::{
-    MartiniComponent, RasterTileQuadtree, TerrainHeightObserver, TerrainHeightRangeObserver,
-    TerrainTile, TerrainTileQuadtree, TileHandle, TileTerrainDataRequesterQuery,
-    VectorTileQuadtree, compute_terrain_height_at_point, terrain_height_range,
+    MartiniComponent, RasterTileQuadtree, TerrainExaggeration, TerrainHeightObserver,
+    TerrainHeightRangeObserver, TerrainTile, TerrainTileQuadtree, TileHandle,
+    TileTerrainDataRequesterQuery, VectorTileQuadtree, compute_terrain_height_at_point,
+    terrain_height_range,
 };
 use navara_vector_tile::{LayerResources, VectorResolveRevision, resolve_vector_tile_states};
 use navara_window::{Window, WindowResizeEvent};
@@ -659,6 +660,21 @@ impl App {
         store.get(source_id).cloned()
     }
 
+    /// Exaggeration of the surface rendered from `source_id`: that of the
+    /// terrain layer `sync_terrain_exaggeration` mirrors when it renders
+    /// `source_id`, identity otherwise. An `update_layer` is reflected from
+    /// the next frame.
+    pub fn terrain_exaggeration_for_source(&mut self, source_id: &str) -> TerrainExaggeration {
+        let world = self.app.world_mut();
+        let mut layers = world.query::<&TerrainLayer>();
+        layers
+            .iter(world)
+            .next()
+            .filter(|layer| layer.source_id.as_deref() == Some(source_id))
+            .map(TerrainExaggeration::of_layer)
+            .unwrap_or_default()
+    }
+
     pub fn has_data_requester(&mut self, bits: u64) -> bool {
         let entity = Entity::from_bits(bits);
         let world = self.app.world_mut();
@@ -1236,8 +1252,10 @@ impl App {
         &self,
         extent: Extent<FloatType, Radians>,
     ) -> Option<(FloatType, FloatType)> {
-        let qt = self.app.world().get_resource::<TerrainTileQuadtree>()?;
-        Some(terrain_height_range(qt, extent))
+        let world = self.app.world();
+        let qt = world.get_resource::<TerrainTileQuadtree>()?;
+        let exaggeration = world.get_resource::<TerrainExaggeration>()?;
+        Some(terrain_height_range(qt, exaggeration, extent))
     }
 
     pub fn sample_terrain_height(&mut self, lle: LLE<FloatType, Radians>) -> Option<FloatType> {
@@ -1245,6 +1263,7 @@ impl App {
 
         let _ = world.get_resource::<TerrainTileQuadtree>()?;
         let _ = world.get_resource::<BufferStore>()?;
+        let exaggeration = *world.get_resource::<TerrainExaggeration>()?;
 
         world.resource_scope(|world, mut qt: Mut<TerrainTileQuadtree>| {
             world.resource_scope(|world, mut buf: Mut<BufferStore>| {
@@ -1255,6 +1274,7 @@ impl App {
                     &mut qt,
                     &mut buf,
                     &query,
+                    &exaggeration,
                     &LngLat::new(lle.lat.val(), lle.lng.val()),
                 )
             })

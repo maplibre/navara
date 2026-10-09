@@ -9,7 +9,8 @@ use bevy_app::{App, Plugin, PostUpdate, PreUpdate, Update};
 use bevy_ecs::schedule::{IntoScheduleConfigs, SystemSet};
 use navara_data_requester::{DataManager, DataRequesterSet};
 use navara_tile_component::{
-    CachedMartini, RasterTileQuadtree, TerrainInformationQuadtree, TerrainTileQuadtree,
+    CachedMartini, RasterTileQuadtree, TerrainExaggeration, TerrainInformationQuadtree,
+    TerrainTileQuadtree,
 };
 use raster::RasterTileCacheManager;
 use tile::{event::MeshPreparedEvent, tile_cache_manager::TileCacheManager};
@@ -27,6 +28,7 @@ pub struct TilePlugin;
 impl Plugin for TilePlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<TileCacheManager>()
+            .init_resource::<TerrainExaggeration>()
             .init_resource::<CachedMartini>()
             .init_resource::<DataManager>()
             .insert_resource(TerrainTileQuadtree::new_with_linear_qt())
@@ -57,6 +59,7 @@ impl Plugin for TilePlugin {
                         tile::system::delete_layer,
                         tile::system::update_terrain_layer,
                         tile::system::sync_terrain_layer_changes,
+                        terrain::system::sync_terrain_exaggeration,
                         tile::system::init_globe_tiling,
                         raster::system::init_raster_tiling,
                         raster::system::update_raster_tiles,
@@ -82,6 +85,7 @@ impl Plugin for TilePlugin {
                         raster::system::snapshot_raster_bake_inputs,
                         terrain::system::update_height_observers,
                         terrain::system::update_terrain_height_range_observers,
+                        terrain::system::sync_camera_surface_floor,
                         hillshade::cleanup_hillshade_edges,
                         hillshade::cleanup_hillshade_backfill_events,
                         hillshade::emit_hillshade_canceled,

@@ -1,6 +1,6 @@
 use bevy_ecs::prelude::*;
 use bevy_ecs::system::SystemParam;
-use navara_buffer_store::BufferStore;
+use navara_buffer_store::{BufferStore, Handle};
 use navara_component::{Deleted, Order, OrderByDistance, Priority, Rendered};
 use navara_core::{Aabb, PoleSides, TileXYZ, TilingScheme, WGS84_64, vec3_to_xyz};
 use navara_data_requester::{DataManager, DataRequester, DataRequesterStatus};
@@ -23,10 +23,11 @@ use navara_quadtree::decode_quadleaf_handle;
 
 use navara_camera::{CameraFrustum, CameraMarker};
 use navara_tile_component::{
-    ChangedTileTerrainDataRequesterQuery, ChangedTileTextureFragmentQuery, TerrainInformation,
-    TerrainInformationQuadtree, TerrainTile, TerrainTileGpuCost, TerrainTileQuadtree, Tile,
-    TileHandle, TileMeshMarker, TileTerrainDataRequesterQuery, TileTextureFragmentMarker,
-    TileTextureFragmentQuery, UpsampleAncestors,
+    ChangedTileTerrainDataRequesterQuery, ChangedTileTextureFragmentQuery, MeshBounds,
+    TerrainExaggeration, TerrainInformation, TerrainInformationQuadtree, TerrainTile,
+    TerrainTileGpuCost, TerrainTileQuadtree, Tile, TileHandle, TileMeshMarker,
+    TileTerrainDataRequesterQuery, TileTextureFragmentMarker, TileTextureFragmentQuery,
+    UpsampleAncestors,
 };
 use navara_window::Window;
 use navara_worker::{
@@ -156,7 +157,11 @@ pub fn update_terrain(
     frame: Res<FrameManager>,
     window: Res<Window>,
     // Bundled to stay within Bevy's per-system parameter limit.
-    globe: (Res<navara_globe::Globe>, Res<navara_memory::SsePressure>),
+    globe: (
+        Res<navara_globe::Globe>,
+        Res<navara_memory::SsePressure>,
+        Res<TerrainExaggeration>,
+    ),
     source_store: Res<navara_source::SourceStore>,
     mut tiles_set: ParamSet<(Query<(&TilesLayer, &Order)>, Query<(), Changed<TilesLayer>>)>,
     mut terrain_layer_set: ParamSet<(Query<&TerrainLayer>, Query<(), Added<TerrainLayer>>)>,
@@ -220,7 +225,7 @@ pub fn update_terrain(
             fog.is_changed() || dynamic_sse.is_changed(),
         )
     };
-    let (globe, pressure) = globe;
+    let (globe, pressure, exaggeration) = globe;
     let camera = camera_set.p0();
     let (camera, frustum) = camera.single().unwrap();
 
@@ -248,7 +253,8 @@ pub fn update_terrain(
         || is_layers_len_changed
         || is_source_changed
         || is_fog_changed
-        || pressure.is_changed();
+        || pressure.is_changed()
+        || exaggeration.is_changed();
     if !needs_update {
         return;
     }
@@ -315,6 +321,7 @@ pub fn update_terrain(
             &window,
             &WGS84_64,
             &occluder,
+            &exaggeration,
             &mut meshes,
             &fog,
             dynamic_sse,
@@ -529,7 +536,7 @@ pub fn transfer_mesh(
         if !needs_update {
             continue;
         }
-        let tile_aabb = tile.aabb().clone();
+        let tile_aabb = tile.mesh_bounds(tile.min_height, tile.max_height).aabb;
         let is_root = tile.is_root();
         let render_order = if is_root { -1 } else { 0 };
 
@@ -736,12 +743,14 @@ pub fn transfer_mesh(
             // seams with a curtain of this depth even when grid skirts are
             // switched off, since those seams are cracks rather than cosmetic.
             let skirt_height = calculate_skirt_height(&WGS84_64, tile.coords.z, skirt_exaggeration);
+            let flat_heights = vec![0.; triangles.vertices.len() / 3];
             if should_render_terrain && skirt {
                 let down_dir_fn = make_wgs84_down_dir_fn(WGS84_64, Some(rtc_translation));
-                add_skirt_separate(&mut triangles, skirt_height, &down_dir_fn);
+                add_skirt_separate(&mut triangles, &flat_heights, skirt_height, &down_dir_fn);
             }
             add_pole_extension(
                 &mut triangles,
+                &flat_heights,
                 WGS84_64,
                 &extent,
                 rtc_translation,
@@ -751,6 +760,7 @@ pub fn transfer_mesh(
             let v_skirt_handle = triangles.skirt_vertices.map(|b| buf.new_f32(b));
             let i_skirt_handle = triangles.skirt_indices.map(|b| buf.new_u32(b));
             let u_skirt_handle = triangles.skirt_uvs.map(|b| buf.new_f32(b));
+            let h_skirt_handle = triangles.skirt_heights.map(|b| buf.new_f32(b));
 
             let vhandle = buf.new_f32(triangles.vertices);
             let ihandle = buf.new_u32(triangles.indices);
@@ -794,6 +804,10 @@ pub fn transfer_mesh(
                         skirt_uvs: u_skirt_handle,
                         skirt_indices: i_skirt_handle,
                         skirt_normals: None,
+                        heights: None,
+                        skirt_heights: h_skirt_handle,
+                        min_height: 0.,
+                        max_height: 0.,
                         watermask: None,
                     },
                     material: appearance,
@@ -936,7 +950,7 @@ pub fn transfer_mesh(
 
             attach_rendered(&mut commands, rendered_tile_id);
 
-            let mesh_aabb = apply_built_heights(
+            let mesh_bounds = apply_built_heights(
                 &mut qt,
                 &mut terrain_qt,
                 rendered_tile.tile_handle,
@@ -958,12 +972,16 @@ pub fn transfer_mesh(
                     uvs: uvshandle,
                     active: false,
                     render_order,
-                    aabb: mesh_aabb,
+                    aabb: mesh_bounds.aabb,
                     normals: terrain_mesh_upsampler.geometry.normals,
                     skirt_vertices: terrain_mesh_upsampler.geometry.skirt_vertices,
                     skirt_uvs: terrain_mesh_upsampler.geometry.skirt_uvs,
                     skirt_indices: terrain_mesh_upsampler.geometry.skirt_indices,
                     skirt_normals: terrain_mesh_upsampler.geometry.skirt_normals,
+                    heights: Some(heights_handle),
+                    skirt_heights: terrain_mesh_upsampler.geometry.skirt_heights,
+                    min_height: mesh_bounds.min_height,
+                    max_height: mesh_bounds.max_height,
                     watermask: terrain_mesh_upsampler.watermask,
                 },
                 appearance,
@@ -1066,7 +1084,7 @@ pub fn transfer_mesh(
 
         attach_rendered(&mut commands, rendered_tile_id);
 
-        let mesh_aabb = apply_built_heights(
+        let mesh_bounds = apply_built_heights(
             &mut qt,
             &mut terrain_qt,
             rendered_tile.tile_handle,
@@ -1088,12 +1106,16 @@ pub fn transfer_mesh(
                 uvs: uvshandle,
                 active: false,
                 render_order,
-                aabb: mesh_aabb,
+                aabb: mesh_bounds.aabb,
                 normals: terrain_mesh_constructor.geometry.normals,
                 skirt_vertices: terrain_mesh_constructor.geometry.skirt_vertices,
                 skirt_uvs: terrain_mesh_constructor.geometry.skirt_uvs,
                 skirt_indices: terrain_mesh_constructor.geometry.skirt_indices,
                 skirt_normals: terrain_mesh_constructor.geometry.skirt_normals,
+                heights: Some(heights_handle),
+                skirt_heights: terrain_mesh_constructor.geometry.skirt_heights,
+                min_height: mesh_bounds.min_height,
+                max_height: mesh_bounds.max_height,
                 watermask: terrain_mesh_constructor.watermask,
             },
             appearance,
@@ -1115,7 +1137,8 @@ pub fn transfer_mesh(
 }
 
 /// Record a freshly built mesh's height range on its tile and return the
-/// mesh's bounds in its RTC frame. The bounds must come from this build's
+/// mesh's unexaggerated bounds, the AABB in its RTC frame. The bounds must
+/// come from this build's
 /// heights, not the ones the tile carried before it (inherited from an
 /// ancestor, often still 0 m): the web side culls the mesh by them, so a
 /// stale range sinks them below the surface and a low-pitched camera
@@ -1127,7 +1150,7 @@ fn apply_built_heights(
     max_height: FloatType,
     min_height: FloatType,
     rtc_translation: navara_math::Vec3,
-) -> Aabb {
+) -> MeshBounds {
     let tile = qt.qt.get_mut(tile_handle).unwrap();
     if let Some(terrain_data) = tile.terrain_data.as_mut() {
         terrain_data.set_current_max_height(max_height);
@@ -1139,10 +1162,14 @@ fn apply_built_heights(
     terrain_info.max_height = max_height;
     terrain_info.min_height = min_height;
 
-    let tile_aabb = tile.aabb();
-    Aabb {
-        center: Transform::from_translation(-rtc_translation).transform_point(tile_aabb.center),
-        extents: tile_aabb.extents,
+    let bounds = tile.mesh_bounds(min_height, max_height);
+    MeshBounds {
+        aabb: Aabb {
+            center: Transform::from_translation(-rtc_translation)
+                .transform_point(bounds.aabb.center),
+            extents: bounds.aabb.extents,
+        },
+        ..bounds
     }
 }
 
@@ -1899,6 +1926,7 @@ pub(crate) fn free_mesh_only_buffers(mesh: &Mesh, buf: &mut BufferStore) {
         mesh.skirt_uvs,
         mesh.skirt_indices,
         mesh.skirt_normals,
+        mesh.skirt_heights,
     ]
     .into_iter()
     .flatten()
@@ -1997,13 +2025,16 @@ fn terrain_mesh_cost(mesh: &Mesh, buf: &BufferStore, drape: u64) -> (TerrainTile
         mesh.skirt_uvs,
         mesh.skirt_indices,
         mesh.skirt_normals,
+        mesh.heights,
+        mesh.skirt_heights,
         mesh.watermask,
     ];
-    let mesh_bytes: u64 = handles
-        .into_iter()
-        .flatten()
-        .filter_map(|h| buf.get(&h).map(|b| b.byte_len() as u64))
-        .sum();
+    let byte_len = |h: &Handle| buf.get(h).map_or(0, |b| b.byte_len() as u64);
+    let mut mesh_bytes: u64 = handles.iter().flatten().map(byte_len).sum();
+    if mesh.heights.is_none() {
+        // The web side uploads a zero height per vertex (f32, like a position component).
+        mesh_bytes += byte_len(&mesh.vertices) / 3;
+    }
     // The mesh is handed to Three.js and uploaded to the GPU. Three.js now
     // releases the CPU-side typed array via `onUpload` after the upload
     // (see the web `releaseGeometryArraysAfterUpload`), so only the GPU
@@ -2369,6 +2400,10 @@ mod memory_budget_tests {
                     skirt_uvs: None,
                     skirt_indices: None,
                     skirt_normals: None,
+                    heights: None,
+                    skirt_heights: None,
+                    min_height: 0.,
+                    max_height: 0.,
                     watermask: None,
                 },
                 TileCost { cpu: 0, gpu_est },
@@ -2693,6 +2728,10 @@ mod memory_budget_tests {
                     skirt_uvs: None,
                     skirt_indices: None,
                     skirt_normals: None,
+                    heights: None,
+                    skirt_heights: None,
+                    min_height: 0.,
+                    max_height: 0.,
                     watermask: None,
                 },
             ))
@@ -2747,6 +2786,10 @@ mod memory_budget_tests {
                     skirt_uvs: None,
                     skirt_indices: None,
                     skirt_normals: None,
+                    heights: None,
+                    skirt_heights: None,
+                    min_height: 0.,
+                    max_height: 0.,
                     watermask: None,
                 },
             ));
@@ -2838,6 +2881,10 @@ mod memory_budget_tests {
                             skirt_uvs: None,
                             skirt_indices: None,
                             skirt_normals: None,
+                            heights: None,
+                            skirt_heights: None,
+                            min_height: 0.,
+                            max_height: 0.,
                             watermask: None,
                         },
                         TileCost { cpu: 0, gpu_est: 0 },
@@ -3679,6 +3726,10 @@ mod remesh_tests {
                     skirt_uvs: None,
                     skirt_indices: None,
                     skirt_normals: None,
+                    heights: None,
+                    skirt_heights: None,
+                    min_height: 0.,
+                    max_height: 0.,
                     watermask: None,
                 },
                 Transform::default(),
@@ -3825,6 +3876,10 @@ mod remesh_tests {
                     skirt_uvs: None,
                     skirt_indices: None,
                     skirt_normals: None,
+                    heights: None,
+                    skirt_heights: None,
+                    min_height: 0.,
+                    max_height: 0.,
                     watermask: None,
                 },
                 Transform::default(),
@@ -3928,6 +3983,7 @@ mod remesh_tests {
                     skirt_uvs: None,
                     skirt_indices: None,
                     skirt_normals: None,
+                    skirt_heights: None,
                 },
                 heights,
                 min_height: 1.,
@@ -4003,6 +4059,7 @@ mod remesh_tests {
                     skirt_uvs: None,
                     skirt_indices: None,
                     skirt_normals: None,
+                    skirt_heights: None,
                 },
                 heights,
                 min_height: 1.,
@@ -4197,6 +4254,7 @@ mod remesh_tests {
                     skirt_uvs: None,
                     skirt_indices: None,
                     skirt_normals: None,
+                    skirt_heights: None,
                 },
                 heights,
                 min_height: 1.,
@@ -4544,9 +4602,10 @@ mod remesh_tests {
             .unwrap();
         assert_eq!(tile.max_height, 600.);
         assert_eq!(tile.min_height, 500.);
+        let built = tile.mesh_bounds(500., 600.).aabb;
         assert_eq!(
             (mesh_aabb.center, mesh_aabb.extents),
-            (tile.aabb().center, tile.aabb().extents),
+            (built.center, built.extents),
             "the mesh is bounded by the heights it was built with"
         );
         assert_ne!(
@@ -4835,6 +4894,7 @@ mod remesh_tests {
                     skirt_uvs: None,
                     skirt_indices: None,
                     skirt_normals: None,
+                    skirt_heights: None,
                 },
                 heights,
                 min_height: 1.,

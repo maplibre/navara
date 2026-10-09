@@ -16,8 +16,9 @@ use navara_occluder::ellipsoidal_occluder::EllipsoidalOccluder;
 
 use navara_camera::CameraFrustum;
 use navara_tile_component::{
-    ChildrenTakeOver, QuantizedMeshData, RasterDEMData, TerrainTile, TerrainTileQuadtree, Tile,
-    TileHandle, TileMeshMarker, TileTerrainDataRequesterQuery, UpsampleAncestors,
+    ChildrenTakeOver, QuantizedMeshData, RasterDEMData, TerrainExaggeration, TerrainTile,
+    TerrainTileQuadtree, Tile, TileHandle, TileMeshMarker, TileTerrainDataRequesterQuery,
+    UpsampleAncestors,
 };
 use navara_window::Window;
 
@@ -72,6 +73,7 @@ pub fn traverse_terrain(
     window: &Window,
     ellipsoid: &Ellipsoid<FloatType>,
     occluder: &EllipsoidalOccluder,
+    exaggeration: &TerrainExaggeration,
     meshes: &mut Query<&mut Mesh, (With<TileMeshMarker>, Without<Deleted>)>,
     fog: &Fog,
     dynamic_sse: DynamicSseTerm,
@@ -139,7 +141,7 @@ pub fn traverse_terrain(
     };
 
     match qt.qt.get_mut(handle) {
-        Some(tile) => begin_traverse_terrain(ellipsoid, occluder, camera, frame, tile),
+        Some(tile) => begin_traverse_terrain(ellipsoid, occluder, exaggeration, frame, tile),
         None => unreachable!(),
     };
 
@@ -148,10 +150,7 @@ pub fn traverse_terrain(
         None => unreachable!(),
     };
 
-    let is_culled_by_occlusion = !tile
-        .occludee_point_in_scaled_space
-        .map(|p| occluder.is_scaled_space_point_visible(p))
-        .unwrap_or(true);
+    let is_culled_by_occlusion = tile.is_occluded_by_horizon(occluder);
 
     // SSE and camera distance are computed once, up front — even for
     // horizon-occluded tiles, so the occlusion prefetch orders its requests
@@ -429,6 +428,7 @@ pub fn traverse_terrain(
                 window,
                 ellipsoid,
                 occluder,
+                exaggeration,
                 meshes,
                 fog,
                 dynamic_sse,
@@ -1244,11 +1244,12 @@ pub(crate) fn prepare_upsamplable_terrain_data(
 fn begin_traverse_terrain(
     ellipsoid: &Ellipsoid<FloatType>,
     occluder: &EllipsoidalOccluder,
-    _camera: &Transform,
+    exaggeration: &TerrainExaggeration,
     frame: &FrameManager,
     tile: &mut TerrainTile,
 ) {
     tile.visited_at = frame.rendered_frame();
+    tile.set_exaggeration(*exaggeration);
     tile.update_tile_occludee_point(ellipsoid, occluder);
 }
 
@@ -1288,7 +1289,7 @@ mod tests {
 
     #[test]
     fn begin_traverse_terrain_stamps_visit_and_computes_occludee() {
-        let (camera, _frustum, occluder) = test_camera(60.0);
+        let (_camera, _frustum, occluder) = test_camera(60.0);
         let frame = FrameManager::default(); // rendered_frame() == 0
 
         // A small tile near (lng 0, lat 0) so the occludee point is well defined.
@@ -1296,13 +1297,45 @@ mod tests {
         tile.visited_at = 42; // sentinel that must be overwritten
         assert!(tile.occludee_point_in_scaled_space.is_none());
 
-        begin_traverse_terrain(&WGS84_64, &occluder, &camera, &frame, &mut tile);
+        begin_traverse_terrain(
+            &WGS84_64,
+            &occluder,
+            &TerrainExaggeration::default(),
+            &frame,
+            &mut tile,
+        );
 
         // The visit frame is recorded (here 0, overwriting the sentinel)...
         assert_eq!(tile.visited_at, frame.rendered_frame());
         assert_ne!(tile.visited_at, 42);
         // ...and the horizon-culling point is computed.
         assert!(tile.occludee_point_in_scaled_space.is_some());
+    }
+
+    #[test]
+    fn begin_traverse_terrain_builds_bounds_with_the_exaggeration() {
+        let (camera, _frustum, occluder) = test_camera(60.0);
+        let frame = FrameManager::default();
+        let mut tile = TerrainTile::new(TileXYZ { x: 8, y: 8, z: 4 }, 2000., -10.);
+
+        begin_traverse_terrain(
+            &WGS84_64,
+            &occluder,
+            &TerrainExaggeration::new(3., 0.),
+            &frame,
+            &mut tile,
+        );
+
+        let region = tile.bounding_region.as_ref().unwrap();
+        assert_eq!(region.maximum_height, 6000.);
+        assert_eq!(region.minimum_height, -30.);
+        assert_eq!(tile.max_height, 2000.);
+        // The SSE distance is measured to the raised surface.
+        let raw = TerrainTile::new(TileXYZ { x: 8, y: 8, z: 4 }, 2000., -10.);
+        assert!(
+            tile.calc_distance_from_camera(&camera, &WGS84_64)
+                < raw.calc_distance_from_camera(&camera, &WGS84_64)
+        );
     }
 
     // ----- traverse_terrain ---------------------------------------------------
@@ -1381,6 +1414,7 @@ mod tests {
             &window,
             &WGS84_64,
             &occluder,
+            &TerrainExaggeration::default(),
             &mut meshes,
             &fog,
             DynamicSseTerm::NONE,
@@ -1585,6 +1619,10 @@ mod tests {
             skirt_uvs: None,
             skirt_indices: None,
             skirt_normals: None,
+            heights: None,
+            skirt_heights: None,
+            min_height: 0.,
+            max_height: 0.,
             watermask: None,
         }
     }
@@ -3239,11 +3277,12 @@ mod tests {
                 !tile.intersect_with_camera_frustum(&frustum),
                 "precondition: the target must be outside the narrow frustum"
             );
-            let occludee_point = tile
-                .occludee_point_in_scaled_space
-                .expect("precondition: phase A traversal computed the occludee point");
             assert!(
-                occluder.is_scaled_space_point_visible(occludee_point),
+                tile.occludee_point_in_scaled_space.is_some(),
+                "precondition: phase A traversal computed the occludee point"
+            );
+            assert!(
+                !tile.is_occluded_by_horizon(&occluder),
                 "precondition: the target must not be horizon-occluded"
             );
         }

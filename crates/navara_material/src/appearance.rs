@@ -966,6 +966,11 @@ pub struct TerrainMaterial {
     /// Multiplier for the automatically calculated skirt height.
     /// A value of 1.0 uses the default calculated height.
     pub skirt_exaggeration: f32,
+    /// Vertical exaggeration of the terrain surface around
+    /// `exaggeration_relative_height`. A negative value is treated as 0.
+    pub exaggeration: f64,
+    /// Height (meters) that stays fixed while the terrain is exaggerated.
+    pub exaggeration_relative_height: f64,
 }
 
 impl Default for TerrainMaterial {
@@ -978,6 +983,8 @@ impl Default for TerrainMaterial {
             show_bounding_box: false,
             skirt: true,
             skirt_exaggeration: 1.0,
+            exaggeration: 1.0,
+            exaggeration_relative_height: 0.0,
         }
     }
 }

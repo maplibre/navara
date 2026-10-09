@@ -75,6 +75,7 @@ export function createPolylineBaseEnhancer(
         viewportAndPixelRatio: props.viewportAndPixelRatio,
         frustumNearFar: props.frustumNearFar,
         frustumRatio: props.frustumRatio,
+        horizonMinHeight: props.horizonMinHeight,
         globeDepth: props.globeDepth,
         globeNormal: props.globeNormal,
         inverseProjectionMatrix: props.inverseProjectionMatrix,

@@ -33,11 +33,11 @@ import {
   ShaderChunk,
   Box3,
   Box3Helper,
-  Sphere,
   NoColorSpace,
   MeshBasicMaterial,
   LinearFilter,
 } from "three";
+import invariant from "tiny-invariant";
 
 import { setTransform } from "../../event";
 import type { EventContext, TileHandler } from "../../event/context";
@@ -80,6 +80,11 @@ import {
   BakedRasterDrapeResolver,
   DirectRasterDrapeResolver,
 } from "./rasterDrapeResolver";
+import {
+  exaggeratedTerrainBounds,
+  injectTerrainExaggeration,
+  terrainDepthMaterial,
+} from "./terrainExaggeration";
 import { VectorDrapeResolver } from "./vectorDrapeResolver";
 
 export type TileMaterial = MeshBasicMaterial | MeshLambertMaterial;
@@ -125,6 +130,15 @@ export class TileMesh
   // Separate mesh for shadow casting (uses terrain-only geometry without skirt)
   private shadowMesh?: Mesh<BufferGeometry, TileMaterial>;
   private boundingBoxHelper?: Box3Helper;
+  // Unexaggerated geometry bounds (`Mesh::aabb`) and the height range they
+  // span (`Mesh::min_height`/`max_height`), kept to rebuild the exaggerated bounds
+  // when the exaggeration changes.
+  private rawBounds = {
+    center: new Vector3(),
+    extent: new Vector3(),
+    minHeight: 0,
+    maxHeight: 0,
+  };
 
   private compositor: TileTextureCompositor;
 
@@ -584,6 +598,8 @@ export class TileMesh
 
     const uv = buf.f32(mesh.uvs);
     const normals = mesh.normals != null ? buf.f32(mesh.normals) : null;
+    // Absent for a flat tile, whose vertices all sit at height 0.
+    const heights = mesh.heights != null ? buf.f32(mesh.heights) : null;
 
     // The buf.* arrays are short-lived views into WASM memory: they must be
     // consumed before any further WASM call that allocates. createSkirtMesh only
@@ -602,26 +618,22 @@ export class TileMesh
       uv,
       indices,
       normals,
+      heights,
     );
+
+    this.rawBounds = {
+      center: aabbCenter,
+      extent: aabbExtent,
+      minHeight: mesh.min_height,
+      maxHeight: mesh.max_height,
+    };
 
     this.setWatermask(mesh.watermask);
 
     this.userData.hasNormalAttribute = normals != null;
 
-    const boundingBox = new Box3(
-      aabbCenter.clone().sub(aabbExtent),
-      aabbCenter.clone().add(aabbExtent),
-    );
-    geometry.boundingBox = boundingBox;
-    geometry.boundingSphere = new Sphere(aabbCenter, aabbExtent.length());
-    if (geometry !== terrainGeometry) {
-      terrainGeometry.boundingBox = boundingBox.clone();
-      terrainGeometry.boundingSphere = geometry.boundingSphere.clone();
-    }
-    if (this.boundingBoxHelper) {
-      this.boundingBoxHelper.box = boundingBox;
-    }
     this.geometry = geometry;
+    const boundingBox = this.applyExaggeratedBounds(terrainGeometry);
 
     // Drop the CPU-side typed arrays (position/uv/normal/index, and the skirt
     // data merged into the same combined buffers above) once the GPU upload
@@ -640,6 +652,38 @@ export class TileMesh
     return { geometry, terrainGeometry, boundingBox };
   }
 
+  /**
+   * Rebuild the bounds for the current exaggeration. The GPU displaces the
+   * vertices through the shared `uTerrainExaggeration` uniform, so only the
+   * culling bounds need updating when it changes.
+   */
+  updateTerrainExaggeration() {
+    this.applyExaggeratedBounds(this.shadowMesh?.geometry ?? this.geometry);
+  }
+
+  // Set the exaggerated bounds on the geometry and the terrain-only geometry
+  // (the same object when there is no skirt).
+  private applyExaggeratedBounds(terrainGeometry: BufferGeometry): Box3 {
+    const { center, extent, minHeight, maxHeight } = this.rawBounds;
+    const { box, sphere } = exaggeratedTerrainBounds(
+      center,
+      extent,
+      minHeight,
+      maxHeight,
+      this.ctx.uniforms.terrainExaggeration.value,
+    );
+    this.geometry.boundingBox = box;
+    this.geometry.boundingSphere = sphere;
+    if (terrainGeometry !== this.geometry) {
+      terrainGeometry.boundingBox = box.clone();
+      terrainGeometry.boundingSphere = sphere.clone();
+    }
+    if (this.boundingBoxHelper) {
+      this.boundingBoxHelper.box = box;
+    }
+    return box;
+  }
+
   // With a skirt, the terrain-only geometry casts shadows through a separate
   // mesh so the skirt casts none, and the main mesh only receives; without
   // one the main mesh does both.
@@ -649,11 +693,15 @@ export class TileMesh
     castShadow: boolean,
     receiveShadow: boolean,
   ) {
+    this.customDepthMaterial ??= terrainDepthMaterial(
+      this.ctx.uniforms.terrainExaggeration,
+    );
     if (geometry !== terrainGeometry) {
       if (this.shadowMesh) {
         this.shadowMesh.geometry = terrainGeometry;
       } else {
         this.shadowMesh = new Mesh(terrainGeometry, this.material);
+        this.shadowMesh.customDepthMaterial = this.customDepthMaterial;
         this.add(this.shadowMesh);
       }
       this.shadowMesh.castShadow = castShadow;
@@ -680,6 +728,7 @@ export class TileMesh
     uv: Float32Array | null,
     indices: Uint32Array,
     normals: Float32Array | null,
+    heights: Float32Array | null,
   ) {
     const { buf } = this.ctx;
     // Check for separate skirt data
@@ -687,6 +736,7 @@ export class TileMesh
     const skirtIndicesHandle = mesh.skirt_indices;
     const skirtUvsHandle = mesh.skirt_uvs;
     const skirtNormalsHandle = mesh.skirt_normals;
+    const skirtHeightsHandle = mesh.skirt_heights;
 
     const hasSkirt = skirtVerticesHandle != null && skirtIndicesHandle != null;
     const skirtPosition =
@@ -696,6 +746,9 @@ export class TileMesh
     const skirtUv = skirtUvsHandle != null ? buf.f32(skirtUvsHandle) : null;
     const skirtNormals =
       skirtNormalsHandle != null ? buf.f32(skirtNormalsHandle) : null;
+    const skirtHeights =
+      skirtHeightsHandle != null ? buf.f32(skirtHeightsHandle) : null;
+    const vertexCount = position.length / 3;
 
     // Create combined geometry (terrain + skirt) for main rendering
     let geometry: BufferGeometry;
@@ -743,6 +796,18 @@ export class TileMesh
         terrainGeometry.setAttribute("normal", normalAttribute);
       }
 
+      // Combine heights: terrain heights + skirt heights. A flat tile's
+      // terrain vertices stay zero.
+      invariant(skirtHeights, "a terrain skirt carries its vertex heights");
+      const combinedHeights = new Float32Array(
+        vertexCount + skirtHeights.length,
+      );
+      if (heights) combinedHeights.set(heights);
+      combinedHeights.set(skirtHeights, vertexCount);
+      const heightAttribute = new BufferAttribute(combinedHeights, 1);
+      geometry.setAttribute("terrainHeight", heightAttribute);
+      terrainGeometry.setAttribute("terrainHeight", heightAttribute);
+
       // Combine indices: terrain indices + skirt indices
       const combinedIndices = new Uint32Array(
         indices.length + skirtIndices.length,
@@ -770,6 +835,13 @@ export class TileMesh
           new BufferAttribute(normals.slice(), 3),
         );
       }
+      terrainGeometry.setAttribute(
+        "terrainHeight",
+        new BufferAttribute(
+          heights ? heights.slice() : new Float32Array(vertexCount),
+          1,
+        ),
+      );
       terrainGeometry.setIndex(new BufferAttribute(indices.slice(), 1));
       geometry = terrainGeometry;
     }
@@ -872,8 +944,12 @@ export class TileMesh
       shader.uniforms.uIor = { value: 1.33333 };
       shader.uniforms.uTime = m.userData.uTime;
       shader.uniforms.uFillQuadrants = m.userData.fillQuadrants;
+      shader.uniforms.uTerrainExaggeration = uniforms.terrainExaggeration;
 
-      shader.vertexShader = createReplacer(shader.vertexShader)
+      shader.vertexShader = injectTerrainExaggeration(
+        createReplacer(shader.vertexShader),
+        true,
+      )
         .replace(
           "#include <common>",
           `${TILE_VERTEX_INJECTIONS.afterCommon}
@@ -1618,8 +1694,9 @@ ${generateTileCommonInjection(maxTextures)}
     // Release the watermask DataTexture (one per tile, RedFormat 1×1 or 256×256).
     this.userData.watermask?.texture?.dispose();
 
-    // Clean up from tileMapByHandle
-    if (tileMapByHandle) {
+    // Clean up from tileMapByHandle, unless an incoming mesh replacing this
+    // one has already claimed the handle (see `reportDrapeGpuBytesIfChanged`).
+    if (tileMapByHandle?.get(this.handle) === this) {
       tileMapByHandle.delete(this.handle);
     }
 

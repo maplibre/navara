@@ -38,6 +38,7 @@ import {
   processMeshAdded,
   processMeshChanged,
   processMeshGeometryReplaced,
+  processTerrainExaggerationUpdated,
 } from "./tile";
 import {
   processWorkerTaskDelegatedEvent,
@@ -69,6 +70,10 @@ export function processEvent(ctx: EventContext, event: Events | undefined) {
   const { eventManager, meshes, meshHandler, viewEvents, layersManager } = ctx;
 
   eventManager.pushEvents(event);
+
+  eventManager.forEachStack("terrain_exaggeration_updated", (ev) =>
+    processTerrainExaggerationUpdated(ctx, ev),
+  );
 
   eventManager.forEachStack("camera_transform_updated", (ev) =>
     processCameraTransformUpdated(ctx, ev),

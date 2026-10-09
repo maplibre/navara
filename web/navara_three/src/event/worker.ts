@@ -219,6 +219,9 @@ function buildTerrainTransferableGeometry(
     const skirtNormals = result.skirt_normals
       ? bufHandler.adoptF32(result.skirt_normals)
       : undefined;
+    const skirtHeights = result.skirt_heights
+      ? bufHandler.adoptF32(result.skirt_heights)
+      : undefined;
 
     if (skirtVertices != null) {
       geometry.skirt_vertices = skirtVertices;
@@ -231,6 +234,9 @@ function buildTerrainTransferableGeometry(
     }
     if (skirtNormals != null) {
       geometry.skirt_normals = skirtNormals;
+    }
+    if (skirtHeights != null) {
+      geometry.skirt_heights = skirtHeights;
     }
   }
 

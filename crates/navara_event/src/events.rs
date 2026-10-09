@@ -4,7 +4,7 @@ use navara_component::Priority;
 use navara_data_requester::DataRequester;
 use navara_event_store::{
     CameraFlightEnded, ComponentEvent, ComponentEventWithResource, EntityEvent, EventStore,
-    ReconstructableComponentEvent,
+    ReconstructableComponentEvent, TerrainExaggerationUpdated,
 };
 use navara_feature_component::render::RenderableFeature;
 use navara_globe::Globe;
@@ -73,6 +73,7 @@ pub struct Events<'a> {
         Vec<ReconstructableComponentEvent<&'a TerrainHeightRangeObserver>>,
     pub hillshade_backfilled: Vec<ReconstructableComponentEvent<&'a HillshadeBackfillEventData>>,
     pub hillshade_canceled: Vec<EntityEvent>,
+    pub terrain_exaggeration_updated: Option<TerrainExaggerationUpdated>,
 }
 
 impl<'a> Events<'a> {
@@ -88,6 +89,11 @@ impl<'a> Events<'a> {
 
         if let Some(e) = store.camera_frustum_updated {
             events.camera_frustum_updated = world.get::<CameraFrustum>(e);
+            is_changed = true;
+        }
+
+        if let Some(e) = store.terrain_exaggeration_updated {
+            events.terrain_exaggeration_updated = Some(e);
             is_changed = true;
         }
 

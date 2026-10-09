@@ -448,6 +448,7 @@ export class BatchedSdfTextMesh
     // Populate uniforms early (before onBeforeCompile fires).
     const mutates = this._enhancer.mutates();
     mutates.updateUniforms(mat.uniforms, this._enhancer.states());
+    mat.uniforms.nvrHorizonMinHeight = this.ctx.uniforms.horizonMinHeight;
 
     mat.onBeforeCompile = this._enhancer.transformShader;
     mat.customProgramCacheKey = this._enhancer.programCacheKey;

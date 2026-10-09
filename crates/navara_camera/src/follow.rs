@@ -162,7 +162,7 @@ fn handle_follow_zoom(
         let new_camera_pos = transform.translation - to_target * zoom_amount;
         let new_distance = new_camera_pos.length();
 
-        let too_close = new_distance <= controller.minimum_zoom_distance;
+        let too_close = controller.sinks_below_floor(transform.translation, new_camera_pos);
         let too_far = new_distance >= controller.maximum_zoom_distance;
 
         if !too_close && !too_far {

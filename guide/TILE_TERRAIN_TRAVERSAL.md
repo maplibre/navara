@@ -357,18 +357,21 @@ sits flat at sea level. But SSE depends on the camera-to-tile distance, so a
 flat tile over elevated terrain measures itself as farther away than it really
 is and stops subdividing too early — leaving coarse imagery on a detailed
 (upsampled) surface. To avoid this, the raster traversal looks up the tile's
-elevation with `terrain_height_for_extent(terrain_qt, &extent)` and calls
-`update_heights` before computing SSE, so the imagery refines in step with the
-terrain. A terrain-mesh change therefore also re-triggers the raster traversal
+elevation with `terrain_height_for_tile(terrain_qt, exaggeration, coords)` and
+calls `update_heights` before computing SSE, horizon culling and frustum
+culling, so the imagery refines in step with the terrain. A terrain-mesh change therefore also re-triggers the raster traversal
 even when the camera is still.
 
-`terrain_height_for_extent` walks the **`TerrainTileQuadtree`** and reads the
-heights of the deepest *rendered* terrain tile covering the raster extent's
-**center point**. Looking up by extent (point-in-tile) rather than by `x/y/z`
-makes it scheme-independent: a WebMercator raster tile can borrow the height of
-the **Geographic** quantized-mesh tile beneath it, where a coordinate-identity
-lookup would find nothing. (This replaced an earlier coordinate-climb against a
-separate `TerrainInformationQuadtree`.)
+`terrain_height_for_tile` reads the **`TerrainTileQuadtree`** tiles of the
+raster tile's size, directly by coordinates (`encode_quadleaf_handle`, O(1)),
+and takes the min/max of their heights, mapped through the
+[terrain exaggeration](#terrain-exaggeration). A tile without a mesh is replaced
+by its nearest ancestor with one (deeper tiles are never searched), so a
+fallback only widens the range. On WebMercator terrain that is the raster
+tile's own `x/y/z`; on **Geographic** (quantized-mesh) terrain it is the level
+`z - 1` tiles, which share the raster tile's columns and cover it with one or
+two rows. Covering the whole raster tile, rather than a point in it, keeps the
+range from missing relief the tile spans.
 
 ## Joining the two — the pull
 
@@ -543,12 +546,90 @@ flowchart LR
 > edge), and the composite shader stretches the band-edge imagery row across
 > the cap, so the surface near the poles is covered rather than blank.
 
+## Terrain exaggeration
+
+The terrain layer owns the exaggeration (`TerrainMaterial::exaggeration` /
+`exaggeration_relative_height`). `sync_terrain_exaggeration` mirrors it every
+frame into the `TerrainExaggeration` resource (`navara_tile_component`), the
+single value the engine reads; it is the identity without a terrain layer. A
+change, and the first frame, emits `terrain_exaggeration_updated`, on which the
+web side sets the shared uniforms (`uTerrainExaggeration`,
+`nvrHorizonMinHeight`) and rebuilds the tile bounds; heights the web side needs
+exaggerated go through the exported pure function `exaggerateTerrainHeight`
+(`navara_wasm/src/terrain.rs`) with that uniform's value, rather than a JS copy
+of the formula. It scales the rendered terrain:
+`h' = (h - relative_height) * scale + relative_height`, with `scale >= 0`
+(a negative input is clamped). It is applied in exactly two places, and
+everything else keeps unexaggerated heights:
+
+- **The GPU displaces vertices.** Terrain meshes carry a per-vertex
+  `terrainHeight` attribute (`Mesh::heights` plus `Mesh::skirt_heights`; a flat
+  tile has no `heights` and the web side uploads zeros). The tile material and
+  the shared terrain shadow-depth material move each vertex along the geodetic
+  surface normal by `exaggerate(h) - h` from the shared `uTerrainExaggeration`
+  uniform, and a quantized-mesh vertex normal gets its tangential part scaled
+  by `scale`. A skirt vertex holds its edge vertex's height minus the skirt
+  height, so skirts lengthen with the exaggeration and keep covering LOD cracks,
+  which grow by the same factor. Changing the exaggeration therefore never
+  remeshes, and must reach neither `Globe` nor the live tile materials: either
+  change emits `mesh_updated` for every mesh, which rebinds drapes and blanks
+  tiles (`update_terrain_layer` only touches a material when one of its render
+  fields differs).
+- **The CPU maps heights wherever they must agree with the drawn surface.**
+  `TerrainTile` builds `bounding_region`, `sse_bounding_region` and `aabb`
+  from its raw `max_height`/`min_height` through the exaggeration it last saw
+  (`TerrainTile::exaggeration`), and the traversal syncs that copy on every
+  visit (`begin_traverse_terrain` → `set_exaggeration`), so frustum and horizon
+  culling and the SSE distance follow the raised surface while the geometric
+  error stays unscaled. A relative height sinks low terrain below the
+  ellipsoid (scale 5 around 2000 m puts the sea at -8000 m), where the
+  ellipsoid would hide tiles that are in view, so horizon culling tests each
+  tile against the ellipsoid shrunk by its `bounding_region.minimum_height`
+  when that is negative (`Tile::is_occluded_by_horizon`, the occludee point
+  computed against the same shrunk ellipsoid). The camera's zoom/translate
+  floor (`CameraController::minimum_zoom_distance`, a distance from the
+  globe center) is lowered by the same sinking: `sync_camera_surface_floor`
+  sets `CameraController::surface_floor` to the displaced sea level when it
+  is below 0. Reducing the exaggeration raises the floor without moving the
+  camera, so translate and follow-zoom keep accepting moves away from the
+  globe center below it (`CameraController::sinks_below_floor`), as zoom does.
+  Ground-clamped points, billboards, text and polylines are horizon-culled
+  against the ellipsoid shrunk by `TerrainExaggeration::horizon_minimum_height`
+  (`LOWEST_TERRAIN_HEIGHT` exaggerated, when below 0). The GPU
+  (`nvr_horizon_culled` reading the shared `nvrHorizonMinHeight` uniform) tests
+  the drawn position; the CPU pre-check for clamped points (`is_point_visible`),
+  which runs before their terrain height is known, tests the highest possible
+  ground (`MAX_TERRAIN_HEIGHT` exaggerated), so it never drops a point the GPU
+  would keep. `terrain_height_for_tile` (raster/vector
+  SSE, falling back to the exaggerated height 0 where no terrain is rendered),
+  `compute_terrain_height_at_point` (`sampleTerrainHeight`, height observers),
+  `compute_terrain_height_by_tile_handle` (clamped points, text, billboards),
+  `terrain_height_range` (`sampleTerrainHeightRange`, range observers) and
+  `sample_terrain_height_within_extent` (non-draped clamped polylines,
+  whose caller pads the range into the extruded volume) return exaggerated
+  heights. On a change the terrain, raster and vector
+  traversals rerun, and the observer and clamp systems recompute, from
+  `Res<TerrainExaggeration>::is_changed`.
+
+Raw everywhere else is the invariant that makes this safe: worker-built
+positions, the `heights` buffers upsampling rebuilds positions from,
+`TerrainData::current_*_height`, `TerrainTile::max_height`/`min_height` (and so
+`Tile::max_height()`, which children inherit) and `Mesh::aabb`. An exaggerated
+value in any of them would be exaggerated a second time. The web side widens
+the raw `Mesh::aabb` by the largest displacement over the height range the
+geometry spans (`Mesh::min_height`/`max_height`, which a pole cap widens to
+height 0) for three.js culling (`exaggeratedTerrainBounds`) and redoes it on
+every change. `sampleTerrainMostDetailed` decodes tiles in JS, so `ThreeView`
+exaggerates its result itself (`getTerrainExaggerationForSource`). With several
+terrain layers, the engine and this lookup both use the first `TerrainLayer`
+a query yields; a source it does not render is sampled unexaggerated.
+
 ## Key files
 
 | Concern | Path |
 | --- | --- |
 | Terrain tile | `crates/navara_tile_component/src/terrain_tile.rs` |
-| Terrain height by extent | `crates/navara_tile_component/src/terrain_tile.rs` (`terrain_height_for_extent`) |
+| Terrain height for a raster/vector tile | `crates/navara_tile_component/src/terrain_tile.rs` (`terrain_height_for_tile`) |
 | Raster tile | `crates/navara_tile_component/src/raster_tile.rs` |
 | Tiling scheme / extents | `crates/navara_core/src/tiles.rs` |
 | Cross-scheme overlap | `crates/navara_core/src/tiles.rs` (`web_mercator_overlapping_tiles`, `web_mercator_lnglat_to_world_pos`) |
@@ -563,6 +644,7 @@ flowchart LR
 | Material drape (one slot per layer) | `crates/navara_tile/src/tile/system.rs` (`update_mesh_material`) |
 | Hillshade request | `crates/navara_tile/src/texture_fragment/helpers.rs` |
 | Plugin / system order | `crates/navara_tile/src/lib.rs` |
+| Terrain exaggeration | `crates/navara_tile_component/src/terrain_exaggeration.rs`, `web/navara_three/src/mesh/tile/terrainExaggeration.ts`, `shaders/glsl/chunks/terrain_exaggeration_pars_vertex.glsl` |
 
 ## WebMercator polar geometry
 

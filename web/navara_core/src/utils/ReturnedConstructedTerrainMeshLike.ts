@@ -17,6 +17,7 @@ export class ReturnedConstructedTerrainMeshLike implements RemoveFreeRecursively
   skirt_uvs: Float32Array | undefined;
   skirt_indices: Uint32Array | undefined;
   skirt_normals: Float32Array | undefined;
+  skirt_heights: Float32Array | undefined;
   watermask: Uint8Array | undefined;
 
   // The transfer* methods return arrays copied out of WASM memory (owned by
@@ -40,6 +41,7 @@ export class ReturnedConstructedTerrainMeshLike implements RemoveFreeRecursively
       this.skirt_uvs = t.transferSkirtUvs();
       this.skirt_indices = t.transferSkirtIndices();
       this.skirt_normals = t.transferSkirtNormals();
+      this.skirt_heights = t.transferSkirtHeights();
     }
     if (t.hasWatermask()) {
       this.watermask = t.transferWatermask();
@@ -71,6 +73,9 @@ export class ReturnedConstructedTerrainMeshLike implements RemoveFreeRecursively
     throw new Error();
   }
   transferSkirtNormals(): Float32Array | undefined {
+    throw new Error();
+  }
+  transferSkirtHeights(): Float32Array | undefined {
     throw new Error();
   }
   transferWatermask(): Uint8Array | undefined {

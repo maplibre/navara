@@ -830,6 +830,7 @@ export class InstancedSpriteMesh
     // Initialize uniforms early so they're available before onBeforeCompile
     const mutates = enhancer.mutates();
     mutates.updateUniforms(material.uniforms, enhancer.states());
+    material.uniforms.nvrHorizonMinHeight = this.ctx.uniforms.horizonMinHeight;
 
     // Set up onBeforeRender for per-frame updates (farPlane + RTE eye position)
     material.onBeforeRender = (

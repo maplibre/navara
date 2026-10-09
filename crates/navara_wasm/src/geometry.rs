@@ -15,6 +15,7 @@ pub struct TransferableGeometry {
     pub skirt_uvs: Option<Handle>,
     pub skirt_indices: Option<Handle>,
     pub skirt_normals: Option<Handle>,
+    pub skirt_heights: Option<Handle>,
 }
 
 #[wasm_bindgen]
@@ -30,6 +31,7 @@ impl TransferableGeometry {
             skirt_uvs: None,
             skirt_indices: None,
             skirt_normals: None,
+            skirt_heights: None,
         }
     }
 }
@@ -45,6 +47,7 @@ impl From<TransferableGeometry> for navara_geometry::TransferableGeometry {
             skirt_uvs: val.skirt_uvs,
             skirt_indices: val.skirt_indices,
             skirt_normals: val.skirt_normals,
+            skirt_heights: val.skirt_heights,
         }
     }
 }
@@ -59,6 +62,7 @@ impl<'a> From<&'a navara_geometry::TransferableGeometry> for TransferableGeometr
             skirt_uvs: val.skirt_uvs,
             skirt_indices: val.skirt_indices,
             skirt_normals: val.skirt_normals,
+            skirt_heights: val.skirt_heights,
         }
     }
 }

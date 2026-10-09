@@ -7,20 +7,29 @@ use navara_math::{FloatType, Vec3};
 /// Ref
 ///   - https://cesium.com/blog/2013/04/25/horizon-culling/
 ///   - https://cesium.com/blog/2013/05/09/computing-the-horizon-occlusion-point/
-#[derive(Default, Component)]
+#[derive(Component)]
 pub struct EllipsoidalOccluder {
+    pub ellipsoid: Ellipsoid<FloatType>,
+    pub camera_position: Vec3,
     pub camera_position_in_scaled_space: Vec3,
     pub distance_to_ellipsoid_surface_squared: FloatType,
 }
 
 impl EllipsoidalOccluder {
     pub fn new(camera_position: &Vec3, ellipsoid: Ellipsoid<FloatType>) -> Self {
-        let mut this = Self::default();
+        let mut this = Self {
+            ellipsoid,
+            camera_position: Vec3::ZERO,
+            camera_position_in_scaled_space: Vec3::ZERO,
+            distance_to_ellipsoid_surface_squared: 0.,
+        };
         this.update(camera_position, ellipsoid);
         this
     }
 
     pub fn update(&mut self, camera_position: &Vec3, ellipsoid: Ellipsoid<FloatType>) {
+        self.ellipsoid = ellipsoid;
+        self.camera_position = *camera_position;
         self.camera_position_in_scaled_space = Vec3::from_array(
             ellipsoid.transform_position_to_scaled_space(camera_position.to_array()),
         );
@@ -28,15 +37,23 @@ impl EllipsoidalOccluder {
             self.camera_position_in_scaled_space.length_squared() - 1.;
     }
 
-    /// Ref: https://github.com/CesiumGS/cesium/blob/16674c161b161755c9143c2940a062042cecaefa/packages/engine/Source/Core/EllipsoidalOccluder.js#L197
-    // FIXME: Support the terrain under the tile.
-    pub fn compute_horizontal_culling_point(
+    /// Horizon culling point of `positions` against the ellipsoid shrunk by
+    /// `minimum_height` when that is negative, so that terrain below the
+    /// ellipsoid is not occluded by the ellipsoid itself. Test it with
+    /// [`Self::is_scaled_space_point_visible_possibly_under_ellipsoid`] and the
+    /// same `minimum_height`.
+    /// Ref: https://github.com/CesiumGS/cesium/blob/16674c161b161755c9143c2940a062042cecaefa/packages/engine/Source/Core/EllipsoidalOccluder.js#L229
+    pub fn compute_horizontal_culling_point_possibly_under_ellipsoid(
         &self,
-        ellipsoid: &Ellipsoid<FloatType>,
         direction_to_point: Vec3,
         positions: Vec<Vec3>,
+        minimum_height: FloatType,
     ) -> Option<Vec3> {
-        compute_horizon_culling_point_from_positions(ellipsoid, direction_to_point, positions)
+        compute_horizon_culling_point_from_positions(
+            &possibly_shrunk_ellipsoid(&self.ellipsoid, minimum_height),
+            direction_to_point,
+            positions,
+        )
     }
 
     pub fn is_scaled_space_point_visible(&self, occludee_scaled_space_position: Vec3) -> bool {
@@ -45,6 +62,61 @@ impl EllipsoidalOccluder {
             self.camera_position_in_scaled_space,
             self.distance_to_ellipsoid_surface_squared,
         )
+    }
+
+    pub fn is_scaled_space_point_visible_possibly_under_ellipsoid(
+        &self,
+        occludee_scaled_space_position: Vec3,
+        minimum_height: FloatType,
+    ) -> bool {
+        if !shrinks(&self.ellipsoid, minimum_height) {
+            return self.is_scaled_space_point_visible(occludee_scaled_space_position);
+        }
+        let shrunk = possibly_shrunk_ellipsoid(&self.ellipsoid, minimum_height);
+        let camera = Vec3::from_array(
+            shrunk.transform_position_to_scaled_space(self.camera_position.to_array()),
+        );
+        is_scaled_space_point_visible(
+            occludee_scaled_space_position,
+            camera,
+            camera.length_squared() - 1.,
+        )
+    }
+
+    /// Whether `position` (ECEF) is above the horizon of the ellipsoid shrunk
+    /// by `minimum_height` when that is negative.
+    pub fn is_point_visible_possibly_under_ellipsoid(
+        &self,
+        position: Vec3,
+        minimum_height: FloatType,
+    ) -> bool {
+        let scaled = Vec3::from_array(
+            possibly_shrunk_ellipsoid(&self.ellipsoid, minimum_height)
+                .transform_position_to_scaled_space(position.to_array()),
+        );
+        self.is_scaled_space_point_visible_possibly_under_ellipsoid(scaled, minimum_height)
+    }
+}
+
+fn shrinks(ellipsoid: &Ellipsoid<FloatType>, minimum_height: FloatType) -> bool {
+    minimum_height < 0. && ellipsoid.a.min(ellipsoid.b) > -minimum_height
+}
+
+fn possibly_shrunk_ellipsoid(
+    ellipsoid: &Ellipsoid<FloatType>,
+    minimum_height: FloatType,
+) -> Ellipsoid<FloatType> {
+    if !shrinks(ellipsoid, minimum_height) {
+        return *ellipsoid;
+    }
+    let a = ellipsoid.a + minimum_height;
+    let b = ellipsoid.b + minimum_height;
+    Ellipsoid {
+        a,
+        b,
+        one_over_radii: [1. / a, 1. / a, 1. / b],
+        one_over_radii_squared: [1. / (a * a), 1. / (a * a), 1. / (b * b)],
+        center_tolerance_squared: ellipsoid.center_tolerance_squared,
     }
 }
 
@@ -154,10 +226,10 @@ mod test {
         assert_abs_diff_eq!(
             AbsDiffEqVec3(
                 occluder
-                    .compute_horizontal_culling_point(
-                        &WGS84_64,
+                    .compute_horizontal_culling_point_possibly_under_ellipsoid(
                         center,
-                        vec![Vec3::new(center.x + 100., center.y, center.z - 100.)]
+                        vec![Vec3::new(center.x + 100., center.y, center.z - 100.)],
+                        0.,
                     )
                     .unwrap()
             ),
@@ -166,10 +238,10 @@ mod test {
         );
         debug_assert!(
             occluder
-                .compute_horizontal_culling_point(
-                    &WGS84_64,
+                .compute_horizontal_culling_point_possibly_under_ellipsoid(
                     center,
-                    vec![Vec3::new(-center.x, -center.y, -center.z)]
+                    vec![Vec3::new(-center.x, -center.y, -center.z)],
+                    0.,
                 )
                 .is_none()
         );
@@ -182,22 +254,60 @@ mod test {
 
         let center = Vec3::new(WGS84_A_64 / 2., WGS84_A_64 / 2., -WGS84_A_64);
         let occludee_point = occluder
-            .compute_horizontal_culling_point(
-                &WGS84_64,
+            .compute_horizontal_culling_point_possibly_under_ellipsoid(
                 center,
                 vec![Vec3::new(center.x + 100., center.y, center.z - 100.)],
+                0.,
             )
             .unwrap();
         debug_assert!(occluder.is_scaled_space_point_visible(occludee_point));
 
         let center = Vec3::new(WGS84_A_64 / 2., 0., -WGS84_A_64);
         let occludee_point = occluder
-            .compute_horizontal_culling_point(
-                &WGS84_64,
+            .compute_horizontal_culling_point_possibly_under_ellipsoid(
                 center,
                 vec![Vec3::new(center.x - 100., center.y, center.z + 100.)],
+                0.,
             )
             .unwrap();
         debug_assert!(!occluder.is_scaled_space_point_visible(occludee_point));
+    }
+
+    /// A point at `height` (meters) `distance` meters east of (0°, 0°) along
+    /// the equator.
+    fn equator_point(distance: f64, height: f64) -> Vec3 {
+        use navara_core::{Angle, LLE, Meters};
+        let lle = LLE {
+            lng: Angle::new(distance / WGS84_A_64),
+            lat: Angle::new(0.),
+            height: Meters::new(height),
+        };
+        let xyz = lle.to_xyz(WGS84_64);
+        Vec3::new(xyz.x.val(), xyz.y.val(), xyz.z.val())
+    }
+
+    /// Ground sunk 8 km below the ellipsoid, 300 km from a camera 3 km above
+    /// it: past the ellipsoid's horizon (~196 km) but before the horizon of
+    /// the sunken surface (~374 km), so only the ellipsoid hides it.
+    #[test]
+    fn terrain_below_the_ellipsoid_is_seen_past_the_ellipsoid_horizon() {
+        let camera = equator_point(0., 3000.);
+        let occluder = EllipsoidalOccluder::new(&camera, WGS84_64);
+        let ground = equator_point(300_000., -8000.);
+
+        let point = occluder
+            .compute_horizontal_culling_point_possibly_under_ellipsoid(ground, vec![ground], 0.)
+            .unwrap();
+        assert!(!occluder.is_scaled_space_point_visible_possibly_under_ellipsoid(point, 0.));
+
+        let point = occluder
+            .compute_horizontal_culling_point_possibly_under_ellipsoid(ground, vec![ground], -8000.)
+            .unwrap();
+        assert!(occluder.is_scaled_space_point_visible_possibly_under_ellipsoid(point, -8000.));
+        assert!(occluder.is_point_visible_possibly_under_ellipsoid(ground, -8000.));
+
+        // The sunken surface still hides what lies past its own horizon.
+        let far = equator_point(600_000., -8000.);
+        assert!(!occluder.is_point_visible_possibly_under_ellipsoid(far, -8000.));
     }
 }

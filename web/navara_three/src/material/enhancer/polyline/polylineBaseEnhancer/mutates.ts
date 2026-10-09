@@ -127,6 +127,9 @@ export const createBaseMutates = (useRTE: boolean): PolylineBaseMutates => {
       if (refs.frustumRatio) {
         uniforms.frustumRatio = refs.frustumRatio;
       }
+      if (refs.nvrHorizonMinHeight) {
+        uniforms.nvrHorizonMinHeight = refs.nvrHorizonMinHeight;
+      }
 
       // Ground culling reads the globe depth buffer and unprojects it.
       if (
@@ -156,6 +159,7 @@ export const createBaseMutates = (useRTE: boolean): PolylineBaseMutates => {
       frustumRatio?: {
         value: [x: number, y: number, z: number, w: number] | undefined | null;
       };
+      horizonMinHeight?: { value: number };
       globeDepth?: { value: Texture | null | undefined };
       globeNormal?: { value: Texture | null | undefined };
       inverseProjectionMatrix?: { value: ThreeMatrix4 | null | undefined };
@@ -171,6 +175,9 @@ export const createBaseMutates = (useRTE: boolean): PolylineBaseMutates => {
       }
       if (externalRefs.frustumRatio) {
         refs.frustumRatio = externalRefs.frustumRatio;
+      }
+      if (externalRefs.horizonMinHeight) {
+        refs.nvrHorizonMinHeight = externalRefs.horizonMinHeight;
       }
       if (externalRefs.globeDepth) {
         refs.tGlobeDepth = externalRefs.globeDepth;

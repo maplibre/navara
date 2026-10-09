@@ -918,7 +918,7 @@ fn apply_zoom(orbit: &mut Orbit, inertia: &mut CameraInertia, controller: &Camer
     if length >= controller.maximum_zoom_distance && next_zoom > 0. {
         return;
     }
-    if length <= controller.minimum_zoom_distance && next_zoom < 0. {
+    if length <= controller.minimum_camera_radius() && next_zoom < 0. {
         return;
     }
     orbit.local_position = next;
@@ -1188,7 +1188,7 @@ fn apply_camera_translate(
     if length >= controller.maximum_zoom_distance {
         return;
     }
-    if length <= controller.minimum_zoom_distance {
+    if controller.sinks_below_floor(transform.translation, next) {
         return;
     }
     transform.translation = next;
@@ -1258,6 +1258,48 @@ pub fn update_frustum(
 mod test {
     use super::*;
     use crate::CameraFrustum;
+
+    /// A zoom step that would take the camera below `minimum_zoom_distance`
+    /// is refused, unless the exaggeration sank the surface below it.
+    #[test]
+    fn zoom_reaches_terrain_sunk_below_the_minimum_distance() {
+        let start = navara_core::WGS84_B_64 + 100.;
+        let zoom_in = |controller: &CameraController| {
+            let mut orbit = Orbit {
+                local_position: Vec3::new(start, 0., 0.),
+                local_forward: Vec3::NEG_X,
+                ..Default::default()
+            };
+            let mut inertia = CameraInertia::default();
+            inertia.zoom(-1000.);
+            apply_zoom(&mut orbit, &mut inertia, controller);
+            orbit.local_position.x
+        };
+
+        let mut controller = CameraController::default();
+        assert_eq!(zoom_in(&controller), start);
+
+        controller.surface_floor = -8000.;
+        assert_eq!(zoom_in(&controller), start - 1000.);
+    }
+
+    /// A camera left below a raised floor can translate outward but not
+    /// further in.
+    #[test]
+    fn translate_moves_out_from_below_the_floor() {
+        let start = navara_core::WGS84_B_64 - 1000.;
+        let controller = CameraController::default();
+        let translate = |by: f64| {
+            let mut transform = Transform::from_translation(Vec3::new(start, 0., 0.));
+            let mut inertia = CameraInertia::default();
+            inertia.translate(Vec3::new(by, 0., 0.));
+            apply_camera_translate(&mut transform, &mut inertia, &controller);
+            transform.translation.x
+        };
+
+        assert_eq!(translate(-100.), start);
+        assert_eq!(translate(100.), start + 100.);
+    }
 
     /// A flight's first sample is the reconstruction of the extracted current
     /// pose (transform -> lle + heading/pitch/roll -> apply_camera_change).

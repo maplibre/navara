@@ -3,6 +3,7 @@ import {
   type MeshAdded,
   MeshChanged,
   type MeshGeometryReplaced,
+  type TerrainExaggerationUpdatedEvent,
 } from "@navaramap/engine";
 
 import { TileMesh } from "../mesh";
@@ -31,4 +32,21 @@ export function processMeshGeometryReplaced(
   if (!m || !(m instanceof TileMesh)) return;
 
   m.replaceGeometry(ev.mesh);
+}
+
+/**
+ * The GPU displaces terrain vertices through the shared exaggeration uniform
+ * and horizon-culls against the shared shrunk ellipsoid, so a change only
+ * needs those uniforms and the tiles' culling bounds updated.
+ */
+export function processTerrainExaggerationUpdated(
+  ctx: EventContext,
+  ev: TerrainExaggerationUpdatedEvent | undefined,
+) {
+  if (!ev) return;
+  ctx.uniforms.terrainExaggeration.value = [ev.scale, ev.relative_height];
+  ctx.uniforms.horizonMinHeight.value = ev.horizon_minimum_height;
+  for (const tile of ctx.tileMapByHandle.values()) {
+    tile.updateTerrainExaggeration();
+  }
 }

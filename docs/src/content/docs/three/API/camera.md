@@ -184,8 +184,8 @@ type CameraOptions = {
 | Option | Type | Default | Description |
 |---|---|---|---|
 | `autoAdjustNearFar` | `boolean` | `true` | Automatically adjust near/far clipping planes based on camera altitude |
-| `minimumZoomDistance` | `number` | ~6,356,752 | Minimum zoom distance from the Earth's surface (meters) |
-| `maximumZoomDistance` | `number` | ~63,567,523 | Maximum zoom distance from the Earth's surface (meters) |
+| `minimumZoomDistance` | `number` | ~6,356,752 | Minimum distance from the Earth's center (meters) that zooming and moving can bring the camera to. When [`exaggeration`](../../../three/material/terrain-material/#exaggeration) moves sea level below the ellipsoid, the limit is lowered by the same amount so the camera can reach the sunken terrain. |
+| `maximumZoomDistance` | `number` | ~63,567,523 | Maximum distance from the Earth's center (meters) that zooming and moving can bring the camera to |
 | `spinSpeed` | `number` | `2.0` | Multiplier for mouse drag rotation speed |
 | `zoomSpeed` | `number` | `0.6` | Multiplier for scroll wheel zoom speed |
 | `spinDuration` | `number` | `500` | Spin inertia duration after releasing mouse drag (ms) |
@@ -212,10 +212,10 @@ view.camera.options = {
   translateDuration: 800,
 };
 
-// Restrict zoom range for a fixed-altitude application
+// Keep the camera within about 500 km of the surface
+// (zoom distances are measured from the Earth's center)
 view.camera.options = {
-  minimumZoomDistance: 500,
-  maximumZoomDistance: 5_000_000,
+  maximumZoomDistance: 6_378_137 + 500_000,
 };
 ```
 

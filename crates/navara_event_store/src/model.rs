@@ -14,6 +14,15 @@ pub struct CameraFlightEnded {
     pub completed: bool,
 }
 
+/// The terrain exaggeration in effect from this frame on.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct TerrainExaggerationUpdated {
+    pub scale: f64,
+    pub relative_height: f64,
+    /// `TerrainExaggeration::horizon_minimum_height`.
+    pub horizon_minimum_height: f64,
+}
+
 #[derive(Debug)]
 pub struct ComponentEvent<T = ()> {
     pub ind: u32,

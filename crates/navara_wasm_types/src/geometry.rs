@@ -24,6 +24,8 @@ pub struct Geometry {
     skirt_indices: Option<Vec<u32>>,
     /// Per-vertex skirt normals copied from corresponding edge vertices. Stride is 3.
     skirt_normals: Option<Vec<f32>>,
+    /// Terrain height of every skirt vertex.
+    skirt_heights: Option<Vec<f32>>,
 }
 
 #[wasm_bindgen]
@@ -39,6 +41,7 @@ impl Geometry {
             skirt_uvs: None,
             skirt_indices: None,
             skirt_normals: None,
+            skirt_heights: None,
         }
     }
 
@@ -82,6 +85,11 @@ impl Geometry {
         self.skirt_normals.as_ref().map(|v| copy_f32_array(v))
     }
 
+    #[wasm_bindgen(js_name = "transferSkirtHeights")]
+    pub fn transfer_skirt_heights(&self) -> Option<Float32Array> {
+        self.skirt_heights.as_ref().map(|v| copy_f32_array(v))
+    }
+
     #[wasm_bindgen(js_name = "hasSkirt")]
     pub fn has_skirt(&self) -> bool {
         self.skirt_vertices.is_some()
@@ -104,6 +112,7 @@ impl From<navara_geometry::Geometry> for Geometry {
             skirt_uvs: d.skirt_uvs,
             skirt_indices: d.skirt_indices,
             skirt_normals: d.skirt_normals,
+            skirt_heights: d.skirt_heights,
         }
     }
 }
@@ -119,6 +128,7 @@ impl From<Geometry> for navara_geometry::Geometry {
             skirt_uvs: d.skirt_uvs,
             skirt_indices: d.skirt_indices,
             skirt_normals: d.skirt_normals,
+            skirt_heights: d.skirt_heights,
         }
     }
 }
@@ -196,6 +206,11 @@ impl ReturnedConstructedTerrainMesh {
     #[wasm_bindgen(js_name = "transferSkirtNormals")]
     pub fn transfer_skirt_normals(&self) -> Option<Float32Array> {
         self.geometry.transfer_skirt_normals()
+    }
+
+    #[wasm_bindgen(js_name = "transferSkirtHeights")]
+    pub fn transfer_skirt_heights(&self) -> Option<Float32Array> {
+        self.geometry.transfer_skirt_heights()
     }
 
     #[wasm_bindgen(js_name = "transferWatermask")]

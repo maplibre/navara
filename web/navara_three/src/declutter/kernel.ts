@@ -18,6 +18,8 @@ export type DeclutterKernel = {
    *   candidate; pass a subarray of exactly `n * CANDIDATE_STRIDE`.
    * @param view Column-major view matrix (inverse of `camera.matrixWorld`), 16.
    * @param proj Column-major projection matrix, 16.
+   * @param horizonMinHeight Height (never positive) the ellipsoid is shrunk
+   *   by for horizon culling, as the renderer's `nvrHorizonMinHeight`.
    * @returns One `hidden` flag (`0`/`1`) per candidate, in input order.
    */
   place(
@@ -31,6 +33,7 @@ export type DeclutterKernel = {
     widthPx: number,
     heightPx: number,
     fovRad: number,
+    horizonMinHeight: number,
     paddingPx: number,
     hysteresisPx: number,
   ): Uint8Array;

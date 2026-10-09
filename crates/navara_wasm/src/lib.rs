@@ -8,6 +8,7 @@ mod input;
 mod property_value;
 mod raster_tile;
 mod source_types;
+mod terrain;
 mod types;
 mod vector_tile;
 
@@ -527,6 +528,15 @@ impl Core {
             return JsValue::UNDEFINED;
         };
         source_description_to_js(&source)
+    }
+
+    /// `[scale, relativeHeight]` of the surface rendered from `source_id`,
+    /// `[1, 0]` when the exaggerated terrain layer does not render it.
+    /// Used by `view.sampleTerrainMostDetailed` to return rendered heights.
+    #[wasm_bindgen(js_name = getTerrainExaggerationForSource)]
+    pub fn get_terrain_exaggeration_for_source(&mut self, source_id: &str) -> Vec<f64> {
+        let exaggeration = self.app.terrain_exaggeration_for_source(source_id);
+        vec![exaggeration.scale(), exaggeration.relative_height()]
     }
 
     #[wasm_bindgen(js_name = getLayerIndex)]

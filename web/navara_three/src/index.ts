@@ -13,6 +13,7 @@ import initCore, {
   Core,
   CameraDirection,
   DynamicSse as EngineDynamicSse,
+  exaggerateTerrainHeight,
   ExtentRadianF32,
   LLE,
   type TerrainHeightRangeUpdatedEvent,
@@ -139,6 +140,7 @@ import { TexturizedSceneByTileCoordinates, type Scenes } from "./scene";
 import { ShadowMapViewers } from "./ShadowMapViewers";
 import { Source } from "./source";
 import { RendererStats } from "./stats";
+import { IDENTITY_TERRAIN_EXAGGERATION } from "./terrain/exaggeration";
 import {
   sampleTerrainMostDetailed,
   type SampleTerrainOptions,
@@ -1152,6 +1154,9 @@ export default class ThreeView<
       time: { value: 0 },
       colorMapTexture: { value: null },
       waterTexture: { value: null },
+      terrainExaggeration: { value: IDENTITY_TERRAIN_EXAGGERATION },
+      // Set from the engine's first `terrain_exaggeration_updated` event.
+      horizonMinHeight: { value: 0 },
     };
 
     // This is necessary to avoid attaching a texture beyond the max textures capabilities of GPU.
@@ -2054,6 +2059,7 @@ export default class ThreeView<
         size.x / pixelRatio,
         size.y / pixelRatio,
         updatedAt,
+        this._uniforms.horizonMinHeight.value,
       );
       if (result === "throttled") {
         this._scheduleDeclutterFrame(
@@ -2912,7 +2918,8 @@ export default class ThreeView<
    * `source` is a registered `quantized-mesh` / `raster-dem` source: the
    * {@link Source} handle returned by `addSource`, or its id. The stored
    * config (including engine defaults and partial-update merges) is what gets
-   * sampled.
+   * sampled. Heights include the vertical exaggeration of the terrain layer
+   * rendering `source`, and are unexaggerated when no terrain layer renders it.
    *
    * @param source - A registered terrain source (handle or id)
    * @param positions - Geodetic positions (lat/lng in degrees)
@@ -2936,12 +2943,27 @@ export default class ThreeView<
         `sampleTerrainMostDetailed: source "${sourceId}" is not a registered quantized-mesh or raster-dem source`,
       );
     }
-    return sampleTerrainMostDetailed(description, positions, options);
+    const sampled = await sampleTerrainMostDetailed(
+      description,
+      positions,
+      options,
+    );
+    const [scale, relativeHeight] =
+      this._core.getTerrainExaggerationForSource(sourceId);
+    return sampled.map((p) =>
+      p.height === undefined
+        ? p
+        : {
+            ...p,
+            height: exaggerateTerrainHeight(p.height, scale, relativeHeight),
+          },
+    );
   }
 
   /**
    * Min and max height, relative to the ellipsoid, of the ground rendered
-   * over `extent`: the loaded terrain tiles, or `0` before any has loaded.
+   * over `extent`: the loaded terrain tiles, or `0` before any has loaded,
+   * with the terrain layer's vertical exaggeration applied.
    *
    * {@link observeTerrainHeightRange} reports the range as tiles load.
    *
@@ -2966,7 +2988,8 @@ export default class ThreeView<
   /**
    * Observes {@link sampleTerrainHeightRange} over `extent`. The callback
    * fires once the range is first computed, then whenever a terrain tile
-   * overlapping `extent` loads and changes it.
+   * overlapping `extent` loads or the terrain exaggeration changes, and the
+   * range changes with it.
    *
    * @param extent - Geographic bounds in degrees, `west <= east`
    * @param cb - Callback receiving the range in metres

@@ -91,9 +91,9 @@ each RT onto the terrain tile (with reprojection on Geographic terrain).
 ## Rust side: the traverse and the drape source
 
 The vector traverse (`crates/navara_vector_tile/src/tile/traverse.rs`) is an SSE
-quadtree walk like the raster one. It reads terrain relief **by extent**
-(`terrain_height_for_extent`, scheme-agnostic) so its LOD tracks the terrain's
-subdivision depth rather than treating the tile as flat.
+quadtree walk like the raster one. It reads terrain relief like the raster one
+(`terrain_height_for_tile`, which also handles Geographic terrain) so its LOD
+tracks the terrain's subdivision depth rather than treating the tile as flat.
 
 The load-bearing piece for draping is a single field on `VectorTile`
 (`crates/navara_tile_component/src/vector_tile.rs`):

@@ -45,10 +45,12 @@ pub trait Tile {
             .bounding_region()
             .map_or_else(|| self.extent(), |r| &r.extent);
         let center = self.aabb().center;
-        let max_height = Meters::new(self.bounding_region().map_or_else(
-            || self.max_height(),
-            |r| self.max_height().max(r.maximum_height),
-        ));
+        // The region holds the heights of the rendered surface (exaggerated
+        // for terrain), which `max_height()` does not.
+        let max_height = Meters::new(
+            self.bounding_region()
+                .map_or_else(|| self.max_height(), |r| r.maximum_height),
+        );
 
         let positions = vec![
             xyz_to_vec3(ellipsoid.lle_to_xyz(LLE {
@@ -74,8 +76,31 @@ pub trait Tile {
         ];
 
         self.set_occludee_point_in_scaled_space(
-            occluder.compute_horizontal_culling_point(ellipsoid, center, positions),
+            occluder.compute_horizontal_culling_point_possibly_under_ellipsoid(
+                center,
+                positions,
+                self.horizon_minimum_height(),
+            ),
         );
+    }
+
+    /// Lowest height of the rendered surface in the tile, against which the
+    /// horizon is computed: terrain below the ellipsoid (an exaggeration with
+    /// a relative height lowers it there) is not hidden by the ellipsoid.
+    fn horizon_minimum_height(&self) -> FloatType {
+        self.bounding_region()
+            .map_or_else(|| self.min_height(), |r| r.minimum_height)
+    }
+
+    /// Whether the horizon hides the tile. `update_tile_occludee_point` must
+    /// have run since the heights last changed.
+    fn is_occluded_by_horizon(&self, occluder: &EllipsoidalOccluder) -> bool {
+        self.occludee_point_in_scaled_space().is_some_and(|p| {
+            !occluder.is_scaled_space_point_visible_possibly_under_ellipsoid(
+                *p,
+                self.horizon_minimum_height(),
+            )
+        })
     }
 
     fn is_root(&self) -> bool {

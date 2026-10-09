@@ -101,6 +101,7 @@ export class EventManager {
     worker_task_removed: [],
     hillshade_backfilled: [],
     hillshade_canceled: [],
+    terrain_exaggeration_updated: [],
   };
   // In-flight "add" event ids per transaction key, used to abort adds whose
   // matching remove arrives while they are still pending. Keyed by transaction

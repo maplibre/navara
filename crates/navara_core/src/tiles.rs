@@ -56,10 +56,11 @@ impl PoleSides {
         extent
     }
 
-    /// Bounds include the height-zero cap even when all DEM samples have the same sign.
-    pub fn height_range(self, min_height: f64, max_height: f64) -> (f64, f64) {
+    /// Bounds include the pole cap, at `cap_height`, even when all DEM samples
+    /// lie on one side of it.
+    pub fn height_range(self, min_height: f64, max_height: f64, cap_height: f64) -> (f64, f64) {
         if self.north || self.south {
-            (min_height.min(0.), max_height.max(0.))
+            (min_height.min(cap_height), max_height.max(cap_height))
         } else {
             (min_height, max_height)
         }

@@ -633,7 +633,7 @@ export const run = async (view: ThreeView<CustomDescriptions>) => {
         ? MAPBOX_ELEVATION_DECODER()
         : JAPAN_GSI_ELEVATION_DECODER(),
   });
-  view.addLayer({
+  const terrainLayer = view.addLayer({
     type: "terrain",
     source: terrainDem,
     terrain: {
@@ -687,6 +687,25 @@ export const run = async (view: ThreeView<CustomDescriptions>) => {
 
   addCameraControl(view, pane);
   addDateControl(view, pane);
+
+  const terrainCtrl = pane.addFolder({ title: "terrain" });
+  const terrainParams = { exaggeration: 1, relativeHeight: 0 };
+  terrainCtrl
+    .addBinding(terrainParams, "exaggeration", { min: 0, max: 5, step: 0.1 })
+    .on("change", (ev) => {
+      terrainLayer.update({ terrain: { exaggeration: ev.value } });
+    });
+  terrainCtrl
+    .addBinding(terrainParams, "relativeHeight", {
+      min: 0,
+      max: 4000,
+      step: 100,
+    })
+    .on("change", (ev) => {
+      terrainLayer.update({
+        terrain: { exaggerationRelativeHeight: ev.value },
+      });
+    });
 
   const materialCtrl = pane.addFolder({ title: "material" });
 

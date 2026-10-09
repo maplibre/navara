@@ -60,6 +60,8 @@ export type PolylineBaseProps = {
   frustumRatio?: {
     value: [x: number, y: number, z: number, w: number] | undefined | null;
   };
+  /** Height the ellipsoid is shrunk by for horizon culling, bound as `nvrHorizonMinHeight`. */
+  horizonMinHeight?: { value: number };
 
   // Batch texture
   batchDataTexture?: UniformValue<Texture | null>;
@@ -132,6 +134,7 @@ export type PolylineBaseRefs = {
   frustumRatio?: {
     value: [x: number, y: number, z: number, w: number] | undefined | null;
   };
+  nvrHorizonMinHeight?: { value: number };
 
   // RTE uniforms (only present if useRTE is true)
   modelViewMatrixRTE?: UniformValue<Matrix4>;
@@ -190,6 +193,7 @@ export type PolylineBaseMutates = Mutates<
       frustumRatio?: {
         value: [x: number, y: number, z: number, w: number] | undefined | null;
       };
+      horizonMinHeight?: { value: number };
       globeDepth?: { value: Texture | null | undefined };
       globeNormal?: { value: Texture | null | undefined };
       inverseProjectionMatrix?: { value: Matrix4 | null | undefined };

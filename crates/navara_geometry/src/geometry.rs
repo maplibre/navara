@@ -23,6 +23,9 @@ pub struct Geometry {
     pub skirt_indices: Option<Vec<u32>>,
     /// Per-vertex skirt normals (copied from corresponding edge vertices). Stride is 3.
     pub skirt_normals: Option<Vec<f32>>,
+    /// Per-vertex terrain height (meters, unexaggerated) of every skirt vertex.
+    /// Set whenever `skirt_vertices` is set.
+    pub skirt_heights: Option<Vec<f32>>,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -36,6 +39,7 @@ pub struct TransferableGeometry {
     pub skirt_uvs: Option<Handle>,
     pub skirt_indices: Option<Handle>,
     pub skirt_normals: Option<Handle>,
+    pub skirt_heights: Option<Handle>,
 }
 
 impl TransferableGeometry {
@@ -49,6 +53,7 @@ impl TransferableGeometry {
             skirt_uvs: geo.skirt_uvs.map(|v| buf.new_f32(v)),
             skirt_indices: geo.skirt_indices.map(|v| buf.new_u32(v)),
             skirt_normals: geo.skirt_normals.map(|v| buf.new_f32(v)),
+            skirt_heights: geo.skirt_heights.map(|v| buf.new_f32(v)),
         }
     }
 
@@ -61,6 +66,7 @@ impl TransferableGeometry {
         let _ = self.skirt_uvs.map(|i| buf.remove(&i));
         let _ = self.skirt_indices.map(|i| buf.remove(&i));
         let _ = self.skirt_normals.map(|i| buf.remove(&i));
+        let _ = self.skirt_heights.map(|i| buf.remove(&i));
     }
 }
 
