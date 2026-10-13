@@ -287,6 +287,12 @@ importers:
       '@navaramap/engine-api':
         specifier: workspace:*
         version: link:../wasm/navara_engine_api
+      '@navaramap/engine-font-worker':
+        specifier: workspace:*
+        version: link:../wasm/navara_font_worker
+      '@navaramap/engine-worker':
+        specifier: workspace:*
+        version: link:../wasm/navara_engine_worker
       '@navaramap/font':
         specifier: workspace:*
         version: link:../navara_font

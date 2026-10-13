@@ -15,11 +15,15 @@ For expression the built-ins can't produce, extend the descriptor base classes f
 ```typescript
 import { EffectDesc } from "@navaramap/three";
 
-class VignetteEffectDesc extends EffectDesc<VignetteEffectConfig, VignetteEffectUpdate, Vignette> {
+class VignetteEffectDesc extends EffectDesc<
+  VignetteEffectConfig,
+  VignetteEffectUpdate,
+  Vignette
+> {
   static key = "vignette";
-  static insertBefore = ["smaa", "fxaa", "final"];   // declare position in the render pipeline
+  static insertBefore = ["smaa", "fxaa", "final"]; // declare position in the render pipeline
   static allowDuplication = true;
-  private config: VignetteEffectConfig;              // base class keeps only id/visible — store config yourself
+  private config: VignetteEffectConfig; // base class keeps only id/visible — store config yourself
   constructor(view: ThreeView, ctx: ViewContext, config: VignetteEffectConfig) {
     super(view, ctx, config);
     this.config = config;
@@ -37,8 +41,10 @@ class VignetteEffectDesc extends EffectDesc<VignetteEffectConfig, VignetteEffect
 }
 
 view.registerEffect("vignette", VignetteEffectDesc);
-const handle = view.addEffect<VignetteEffectDesc>({ vignette: { offset: 0.5, darkness: 0.5 } });
-handle.update({ vignette: { darkness: 0.7 } });      // partial merge
+const handle = view.addEffect<VignetteEffectDesc>({
+  vignette: { offset: 0.5, darkness: 0.5 },
+});
+handle.update({ vignette: { darkness: 0.7 } }); // partial merge
 ```
 
 Ordering is declared statically via `key` / `insertAfter` / `insertBefore` relative to other effects' keys. Runnable reference: `example/pages/custom-effect/` (Navara repo).
@@ -53,8 +59,12 @@ Navara renders into a multi-render-target (MRT) G-buffer, so custom work can bot
 - **Custom `ShaderMaterial`/`LineMaterial` must opt in** — they bypass `ShaderLib`, so wire them in with one call:
   ```typescript
   import { setupMaterialForMRT } from "@navaramap/three";
-  const material = new ShaderMaterial({ uniforms, vertexShader, fragmentShader });
-  setupMaterialForMRT(material, { normal: "vNormal" });   // name your VIEW-SPACE normal varying (default "normal")
+  const material = new ShaderMaterial({
+    uniforms,
+    vertexShader,
+    fragmentShader,
+  });
+  setupMaterialForMRT(material, { normal: "vNormal" }); // name your VIEW-SPACE normal varying (default "normal")
   // LineMaterial (three-stdlib) is detected and routed automatically; the `normal` option is ignored for it:
   setupMaterialForMRT(lineMaterial);
   ```
@@ -77,7 +87,7 @@ Navara renders into a multi-render-target (MRT) G-buffer, so custom work can bot
   }
   ```
   `find<T>(key)` works for any cross-effect communication, not just MRT.
-- **Inject a custom geometry buffer into SSR** — `SSREffectDesc` accepts `ssr: { geometryBuffer: Texture | null }` to control where SSR applies (e.g. app-drawn puddles); `null`/unset falls back to the MRT normal buffer. The texture must use the G-buffer encoding `vec4(packNormalToVec2(viewNormal), mask, roughness)` — `.z` is F0 (reflectance at normal incidence: 0.02 water, 1 mirror) — SSR skips pixels with `.z < 0.01` and cone tracing derives the reflection's Fresnel strength from it, so a mask of 1 makes a mirror while 0.02 only reflects strongly at grazing angles; `.w` drives the cone-tracing blur (default path) or multiplies `.z` for GGX jitter (cone tracing off). Texture *contents* updates need no API call; swapping the texture *object* goes through `handle.update({ ssr: { geometryBuffer } })`. Runnable reference: `example/pages/ssr-puddle/` (Navara repo). Effects built on the `postprocessing` library can alternatively declare `attributes: EffectAttribute.DEPTH` to receive composer depth in `mainImage` (see `SSREffect`). Real implementations to copy from (Navara repo): `navara_three_default_descs/src/effects/AerialPerspectiveEffectDesc.ts`, `CloudsEffectDesc.ts`, `ssr/SSREffect.ts`.
+- **Inject a custom geometry buffer into SSR** — `SSREffectDesc` accepts `ssr: { geometryBuffer: Texture | null }` to control where SSR applies (e.g. app-drawn puddles); `null`/unset falls back to the MRT normal buffer. The texture must use the G-buffer encoding `vec4(packNormalToVec2(viewNormal), mask, roughness)` — `.z` is F0 (reflectance at normal incidence: 0.02 water, 1 mirror) — SSR skips pixels with `.z < 0.01` and cone tracing derives the reflection's Fresnel strength from it, so a mask of 1 makes a mirror while 0.02 only reflects strongly at grazing angles; `.w` drives the cone-tracing blur (default path) or multiplies `.z` for GGX jitter (cone tracing off). Texture _contents_ updates need no API call; swapping the texture _object_ goes through `handle.update({ ssr: { geometryBuffer } })`. Runnable reference: `example/pages/ssr-puddle/` (Navara repo). Effects built on the `postprocessing` library can alternatively declare `attributes: EffectAttribute.DEPTH` to receive composer depth in `mainImage` (see `SSREffect`). Real implementations to copy from (Navara repo): `navara_three_default_descs/src/effects/AerialPerspectiveEffectDesc.ts`, `CloudsEffectDesc.ts`, `ssr/SSREffect.ts`.
 - **Terrain and the globe do NOT write the main MRT normal buffer** — their normals live in the separate globe copies (`ctx.getGlobeNormalTexture()`, `MRTPassEffectDesc.globeNormalBuffer`). In the main normal buffer, terrain pixels keep packed normal `(0, 0)` (which `unpackVec2ToNormal` decodes as `(0, 0, 1)` — a bogus camera-facing normal). Shaders that classify pixels by G-buffer normal must treat `dot(g.xy, g.xy) ≈ 0` as "no normal written", not as a valid normal (verified in `example/pages/ssr-puddle/`).
 - **Optional buffers exist only when a descriptor requests them** — the `normal`/`selectiveEffect`/`emissive`/`shadow` attachments and the `globeNormal` copy are allocated from the union of every effect's and mesh's `getRequiredBuffers()`; an unrequested `globeNormal` stays a 1x1 texture, so a shader sampling it reads one stale texel with no error. Effects declare `static requiredBuffers`; meshes override `getRequiredBuffers()` (default: `["globeNormal"]` in the `draped` pass, else `[]`). The result must follow from the config alone (read before `onCreate()`); when an `update()` changes it, emit `this.ctx.emit("gbufferRequirementsChanged")` (moving into/out of the `draped` pass emits it for you).
 - **Read via `ViewContext` accessors** — `this.ctx` also exposes buffers directly (each throws before the render pass is initialized, so call from `createPass()`/`update()`, not the constructor):
@@ -95,12 +105,14 @@ Gotchas: some effects don't support `logarithmicDepthBuffer` (set it `false` whe
 import { MeshDesc } from "@navaramap/three";
 
 export class MarchingCubesDesc extends MeshDesc<Config, Update, MarchingCubes> {
-  createMesh() { /* build and return the Three.js object; apply matrix, shadows */ }
+  createMesh() {
+    /* build and return the Three.js object; apply matrix, shadows */
+  }
 }
 view.registerMesh("marchingCubes", MarchingCubesDesc);
 view.addMesh<MarchingCubesDesc>({
   marchingCubes: { resolution: 50, material, castShadow: true },
-  position: { x, y, z },                 // ECEF meters (or use matrixWorld + ENU frame)
+  position: { x, y, z }, // ECEF meters (or use matrixWorld + ENU frame)
   scale: new Vector3().setScalar(1500),
 });
 ```
@@ -113,15 +125,24 @@ Simple cases: wrap with `PickableMeshWrapper` / `PickableInstancedMeshWrapper`. 
 
 ```typescript
 class PickableTorusKnot extends Object3D implements PickableMesh {
-  constructor(public mesh, ctx: ViewContext) {
+  constructor(
+    public mesh,
+    ctx: ViewContext,
+  ) {
     super();
     this.batchId = ctx.genGlobalBatchId() ?? 0;
     mesh.material.uniforms.uBatchId.value = this.batchId;
-    ctx.registerPickableMesh("torusKnot", this);   // (key: string, mesh: PickableMesh & Object3D)
+    ctx.registerPickableMesh("torusKnot", this); // (key: string, mesh: PickableMesh & Object3D)
   }
-  onBeforePicking() { this.mesh.material.uniforms.uPicking.value = 1; }
-  onAfterPicking()  { this.mesh.material.uniforms.uPicking.value = 0; }
-  getRenderable()   { return this.mesh; }
+  onBeforePicking() {
+    this.mesh.material.uniforms.uPicking.value = 1;
+  }
+  onAfterPicking() {
+    this.mesh.material.uniforms.uPicking.value = 0;
+  }
+  getRenderable() {
+    return this.mesh;
+  }
 }
 // fragment shader: R = high byte, G = mid byte, B = low byte of batchId
 ```

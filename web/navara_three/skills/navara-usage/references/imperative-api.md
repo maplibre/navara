@@ -11,15 +11,17 @@ import { Color } from "@navaramap/three";
 
 const updatedFeatures = new Set<bigint>();
 layer.on("featureUpdated", ({ evaluator }) => {
-  if (updatedFeatures.has(evaluator.id)) return;   // evaluator.id is a bigint
+  if (updatedFeatures.has(evaluator.id)) return; // evaluator.id is a bigint
   updatedFeatures.add(evaluator.id);
   evaluator.evaluate(
     ({ properties }) => ({
       extrudedHeight: (properties?.["height"] as number) ?? 0,
-      color: new Color().setStyle((properties?.["color"] as string) ?? "#ffffff"),
+      color: new Color().setStyle(
+        (properties?.["color"] as string) ?? "#ffffff",
+      ),
       show: ((properties?.["height"] as number) ?? 0) >= 30,
     }),
-    { filters: ["height", "color"] },   // read only these attributes — important for perf on large data
+    { filters: ["height", "color"] }, // read only these attributes — important for perf on large data
   );
 });
 ```
@@ -58,10 +60,15 @@ Positions in the scene are **ECEF meters**. Geodetic helpers take lat/lng in **d
 
 ```typescript
 import {
-  geodeticToVector3, vector3ToGeodetic,
-  eastNorthUpToFixedFrame, geodeticSurfaceNormal,
-  getPickRay, getPlaneFromPointNormal, getRayPlaneIntersection,
-  convertWorldToScreen, EllipsoidGeodesic,
+  geodeticToVector3,
+  vector3ToGeodetic,
+  eastNorthUpToFixedFrame,
+  geodeticSurfaceNormal,
+  getPickRay,
+  getPlaneFromPointNormal,
+  getRayPlaneIntersection,
+  convertWorldToScreen,
+  EllipsoidGeodesic,
 } from "@navaramap/three";
 
 // position is Cartesian ECEF by default — a bare position won't stand upright at a
@@ -76,24 +83,25 @@ const enuFrame = eastNorthUpToFixedFrame(origin);
 view.addMesh<BoxMeshDesc>({
   box: { width: 50, height: 100, depth: 50 },
   matrixWorld: enuFrame,
-  position: { x: 200, y: 50, z: 0 },   // offsets WITHIN the ENU frame, in meters
+  position: { x: 200, y: 50, z: 0 }, // offsets WITHIN the ENU frame, in meters
 });
 
 // Geodesic distance / interpolation on the ellipsoid:
 const geodesic = new EllipsoidGeodesic(startLLE, endLLE);
-geodesic.distance; geodesic.interpolatePoints(64);
+geodesic.distance;
+geodesic.interpolatePoints(64);
 ```
 
 Type note: `getPickRay` returns and `getRayPlaneIntersection` accepts the **Three.js** `Ray` (`import { type Ray } from "three"`), not the `Ray` type re-exported from `@navaramap/three` (a WASM-shaped type with `getPoint`) — annotating with the wrong one type-checks the other way around and fails.
 
 Pick the tangent-frame function by the axis orientation your mesh expects — all take an ECEF origin `Vector3` and return a `Matrix4`, all exported from `@navaramap/three`:
 
-| Function | Local axes (x, y, z) |
-|---|---|
-| `eastNorthUpToFixedFrame` | East, North, Up |
-| `northEastDownToFixedFrame` | North, East, Down |
-| `northUpEastToFixedFrame` | North, Up, East |
-| `northWestUpToFixedFrame` | North, West, Up |
+| Function                    | Local axes (x, y, z) |
+| --------------------------- | -------------------- |
+| `eastNorthUpToFixedFrame`   | East, North, Up      |
+| `northEastDownToFixedFrame` | North, East, Down    |
+| `northUpEastToFixedFrame`   | North, Up, East      |
+| `northWestUpToFixedFrame`   | North, West, Up      |
 
 Mesh transform modes: standard `position`/`rotation`/`scale` (Cartesian ECEF — the default), `matrix` (local frame), `matrixWorld` (world frame — the usual choice for geographic placement, as above). `matrix`, `matrixWorld` and `geodetic` are mutually exclusive (`ConflictingTransformError`); `position`/`rotation`/`scale` become offsets inside whichever frame is set.
 

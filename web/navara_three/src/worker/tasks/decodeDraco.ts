@@ -10,7 +10,6 @@ import type {
   PointCloud,
   Status,
 } from "draco3d";
-import dracoWasmUrl from "draco3d/draco_decoder.wasm?url&no-inline";
 
 import type {
   DecodedDracoAttribute,
@@ -24,9 +23,9 @@ import createDracoDecoderModule from "./dracoDecoderModule";
 
 let dracoModule: Promise<DecoderModule> | undefined;
 
-function loadDracoModule() {
+function loadDracoModule(wasmUrl: string) {
   dracoModule ??= createDracoDecoderModule({
-    locateFile: () => dracoWasmUrl,
+    locateFile: () => wasmUrl,
   }).then((draco) => {
     registerWasmMemoryProbe(() => draco.HEAPF32.buffer.byteLength);
     return draco;
@@ -37,8 +36,9 @@ function loadDracoModule() {
 export async function decodeDraco(
   buffer: ArrayBuffer,
   config: DracoDecodeConfig,
+  wasmUrl: string,
 ): Promise<DecodedDracoGeometry> {
-  const draco = await loadDracoModule();
+  const draco = await loadDracoModule(wasmUrl);
   const decoder = new draco.Decoder();
   const decoderBuffer = new draco.DecoderBuffer();
   try {

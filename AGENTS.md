@@ -33,6 +33,8 @@ If a change touches only `web/`, the pnpm equivalents are faster: `pnpm run buil
 
 `skills/` holds distilled best practices for working with Navara: [navara-usage](skills/navara-usage/SKILL.md) (how to use `@navaramap/three` — for application code, examples, and docs snippets), [navara-engine-dev](skills/navara-engine-dev/SKILL.md) (coding rules and design invariants for any code added to this repository), [navara-add-example](skills/navara-add-example/SKILL.md), and [navara-add-docs-example](skills/navara-add-docs-example/SKILL.md), and [navara-lp](skills/navara-lp/SKILL.md) (building and maintaining the marketing landing page; its `references/scene-tiers.md` covers the fixed-camera "API tier" scene stills).
 
+**Skills shipped to users:** `navara-usage` is published inside `@navaramap/three` as a [pnpm agent skill](https://pnpm.io/agent-skills), so its files live in `web/navara_three/skills/navara-usage/` and `skills/navara-usage` is a symlink to them. pnpm only picks up `<package>/skills/<name>/SKILL.md`, and symlinks are not packed, so a skill meant for users must keep its real files in the package (listed in `files`) with the symlink on the repo side. The other skills are for work on this repository and stay unpublished.
+
 **When to record knowledge in a skill vs. docs:**
 
 - A skill captures the distilled form: API-usage invariants (e.g. init order), gotchas that produce broken code when unknown, decision guides (which API tier to use), and proven recipes (goal → composition). When you uncover such a pattern while working, add it to the relevant skill first — keep entries terse and verified against the implementation, never guessed.

@@ -37,4 +37,12 @@ change.
   add dead code and obscure the real contract. If an invariant is worth
   enforcing, assert it (e.g. `debug_assert!`/`unreachable!` in Rust, `throw`
   in TS) instead of silently handling it.
-
+- **An asset used only inside a worker must also be referenced from the
+  main bundle.** A consuming bundler copies a built worker chunk as an opaque
+  file, so a `.wasm` referenced only from worker code is never emitted into
+  the app's build — it works in dev and fails in a production build. For a
+  wasm-bindgen package, keep a side-effect `import "@navaramap/engine-…"` in
+  the main entry: the consumer then emits the same hashed `.wasm` next to the
+  worker chunk. For any other asset, import it with `?url&no-inline` on the
+  main thread and pass the URL to the worker (`decodeDracoAsync`). Verify
+  with the production build of `web/integration-tests/navara-three`.

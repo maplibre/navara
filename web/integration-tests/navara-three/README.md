@@ -37,6 +37,8 @@ The `src/main.ts` contains a minimal example that:
 2. Initializes the WASM engine
 3. Adds atmosphere and effect descriptors
 4. Adds terrain and tile layers
-5. Sets the camera position
+5. Adds a 3D Tiles layer (Draco-compressed PLATEAU buildings)
+6. Adds a text label (font worker)
+7. Sets the camera position
 
 This exercises the core functionality that users would typically use.

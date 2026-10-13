@@ -1,5 +1,6 @@
 import ThreeView, {
   Color,
+  fetchFontFamilyFromCss,
   geodeticToVector3,
   JAPAN_GSI_ELEVATION_DECODER,
 } from "@navaramap/three";
@@ -72,6 +73,66 @@ async function main() {
       color: new Color().setStyle("#ffffff"),
       opacity: 1,
     },
+  });
+
+  // Add 3D Tiles layer - tests 3D Tiles loading (PLATEAU Chiyoda buildings)
+  const chiyodaSource = view.addSource({
+    type: "3d-tiles",
+    url: "https://assets.cms.plateau.reearth.io/assets/db/070026-aa27-431b-8d53-7cc6b03244f8/13101_chiyoda-ku_pref_2023_citygml_1_op_bldg_3dtiles_13101_chiyoda-ku_lod2_no_texture/tileset.json",
+  });
+  view.addLayer({
+    type: "3d-tiles",
+    source: chiyodaSource,
+    model: {
+      color: new Color().setHex(0xffffff),
+      metalness: 0,
+      roughness: 1,
+    },
+  });
+
+  view.setCamera({
+    lng: 139.7671,
+    lat: 35.6812,
+    distance: 1000,
+    heading: 50,
+    pitch: -35,
+    roll: 0,
+  });
+
+  // Add a text label - tests the font worker (WASM loading, shaping, atlas)
+  view.addFontFamily(
+    await fetchFontFamilyFromCss(
+      "MapFont",
+      "https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@800",
+    ),
+  );
+  const labelSource = view.addSource({
+    type: "geojson",
+    data: {
+      type: "Feature",
+      properties: { name: "東京駅 Tokyo Station" },
+      geometry: { type: "Point", coordinates: [139.7671, 35.6812] },
+    },
+  });
+  const labelLayer = view.addLayer({
+    type: "vector",
+    source: labelSource,
+    text: {
+      font: "MapFont",
+      color: new Color().setStyle("#ffffff"),
+      size: 32,
+      sizeInMeters: false,
+      height: 300,
+      depthTest: false,
+      outlineColor: new Color().setStyle("#000000"),
+      outlineWidth: 4,
+    },
+  });
+  labelLayer.on("featureUpdated", ({ evaluator }) => {
+    evaluator.evaluate(
+      ({ properties }) => ({ text: properties?.["name"] as string }),
+      { filters: ["name"] },
+    );
   });
 
   // Add a rotating sphere mesh - tests mesh descriptor and geospatial API

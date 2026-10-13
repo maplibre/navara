@@ -1,15 +1,15 @@
 # Declarative API — Sources, Layers, Materials
 
-The core design: a **Source** describes *where and how data is fetched*; a **Layer** describes *how it renders*. One source can feed many layers — tile fetches and caches are deduplicated, and you can restyle without refetching.
+The core design: a **Source** describes _where and how data is fetched_; a **Layer** describes _how it renders_. One source can feed many layers — tile fetches and caches are deduplicated, and you can restyle without refetching.
 
 ## Source ↔ Layer ↔ Material compatibility
 
-| Layer type | Accepts sources | Material blocks |
-|---|---|---|
-| `vector` | `geojson`, `vector-tile` | `point`, `billboard`, `text`, `polyline`, `polygon` |
-| `raster` | `raster-tile`, `raster-dem` | `raster`, `hillshade`, `elevationHeatmap` |
-| `terrain` | `raster-dem`, `quantized-mesh` | `terrain` |
-| `3d-tiles` | `3d-tiles` | `model` |
+| Layer type | Accepts sources                | Material blocks                                     |
+| ---------- | ------------------------------ | --------------------------------------------------- |
+| `vector`   | `geojson`, `vector-tile`       | `point`, `billboard`, `text`, `polyline`, `polygon` |
+| `raster`   | `raster-tile`, `raster-dem`    | `raster`, `hillshade`, `elevationHeatmap`           |
+| `terrain`  | `raster-dem`, `quantized-mesh` | `terrain`                                           |
+| `3d-tiles` | `3d-tiles`                     | `model`                                             |
 
 ## Basic pattern
 
@@ -46,8 +46,12 @@ Vector material gotchas (verified):
 ## Terrain
 
 ```typescript
-const dem = view.addSource({ type: "raster-dem", url: DEM_URL, maxZoom: 14 /*, elevationDecoder */ });
-view.addLayer({ type: "terrain", source: dem });   // add BEFORE the raster basemap draped over it
+const dem = view.addSource({
+  type: "raster-dem",
+  url: DEM_URL,
+  maxZoom: 14 /*, elevationDecoder */,
+});
+view.addLayer({ type: "terrain", source: dem }); // add BEFORE the raster basemap draped over it
 view.addLayer({ type: "raster", source: imagery });
 ```
 
@@ -66,7 +70,9 @@ Quantized-mesh terrain uses `type: "quantized-mesh"` sources (or `CesiumIonPlugi
 Layer → FeatureSet → Feature → Batch (each batch has a 24-bit `batchId`). Feature events fire per FeatureSet:
 
 ```typescript
-layer.on("featureUpdated", ({ evaluator }) => { /* see imperative-api.md */ });
+layer.on("featureUpdated", ({ evaluator }) => {
+  /* see imperative-api.md */
+});
 ```
 
 Layer events: `featureCreated` / `featureUpdated` / `featureVisibilityChanged` / `featureRemoved` / `deleted`. There is no per-layer "loaded" event — to know when everything has finished loading, use the view-level `idle` event (fires after `idleThreshold` ms without tile/data activity).
@@ -76,14 +82,20 @@ Layer events: `featureCreated` / `featureUpdated` / `featureVisibilityChanged` /
 Layers need no registration, but mesh/effect/light **Descriptors must be registered before use** — the key of the config object selects the descriptor class:
 
 ```typescript
-import { BoxMeshDesc, FXAAEffectDesc, SunLightDesc } from "@navaramap/three-default-descs";
+import {
+  BoxMeshDesc,
+  FXAAEffectDesc,
+  SunLightDesc,
+} from "@navaramap/three-default-descs";
 
-view.registerMesh("box", BoxMeshDesc);          // DefaultPlugin does this for ~40 built-ins
+view.registerMesh("box", BoxMeshDesc); // DefaultPlugin does this for ~40 built-ins
 const box = view.addMesh<BoxMeshDesc>({ box: { width: 100, height: 100 } });
 const fxaa = view.addEffect<FXAAEffectDesc>({ fxaa: {} });
-const sun = view.addLight<SunLightDesc>({ sun: { intensity: 1.0, castShadow: true } });
+const sun = view.addLight<SunLightDesc>({
+  sun: { intensity: 1.0, castShadow: true },
+});
 
-box.update({ box: { width: 200 } });            // partial merge, same as Layer.update()
+box.update({ box: { width: 200 } }); // partial merge, same as Layer.update()
 box.visible = false;
 box.delete();
 ```
@@ -93,16 +105,19 @@ With `DefaultPlugin` all built-ins are pre-registered; call `addMesh`/`addEffect
 ## Camera
 
 ```typescript
-view.setCamera({ lng, lat, height, heading, pitch, roll });    // instant; `distance` option = frame a target; cancels a flight
-const ok = await view.flyTo({ lng, lat, height }, { duration, maxHeight, easing: "quinticInOut" });
+view.setCamera({ lng, lat, height, heading, pitch, roll }); // instant; `distance` option = frame a target; cancels a flight
+const ok = await view.flyTo(
+  { lng, lat, height },
+  { duration, maxHeight, easing: "quinticInOut" },
+);
 // animated arc; resolves true on completion, false when interrupted by
 // another camera operation (a newer flyTo, setCamera, etc.). duration
 // defaults to 2–3 s derived from flight distance; easing defaults to
 // quinticInOut (cubicOut when descending from high altitude).
 view.lookAt(target, offsetENU);
 view.camera.on("moveend", () => console.log(view.camera.positionGeographic));
-view.camera.fov = 50;                                           // use setters, never camera.raw.fov
-view.camera.fov;                                                // degrees; vertical fov
+view.camera.fov = 50; // use setters, never camera.raw.fov
+view.camera.fov; // degrees; vertical fov
 ```
 
 Full reference: https://navara.world/docs/three/source/about/ · /three/layer/about/ · /three/material/about/

@@ -10,16 +10,19 @@ Proven combinations that get from zero to a high-quality scene. Prefer starting 
 
 **Composition (current best practice):**
 
-| Piece | What it contributes |
-|---|---|
-| `DefaultPlugin` + `addDefaultPhotorealScene()` | Sky, stars, sun light, sky light probe, aerial perspective, lens flare (skipped on mobile), tone mapping, antialiasing — mobile-aware |
-| Re:Earth Terrain (`quantized-mesh` source) | Global terrain relief with vertex normals and water mask. `requestWaterMask: true` also gives ocean pixels a default reflectivity/roughness automatically, so adding the SSR effect makes the sea reflective with no extra setup |
-| EOX Sentinel-2 cloudless (`raster-tile` source) | Global satellite imagery draped over the terrain |
-| Built-in attribution UI (`view.attribution`) | Required data credits for the above |
+| Piece                                           | What it contributes                                                                                                                                                                                                              |
+| ----------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `DefaultPlugin` + `addDefaultPhotorealScene()`  | Sky, stars, sun light, sky light probe, aerial perspective, lens flare (skipped on mobile), tone mapping, antialiasing — mobile-aware                                                                                            |
+| Re:Earth Terrain (`quantized-mesh` source)      | Global terrain relief with vertex normals and water mask. `requestWaterMask: true` also gives ocean pixels a default reflectivity/roughness automatically, so adding the SSR effect makes the sea reflective with no extra setup |
+| EOX Sentinel-2 cloudless (`raster-tile` source) | Global satellite imagery draped over the terrain                                                                                                                                                                                 |
+| Built-in attribution UI (`view.attribution`)    | Required data credits for the above                                                                                                                                                                                              |
 
 ```typescript
 import ThreeView from "@navaramap/three";
-import { DefaultPlugin, type DefaultDescriptions } from "@navaramap/three-default-plugin";
+import {
+  DefaultPlugin,
+  type DefaultDescriptions,
+} from "@navaramap/three-default-plugin";
 
 const view = new ThreeView<DefaultDescriptions>({ shadow: true });
 const defaultPlugin = new DefaultPlugin();
@@ -54,14 +57,24 @@ const imagery = view.addSource({
 view.addLayer({ type: "raster", source: imagery });
 
 view.attribution?.add([
-  { attribution: "© Re:Earth Terrain", attributionUrl: "https://terrain.reearth.land/" },
+  {
+    attribution: "© Re:Earth Terrain",
+    attributionUrl: "https://terrain.reearth.land/",
+  },
   {
     attributionHtml:
       '<a href="https://s2maps.eu">Sentinel-2 cloudless 2020</a> by <a href="https://eox.at">EOX IT Services GmbH</a> (contains modified Copernicus Sentinel data 2020)',
   },
 ]);
 
-view.setCamera({ lng: 138.2, lat: 34.9, height: 11000, heading: 65, pitch: -8, roll: 0 });
+view.setCamera({
+  lng: 138.2,
+  lat: 34.9,
+  height: 11000,
+  heading: 65,
+  pitch: -8,
+  roll: 0,
+});
 ```
 
 **Build on top:** add your data layers after this base — 3D Tiles (`type: "3d-tiles"`), vector data, meshes. Tweak individual pieces via the handles `addDefaultPhotorealScene()` returns (e.g. `scene.sun.update({ sun: { castShadow: true } })`), and adjust `view.toneMappingExposure` to taste.

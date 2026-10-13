@@ -25,6 +25,10 @@ import {
   type FontWorkerMemoryStats,
 } from "@navaramap/font";
 import FontWorkerURL from "@navaramap/font/fontWorker?worker&url";
+// Make a consuming bundler emit each worker's .wasm beside its worker chunk,
+// which loads it by relative URL.
+import "@navaramap/engine-font-worker";
+import "@navaramap/engine-worker";
 import {
   initNavaraApi,
   degreeToRadian,

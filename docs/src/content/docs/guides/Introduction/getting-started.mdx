@@ -148,7 +148,15 @@ This example keeps the default camera, which shows the whole globe. To move some
 
 ## Building with AI Coding Agents
 
-If you develop with an AI coding agent such as Claude Code, the Navara repository provides the [navara-usage skill](https://github.com/reearth/navara/tree/main/skills/navara-usage), a concise guide to best practices for `@navaramap/three`. It covers the setup order, common API mistakes, and working scene examples. Copy it into your project's skills directory (or point your agent at it) so the generated code follows correct API usage.
+If you develop with an AI coding agent such as Claude Code, `@navaramap/three` ships the [navara-usage skill](https://github.com/reearth/navara/tree/main/web/navara_three/skills/navara-usage), a concise guide to best practices for `@navaramap/three`. It covers the setup order, common API mistakes, and working scene examples, so the generated code follows correct API usage.
+
+With pnpm 12.11 or later, the skill is installed through [agent skills](https://pnpm.io/agent-skills). After `pnpm install`, pnpm reports that the skills of `@navaramap/three` await approval. Approve them to link the skill into your project's agent skills directory, such as `.claude/skills`:
+
+```bash
+pnpm approve
+```
+
+The skill follows the installed version of `@navaramap/three`, so it stays in sync with the API you build against. With another package manager, copy `node_modules/@navaramap/three/skills/navara-usage` into your project's skills directory (or point your agent at it).
 
 ## Next Steps
 

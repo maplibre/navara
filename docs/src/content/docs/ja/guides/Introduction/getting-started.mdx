@@ -148,7 +148,15 @@ view.attribution?.add([{ attributionHtml: `Imagery courtesy of <a href="https://
 
 ## AI コーディングエージェントとの開発
 
-Claude Code などの AI コーディングエージェントで開発する場合は、Navara リポジトリで提供している [navara-usage スキル](https://github.com/reearth/navara/tree/main/skills/navara-usage) を利用できます。セットアップの順序、間違えやすい API の使い方、動作するシーンの構成例など、`@navaramap/three` のベストプラクティスを簡潔にまとめたガイドです。プロジェクトの skills ディレクトリにコピーする（またはエージェントに参照させる）ことで、生成されるコードが正しい API の使い方に沿うようになります。
+Claude Code などの AI コーディングエージェントで開発する場合は、`@navaramap/three` に同梱されている [navara-usage スキル](https://github.com/reearth/navara/tree/main/web/navara_three/skills/navara-usage) を利用できます。セットアップの順序、間違えやすい API の使い方、動作するシーンの構成例など、`@navaramap/three` のベストプラクティスを簡潔にまとめたガイドで、生成されるコードが正しい API の使い方に沿うようになります。
+
+pnpm 12.11 以降では、このスキルは [agent skills](https://pnpm.io/agent-skills) の仕組みでインストールされます。`pnpm install` の後、pnpm は `@navaramap/three` のスキルが承認待ちであることを表示します。承認すると、プロジェクトのエージェント用 skills ディレクトリ（`.claude/skills` など）にスキルがリンクされます。
+
+```bash
+pnpm approve
+```
+
+スキルはインストールされている `@navaramap/three` のバージョンに追従するため、利用している API と内容が一致します。他のパッケージマネージャーを使う場合は、`node_modules/@navaramap/three/skills/navara-usage` をプロジェクトの skills ディレクトリにコピーしてください（またはエージェントに参照させてください）。
 
 ## 次のステップ
 

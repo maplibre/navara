@@ -25,9 +25,11 @@ it("decodes on the worker pool and transfers the input buffer", async () => {
 
   const geometry = await decodeDracoAsync(buffer, config);
 
-  expect(queueTask).toHaveBeenCalledWith("decodeDraco", [buffer, config], {
-    transfer: [buffer],
-  });
+  expect(queueTask).toHaveBeenCalledWith(
+    "decodeDraco",
+    [buffer, config, expect.stringContaining("draco_decoder.wasm")],
+    { transfer: [buffer] },
+  );
   expect(geometry.getAttribute("position").array).toEqual(
     new Float32Array([1, 2, 3]),
   );

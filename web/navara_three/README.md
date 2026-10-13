@@ -66,6 +66,10 @@ view.attribution?.add([
 
 See [What is Navara?](https://navara.world/docs/guides/introduction/what-is-navara/) for an overview and [Getting Started](https://navara.world/docs/guides/introduction/getting-started/) to build your first 3D map.
 
+## AI coding agents
+
+This package ships the `navara-usage` [agent skill](https://pnpm.io/agent-skills) (`skills/navara-usage`), a concise guide to `@navaramap/three` best practices for agents such as Claude Code. With pnpm 12.11 or later, run `pnpm approve` after installing to link it into your project's agent skills directory (for example `.claude/skills`). With another package manager, copy `node_modules/@navaramap/three/skills/navara-usage` there instead.
+
 ## Related packages
 
 - [`@navaramap/three-default-plugin`](https://github.com/reearth/navara/tree/main/web/navara_three_default_plugin): registers all built-in Descriptors at once
