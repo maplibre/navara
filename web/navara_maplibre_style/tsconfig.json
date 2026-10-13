@@ -2,6 +2,7 @@
   "extends": "../tsconfig.common.json",
   "compilerOptions": {
     "noEmit": true,
+    "types": ["node", "vitest/globals"],
     "paths": {
       "@navaramap/maplibre-style": ["./src"],
       "@navaramap/three": ["../navara_three/src"],

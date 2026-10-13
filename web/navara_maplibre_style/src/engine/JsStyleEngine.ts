@@ -20,6 +20,7 @@ import type { StyleEngine } from "./StyleEngine";
 import {
   getLayoutSpec,
   getPaintSpec,
+  getTypeDefault,
   isLiteralArray,
 } from "./styleEngineUtils";
 import type {
@@ -143,9 +144,19 @@ export class JsStyleEngine implements StyleEngine {
       // otherwise default to 0 for non-tiled features (GeoJSON)
       const zoomValue = ctx.zoom ?? 0;
 
-      const value = expression.evaluate({ zoom: zoomValue }, feature);
+      try {
+        const value = expression.evaluate({ zoom: zoomValue }, feature);
 
-      return value as T;
+        // Return default if result is null/undefined (defensive behavior)
+        if (value == null) {
+          return (spec.default ?? getTypeDefault(spec.type)) as T;
+        }
+
+        return value as T;
+      } catch (e) {
+        console.error("Expression evaluation error:", e);
+        return (spec.default ?? getTypeDefault(spec.type)) as T;
+      }
     };
   }
 

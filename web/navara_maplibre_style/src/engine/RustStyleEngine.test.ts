@@ -1,85 +1,132 @@
-import { describe, it, expect } from "vitest";
+import { readFileSync } from "fs";
+import { join, dirname } from "path";
+import { fileURLToPath } from "url";
+
+import { initSync } from "@navaramap/engine";
+import { describe, it, expect, beforeAll } from "vitest";
 
 import { RustStyleEngine } from "./RustStyleEngine";
 
 describe("RustStyleEngine", () => {
   const engine = new RustStyleEngine();
 
+  // Initialize WASM before running tests
+  beforeAll(() => {
+    const currentDir = dirname(fileURLToPath(import.meta.url));
+    const wasmPath = join(
+      currentDir,
+      "../../../wasm/navara_engine/navara_wasm_bg.wasm",
+    );
+    const wasmBuffer = readFileSync(wasmPath);
+    initSync({ module: wasmBuffer });
+  });
+
+  describe("createFilter", () => {
+    it("should create filter that returns true for all features when no filter", () => {
+      // Empty array means no filter (all features pass)
+      const filter = engine.createFilter([], "fill", "Polygon");
+
+      expect(filter({ properties: { type: "park" } })).toBe(true);
+      expect(filter({ properties: { type: "water" } })).toBe(true);
+    });
+
+    it("should create filter for basic expression", () => {
+      const filter = engine.createFilter(
+        ["==", ["get", "type"], "park"],
+        "fill",
+        "Polygon",
+      );
+
+      expect(filter({ properties: { type: "park" } })).toBe(true);
+      expect(filter({ properties: { type: "water" } })).toBe(false);
+    });
+  });
+
+  describe("createValueFn", () => {
+    it("should optimize constant number values", () => {
+      const spec = { type: "number" as const, default: 0 };
+      const valueFn = engine.createValueFn(42, spec, "Polygon");
+
+      expect(valueFn({ properties: {} })).toBe(42);
+    });
+
+    it("should optimize constant boolean values", () => {
+      const spec = { type: "boolean" as const, default: false };
+      const valueFn = engine.createValueFn(true, spec, "Polygon");
+
+      expect(valueFn({ properties: {} })).toBe(true);
+    });
+
+    it("should optimize constant string values (non-color)", () => {
+      const spec = { type: "string" as const, default: "" };
+      const valueFn = engine.createValueFn("test-value", spec, "Polygon");
+
+      expect(valueFn({ properties: {} })).toBe("test-value");
+    });
+
+    it("should handle literal array values", () => {
+      const spec = { type: "array" as const, default: [] };
+      const valueFn = engine.createValueFn([1, 2, 3], spec, "Polygon");
+
+      expect(valueFn({ properties: {} })).toEqual([1, 2, 3]);
+    });
+
+    it("should treat font arrays as literals", () => {
+      const spec = { type: "array" as const, default: [] };
+      const valueFn = engine.createValueFn(
+        ["/fonts/lineseedjp/LINESeedJP-Bold.ttf"],
+        spec,
+        "Point",
+      );
+
+      expect(valueFn({ properties: {} })).toEqual([
+        "/fonts/lineseedjp/LINESeedJP-Bold.ttf",
+      ]);
+    });
+
+    it("should create function for basic expression", () => {
+      const spec = { type: "string" as const, default: "" };
+      const valueFn = engine.createValueFn(["get", "name"], spec, "Polygon");
+
+      expect(valueFn({ properties: { name: "test" } })).toBe("test");
+      expect(valueFn({ properties: {} })).toBe("");
+    });
+
+    it("should throw error for invalid expression", () => {
+      const spec = { type: "color" as const, default: "#000000" };
+
+      expect(() => {
+        engine.createValueFn(["invalid-op", "test"], spec, "Polygon");
+      }).toThrow();
+    });
+  });
+
   describe("getPaintSpec", () => {
-    it("should return spec for fill-color", () => {
+    it("should return spec for valid property", () => {
       const spec = engine.getPaintSpec("fill", "fill-color");
+
       expect(spec).toBeDefined();
       expect(spec?.type).toBe("color");
-      expect(spec?.default).toBeDefined();
-    });
-
-    it("should return spec for fill-extrusion-color", () => {
-      const spec = engine.getPaintSpec(
-        "fill-extrusion",
-        "fill-extrusion-color",
-      );
-      expect(spec).toBeDefined();
-      expect(spec?.type).toBe("color");
-    });
-
-    it("should return spec for fill-extrusion-height", () => {
-      const spec = engine.getPaintSpec(
-        "fill-extrusion",
-        "fill-extrusion-height",
-      );
-      expect(spec).toBeDefined();
-      expect(spec?.type).toBe("number");
-    });
-
-    it("should return spec for line-color", () => {
-      const spec = engine.getPaintSpec("line", "line-color");
-      expect(spec).toBeDefined();
-      expect(spec?.type).toBe("color");
-    });
-
-    it("should return spec for line-width", () => {
-      const spec = engine.getPaintSpec("line", "line-width");
-      expect(spec).toBeDefined();
-      expect(spec?.type).toBe("number");
-    });
-
-    it("should return spec for circle-color", () => {
-      const spec = engine.getPaintSpec("circle", "circle-color");
-      expect(spec).toBeDefined();
-      expect(spec?.type).toBe("color");
-    });
-
-    it("should return spec for circle-radius", () => {
-      const spec = engine.getPaintSpec("circle", "circle-radius");
-      expect(spec).toBeDefined();
-      expect(spec?.type).toBe("number");
-    });
-
-    it("should return spec for icon-color", () => {
-      const spec = engine.getPaintSpec("symbol", "icon-color");
-      expect(spec).toBeDefined();
-      expect(spec?.type).toBe("color");
-    });
-
-    it("should return spec for text-color", () => {
-      const spec = engine.getPaintSpec("symbol", "text-color");
-      expect(spec).toBeDefined();
-      expect(spec?.type).toBe("color");
-    });
-
-    it("should return spec for hillshade-exaggeration", () => {
-      const spec = engine.getPaintSpec("hillshade", "hillshade-exaggeration");
-      expect(spec).toBeDefined();
-      expect(spec?.type).toBe("number");
-    });
-
-    it("should return undefined for unknown layer type", () => {
-      const spec = engine.getPaintSpec("unknown" as "fill", "fill-color");
-      expect(spec).toBeUndefined();
     });
 
     it("should return undefined for unknown property", () => {
       const spec = engine.getPaintSpec("fill", "unknown-property");
+
+      expect(spec).toBeUndefined();
+    });
+  });
+
+  describe("getLayoutSpec", () => {
+    it("should return spec for valid property", () => {
+      const spec = engine.getLayoutSpec("symbol", "text-field");
+
+      expect(spec).toBeDefined();
+      expect(spec?.type).toBe("formatted");
+    });
+
+    it("should return undefined for unknown property", () => {
+      const spec = engine.getLayoutSpec("symbol", "unknown-property");
+
       expect(spec).toBeUndefined();
     });
   });

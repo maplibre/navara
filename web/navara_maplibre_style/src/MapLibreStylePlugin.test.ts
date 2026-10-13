@@ -1,7 +1,20 @@
+import { readFileSync } from "fs";
+import { join, dirname } from "path";
+import { fileURLToPath } from "url";
+
 import type { StyleSpecification } from "@maplibre/maplibre-gl-style-spec";
+import { initSync } from "@navaramap/engine";
 import type ThreeView from "@navaramap/three";
 import type { ViewContext } from "@navaramap/three";
-import { describe, it, vi, beforeEach, afterEach, expect } from "vitest";
+import {
+  describe,
+  it,
+  vi,
+  beforeAll,
+  beforeEach,
+  afterEach,
+  expect,
+} from "vitest";
 
 import { MapLibreStylePlugin } from "./MapLibreStylePlugin";
 
@@ -119,6 +132,17 @@ function setMockZoom(view: ThreeView, zoom: number): void {
 }
 
 describe("MapLibreStylePlugin", () => {
+  // Initialize WASM once before all tests
+  beforeAll(() => {
+    const currentDir = dirname(fileURLToPath(import.meta.url));
+    const wasmPath = join(
+      currentDir,
+      "../../wasm/navara_engine/navara_wasm_bg.wasm",
+    );
+    const wasmBuffer = readFileSync(wasmPath);
+    initSync({ module: wasmBuffer });
+  });
+
   beforeEach(() => {
     vi.clearAllMocks();
     mockTileJsonPluginAddSource.mockClear();

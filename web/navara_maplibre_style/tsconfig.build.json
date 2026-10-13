@@ -1,6 +1,7 @@
 {
   "extends": "../tsconfig.common.json",
   "compilerOptions": {
+    "types": ["node", "vitest/globals"],
     "paths": {}
   },
   "include": ["src"],

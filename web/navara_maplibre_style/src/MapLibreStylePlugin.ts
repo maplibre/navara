@@ -25,7 +25,7 @@ import {
 } from "./adapters/toEvaluatedValue";
 import { toLayerDescription } from "./adapters/toLayerDescription";
 import { BackgroundHandler } from "./BackgroundHandler";
-import { JsStyleEngine } from "./engine/JsStyleEngine";
+import { RustStyleEngine } from "./engine/RustStyleEngine";
 import type { ParsedStyle, StyleLayer } from "./engine/types";
 import { convertFontFacesToFontFamilies } from "./fontHelper";
 import {
@@ -81,7 +81,7 @@ export class MapLibreStylePlugin extends Plugin<ThreeView, ViewContext> {
    * Style engine for evaluating MapLibre expressions.
    * Uses JsStyleEngine internally.
    */
-  private readonly engine = new JsStyleEngine();
+  private readonly engine = new RustStyleEngine();
   /**
    * Last camera zoom level. Used to detect zoom changes that require feature re-evaluation.
    * undefined when not yet initialized.
@@ -762,14 +762,27 @@ export class MapLibreStylePlugin extends Plugin<ThreeView, ViewContext> {
           : "Point";
 
     // Create base filter function from styleLayer.filter expression
-    const baseFilterFn =
-      "filter" in styleLayer && styleLayer.filter
-        ? this.engine.createFilter(
-            styleLayer.filter,
-            styleLayer.type,
-            featureGeometryType,
-          )
-        : () => true;
+    let baseFilterFn: (ctx: {
+      properties: Record<string, unknown> | undefined;
+      zoom?: number;
+    }) => boolean;
+
+    try {
+      baseFilterFn =
+        "filter" in styleLayer && styleLayer.filter
+          ? this.engine.createFilter(
+              styleLayer.filter,
+              styleLayer.type,
+              featureGeometryType,
+            )
+          : () => true;
+    } catch (err) {
+      console.error(
+        `Layer "${styleLayer.id}": Invalid filter expression. Skipping layer.`,
+        err,
+      );
+      return; // Skip this layer to prevent breaking the entire style
+    }
 
     // Wrap filter with zoom range check if minzoom/maxzoom are specified
     // This controls layer visibility based on zoom level

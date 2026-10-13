@@ -53,27 +53,16 @@ export class RustStyleEngine implements StyleEngine {
       return () => true;
     }
     // Compile filter in WASM
-    let compiled: CompiledFilter;
-    try {
-      compiled = new CompiledFilter(expr);
-    } catch (e) {
-      console.error("Filter compilation error:", e);
-      return () => false; // Hide features when filter can't be compiled
-    }
+    const compiled = new CompiledFilter(expr);
 
     // Return evaluation function
     return (ctx: FeatureContext) => {
-      try {
-        const result = compiled.test(
-          ctx.properties ?? {},
-          ctx.zoom ?? 0, // Use tile zoom if available, otherwise 0 for non-tiled features
-          featureGeometryType, // Pass geometry type for ["geometry-type"] filters
-        );
-        return result;
-      } catch (e) {
-        console.error("Filter evaluation error:", e);
-        return false; // Default to hiding features on error
-      }
+      const result = compiled.test(
+        ctx.properties ?? {},
+        ctx.zoom ?? 0, // Use tile zoom if available, otherwise 0 for non-tiled features
+        featureGeometryType, // Pass geometry type for ["geometry-type"] filters
+      );
+      return result;
     };
   }
 
@@ -138,26 +127,26 @@ export class RustStyleEngine implements StyleEngine {
 
     // Return evaluation function with optimized property passing
     return (ctx: EvaluationContext) => {
-      try {
-        // Filter properties to only required ones to reduce serialization overhead
-        let propsToPass: Record<string, unknown>;
-        if (requiredProps === null || requiredProps.length === 0) {
-          // Empty array means dynamic property access (e.g., ["get", ["concat", ...]])
-          // since constants are already filtered out above.
-          // Conservative approach: pass all properties to avoid breaking evaluation.
-          propsToPass = ctx.properties ?? {};
-        } else {
-          // Only pass required properties
-          propsToPass = {};
-          if (ctx.properties) {
-            for (const prop of requiredProps) {
-              if (Object.prototype.hasOwnProperty.call(ctx.properties, prop)) {
-                propsToPass[prop] = ctx.properties[prop];
-              }
+      // Filter properties to only required ones to reduce serialization overhead
+      let propsToPass: Record<string, unknown>;
+      if (requiredProps === null || requiredProps.length === 0) {
+        // Empty array means dynamic property access (e.g., ["get", ["concat", ...]])
+        // since constants are already filtered out above.
+        // Conservative approach: pass all properties to avoid breaking evaluation.
+        propsToPass = ctx.properties ?? {};
+      } else {
+        // Only pass required properties
+        propsToPass = {};
+        if (ctx.properties) {
+          for (const prop of requiredProps) {
+            if (Object.prototype.hasOwnProperty.call(ctx.properties, prop)) {
+              propsToPass[prop] = ctx.properties[prop];
             }
           }
         }
+      }
 
+      try {
         const result = compiled.evaluate(
           propsToPass,
           ctx.zoom ?? 0, // Use tile zoom if available, otherwise 0 for non-tiled features
