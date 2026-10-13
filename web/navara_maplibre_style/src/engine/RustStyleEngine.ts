@@ -57,12 +57,18 @@ export class RustStyleEngine implements StyleEngine {
 
     // Return evaluation function
     return (ctx: FeatureContext) => {
-      const result = compiled.test(
-        ctx.properties ?? {},
-        ctx.zoom ?? 0, // Use tile zoom if available, otherwise 0 for non-tiled features
-        featureGeometryType, // Pass geometry type for ["geometry-type"] filters
-      );
-      return result;
+      try {
+        const result = compiled.test(
+          ctx.properties ?? {},
+          ctx.zoom ?? 0, // Use tile zoom if available, otherwise 0 for non-tiled features
+          featureGeometryType, // Pass geometry type for ["geometry-type"] filters
+        );
+        return result;
+      } catch (_err) {
+        // Runtime evaluation error (e.g., invalid property value, type mismatch)
+        // Hide this feature (return false) rather than breaking the entire layer
+        return false;
+      }
     };
   }
 

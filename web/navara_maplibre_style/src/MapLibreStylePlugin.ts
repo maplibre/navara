@@ -79,7 +79,6 @@ export class MapLibreStylePlugin extends Plugin<ThreeView, ViewContext> {
   private readonly forceMapLibreFov?: boolean;
   /**
    * Style engine for evaluating MapLibre expressions.
-   * Uses JsStyleEngine internally.
    */
   private readonly engine = new RustStyleEngine();
   /**
@@ -781,7 +780,7 @@ export class MapLibreStylePlugin extends Plugin<ThreeView, ViewContext> {
         `Layer "${styleLayer.id}": Invalid filter expression. Skipping layer.`,
         err,
       );
-      return; // Skip this layer to prevent breaking the entire style
+      baseFilterFn = () => false;
     }
 
     // Wrap filter with zoom range check if minzoom/maxzoom are specified
