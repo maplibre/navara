@@ -212,7 +212,9 @@ pub fn update(
         // Apply inertia
         apply_inertia(&mut orbit, &mut inertia, &controller, &transform);
 
-        if needs_update(&inertia, &controller) || window.is_changed() || marker.is_added() {
+        // Only commit when camera actually needs update (from inertia/controls) or newly added.
+        // Do NOT commit on window resize, as that would reset roll via look_to().
+        if needs_update(&inertia, &controller) || marker.is_added() {
             commit(&mut transform, &mut orbit);
 
             orbit.fixed_rotation_axis = None;

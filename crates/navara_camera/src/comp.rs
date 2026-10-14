@@ -388,11 +388,13 @@ impl Orbit {
         self.local_position = inverse * direction;
 
         if tilt {
-            self.local_up = Vec3::Z;
+            // Preserve the current up direction (which contains roll) instead of forcing to Z
+            self.local_up = inverse * transform.up();
             self.horizontal_rotation_axis = Vec3::Z;
 
             if self.local_up.dot(self.local_forward).abs() >= 0.99999 {
-                self.local_up = inverse * transform.up();
+                // When looking nearly straight up/down, fall back to Z
+                self.local_up = Vec3::Z;
                 self.vertical_rotation_axis = self.local_forward.cross(self.local_up);
             } else {
                 self.vertical_rotation_axis = inverse * transform.right();
