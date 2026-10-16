@@ -2,12 +2,175 @@
  * Converts MapLibre Style layer to Navara layer description.
  */
 
-import { type LayerDescription, type Source } from "@navaramap/three";
+import {
+  type LayerDescription,
+  type Source,
+  type SourceGeometryType,
+  type VectorLayer,
+} from "@navaramap/three";
 
 import type { StyleEngine } from "../engine/StyleEngine";
-import { type StyleLayer } from "../engine/types";
+import { type StyleLayer, type ValueExpression } from "../engine/types";
+import { expressionUsesGeometryType } from "../utils/expressionHelpers";
 
 import { toNavaraColor } from "./toEvaluatedValue";
+
+type TextDescription = NonNullable<VectorLayer["text"]>;
+type BillboardDescription = NonNullable<VectorLayer["billboard"]>;
+
+/**
+ * Zoom at which layer-level properties are evaluated. Navara materials are
+ * built once per layer, so these values cannot follow zoom or feature
+ * properties.
+ */
+const LAYER_EVAL_ZOOM = 10;
+
+/**
+ * Evaluate a layout/paint property once for the whole layer, falling back to
+ * the spec default when the style omits it. Returns `undefined` only for
+ * properties with no spec default that the style leaves unset.
+ */
+function evaluateLayerProperty(
+  engine: StyleEngine,
+  styleLayer: StyleLayer,
+  kind: "layout" | "paint",
+  key: string,
+): unknown {
+  const spec =
+    kind === "layout"
+      ? engine.getLayoutSpec(styleLayer.type, key)
+      : engine.getPaintSpec(styleLayer.type, key);
+  if (!spec) return undefined;
+
+  const values = styleLayer[kind] as
+    Record<string, ValueExpression | undefined> | undefined;
+  const expr = values?.[key] ?? (spec.default as ValueExpression | undefined);
+  if (expr === undefined) return undefined;
+
+  try {
+    return engine.createValueFn(
+      expr,
+      spec,
+    )({
+      properties: undefined,
+      zoom: LAYER_EVAL_ZOOM,
+    });
+  } catch (err) {
+    console.warn(
+      `Failed to evaluate ${key} for layer "${styleLayer.id}":`,
+      err,
+    );
+    return spec.default;
+  }
+}
+
+function finiteOr(value: unknown, fallback: number): number {
+  return typeof value === "number" && Number.isFinite(value) ? value : fallback;
+}
+
+export type SymbolPlacement = "point" | "line" | "line-center";
+
+/**
+ * Resolve a symbol layer's `symbol-placement`. Without an engine (or for
+ * non-symbol layers) this is always `"point"`.
+ */
+export function getSymbolPlacement(
+  styleLayer: StyleLayer,
+  engine?: StyleEngine,
+): SymbolPlacement {
+  if (!engine || styleLayer.type !== "symbol") return "point";
+  const value = evaluateLayerProperty(
+    engine,
+    styleLayer,
+    "layout",
+    "symbol-placement",
+  );
+  return value === "line" || value === "line-center" ? value : "point";
+}
+
+/**
+ * Source geometry a symbol layer consumes. Along-line placement takes lines
+ * only. Point placement labels every geometry, as MapLibre does: a line once
+ * at its first vertex, a polygon at its pole of inaccessibility. The plugin
+ * evaluates a symbol layer's filter as a single geometry type, though, so a
+ * filter that tests it (`$type`, `["geometry-type"]`) would pass lines and
+ * polygons as points; such layers keep the native point geometry only.
+ */
+function getSymbolGeometryTypes(
+  styleLayer: StyleLayer,
+  placement: SymbolPlacement,
+): SourceGeometryType[] | undefined {
+  if (placement !== "point") return ["line"];
+  const filter = "filter" in styleLayer ? styleLayer.filter : undefined;
+  return expressionUsesGeometryType(filter)
+    ? undefined
+    : ["point", "line", "polygon"];
+}
+
+type RotationAlignment = "map" | "viewport" | "viewport-glyph";
+
+/** `auto` resolves to `map` along lines and `viewport` at points. */
+function resolveRotationAlignment(
+  value: unknown,
+  alongLine: boolean,
+): RotationAlignment {
+  if (value === "map" || value === "viewport" || value === "viewport-glyph") {
+    return value;
+  }
+  return alongLine ? "map" : "viewport";
+}
+
+/** `auto` follows the rotation alignment. */
+function resolvePitchAlignment(
+  value: unknown,
+  rotation: RotationAlignment,
+): "map" | "viewport" {
+  if (value === "map" || value === "viewport") return value;
+  return rotation === "map" ? "map" : "viewport";
+}
+
+/**
+ * Navara's `declutter: false` neither hides on collision nor blocks others,
+ * so it stands in for `*-allow-overlap` (and `*-overlap: "always"`).
+ * `cooperative` is treated like `never`.
+ */
+function allowsOverlap(
+  engine: StyleEngine,
+  styleLayer: StyleLayer,
+  prefix: "text" | "icon",
+): boolean {
+  const overlap = evaluateLayerProperty(
+    engine,
+    styleLayer,
+    "layout",
+    `${prefix}-overlap`,
+  );
+  if (overlap !== undefined) return overlap === "always";
+  return (
+    evaluateLayerProperty(
+      engine,
+      styleLayer,
+      "layout",
+      `${prefix}-allow-overlap`,
+    ) === true
+  );
+}
+
+/**
+ * MapLibre `icon-anchor` → Navara sprite `center`: the anchor's position
+ * within the sprite, x right and y up, in [-0.5, 0.5].
+ */
+const ICON_ANCHOR_CENTERS: Record<string, { x: number; y: number }> = {
+  center: { x: 0, y: 0 },
+  left: { x: -0.5, y: 0 },
+  right: { x: 0.5, y: 0 },
+  top: { x: 0, y: 0.5 },
+  bottom: { x: 0, y: -0.5 },
+  "top-left": { x: -0.5, y: 0.5 },
+  "top-right": { x: 0.5, y: 0.5 },
+  "bottom-left": { x: -0.5, y: -0.5 },
+  "bottom-right": { x: 0.5, y: -0.5 },
+};
 
 /**
  * Helper to extract sourceLayers from MapLibre's source-layer property.
@@ -212,7 +375,16 @@ function createSymbolLayer(
     ...getSourceLayersField(styleLayer),
   };
 
+  const placement = getSymbolPlacement(styleLayer, engine);
+  const alongLine = placement !== "point";
+  const geometryTypes = getSymbolGeometryTypes(styleLayer, placement);
+
   if (hasIconImage) {
+    const iconAnchor =
+      engine && layout?.["icon-anchor"] !== undefined
+        ? evaluateLayerProperty(engine, styleLayer, "layout", "icon-anchor")
+        : undefined;
+
     layerDesc.billboard = {
       size: 1.0,
       height: 1,
@@ -222,8 +394,53 @@ function createSymbolLayer(
       url: getIconUrl(layout?.["icon-image"]),
       offsetDepth: true,
       transparent: true,
-      center: hasTextField ? { x: 1.0, y: -0.5 } : { x: 0.5, y: -0.5 },
+      center:
+        (typeof iconAnchor === "string" && ICON_ANCHOR_CENTERS[iconAnchor]) ||
+        (hasTextField ? { x: 1.0, y: -0.5 } : { x: 0.5, y: -0.5 }),
     };
+
+    if (engine) {
+      const rotation = resolveRotationAlignment(
+        evaluateLayerProperty(
+          engine,
+          styleLayer,
+          "layout",
+          "icon-rotation-alignment",
+        ),
+        alongLine,
+      );
+      const pitch = resolvePitchAlignment(
+        evaluateLayerProperty(
+          engine,
+          styleLayer,
+          "layout",
+          "icon-pitch-alignment",
+        ),
+        rotation,
+      );
+
+      Object.assign(layerDesc.billboard, {
+        placement,
+        billboardFacing: pitch === "map" ? "flat" : "upright",
+        rotateWithCamera: rotation !== "map",
+        declutter: !allowsOverlap(engine, styleLayer, "icon"),
+        ...(geometryTypes && { geometryTypes }),
+      } satisfies Partial<BillboardDescription>);
+      if (alongLine) {
+        Object.assign(layerDesc.billboard, {
+          spacing: finiteOr(
+            evaluateLayerProperty(
+              engine,
+              styleLayer,
+              "layout",
+              "symbol-spacing",
+            ),
+            250,
+          ),
+          rotateToLine: rotation === "map",
+        } satisfies Partial<BillboardDescription>);
+      }
+    }
   }
 
   if (hasTextField && fontFamily) {
@@ -241,72 +458,117 @@ function createSymbolLayer(
 
     // Apply text-halo properties (outlineColor/outlineWidth/outlineOpacity)
     // TODO: Text halo is currently a layer-level property, evaluated once at construction time
-    // with properties=undefined and zoom=defaultZoom. This means text-halo expressions cannot
+    // with properties=undefined and zoom=LAYER_EVAL_ZOOM. This means text-halo expressions cannot
     // use feature properties or respond to zoom changes. To fix this, Navara's EvaluatedValue
     // should support outlineColor/outlineWidth fields so they can be evaluated per-feature.
     if (engine && styleLayer.type === "symbol") {
-      const defaultZoom = 10; // Use middle zoom for evaluation
+      const rotation = resolveRotationAlignment(
+        evaluateLayerProperty(
+          engine,
+          styleLayer,
+          "layout",
+          "text-rotation-alignment",
+        ),
+        alongLine,
+      );
+      const pitch = resolvePitchAlignment(
+        evaluateLayerProperty(
+          engine,
+          styleLayer,
+          "layout",
+          "text-pitch-alignment",
+        ),
+        rotation,
+      );
+      const justify = evaluateLayerProperty(
+        engine,
+        styleLayer,
+        "layout",
+        "text-justify",
+      );
+
+      Object.assign(layerDesc.text, {
+        placement,
+        textFacing: pitch === "map" ? "flat" : "upright",
+        rotateWithCamera: rotation !== "map",
+        spreadGlyphs: rotation === "viewport-glyph",
+        declutter: !allowsOverlap(engine, styleLayer, "text"),
+        // MapLibre never wraps or justifies labels placed along a line.
+        maxWidth: alongLine
+          ? 0
+          : finiteOr(
+              evaluateLayerProperty(
+                engine,
+                styleLayer,
+                "layout",
+                "text-max-width",
+              ),
+              10,
+            ),
+        // `auto` aligns towards the anchor; `text-anchor` is not mapped, so
+        // it falls back to centered like the other unknown values.
+        textAlign:
+          !alongLine && (justify === "left" || justify === "right")
+            ? justify
+            : "center",
+        ...(geometryTypes && { geometryTypes }),
+      } satisfies Partial<TextDescription>);
+      if (alongLine) {
+        Object.assign(layerDesc.text, {
+          spacing: finiteOr(
+            evaluateLayerProperty(
+              engine,
+              styleLayer,
+              "layout",
+              "symbol-spacing",
+            ),
+            250,
+          ),
+          maxAngle: finiteOr(
+            evaluateLayerProperty(
+              engine,
+              styleLayer,
+              "layout",
+              "text-max-angle",
+            ),
+            45,
+          ),
+          keepUpright:
+            evaluateLayerProperty(
+              engine,
+              styleLayer,
+              "layout",
+              "text-keep-upright",
+            ) !== false,
+        } satisfies Partial<TextDescription>);
+      }
 
       // Track color alpha separately to combine with explicit opacity at the end
       let haloColorAlpha = 1.0;
 
-      // Evaluate text-halo-color
-      const haloColor = styleLayer.paint?.["text-halo-color"];
-      if (haloColor !== undefined) {
-        try {
-          const haloColorSpec = engine.getPaintSpec(
-            "symbol",
-            "text-halo-color",
-          );
-          if (haloColorSpec) {
-            const evalFn = engine.createValueFn(haloColor, haloColorSpec);
-            const colorValue = evalFn({
-              properties: undefined,
-              zoom: defaultZoom,
-            });
-
-            // Convert to Navara Color and extract alpha (don't set opacity yet)
-            const colorResult = toNavaraColor(colorValue);
-            if (colorResult) {
-              layerDesc.text.outlineColor = colorResult.color;
-              haloColorAlpha = colorResult.alpha;
-            }
-          }
-        } catch (err) {
-          console.warn(
-            `Failed to evaluate text-halo-color for layer "${styleLayer.id}":`,
-            err,
-          );
+      if (styleLayer.paint?.["text-halo-color"] !== undefined) {
+        // Convert to Navara Color and extract alpha (don't set opacity yet)
+        const colorResult = toNavaraColor(
+          evaluateLayerProperty(engine, styleLayer, "paint", "text-halo-color"),
+        );
+        if (colorResult) {
+          layerDesc.text.outlineColor = colorResult.color;
+          haloColorAlpha = colorResult.alpha;
         }
       }
 
-      // Evaluate text-halo-width
-      const haloWidth = styleLayer.paint?.["text-halo-width"];
-      if (haloWidth !== undefined) {
-        try {
-          const haloWidthSpec = engine.getPaintSpec(
-            "symbol",
-            "text-halo-width",
-          );
-          if (haloWidthSpec) {
-            const evalFn = engine.createValueFn(haloWidth, haloWidthSpec);
-            const widthValue = evalFn({
-              properties: undefined,
-              zoom: defaultZoom,
-            });
-
-            if (typeof widthValue === "number" && Number.isFinite(widthValue)) {
-              // MapLibre text-halo-width is in screen pixels
-              // Navara outlineWidth is in texels at 64px/em reference density
-              // For now, use the value directly (may need adjustment based on text-size)
-              layerDesc.text.outlineWidth = widthValue;
-            }
-          }
-        } catch (err) {
-          console.warn(
-            `Failed to evaluate text-halo-width for layer "${styleLayer.id}":`,
-            err,
-          );
+      if (styleLayer.paint?.["text-halo-width"] !== undefined) {
+        const widthValue = evaluateLayerProperty(
+          engine,
+          styleLayer,
+          "paint",
+          "text-halo-width",
+        );
+        if (typeof widthValue === "number" && Number.isFinite(widthValue)) {
+          // MapLibre text-halo-width is in screen pixels
+          // Navara outlineWidth is in texels at 64px/em reference density
+          // For now, use the value directly (may need adjustment based on text-size)
+          layerDesc.text.outlineWidth = widthValue;
         }
       }
 

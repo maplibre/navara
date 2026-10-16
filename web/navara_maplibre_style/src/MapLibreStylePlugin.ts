@@ -23,7 +23,10 @@ import {
   createPaintEvaluators,
   toEvaluatedValue,
 } from "./adapters/toEvaluatedValue";
-import { toLayerDescription } from "./adapters/toLayerDescription";
+import {
+  getSymbolPlacement,
+  toLayerDescription,
+} from "./adapters/toLayerDescription";
 import { BackgroundHandler } from "./BackgroundHandler";
 import { RustStyleEngine } from "./engine/RustStyleEngine";
 import type { ParsedStyle, StyleLayer } from "./engine/types";
@@ -753,10 +756,12 @@ export class MapLibreStylePlugin extends Plugin<ThreeView, ViewContext> {
 
     // Determine MapLibre feature geometry type for expression evaluation
     // This is the GeoJSON geometry type used in MapLibre expressions (e.g., ["geometry-type"])
+    // Symbol layers placed along lines only consume line geometry (see toLayerDescription).
     const featureGeometryType =
       styleLayer.type === "fill" || styleLayer.type === "fill-extrusion"
         ? "Polygon"
-        : styleLayer.type === "line"
+        : styleLayer.type === "line" ||
+            getSymbolPlacement(styleLayer, this.engine) !== "point"
           ? "LineString"
           : "Point";
 
@@ -835,8 +840,8 @@ export class MapLibreStylePlugin extends Plugin<ThreeView, ViewContext> {
         const iconProps = [
           "icon-image",
           "icon-size",
-          "icon-anchor",
-          "icon-offset",
+          "icon-rotate",
+          "symbol-sort-key",
         ];
         for (const key of iconProps) {
           const evalFn = layoutEvaluators[key];
@@ -851,10 +856,10 @@ export class MapLibreStylePlugin extends Plugin<ThreeView, ViewContext> {
         const textProps = [
           "text-field",
           "text-size",
-          "text-font",
           "text-letter-spacing",
-          "text-anchor",
-          "text-offset",
+          "text-rotate",
+          "text-transform",
+          "symbol-sort-key",
         ];
         for (const key of textProps) {
           const evalFn = layoutEvaluators[key];

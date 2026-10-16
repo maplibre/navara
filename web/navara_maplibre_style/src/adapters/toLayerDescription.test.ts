@@ -1,9 +1,10 @@
 import type { Source } from "@navaramap/three";
 import { describe, it, expect, vi } from "vitest";
 
+import { JsStyleEngine } from "../engine/JsStyleEngine";
 import type { StyleLayer } from "../engine/types";
 
-import { toLayerDescription } from "./toLayerDescription";
+import { getSymbolPlacement, toLayerDescription } from "./toLayerDescription";
 
 // Mock @navaramap/three to avoid loading navara_worker
 vi.mock("@navaramap/three", () => ({
@@ -297,6 +298,186 @@ describe("toLayerDescription", () => {
       );
 
       consoleWarnSpy.mockRestore();
+    });
+  });
+
+  describe("symbol layout properties", () => {
+    const engine = new JsStyleEngine();
+    const symbolLayer = (layout: StyleLayer["layout"]): StyleLayer =>
+      ({
+        id: "symbols",
+        type: "symbol",
+        source: "test",
+        layout,
+      }) as StyleLayer;
+    const buildSymbol = (layout: StyleLayer["layout"]) =>
+      toLayerDescription(mockSource, symbolLayer(layout), "Font", engine) as {
+        text?: Record<string, unknown>;
+        billboard?: Record<string, unknown>;
+      };
+
+    it("maps spec defaults for point placement", () => {
+      const { text, billboard } = buildSymbol({
+        "text-field": "{name}",
+        "icon-image": "marker",
+      });
+
+      expect(text).toMatchObject({
+        placement: "point",
+        textFacing: "upright",
+        rotateWithCamera: true,
+        spreadGlyphs: false,
+        declutter: true,
+        maxWidth: 10,
+        textAlign: "center",
+      });
+      expect(text?.geometryTypes).toEqual(["point", "line", "polygon"]);
+      expect(billboard).toMatchObject({
+        placement: "point",
+        billboardFacing: "upright",
+        rotateWithCamera: true,
+        declutter: true,
+      });
+      expect(billboard?.geometryTypes).toEqual(["point", "line", "polygon"]);
+    });
+
+    it("keeps point geometry only when the filter tests the geometry type", () => {
+      for (const filter of [
+        ["==", "$type", "Point"],
+        ["==", ["geometry-type"], "Point"],
+      ]) {
+        const { text, billboard } = toLayerDescription(
+          mockSource,
+          {
+            ...symbolLayer({ "text-field": "{name}", "icon-image": "marker" }),
+            filter,
+          } as StyleLayer,
+          "Font",
+          engine,
+        ) as {
+          text?: Record<string, unknown>;
+          billboard?: Record<string, unknown>;
+        };
+        expect(text).not.toHaveProperty("geometryTypes");
+        expect(billboard).not.toHaveProperty("geometryTypes");
+      }
+    });
+
+    it("maps line placement to line geometry with map-aligned text", () => {
+      const { text, billboard } = buildSymbol({
+        "text-field": "{name}",
+        "icon-image": "shield",
+        "symbol-placement": "line",
+        "symbol-spacing": 400,
+        "text-max-angle": 30,
+        "text-keep-upright": false,
+        "text-max-width": 5,
+        "text-justify": "left",
+      });
+
+      expect(text).toMatchObject({
+        placement: "line",
+        geometryTypes: ["line"],
+        spacing: 400,
+        maxAngle: 30,
+        keepUpright: false,
+        textFacing: "flat",
+        rotateWithCamera: false,
+        maxWidth: 0,
+        textAlign: "center",
+      });
+      expect(billboard).toMatchObject({
+        placement: "line",
+        geometryTypes: ["line"],
+        spacing: 400,
+        rotateToLine: true,
+        billboardFacing: "flat",
+        rotateWithCamera: false,
+      });
+    });
+
+    it("maps viewport-glyph to spread glyphs facing the camera", () => {
+      const { text } = buildSymbol({
+        "text-field": "{name}",
+        "symbol-placement": "line-center",
+        "text-rotation-alignment": "viewport-glyph",
+      });
+
+      expect(text).toMatchObject({
+        placement: "line-center",
+        spreadGlyphs: true,
+        rotateWithCamera: true,
+        textFacing: "upright",
+      });
+    });
+
+    it("maps explicit pitch alignment independently of rotation", () => {
+      const { text, billboard } = buildSymbol({
+        "text-field": "{name}",
+        "icon-image": "marker",
+        "text-pitch-alignment": "map",
+        "icon-rotation-alignment": "map",
+        "icon-pitch-alignment": "viewport",
+      });
+
+      expect(text).toMatchObject({
+        textFacing: "flat",
+        rotateWithCamera: true,
+      });
+      expect(billboard).toMatchObject({
+        billboardFacing: "upright",
+        rotateWithCamera: false,
+      });
+    });
+
+    it("maps overlap properties to declutter", () => {
+      const allow = buildSymbol({
+        "text-field": "{name}",
+        "icon-image": "marker",
+        "text-allow-overlap": true,
+        "icon-allow-overlap": true,
+      });
+      expect(allow.text?.declutter).toBe(false);
+      expect(allow.billboard?.declutter).toBe(false);
+
+      // `*-overlap` takes precedence over `*-allow-overlap`.
+      const overlap = buildSymbol({
+        "text-field": "{name}",
+        "icon-image": "marker",
+        "text-allow-overlap": true,
+        "text-overlap": "cooperative",
+        "icon-overlap": "always",
+      });
+      expect(overlap.text?.declutter).toBe(true);
+      expect(overlap.billboard?.declutter).toBe(false);
+    });
+
+    it("maps an explicit icon-anchor to the sprite center", () => {
+      expect(
+        buildSymbol({ "icon-image": "pin", "icon-anchor": "bottom" }).billboard
+          ?.center,
+      ).toEqual({ x: 0, y: -0.5 });
+      expect(
+        buildSymbol({ "icon-image": "pin", "icon-anchor": "top-left" })
+          .billboard?.center,
+      ).toEqual({ x: -0.5, y: 0.5 });
+    });
+
+    it("keeps the icon/text pairing center when icon-anchor is unset", () => {
+      expect(
+        buildSymbol({ "icon-image": "pin", "text-field": "{name}" }).billboard
+          ?.center,
+      ).toEqual({ x: 1.0, y: -0.5 });
+    });
+
+    it("resolves symbol placement", () => {
+      expect(
+        getSymbolPlacement(symbolLayer({ "symbol-placement": "line" }), engine),
+      ).toBe("line");
+      expect(getSymbolPlacement(symbolLayer({}), engine)).toBe("point");
+      expect(
+        getSymbolPlacement(symbolLayer({ "symbol-placement": "line" })),
+      ).toBe("point");
     });
   });
 });

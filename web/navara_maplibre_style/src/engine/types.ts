@@ -201,6 +201,24 @@ export type SymbolLayout = {
   "text-offset"?: ValueExpression;
   "text-anchor"?: ValueExpression;
   "text-font"?: ValueExpression;
+  "text-rotate"?: ValueExpression;
+  "text-transform"?: ValueExpression;
+  "text-max-width"?: ValueExpression;
+  "text-justify"?: ValueExpression;
+  "text-max-angle"?: ValueExpression;
+  "text-keep-upright"?: ValueExpression;
+  "text-rotation-alignment"?: ValueExpression;
+  "text-pitch-alignment"?: ValueExpression;
+  "text-allow-overlap"?: ValueExpression;
+  "text-overlap"?: ValueExpression;
+  "icon-rotate"?: ValueExpression;
+  "icon-rotation-alignment"?: ValueExpression;
+  "icon-pitch-alignment"?: ValueExpression;
+  "icon-allow-overlap"?: ValueExpression;
+  "icon-overlap"?: ValueExpression;
+  "symbol-placement"?: ValueExpression;
+  "symbol-spacing"?: ValueExpression;
+  "symbol-sort-key"?: ValueExpression;
 };
 
 export type SymbolPaint = {

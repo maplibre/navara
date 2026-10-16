@@ -202,7 +202,7 @@
           "status": "❌"
         },
         "icon-anchor": {
-          "status": "❌"
+          "status": "⚠️ Evaluated once at layer construction"
         },
         "text-offset": {
           "status": "❌"
@@ -211,12 +211,66 @@
           "status": "❌"
         },
         "text-rotate": {
-          "status": "❌"
+          "status": "✅"
         },
         "icon-rotate": {
-          "status": "❌"
+          "status": "✅"
         },
         "symbol-sort-key": {
+          "status": "⚠️ Sets placement priority only, not draw order"
+        },
+        "symbol-placement": {
+          "status": "⚠️ Line placement labels line geometry only, not polygon outlines"
+        },
+        "symbol-spacing": {
+          "status": "⚠️ Evaluated once at layer construction"
+        },
+        "text-transform": {
+          "status": "✅"
+        },
+        "text-max-width": {
+          "status": "⚠️ Evaluated once at layer construction"
+        },
+        "text-justify": {
+          "status": "⚠️ Evaluated once at layer construction; auto is centered"
+        },
+        "text-max-angle": {
+          "status": "⚠️ Evaluated once at layer construction"
+        },
+        "text-keep-upright": {
+          "status": "⚠️ Evaluated once at layer construction"
+        },
+        "text-rotation-alignment": {
+          "status": "⚠️ viewport on line placement still follows the line"
+        },
+        "text-pitch-alignment": {
+          "status": "⚠️ viewport with map rotation stands as a fixed signboard"
+        },
+        "icon-rotation-alignment": {
+          "status": "✅"
+        },
+        "icon-pitch-alignment": {
+          "status": "⚠️ viewport with map rotation stands as a fixed signboard"
+        },
+        "text-allow-overlap": {
+          "status": "⚠️ Also lets other symbols overlap the text"
+        },
+        "icon-allow-overlap": {
+          "status": "⚠️ Also lets other symbols overlap the icon"
+        },
+        "text-overlap": {
+          "status": "⚠️ cooperative is treated as never"
+        },
+        "icon-overlap": {
+          "status": "⚠️ cooperative is treated as never"
+        },
+        "text-ignore-placement": {
+          "status": "❌"
+        },
+        "icon-ignore-placement": {
+          "status": "❌"
+        },
+        "text-line-height": {
           "status": "❌"
         }
       }
