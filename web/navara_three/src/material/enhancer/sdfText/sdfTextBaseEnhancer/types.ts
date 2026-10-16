@@ -74,15 +74,14 @@ export type SdfTextBaseProps = {
 
   // Mutable state
   center?: [number, number];
-  /** `false` (the default) stands the quad up; `true` lays it on the globe
-   *  surface around the anchor, wrapped to its curvature, so labels read as
-   *  painted on the globe. */
+  /** `false` (the default) keeps the quad in the screen plane; `true` lays it
+   *  on the globe surface around the anchor, wrapped to its curvature, so
+   *  labels read as painted on the globe. Resolved by the mesh. */
   flatFacing?: boolean;
-  /** Whether the quad turns to follow the camera. `true` (the default) keeps
-   *  it facing the viewer — a screen-aligned billboard, or for `flatFacing` a
-   *  yaw around the surface normal that keeps text reading left-to-right.
-   *  `false` freezes it in the anchor's east-north-up frame, so the camera
-   *  never reorients it. */
+  /** `true` (the default) keeps the quad reading left-to-right — a
+   *  screen-aligned billboard, or for `flatFacing` a yaw around the surface
+   *  normal. `false` aligns it with the map: x-axis east. Resolved by the
+   *  mesh. */
   rotateWithCamera?: boolean;
   /** Spin of the quad inside its own plane about the anchor, in **degrees**,
    *  clockwise seen from the front. Converted to radians in state. */
@@ -92,7 +91,8 @@ export type SdfTextBaseProps = {
    *  size. Positive is left of the direction of travel. Line placement only. */
   lineOffset?: number;
   /** Each glyph of an along-line label is its own piece; with
-   *  `rotateWithCamera` it also turns to the camera. Line placement only. */
+   *  `rotateWithCamera` it also turns to the camera, and without it the
+   *  label is drawn straight at its anchor. Line placement only. */
   spreadGlyphs?: boolean;
   offsetDepth?: boolean;
   outlineWidth?: number; // raw width, converted in state via sdfRadiusFor(useMsdf)

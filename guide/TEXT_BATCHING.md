@@ -189,28 +189,37 @@ single quad.
 A glyph's vertex position is its unit quad offset from the label's anchor **in
 view space**: `mvPosition + vec4(localPos.x * right + localPos.y * up, 0.0) *
 scaleFactor`. All four orientation modes differ only in that `(right, up)`
-pair, which `nvr_quadOrientation` resolves from two booleans —
-`uFlatFacing` picks the plane, `uRotateWithCamera` picks whether the quad
-follows the camera or is frozen in the anchor's east-north-up frame:
+pair, which `nvr_quadOrientation` resolves from two booleans that mirror
+MapLibre's two alignments — `uFlatFacing` picks the plane (`text-pitch-alignment`:
+screen or ground), `uRotateWithCamera` what the quad turns with inside it
+(`text-rotation-alignment`: the camera or the map):
 
 | `uFlatFacing` | `uRotateWithCamera` | right, up | behaviour |
 | --- | --- | --- | --- |
 | `false` | `true` | view `+x`, `+y` | screen-aligned billboard (the default) |
-| `false` | `false` | east, surface normal | signboard standing on the surface |
+| `false` | `false` | east's heading on screen, its screen perpendicular | on screen, turned with the camera heading so x points east |
 | `true` | `true` | screen `+x` projected onto the tangent plane | lies on the surface, yawed to keep reading left-to-right |
 | `true` | `false` | east, north | lies on the surface, pinned north-up |
 
-A zero-Z offset is exactly what makes a quad screen-aligned, so only the first
-row is camera-relative; the rest rotate a *world* direction into view space
+A zero-Z offset is exactly what makes a quad screen-aligned, so both upright
+rows have zero-Z axes; the flat rows rotate a *world* direction into view space
 (`viewMatrix * vec4(dir, 0.0)`, the idiom `mvr_getMvHeightOffset` already uses).
 The surface normal is `normalize(absTransformed)` — the same spherical
 approximation as the height offset, reusing the ECEF position horizon culling
 already reconstructed.
 
-The two `uRotateWithCamera == false` rows share one branch: both are the
-anchor's east-north-up frame, differing only in whether up is north (flat) or
-the surface normal (upright). Because neither reads the camera, the basis is a
-pure function of the anchor and has no camera-dependent singularity.
+The upright map-aligned row measures the camera heading β (clockwise from
+north) in the tangent plane: `t`, screen right projected onto it as in the flat
+yawed row, is `cos β · east − sin β · north`, so `right = (t·east, −t·north, 0)`
+and `up` is its screen perpendicular. That turns the label by the bearing
+alone, independent of pitch, exactly as MapLibre's `rotateInShader` turns a
+`map`/`viewport` label, and it is unit length without normalizing.
+
+Facing and `rotateWithCamera` arrive already resolved: a material leaving
+either unset gets MapLibre's `auto` (`rotateWithCamera` follows the camera only
+for point placement; facing is flat exactly when map-aligned), applied on the
+CPU by `resolveOrientation` (`material/orientation.ts`) wherever the meshes
+read the material.
 
 The orientation resolver lives in `chunks/quad_orientation.glsl`, shared with
 `instancedSprite.vert.glsl` so labels and sprites cannot drift apart. It takes
@@ -271,43 +280,42 @@ back along the view ray by twice their chord's sagitta (`s² / 4R`, added to
 `vFragDepth` in meters), which bounds the mismatch. The push is zero for upright
 labels and negligible at street scale.
 
-> **`rotateWithCamera` must not be implemented as a screen-space spin.** An
-> earlier revision gave the screen-plane quad an up vector of *north projected
-> onto the screen*. That inverts every label whenever the camera faces south —
-> north then points down-screen — and its direction is undefined outright when
-> north lies along the view axis. Freezing the quad in the world frame, as
-> above, is what makes the mode well-posed.
+> **Never derive a screen-plane axis by projecting a world direction onto the
+> screen.** An earlier revision gave the screen-plane quad an up vector of
+> *north projected onto the screen*, whose direction is undefined outright when
+> north lies along the view axis — the camera level and looking north. The
+> heading above is instead measured in the tangent plane, from the same
+> projection the flat yawed row uses, so it degenerates only where the normal
+> points along screen x, the one case that row already handles. Reading upside
+> down when the camera faces south is not a fault of it: it is what aligning
+> with the map means, for the flat north-up row and MapLibre alike.
 
 Consequences worth knowing:
 
 - **The background strips share the basis and the bend**, so the box stays
   on the same surface as its glyphs in every mode.
-- **A world-frozen quad has a back and an edge.** `textFacing: "upright"` with
-  `rotateWithCamera: false` is a real signboard: invisible edge-on from
-  directly above, and mirrored when viewed from behind. That is inherent to a
-  fixed-orientation quad, not a defect. Its face points south, so the default
-  north-looking camera reads it.
 - **The batch material is `DoubleSide` by default**, as is
   `InstancedSpriteMesh`'s. The material's `backfaceCulling` option switches
   both to `FrontSide` (the enhancer's `updateMaterialProps` owns `side`).
-  Culling would delete a world-locked quad outright as soon as the camera
-  crossed to its far side, which is the case where a mirrored quad is usually
-  the wanted result, so it stays opt-in. Opting in is useful for flat quads:
-  their front faces away from the globe, so the triangles of a large flat
-  label or sprite that wrap over the horizon face away from the camera and
-  are culled one by one, trimming it at the limb (horizon culling itself only
-  tests the anchor). An upright camera-following quad never presents a back
-  face, and `screenSpaceNormal()` in both fragment shaders already flips an
-  away-facing normal before it reaches the G-buffer.
+  Only a flat quad can show its back: its front faces away from the globe, so
+  the triangles of a large flat label or sprite that wrap over the horizon
+  face away from the camera, and culling trims it at the limb one triangle at
+  a time (horizon culling itself only tests the anchor). An upright quad lies
+  in the screen plane and never presents a back face, and
+  `screenSpaceNormal()` in both fragment shaders already flips an away-facing
+  normal before it reaches the G-buffer.
 - **A point label's declutter box is its unrotated block.** The Rust kernel
   projects the anchor and scales the label's em box by pixels-per-meter
   (`crates/navara_wasm_api/src/declutter.rs`), ignoring the basis above. That
-  over-estimates a foreshortened flat or frozen label, which is conservative,
-  but does not follow `rotation`: a rotated label can overrun its box. Line
+  over-estimates a foreshortened flat label, which is conservative, but
+  follows neither `rotation` nor the heading an upright map-aligned label is
+  turned by: a turned label can overrun its box. Line
   labels are the exception — the line-placement pass hands declutter the
   rotated box they actually cover (see [LINE_PLACEMENT.md](LINE_PLACEMENT.md)).
-- **A label along a line skips this basis.** Its axes come from the line under
-  each word (see
+- **A label bent along a line skips this basis.** Its axes come from the line
+  under each word, except for spread glyphs following the camera, and a
+  straight label (`rotateWithCamera` without `spreadGlyphs`) lays out exactly
+  as a point label (see
   [LINE_PLACEMENT.md](LINE_PLACEMENT.md#drawing-along-a-line)).
 
 ## Picking

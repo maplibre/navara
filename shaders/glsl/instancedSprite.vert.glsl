@@ -155,7 +155,8 @@ void main() {
     }
 
     // The quad's axes: view-space x/y for a plain billboard, otherwise a pair
-    // derived from the anchor's east-north-up frame (see quad_orientation).
+    // derived from the anchor's east-north-up frame or the camera heading
+    // there (see quad_orientation).
     vec3 axisRight;
     vec3 axisUp;
 #ifdef USE_INSTANCE_BEARING

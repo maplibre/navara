@@ -6,6 +6,8 @@ import {
   PATH_META_STRIDE,
   SCALE_BAND_STRIDE,
   findRepeatedLabels,
+  LineGlyphMode,
+  lineGlyphMode,
   type LinePath,
   type PackableLabel,
   packLineLabelFits,
@@ -49,6 +51,7 @@ function label(over: Partial<PackableLabel> = {}): PackableLabel {
     minXEm: 0,
     maxXEm: widthEm,
     maxWordHalfEm: 1.5,
+    maxGlyphHalfEm: 0.4,
     fontSize: 10,
     ...over,
   };
@@ -61,7 +64,11 @@ const options = {
   center: [0.5, 0] as const,
   lineOffset: 0,
   readFlip: () => false,
-  readOrientation: () => ({ flatFacing: true, facesCamera: false }),
+  readOrientation: () => ({
+    flatFacing: true,
+    mode: LineGlyphMode.Ground,
+    rotation: 0,
+  }),
 };
 
 /** The span the samples cover either side of the anchor. */
@@ -332,22 +339,56 @@ describe("anchor and offset", () => {
     expect(lifted.slice(13, 17)).toEqual(plain.slice(13, 17));
   });
 
-  it("resolves the facing per label, in both phases", () => {
+  it("resolves the orientation per label, in both phases", () => {
     const p = path(10, 500);
     const labels = [label({ slot: 0 }), label({ slot: 1 })];
     const perLabel = {
       ...options,
       readOrientation: (slot: number) => ({
         flatFacing: slot === 1,
-        facesCamera: slot === 0,
+        mode: slot === 0 ? LineGlyphMode.ScreenTangent : LineGlyphMode.Ground,
+        rotation: slot === 0 ? 0.5 : 0,
       }),
     };
     const packed = packLineLabels(labels, p, perLabel).labels;
-    expect([packed[18], packed[LINE_LABEL_STRIDE + 18]]).toEqual([0, 1]);
-    expect([packed[23], packed[LINE_LABEL_STRIDE + 23]]).toEqual([1, 0]);
+    const both = (k: number) => [packed[k], packed[LINE_LABEL_STRIDE + k]];
+    expect(both(18)).toEqual([0, 1]);
+    expect(both(23)).toEqual([
+      LineGlyphMode.ScreenTangent,
+      LineGlyphMode.Ground,
+    ]);
+    expect(both(24)).toEqual([0.5, 0]);
+    // The widest glyph's half, in the font size's units.
+    expect(both(25)).toEqual([4, 4]);
     const fit = packLineLabelFits(labels, p, perLabel);
-    expect([fit[11], fit[LINE_LABEL_FIT_STRIDE + 11]]).toEqual([1, 0]);
+    expect([fit[11], fit[LINE_LABEL_FIT_STRIDE + 11]]).toEqual([
+      LineGlyphMode.ScreenTangent,
+      LineGlyphMode.Ground,
+    ]);
   });
+});
+
+describe("lineGlyphMode", () => {
+  // MapLibre's text-rotation-alignment on a line: `map` follows the line
+  // (on the ground when pitched with the map, on screen otherwise),
+  // `viewport-glyph` turns each glyph to the camera, `viewport` does not bend.
+  it.each([
+    [true, false, false, LineGlyphMode.Ground],
+    [true, false, true, LineGlyphMode.Ground],
+    [false, false, false, LineGlyphMode.ScreenTangent],
+    [false, false, true, LineGlyphMode.ScreenTangent],
+    [true, true, true, LineGlyphMode.FacesCamera],
+    [false, true, true, LineGlyphMode.FacesCamera],
+    [true, true, false, LineGlyphMode.Straight],
+    [false, true, false, LineGlyphMode.Straight],
+  ])(
+    "flat %s, rotateWithCamera %s, spreadGlyphs %s",
+    (flatFacing, rotateWithCamera, spreadGlyphs, mode) => {
+      expect(
+        lineGlyphMode({ flatFacing, rotateWithCamera, spreadGlyphs }),
+      ).toBe(mode);
+    },
+  );
 });
 
 describe("takeLinePath", () => {

@@ -219,9 +219,9 @@ const labelsLayerFactory =
         keepUpright: params.keepUpright,
         spreadGlyphs: params.spreadGlyphs,
         lineOffset: params.lineOffset,
-        // Along a line the label takes its direction from the line, so
-        // `rotation` has no effect here. `rotateWithCamera` only matters with
-        // `spreadGlyphs`: off keeps each glyph on the line, as street names are.
+        // Flat and aligned with the map, the label lies on the road and
+        // follows it, as street names do — also what both resolve to along a
+        // line when left unset.
         textFacing: "flat",
         rotateWithCamera: false,
         size: params.size,

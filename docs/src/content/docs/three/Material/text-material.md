@@ -15,7 +15,7 @@ sidebar:
 
 **Description:** Whether the label is hidden when seen from behind. When `false`, both sides of the label are drawn. When `true`, only its front is drawn.
 
-It has no effect on an upright label that follows the camera (the default), which always shows its front. It matters in two cases. With [`rotateWithCamera`](#rotatewithcamera) set to `false`, the label can be seen from behind, where it appears mirrored, and turning this on hides it instead. With [`textFacing`](#textfacing) set to `"flat"`, its front faces away from the globe, so turning this on also hides the parts of a large label that wrap over the horizon.
+Only a flat label (see [`textFacing`](#textfacing)) has a back the camera can see. Its front faces away from the globe, so turning this on hides the parts of a large label that wrap over the horizon. It has no effect on an upright label, which always lies in the screen plane facing the viewer.
 
 **Default:** `false`
 
@@ -338,7 +338,7 @@ view.addFontFamily({
 
 **Type:** `boolean | undefined`
 
-**Description:** Flips a label placed along a line when it would otherwise read upside down, so that names stay legible whichever way the line was drawn. Only used when [`placement`](#placement) is `"line"` or `"line-center"`. Which way a label reads depends on the camera, so it is decided again as the camera moves, and `layer.update()` applies a new value to labels that are already shown.
+**Description:** Flips a label placed along a line when it would otherwise read upside down, so that names stay legible whichever way the line was drawn. Only used when [`placement`](#placement) is `"line"` or `"line-center"`, and never flips a label drawn straight (see [`rotateWithCamera`](#rotatewithcamera)). Which way a label reads depends on the camera, so it is decided again as the camera moves, and `layer.update()` applies a new value to labels that are already shown.
 
 **Default:** `true`
 
@@ -412,7 +412,7 @@ view.addFontFamily({
 
 **Type:** `number | undefined`
 
-**Description:** Shifts a label placed along a line sideways, away from the line. Positive values move it to the left of the line's direction of travel, which puts it above the line when the label reads left to right. The value uses the same unit as [`size`](#size): meters when [`sizeInMeters`](#sizeinmeters) is `true`, pixels otherwise. Use it to set a name beside a road instead of on top of it. Only used when [`placement`](#placement) is `"line"` or `"line-center"`. `layer.update()` applies a new value to labels that are already shown.
+**Description:** Shifts a label placed along a line sideways, away from the line. Positive values move it to the left of the line's direction of travel, which puts it above the line when the label reads left to right. The value uses the same unit as [`size`](#size): meters when [`sizeInMeters`](#sizeinmeters) is `true`, pixels otherwise. Use it to set a name beside a road instead of on top of it. Only used when [`placement`](#placement) is `"line"` or `"line-center"`, and not by a label drawn straight (see [`rotateWithCamera`](#rotatewithcamera)). `layer.update()` applies a new value to labels that are already shown.
 
 **Default:** `0.0`
 
@@ -434,7 +434,7 @@ view.addFontFamily({
 
 **Type:** `number | undefined`
 
-**Description:** The largest turn, in degrees, that the line may make under a label placed along it before the label is hidden as unreadable. The turn is added up over a short stretch of the label, about one and a half times the font size, which slides along it: several small corners close together count together and can hide the label, while a long gentle curve is kept however far it turns in total. Only used when [`placement`](#placement) is `"line"` or `"line-center"`. Whether a label fits is decided again as the camera moves, and `layer.update()` applies a new value to labels that are already shown.
+**Description:** The largest turn, in degrees, that the line may make under a label placed along it before the label is hidden as unreadable. The turn is added up over a short stretch of the label, about one and a half times the font size, which slides along it: several small corners close together count together and can hide the label, while a long gentle curve is kept however far it turns in total. Only used when [`placement`](#placement) is `"line"` or `"line-center"`, and not for a label drawn straight (see [`rotateWithCamera`](#rotatewithcamera)), which does not bend. Whether a label fits is decided again as the camera moves, and `layer.update()` applies a new value to labels that are already shown.
 
 **Default:** `45.0`
 
@@ -567,7 +567,7 @@ import { Color } from "@navaramap/three";
 **Description:** How labels are placed on line and polygon geometry. Only takes effect when [`geometryTypes`](#geometrytypes) includes `"line"` or `"polygon"`. Point geometry is always labeled at the point itself.
 
 - `"point"`: one label per line string, at its first vertex, and one label per polygon, inside it at the point farthest from its edges. On a vector-tile source, a line whose first vertex lies outside the tile (where the tile cut it) is not labeled in that tile.
-- `"line"`: labels repeat along the line every [`spacing`](#spacing) and follow its curve word by word, like a street name on a map. Each word turns to match the line under it, and the letters within a word stay straight. Set [`spreadGlyphs`](#spreadglyphs) to turn each glyph instead. Polygon boundary rings, holes included, are followed the same way.
+- `"line"`: labels repeat along the line every [`spacing`](#spacing) and, by default, follow its curve word by word, like a street name on a map. Each word turns to match the line under it, and the letters within a word stay straight. Set [`spreadGlyphs`](#spreadglyphs) to turn each glyph instead. Polygon boundary rings, holes included, are followed the same way.
 - `"line-center"`: a single label at the halfway point along each line string or polygon ring, bent along it in the same way.
 
 A label along a line is hidden instead of drawn when it would not read well:
@@ -577,7 +577,17 @@ A label along a line is hidden instead of drawn when it would not read well:
 
 These checks run again as the camera moves.
 
-Along-line labels also accept [`keepUpright`](#keepupright), [`lineOffset`](#lineoffset), and [`spreadGlyphs`](#spreadglyphs). They are usually combined with `textFacing: "flat"` so the text lies on the surface along the line.
+Along-line labels also accept [`keepUpright`](#keepupright), [`lineOffset`](#lineoffset), and [`spreadGlyphs`](#spreadglyphs). With none of [`rotateWithCamera`](#rotatewithcamera), [`spreadGlyphs`](#spreadglyphs), and [`textFacing`](#textfacing) set, a label lies flat on the surface and follows the line. Together they choose the layout:
+
+| `rotateWithCamera` | `spreadGlyphs` | `textFacing` | Result |
+| --- | --- | --- | --- |
+| `false` (default) | `false` (default) | `"flat"` (default) | Words lie on the surface along the line, each word straight |
+| `false` | `true` | `"flat"` | Each glyph lies on the surface, turned to the line under it (MapLibre's default street name: `text-rotation-alignment` and `text-pitch-alignment` both `"map"`) |
+| `false` | either | `"upright"` | Glyphs, or words without `spreadGlyphs`, stay in the screen plane at the anchor's size. They are spaced along the line as it appears on screen, each turned to the line's direction on screen (`text-rotation-alignment: "map"` with `text-pitch-alignment: "viewport"`) |
+| `true` | `true` | either | Each glyph sits on the line and turns to the camera like a point label, spaced on screen (`text-rotation-alignment: "viewport-glyph"`) |
+| `true` | `false` | either | The label is not bent: it is drawn straight at each anchor, exactly like a point label, rotation and background included (`text-rotation-alignment: "viewport"`) |
+
+A straight label still repeats every [`spacing`](#spacing), but it is never flipped by [`keepUpright`](#keepupright), is not checked against [`maxAngle`](#maxangle), and ignores [`lineOffset`](#lineoffset).
 
 This option applies when the layer's geometry is built: set it at layer creation. `layer.update()` does not rebuild labels that are already loaded, so remove the layer and add it again to change it.
 
@@ -599,17 +609,17 @@ This option applies when the layer's geometry is built: set it at layer creation
 
 **Type:** `boolean | undefined`
 
-**Description:** Whether the label turns to follow the camera.
+**Description:** Whether the label turns with the camera or with the map, as MapLibre's `text-rotation-alignment` (`true` is `"viewport"`, `false` is `"map"`).
 
-When `true`, the label always faces the viewer. With [`textFacing`](#textfacing) set to `"upright"`, it is a screen-aligned billboard. With `"flat"`, the label turns around the globe's surface normal so the text still reads left to right.
+When `true`, the label reads left to right on screen. With [`textFacing`](#textfacing) set to `"upright"`, it is a screen-aligned billboard. With `"flat"`, the label turns around the globe's surface normal so the text still reads left to right.
 
-When `false`, the label is fixed in its anchor's local east/north/up frame, and moving the camera never reorients it. With `"upright"`, it becomes a signboard standing on the surface and facing south. It is readable from a camera looking northward, seen edge-on from directly above, and mirrored from behind. With `"flat"`, it is a north-up label painted on the surface that turns with the map.
+When `false`, the label is aligned with the map. With `"upright"`, it stays in the screen plane at full size but turns with the camera heading so that its x-axis keeps pointing east: the text reads along the east-west direction, and reads upside down when the camera faces south, as a north-up map label does. With `"flat"`, it is a north-up label painted on the surface that turns with the map.
 
-Not used when [`placement`](#placement) is `"line"` or `"line-center"`: those labels follow the line's direction. The exception is [`spreadGlyphs`](#spreadglyphs), where `true` turns each glyph this way while it keeps its place on the line.
+When [`placement`](#placement) is `"line"` or `"line-center"`, `false` makes the label follow the line, and `true` draws it straight at each anchor like a point label unless [`spreadGlyphs`](#spreadglyphs) is set. See [`placement`](#placement) for the resulting layouts.
 
 Can also be set per feature from a [feature evaluator](../../api/feature-evaluator/).
 
-**Default:** `true`
+**Default:** `true` for `placement: "point"`, `false` along a line (MapLibre's `"auto"`)
 
 **Example:**
 
@@ -626,7 +636,9 @@ Can also be set per feature from a [feature evaluator](../../api/feature-evaluat
 
 **Type:** `number | undefined`
 
-**Description:** Rotates the label within its own plane around its anchor point, in degrees, clockwise as seen from the front. The rotation is applied on top of the orientation that [`textFacing`](#textfacing) and [`rotateWithCamera`](#rotatewithcamera) resolve to. It spins a billboard on screen and turns a surface label like a compass bearing. Not used when [`placement`](#placement) is `"line"` or `"line-center"`.
+**Description:** Rotates the label within its own plane around its anchor point, in degrees, clockwise as seen from the front. The rotation is applied on top of the orientation that [`textFacing`](#textfacing) and [`rotateWithCamera`](#rotatewithcamera) resolve to. It spins a billboard on screen and turns a surface label like a compass bearing.
+
+When [`placement`](#placement) is `"line"` or `"line-center"`, each glyph spins about its own center and keeps its place on the line, as MapLibre's `text-rotate` does on line labels. A label drawn straight (`rotateWithCamera: true` without [`spreadGlyphs`](#spreadglyphs)) turns as a whole around its anchor, as a point label does.
 
 [`center`](#center) decides where inside the text the pivot sits. For example, `{ x: 0.5, y: 0.5 }` turns the label around its middle, and `{ x: 0.5, y: 0.0 }` turns it around the bottom of the text block.
 
@@ -757,8 +769,8 @@ This option applies when the layer's geometry is built. `layer.update()` does no
 
 **Description:** Places each glyph of a label along a line on its own instead of each word. How a glyph turns depends on [`rotateWithCamera`](#rotatewithcamera):
 
-- `false`: each glyph turns to match the line under it, the way MapLibre lays out `symbol-placement: "line"` labels. A word bends with a curve instead of staying straight, and on a tight bend the letters of a word spread apart.
-- `true` (the default): each glyph turns to follow the camera, as a point label does with the same [`textFacing`](#textfacing), so the text stays readable however the line runs (MapLibre's `text-rotation-alignment: "viewport-glyph"`). The glyphs also keep one size and are spaced along the line as it appears on screen, so a name stays evenly spaced where the line runs away from the camera.
+- `false` (the default along a line): each glyph turns to match the line under it, the way MapLibre lays out `symbol-placement: "line"` labels. A word bends with a curve instead of staying straight, and on a tight bend the letters of a word spread apart.
+- `true`: each glyph turns to follow the camera, as a point label does with the same [`textFacing`](#textfacing), so the text stays readable however the line runs (MapLibre's `text-rotation-alignment: "viewport-glyph"`). The glyphs also keep one size and are spaced along the line as it appears on screen, so a name stays evenly spaced where the line runs away from the camera. Without `spreadGlyphs`, `rotateWithCamera: true` draws the label straight instead.
 
 Only used when [`placement`](#placement) is `"line"` or `"line-center"`. `layer.update()` applies a new value to labels that are already shown.
 
@@ -820,20 +832,22 @@ Can also be set per feature from a [feature evaluator](../../api/feature-evaluat
 
 **Type:** `"upright" | "flat" | undefined`
 
-**Description:** Whether the label stands up or lies on the globe surface. `"upright"` keeps the label standing. `"flat"` lays the label on the globe surface around its anchor, following the globe's curvature so that long text stays on the surface instead of lifting off at its ends. A flat label reads as painted onto the surface and foreshortens with camera pitch.
+**Description:** Whether the label lies in the screen plane or on the globe surface, as MapLibre's `text-pitch-alignment` (`"upright"` is `"viewport"`, `"flat"` is `"map"`). An upright label is never foreshortened, however the camera is pitched. `"flat"` lays the label on the globe surface around its anchor, following the globe's curvature so that long text stays on the surface instead of lifting off at its ends. A flat label reads as painted onto the surface and foreshortens with camera pitch.
 
-Combine with [`rotateWithCamera`](#rotatewithcamera) for four behaviours:
+On a point label, combine with [`rotateWithCamera`](#rotatewithcamera) for four behaviours:
 
 | `textFacing` | `rotateWithCamera` | Result |
 | --- | --- | --- |
-| `"upright"` | `true` | Screen-aligned billboard, never foreshortened (the default) |
-| `"upright"` | `false` | Signboard standing on the surface at a fixed bearing |
+| `"upright"` | `true` | Screen-aligned billboard (the default) |
+| `"upright"` | `false` | In the screen plane, turned with the camera heading so the text reads along east-west (upside down when the camera faces south) |
 | `"flat"` | `true` | Painted on the surface, turned so it always reads left to right |
 | `"flat"` | `false` | Painted on the surface, north-up, turning with the map |
 
+For labels along a line, see [`placement`](#placement).
+
 Can also be set per feature from a [feature evaluator](../../api/feature-evaluator/) as `facing`.
 
-**Default:** `"upright"`
+**Default:** `"upright"`, or `"flat"` when `rotateWithCamera` is `false` (MapLibre's `"auto"`)
 
 **Example:**
 

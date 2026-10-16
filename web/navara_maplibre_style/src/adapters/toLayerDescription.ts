@@ -7,6 +7,7 @@ import { type LayerDescription, type Source } from "@navaramap/three";
 import type { StyleEngine } from "../engine/StyleEngine";
 import { type StyleLayer } from "../engine/types";
 
+import { resolveSymbolOrientation } from "./symbolAlignment";
 import { toNavaraColor } from "./toEvaluatedValue";
 
 /**
@@ -205,6 +206,21 @@ function createSymbolLayer(
     }
   }
 
+  // MapLibre places a point-placed symbol on a line at its first vertex and on
+  // a polygon at its pole of inaccessibility, which Navara mirrors.
+  const geometryTypes: ("point" | "line" | "polygon")[] = [
+    "point",
+    "line",
+    "polygon",
+  ];
+  const orientation = engine
+    ? resolveSymbolOrientation(styleLayer, engine)
+    : undefined;
+  const placement = orientation && {
+    placement: orientation.placement,
+    spacing: orientation.spacing,
+  };
+
   // Build layer description based on what's configured
   const layerDesc: LayerDescription = {
     type: "vector",
@@ -223,6 +239,9 @@ function createSymbolLayer(
       offsetDepth: true,
       transparent: true,
       center: hasTextField ? { x: 1.0, y: -0.5 } : { x: 0.5, y: -0.5 },
+      geometryTypes,
+      ...placement,
+      ...orientation?.icon,
     };
   }
 
@@ -237,6 +256,9 @@ function createSymbolLayer(
       depthTest: true,
       offsetDepth: true,
       declutter: true, // Enable declutter to hide duplicate/overlapping labels
+      geometryTypes,
+      ...placement,
+      ...orientation?.text,
     };
 
     // Apply text-halo properties (outlineColor/outlineWidth/outlineOpacity)

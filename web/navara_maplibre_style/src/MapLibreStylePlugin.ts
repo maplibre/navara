@@ -837,6 +837,7 @@ export class MapLibreStylePlugin extends Plugin<ThreeView, ViewContext> {
           "icon-size",
           "icon-anchor",
           "icon-offset",
+          "icon-rotate",
         ];
         for (const key of iconProps) {
           const evalFn = layoutEvaluators[key];
@@ -855,6 +856,7 @@ export class MapLibreStylePlugin extends Plugin<ThreeView, ViewContext> {
           "text-letter-spacing",
           "text-anchor",
           "text-offset",
+          "text-rotate",
         ];
         for (const key of textProps) {
           const evalFn = layoutEvaluators[key];

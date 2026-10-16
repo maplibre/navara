@@ -651,3 +651,38 @@ describe("text-letter-spacing", () => {
     expect(result.letterSpacing).toBeUndefined();
   });
 });
+
+describe("text-rotate and icon-rotate", () => {
+  const engine = new JsStyleEngine();
+  const symbol = (layout: StyleLayer["layout"]): StyleLayer =>
+    ({ id: "test", type: "symbol", source: "test", layout }) as StyleLayer;
+
+  it("defaults to the spec value 0 when omitted", () => {
+    const evaluators = createLayoutEvaluators(symbol({}), engine, "Point");
+    for (const key of ["text-rotate", "icon-rotate"]) {
+      expect(evaluators[key]({ properties: {}, zoom: 10 })).toBe(0);
+    }
+  });
+
+  it("evaluates data-driven rotation", () => {
+    const byData = createLayoutEvaluators(
+      symbol({ "text-rotate": ["get", "heading"] }),
+      engine,
+      "Point",
+    )["text-rotate"];
+    expect(byData({ properties: { heading: 30 }, zoom: 10 })).toBe(30);
+  });
+
+  it("maps each to its own mesh's rotation", () => {
+    const layout = {
+      "text-field": "Label",
+      "icon-image": "/icons/marker.svg",
+      "text-rotate": 15,
+      "icon-rotate": 40,
+    };
+    expect(toEvaluatedValue(symbol({}), {}, layout, "text").rotation).toBe(15);
+    expect(toEvaluatedValue(symbol({}), {}, layout, "billboard").rotation).toBe(
+      40,
+    );
+  });
+});

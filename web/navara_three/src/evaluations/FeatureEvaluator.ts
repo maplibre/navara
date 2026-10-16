@@ -65,18 +65,19 @@ export type EvaluatableMaterialProperty = {
   declutterPriority: AvailableMaterialProperty["declutterPriority"];
   /** Image URL for billboards; packed into a shared per-mesh texture atlas. */
   image: string;
-  /** Whether this label/sprite stands up (`"upright"`) or lies on the globe
-   *  surface (`"flat"`). Overrides the material's
+  /** Whether this label/sprite lies in the screen plane (`"upright"`) or on
+   *  the globe surface (`"flat"`). Overrides the material's
    *  `textFacing`/`billboardFacing`/`pointFacing` for this feature. */
   facing: "upright" | "flat";
-  /** Whether this label/sprite turns to follow the camera. Overrides the
-   *  material's `rotateWithCamera` for this feature. */
+  /** Whether this label/sprite turns with the camera rather than with the
+   *  map. Overrides the material's `rotateWithCamera` for this feature. */
   rotateWithCamera: boolean;
   /** Whether this label places each glyph on its own along its line (for
    *  text). Overrides the material's `spreadGlyphs` for this feature. */
   spreadGlyphs: boolean;
   /** In-plane rotation of this label/sprite about its anchor, in degrees,
-   *  clockwise seen from the front. Overrides the material's `rotation`. */
+   *  clockwise seen from the front; along a line, of each glyph about its own
+   *  centre. Overrides the material's `rotation`. */
   rotation: number;
   /** Emissive color expression (for polygons/3D Tiles models/points/billboards/text). */
   emissive: AvailableMaterialProperty["emissiveColor"];

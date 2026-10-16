@@ -62,16 +62,19 @@ impl SourceGeometryType {
     }
 }
 
-/// Plane a label or sprite quad lies in.
+/// Plane a label or sprite quad lies in: MapLibre's `*-pitch-alignment`.
 ///
-/// Orthogonal to the material's `rotate_with_camera`, which picks whether the
-/// quad follows the camera or stays frozen in the anchor's local frame.
+/// Orthogonal to the material's `rotate_with_camera`, which picks what the
+/// quad turns with inside that plane (MapLibre's `*-rotation-alignment`).
+/// Left unset on a material, it resolves to [`Facing::Flat`] when
+/// `rotate_with_camera` resolves to `false` and [`Facing::Upright`]
+/// otherwise, as MapLibre resolves `auto`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum Facing {
-    /// The label stands upright rather than lying on the ground. Combined
-    /// with `rotate_with_camera` it is either a screen-aligned billboard,
-    /// never foreshortened however the camera is pitched, or a signboard
-    /// planted on the surface at a fixed bearing.
+    /// The quad lies in the screen plane, never foreshortened however the
+    /// camera is pitched (MapLibre's `viewport`). With `rotate_with_camera`
+    /// it reads left-to-right on screen; without, it turns with the camera
+    /// heading so its x-axis keeps pointing east.
     #[default]
     Upright,
     /// The quad lies on the globe surface around the label's anchor,
@@ -199,11 +202,12 @@ pub struct PointMaterial {
     pub show: bool,
     pub size: f32,
     pub color: u32,
-    /// Plane the point's quad lies in. See [`Facing`].
-    pub point_facing: Facing,
+    /// Plane the point's quad lies in. See [`Facing`]; `None` resolves from
+    /// `rotate_with_camera`.
+    pub point_facing: Option<Facing>,
     /// Whether the quad turns to follow the camera. See
     /// [`TextMaterial::rotate_with_camera`] — the semantics are identical.
-    pub rotate_with_camera: bool,
+    pub rotate_with_camera: Option<bool>,
     /// Rotation of the point within its own plane, about its anchor point,
     /// in degrees, clockwise seen from the front. `center` decides where
     /// inside the quad the pivot sits. Default `0.0`.
@@ -223,9 +227,9 @@ pub struct PointMaterial {
     pub size_in_meters: bool,
     pub clamp_to_ground: bool,
     pub depth_test: bool,
-    /// Cull faces seen from behind. Off by default, since a quad frozen in
-    /// its anchor's frame (`rotate_with_camera: false`) can be viewed from
-    /// behind; a flat quad wrapped over the limb faces away past the horizon.
+    /// Cull faces seen from behind. Off by default. Only a flat quad has a
+    /// back the camera can see: the parts of a large one wrapped over the
+    /// limb face away past the horizon, and culling trims them there.
     pub backface_culling: bool,
     pub offset_depth: bool,
     // Allow transparency and anti-aliasing.
@@ -254,8 +258,8 @@ impl Default for PointMaterial {
             show: true,
             size: 0.1,
             color: 0xffffff,
-            point_facing: Facing::Upright,
-            rotate_with_camera: true,
+            point_facing: None,
+            rotate_with_camera: None,
             rotation: 0.0,
             placement: Placement::Point,
             spacing: 250.0,
@@ -294,11 +298,12 @@ pub struct BillboardMaterial {
     pub show: bool,
     pub size: f32,
     pub color: u32,
-    /// Plane the sprite's quad lies in. See [`Facing`].
-    pub billboard_facing: Facing,
+    /// Plane the sprite's quad lies in. See [`Facing`]; `None` resolves from
+    /// `rotate_with_camera`.
+    pub billboard_facing: Option<Facing>,
     /// Whether the quad turns to follow the camera. See
     /// [`TextMaterial::rotate_with_camera`] — the semantics are identical.
-    pub rotate_with_camera: bool,
+    pub rotate_with_camera: Option<bool>,
     /// Rotation of the sprite within its own plane, about its anchor point,
     /// in degrees, clockwise seen from the front. `center` decides where
     /// inside the sprite the pivot sits. Default `0.0`.
@@ -319,9 +324,9 @@ pub struct BillboardMaterial {
     pub size_in_meters: bool,
     pub clamp_to_ground: bool,
     pub depth_test: bool,
-    /// Cull faces seen from behind. Off by default, since a quad frozen in
-    /// its anchor's frame (`rotate_with_camera: false`) can be viewed from
-    /// behind; a flat quad wrapped over the limb faces away past the horizon.
+    /// Cull faces seen from behind. Off by default. Only a flat quad has a
+    /// back the camera can see: the parts of a large one wrapped over the
+    /// limb face away past the horizon, and culling trims them there.
     pub backface_culling: bool,
     pub offset_depth: bool,
     // Allow transparency and anti-aliasing.
@@ -352,8 +357,8 @@ impl Default for BillboardMaterial {
             show: true,
             size: 0.1,
             color: 0xffffff,
-            billboard_facing: Facing::Upright,
-            rotate_with_camera: true,
+            billboard_facing: None,
+            rotate_with_camera: None,
             rotation: 0.0,
             placement: Placement::Point,
             spacing: 250.0,
@@ -395,27 +400,31 @@ pub struct TextMaterial {
     pub size: f32,
     pub color: u32,
     pub center: Vec2,
-    /// Plane the label's quad lies in. See [`Facing`].
-    pub text_facing: Facing,
+    /// Plane the label's quad lies in. See [`Facing`]; `None` resolves from
+    /// `rotate_with_camera`.
+    pub text_facing: Option<Facing>,
     /// Rotation of the label within its own plane, about its anchor point, in
     /// degrees, clockwise seen from the front. Applied on top of whatever
     /// orientation `text_facing` and `rotate_with_camera` resolve to, so it
     /// spins a billboard on screen and turns a surface label like a compass
-    /// bearing. `center` decides where inside the text the pivot sits.
-    /// Default `0.0`.
+    /// bearing. `center` decides where inside the text the pivot sits. Along
+    /// a line each glyph spins about its own point on the line instead,
+    /// except for a straight label, which turns as a whole. Default `0.0`.
     pub rotation: f32,
-    /// Whether the quad turns to follow the camera.
+    /// Whether the quad turns with the camera or with the map (MapLibre's
+    /// `*-rotation-alignment`: `viewport` or `map`).
     ///
-    /// `true` (the default) keeps the label facing the viewer: with
-    /// [`Facing::Upright`] that is the screen-aligned billboard, and with
-    /// [`Facing::Flat`] the quad yaws around the surface normal so the
-    /// text still reads left-to-right.
+    /// `true` keeps the label reading left-to-right: with [`Facing::Upright`]
+    /// that is the screen-aligned billboard, and with [`Facing::Flat`] the
+    /// quad yaws around the surface normal.
     ///
-    /// `false` freezes the quad in the anchor's local east-north-up frame, so
-    /// moving the camera never reorients it: [`Facing::Upright`] becomes a
-    /// signboard standing on the surface, [`Facing::Flat`] a north-up
-    /// label painted on it.
-    pub rotate_with_camera: bool,
+    /// `false` aligns it with the map: [`Facing::Upright`] stays on screen
+    /// but turns with the camera heading, [`Facing::Flat`] is a north-up
+    /// label painted on the surface. Along a line, the label follows the line.
+    ///
+    /// `None` resolves to `true` for [`Placement::Point`] and `false` for the
+    /// along-line placements, as MapLibre resolves `auto`.
+    pub rotate_with_camera: Option<bool>,
     /// How anchors are derived from line and polygon geometry. See
     /// [`Placement`]. Requires `geometry_types` to include `Line` or
     /// `Polygon`; ignored otherwise. Default [`Placement::Point`].
@@ -443,7 +452,9 @@ pub struct TextMaterial {
     /// word. With `rotate_with_camera` off each glyph turns with the line
     /// under it (MapLibre's `symbol-placement: "line"`); on, each glyph turns
     /// to the camera like a point label and is spaced on the screen (MapLibre's
-    /// `viewport-glyph`). Can be overridden per feature. Default `false`.
+    /// `viewport-glyph`). Off with `rotate_with_camera` on, the label is not
+    /// bent at all but drawn straight at its anchor (MapLibre's `viewport`).
+    /// Can be overridden per feature. Default `false`.
     pub spread_glyphs: bool,
     /// Offset perpendicular to the line, in the same units as the font size:
     /// pixels, or metres when `size_in_meters` is set. Positive is to the left
@@ -454,9 +465,9 @@ pub struct TextMaterial {
     pub size_in_meters: bool,
     pub clamp_to_ground: bool,
     pub depth_test: bool,
-    /// Cull faces seen from behind. Off by default, since a quad frozen in
-    /// its anchor's frame (`rotate_with_camera: false`) can be viewed from
-    /// behind; a flat quad wrapped over the limb faces away past the horizon.
+    /// Cull faces seen from behind. Off by default. Only a flat quad has a
+    /// back the camera can see: the parts of a large one wrapped over the
+    /// limb face away past the horizon, and culling trims them there.
     pub backface_culling: bool,
     pub offset_depth: bool,
     pub text: String,
@@ -527,8 +538,8 @@ impl Default for TextMaterial {
             size: 10.0,
             color: 0xffffff,
             center: Vec2::new(0.5, 0.),
-            text_facing: Facing::Upright,
-            rotate_with_camera: true,
+            text_facing: None,
+            rotate_with_camera: None,
             rotation: 0.0,
             placement: Placement::Point,
             spacing: 250.0,

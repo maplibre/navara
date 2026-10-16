@@ -15,7 +15,7 @@ sidebar:
 
 **Description:** Whether the point is hidden when seen from behind. When `false`, both sides of the point are drawn. When `true`, only its front is drawn.
 
-It has no effect on an upright point that follows the camera (the default), which always shows its front. It matters in two cases. With [`rotateWithCamera`](#rotatewithcamera) set to `false`, the point can be seen from behind, where it appears mirrored, and turning this on hides it instead. With [`pointFacing`](#pointfacing) set to `"flat"`, its front faces away from the globe, so turning this on also hides the parts of a large point that wrap over the horizon.
+Only a flat point (see [`pointFacing`](#pointfacing)) has a back the camera can see. Its front faces away from the globe, so turning this on hides the parts of a large point that wrap over the horizon. It has no effect on an upright point, which always lies in the screen plane facing the viewer.
 
 **Default:** `false`
 
@@ -280,7 +280,7 @@ import { Color } from "@navaramap/three";
 - `"line"`: points repeat along the line every [`spacing`](#spacing), evenly spaced regardless of where the line's vertices are. Polygon boundary rings, holes included, are followed the same way.
 - `"line-center"`: a single point at the halfway point along each line string or polygon ring.
 
-With `"line"` and `"line-center"`, each point is also turned to the direction of the line where it sits (see [`rotateToLine`](#rotatetoline)).
+With `"line"` and `"line-center"`, each point is also turned to the direction of the line where it sits (see [`rotateToLine`](#rotatetoline)). Unless [`pointFacing`](#pointfacing) or [`rotateWithCamera`](#rotatewithcamera) is set, it lies flat on the surface and is aligned with the map.
 
 This option applies when the layer's geometry is built: set it at layer creation. `layer.update()` does not rebuild points that are already loaded, so remove the layer and add it again to change it.
 
@@ -323,20 +323,20 @@ This option applies when the layer's geometry is built: set it at layer creation
 
 **Type:** `"upright" | "flat" | undefined`
 
-**Description:** Whether the point stands up or lies on the globe surface. `"upright"` keeps it standing. `"flat"` lays it on the globe surface around its anchor, following the globe's curvature, so it reads as painted onto the surface and foreshortens with camera pitch.
+**Description:** Whether the point lies in the screen plane or on the globe surface, as MapLibre's `icon-pitch-alignment` (`"upright"` is `"viewport"`, `"flat"` is `"map"`). An upright point is never foreshortened, however the camera is pitched. `"flat"` lays it on the globe surface around its anchor, following the globe's curvature, so it reads as painted onto the surface and foreshortens with camera pitch.
 
 Combine with [`rotateWithCamera`](#rotatewithcamera) for four behaviours:
 
 | `pointFacing` | `rotateWithCamera` | Result |
 | --- | --- | --- |
-| `"upright"` | `true` | Screen-aligned billboard, never foreshortened (the default) |
-| `"upright"` | `false` | Standing on the surface at a fixed bearing |
+| `"upright"` | `true` | Screen-aligned billboard (the default for `placement: "point"`) |
+| `"upright"` | `false` | In the screen plane, turned with the camera heading so the point's x-axis points east |
 | `"flat"` | `true` | Painted on the surface, turned to keep facing the viewer |
-| `"flat"` | `false` | Painted on the surface, north-up, turning with the map |
+| `"flat"` | `false` | Painted on the surface, north-up, turning with the map (the default along a line) |
 
 Can also be set per feature from a [feature evaluator](../../api/feature-evaluator/) as `facing`.
 
-**Default:** `"upright"`
+**Default:** `"upright"`, or `"flat"` when `rotateWithCamera` is `false` (MapLibre's `"auto"`)
 
 **Example:**
 
@@ -354,7 +354,7 @@ Can also be set per feature from a [feature evaluator](../../api/feature-evaluat
 
 **Description:** Whether a point placed along a line turns with the line. When `true`, the direction of the line at the point's anchor, as a compass bearing, is added to [`rotation`](#rotation). Only used when [`placement`](#placement) is `"line"` or `"line-center"`.
 
-The added bearing reads as a direction on the map when the point is fixed to the surface, so combine it with `pointFacing: "flat"` and `rotateWithCamera: false`. On a point that follows the camera, the bearing only spins it on screen.
+The added bearing reads as a direction on the map when the point is aligned with the map ([`rotateWithCamera`](#rotatewithcamera) `false`, as it is by default along a line). Upright, the point stays in the screen plane and is turned by the camera heading plus the line's bearing. On a point that turns with the camera, the bearing only spins it on screen.
 
 This option applies when the layer's geometry is built. `layer.update()` does not change it for points that are already loaded, so remove the layer and add it again to change it.
 
@@ -378,11 +378,11 @@ This option applies when the layer's geometry is built. `layer.update()` does no
 
 **Type:** `boolean | undefined`
 
-**Description:** Whether the point turns to follow the camera. When `true`, it always faces the viewer. When `false`, it is fixed in its anchor's local east/north/up frame, and moving the camera never reorients it. With `"upright"`, it stands on the surface facing south, so it is seen edge-on from directly above and mirrored from behind.
+**Description:** Whether the point turns with the camera or with the map, as MapLibre's `icon-rotation-alignment` (`true` is `"viewport"`, `false` is `"map"`). When `true`, it stays upright on screen: a screen-aligned billboard, or with [`pointFacing`](#pointfacing) set to `"flat"`, a surface quad turned to keep facing the viewer. When `false`, it is aligned with the map. With `"upright"`, it stays in the screen plane at full size but turns with the camera heading so that its x-axis keeps pointing east, and it shows upside down when the camera faces south. With `"flat"`, it lies on the surface north-up and turns with the map.
 
 Can also be set per feature from a [feature evaluator](../../api/feature-evaluator/).
 
-**Default:** `true`
+**Default:** `true` for `placement: "point"`, `false` along a line (MapLibre's `"auto"`)
 
 **Example:**
 
@@ -390,7 +390,7 @@ Can also be set per feature from a [feature evaluator](../../api/feature-evaluat
 {
   point: {
     pointFacing: "upright",
-    rotateWithCamera: false
+    rotateWithCamera: false // On screen, turned with the camera heading
   }
 }
 ```

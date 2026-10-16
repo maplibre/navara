@@ -33,7 +33,7 @@ sidebar:
 
 **Description:** Whether the billboard is hidden when seen from behind. When `false`, both sides of the billboard are drawn. When `true`, only its front is drawn.
 
-It has no effect on an upright billboard that follows the camera (the default), which always shows its front. It matters in two cases. With [`rotateWithCamera`](#rotatewithcamera) set to `false`, the billboard can be seen from behind, where it appears mirrored, and turning this on hides it instead. With [`billboardFacing`](#billboardfacing) set to `"flat"`, its front faces away from the globe, so turning this on also hides the parts of a large billboard that wrap over the horizon.
+Only a flat billboard (see [`billboardFacing`](#billboardfacing)) has a back the camera can see. Its front faces away from the globe, so turning this on hides the parts of a large billboard that wrap over the horizon. It has no effect on an upright billboard, which always lies in the screen plane facing the viewer.
 
 **Default:** `false`
 
@@ -298,7 +298,7 @@ import { Color } from "@navaramap/three";
 - `"line"`: billboards repeat along the line every [`spacing`](#spacing), evenly spaced regardless of where the line's vertices are. Polygon boundary rings, holes included, are followed the same way.
 - `"line-center"`: a single billboard at the halfway point along each line string or polygon ring.
 
-With `"line"` and `"line-center"`, each billboard is also turned to the direction of the line where it sits (see [`rotateToLine`](#rotatetoline)).
+With `"line"` and `"line-center"`, each billboard is a single image at its anchor, turned to the direction of the line where it sits (see [`rotateToLine`](#rotatetoline)). Unless [`billboardFacing`](#billboardfacing) or [`rotateWithCamera`](#rotatewithcamera) is set, it lies flat on the surface and is aligned with the map, so an arrow image points along the line.
 
 This option applies when the layer's geometry is built: set it at layer creation. `layer.update()` does not rebuild billboards that are already loaded, so remove the layer and add it again to change it.
 
@@ -342,20 +342,20 @@ This option applies when the layer's geometry is built: set it at layer creation
 
 **Type:** `"upright" | "flat" | undefined`
 
-**Description:** Whether the billboard stands up or lies on the globe surface. `"upright"` keeps it standing. `"flat"` lays it on the globe surface around its anchor, following the globe's curvature, so it reads as painted onto the surface and foreshortens with camera pitch.
+**Description:** Whether the billboard lies in the screen plane or on the globe surface, as MapLibre's `icon-pitch-alignment` (`"upright"` is `"viewport"`, `"flat"` is `"map"`). An upright billboard is never foreshortened, however the camera is pitched. `"flat"` lays it on the globe surface around its anchor, following the globe's curvature, so it reads as painted onto the surface and foreshortens with camera pitch.
 
 Combine with [`rotateWithCamera`](#rotatewithcamera) for four behaviours:
 
 | `billboardFacing` | `rotateWithCamera` | Result |
 | --- | --- | --- |
-| `"upright"` | `true` | Screen-aligned billboard, never foreshortened (the default) |
-| `"upright"` | `false` | Standing on the surface at a fixed bearing |
+| `"upright"` | `true` | Screen-aligned billboard (the default for `placement: "point"`) |
+| `"upright"` | `false` | In the screen plane, turned with the camera heading so the image's x-axis points east |
 | `"flat"` | `true` | Painted on the surface, turned to keep facing the viewer |
-| `"flat"` | `false` | Painted on the surface, north-up, turning with the map |
+| `"flat"` | `false` | Painted on the surface, north-up, turning with the map (the default along a line) |
 
 Can also be set per feature from a [feature evaluator](../../api/feature-evaluator/) as `facing`.
 
-**Default:** `"upright"`
+**Default:** `"upright"`, or `"flat"` when `rotateWithCamera` is `false` (MapLibre's `"auto"`)
 
 **Example:**
 
@@ -373,7 +373,7 @@ Can also be set per feature from a [feature evaluator](../../api/feature-evaluat
 
 **Description:** Whether a billboard placed along a line turns with the line. When `true`, the direction of the line at the billboard's anchor, as a compass bearing, is added to [`rotation`](#rotation). Only used when [`placement`](#placement) is `"line"` or `"line-center"`.
 
-The added bearing reads as a direction on the map when the billboard is fixed to the surface, so combine it with `billboardFacing: "flat"` and `rotateWithCamera: false`. The top of the image then points along the line, and `rotation` turns it further from there. On a billboard that follows the camera, the bearing only spins the image on screen.
+The added bearing reads as a direction on the map when the billboard is aligned with the map ([`rotateWithCamera`](#rotatewithcamera) `false`). Flat on the surface, as it is by default along a line, the top of the image then points along the line, and `rotation` turns it further from there. Upright, the billboard stays in the screen plane and is turned by the camera heading plus the line's bearing. On a billboard that turns with the camera, the bearing only spins the image on screen.
 
 This option applies when the layer's geometry is built. `layer.update()` does not change it for billboards that are already loaded, so remove the layer and add it again to change it.
 
@@ -398,11 +398,11 @@ This option applies when the layer's geometry is built. `layer.update()` does no
 
 **Type:** `boolean | undefined`
 
-**Description:** Whether the billboard turns to follow the camera. When `true`, it always faces the viewer. When `false`, it is fixed in its anchor's local east/north/up frame, and moving the camera never reorients it. With `"upright"`, it stands on the surface facing south, so it is seen edge-on from directly above and mirrored from behind.
+**Description:** Whether the billboard turns with the camera or with the map, as MapLibre's `icon-rotation-alignment` (`true` is `"viewport"`, `false` is `"map"`). When `true`, the image stays upright on screen: a screen-aligned billboard, or with [`billboardFacing`](#billboardfacing) set to `"flat"`, a surface image turned to keep facing the viewer. When `false`, it is aligned with the map. With `"upright"`, it stays in the screen plane at full size but turns with the camera heading so that its x-axis keeps pointing east, and it shows upside down when the camera faces south. With `"flat"`, it lies on the surface north-up and turns with the map.
 
 Can also be set per feature from a [feature evaluator](../../api/feature-evaluator/).
 
-**Default:** `true`
+**Default:** `true` for `placement: "point"`, `false` along a line (MapLibre's `"auto"`)
 
 **Example:**
 
@@ -410,7 +410,7 @@ Can also be set per feature from a [feature evaluator](../../api/feature-evaluat
 {
   billboard: {
     billboardFacing: "upright",
-    rotateWithCamera: false
+    rotateWithCamera: false // On screen, turned with the camera heading
   }
 }
 ```

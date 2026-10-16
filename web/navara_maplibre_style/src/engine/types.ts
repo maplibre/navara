@@ -201,6 +201,16 @@ export type SymbolLayout = {
   "text-offset"?: ValueExpression;
   "text-anchor"?: ValueExpression;
   "text-font"?: ValueExpression;
+  "text-rotate"?: ValueExpression;
+  "icon-rotate"?: ValueExpression;
+  "symbol-placement"?: ValueExpression;
+  "symbol-spacing"?: ValueExpression;
+  "text-rotation-alignment"?: ValueExpression;
+  "text-pitch-alignment"?: ValueExpression;
+  "text-keep-upright"?: ValueExpression;
+  "text-max-angle"?: ValueExpression;
+  "icon-rotation-alignment"?: ValueExpression;
+  "icon-pitch-alignment"?: ValueExpression;
 };
 
 export type SymbolPaint = {

@@ -85,11 +85,14 @@ type WithColorSupport<T> = ConvertColorFields<T>;
 export type SourceGeometryType = "point" | "line" | "polygon";
 
 /**
- * Whether a label or sprite stands up (`"upright"`, the default) or lies on
- * the globe surface around its anchor (`"flat"`), following its curvature so
- * it reads as painted on the surface. The value of `textFacing` / `billboardFacing` / `pointFacing`.
- * Pair with `rotateWithCamera`, which chooses whether the quad turns to
- * follow the camera or stays frozen in the anchor's east-north-up frame.
+ * The plane a label or sprite lies in: the screen (`"upright"`, never
+ * foreshortened) or the globe surface around its anchor (`"flat"`), following
+ * its curvature so it reads as painted on the surface — MapLibre's
+ * `*-pitch-alignment` `viewport` and `map`. The value of `textFacing` /
+ * `billboardFacing` / `pointFacing`. Pair with `rotateWithCamera`, which
+ * chooses whether the quad turns with the camera or with the map. Left unset,
+ * it is `"flat"` when `rotateWithCamera` resolves to `false` and `"upright"`
+ * otherwise.
  */
 export type Facing = "upright" | "flat";
 

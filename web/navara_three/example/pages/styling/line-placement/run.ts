@@ -81,10 +81,14 @@ const labelParams = {
   // evaluator turns `spreadGlyphs` back off for those features only.
   keepArabicWords: true,
   lineOffset: 0,
+  // With `rotateWithCamera` off, a label follows its line: flat on the ground
+  // (MapLibre's default street name), or upright on the screen turned to the
+  // line as it runs there. On, spread glyphs each turn to the camera, and
+  // without `spreadGlyphs` the label is drawn straight at its anchor.
   textFacing: "flat" as Facing,
-  // Labels at a line's start use it. Along a line, only spread glyphs do: on turns
-  // each glyph to the camera, off keeps it following the line.
-  rotateWithCamera: true,
+  rotateWithCamera: false,
+  // Along a line each glyph spins about its own centre.
+  rotation: 0,
   size: 18,
   sizeInMeters: false,
   outlineWidth: 4,
@@ -193,6 +197,7 @@ export const run = async (view: ThreeView) => {
         lineOffset: labelParams.lineOffset,
         textFacing: labelParams.textFacing,
         rotateWithCamera: labelParams.rotateWithCamera,
+        rotation: labelParams.rotation,
         size: labelParams.size,
         sizeInMeters: labelParams.sizeInMeters,
         clampToGround: true,
@@ -315,6 +320,7 @@ export const run = async (view: ThreeView) => {
         lineOffset: labelParams.lineOffset,
         textFacing: labelParams.textFacing,
         rotateWithCamera: labelParams.rotateWithCamera,
+        rotation: labelParams.rotation,
         size: labelParams.size,
         sizeInMeters: labelParams.sizeInMeters,
         outlineWidth: labelParams.outlineWidth,
@@ -373,6 +379,9 @@ export const run = async (view: ThreeView) => {
     .on("change", restyleLabels);
   labelsFolder
     .addBinding(labelParams, "rotateWithCamera")
+    .on("change", restyleLabels);
+  labelsFolder
+    .addBinding(labelParams, "rotation", { min: -180, max: 180, step: 5 })
     .on("change", restyleLabels);
   labelsFolder
     .addBinding(labelParams, "size", { min: 6, max: 64, step: 1 })

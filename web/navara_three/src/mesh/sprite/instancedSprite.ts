@@ -39,6 +39,7 @@ import {
 } from "../../declutter/types";
 import type { EventContext } from "../../event/context";
 import { createInstancedSpriteMaterialEnhancer } from "../../material/enhancer";
+import { resolveOrientation } from "../../material/orientation";
 import type { CustomObject3DEventMap } from "../../object3DEvent";
 import { buildBatchIndexMap } from "../batchIndexMap";
 import { GEOMETRY_TYPES, type GeometryType } from "../constants";
@@ -95,14 +96,17 @@ type SpriteOrientation = {
 };
 
 function spriteOrientation(material: SpriteMaterial): SpriteOrientation {
-  const facing =
+  const { flatFacing, rotateWithCamera } = resolveOrientation(
     "billboardFacing" in material
       ? material.billboardFacing
-      : material.pointFacing;
+      : material.pointFacing,
+    material.rotateWithCamera,
+    material.placement,
+  );
   return {
     rotation: material.rotation ?? 0,
-    facing: facing === "flat" ? "flat" : "upright",
-    follow: material.rotateWithCamera ?? true,
+    facing: flatFacing ? "flat" : "upright",
+    follow: rotateWithCamera,
   };
 }
 
@@ -594,11 +598,8 @@ export class InstancedSpriteMesh
       base: {
         scale: m.material.size ?? 100.0,
         center: [m.material.center?.x ?? 0.0, m.material.center?.y ?? 0.0],
-        flatFacing:
-          ("billboardFacing" in m.material
-            ? m.material.billboardFacing
-            : m.material.pointFacing) === "flat",
-        rotateWithCamera: m.material.rotateWithCamera ?? true,
+        flatFacing: spriteOrientation(m.material).facing === "flat",
+        rotateWithCamera: spriteOrientation(m.material).follow,
         rotation: m.material.rotation ?? 0,
         sizeInMeters: m.material.sizeInMeters ?? true,
         offsetDepth: m.material.offsetDepth ?? true,
@@ -801,11 +802,8 @@ export class InstancedSpriteMesh
         ),
         scale: m.material.size ?? 100.0,
         center: [m.material.center?.x ?? 0.0, m.material.center?.y ?? 0.0],
-        flatFacing:
-          ("billboardFacing" in m.material
-            ? m.material.billboardFacing
-            : m.material.pointFacing) === "flat",
-        rotateWithCamera: m.material.rotateWithCamera ?? true,
+        flatFacing: spriteOrientation(m.material).facing === "flat",
+        rotateWithCamera: spriteOrientation(m.material).follow,
         rotation: m.material.rotation ?? 0,
         sizeInMeters: m.material.sizeInMeters ?? true,
         offsetDepth: m.material.offsetDepth ?? true,

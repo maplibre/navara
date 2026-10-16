@@ -25,6 +25,8 @@ type EvaluatedResult = {
   show?: boolean;
   text?: string;
   image?: string;
+  /** Degrees clockwise, like MapLibre's `text-rotate` / `icon-rotate`. */
+  rotation?: number;
 };
 
 /**
@@ -196,6 +198,8 @@ export function createLayoutEvaluators(
     "icon-anchor",
     "text-offset",
     "icon-offset",
+    "text-rotate",
+    "icon-rotate",
   ];
 
   for (const key of supportedProperties) {
@@ -402,6 +406,14 @@ function extractFormattedText(value: unknown): string | undefined {
  * Note: layoutValues should contain evaluated values for all critical properties
  * (text-size, icon-size, etc.) with spec defaults, provided by createLayoutEvaluators.
  */
+/** Degrees clockwise in both MapLibre and Navara; always present (spec
+ *  default 0). */
+function applyRotation(result: EvaluatedResult, value: unknown): void {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    result.rotation = value;
+  }
+}
+
 function processSymbolLayer(
   result: EvaluatedResult,
   paintValues: Record<string, unknown>,
@@ -453,6 +465,8 @@ function processSymbolLayer(
     if (typeof iconSize === "number" && Number.isFinite(iconSize)) {
       result.size = iconSize;
     }
+
+    applyRotation(result, layoutValues?.["icon-rotate"]);
   }
 
   // Process text properties for text geometry
@@ -479,6 +493,8 @@ function processSymbolLayer(
       if (typeof letterSpacing === "number" && Number.isFinite(letterSpacing)) {
         result.letterSpacing = letterSpacing;
       }
+
+      applyRotation(result, layoutValues?.["text-rotate"]);
     } else {
       // Hide text features with empty text-field (e.g., from zoom-based step expressions)
       result.show = false;
