@@ -9,7 +9,6 @@ import {
 } from "@navaramap/three-default-plugin";
 import { Pane } from "tweakpane";
 
-import { withBase } from "../../../helpers/base";
 import {
   MVT_DATASETS,
   TERRAIN_DATASETS,
@@ -33,8 +32,7 @@ export async function run() {
     "https://fonts.googleapis.com/css2?family=Open+Sans:wght@600&display=swap",
   );
   const maplibrePlugin = new MapLibreStylePlugin(
-    // "https://demotiles.maplibre.org/globe.json",
-    withBase("maplibre-style/color-relief.json"),
+    "https://demotiles.maplibre.org/globe.json",
     {
       overrides: fontOverrides,
       forceMapLibreFov: true,
