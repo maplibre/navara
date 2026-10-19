@@ -80,43 +80,59 @@ pub struct TouchControl {
     pub delta: Vec2,
 }
 
-/// Processes raw touch input events and emits recognized gesture events.
+/// Processes raw touch input events and emits at most one recognized gesture per frame.
 ///
 /// This system maintains the touch list state and performs gesture recognition
 /// for single-finger swipes and two-finger gestures (pinch, spread, rotate, double swipe).
+///
+/// Gestures are recognized from the displacement over the whole frame, since
+/// several `touchmove` events can arrive per frame while the camera consumes a
+/// single gesture per frame.
 pub fn process_touch_input_events(
     mut ev: MessageReader<TouchInput>,
     mut touch_list: ResMut<TouchList>,
     mut gesture_ev: MessageWriter<TouchControl>,
     window: Res<Window>,
 ) {
+    let mut finger_count_changed = false;
+
     for touch in ev.read() {
         match touch.state {
-            TouchState::Start | TouchState::Move => {
-                let prev_position = touch_list.touches.get(&touch.id).map(|t| t.position);
-
-                let is_duplicate_position = prev_position == Some(touch.position);
-
-                if is_duplicate_position && touch.state == TouchState::Move {
-                    continue;
-                }
-
+            TouchState::Start => {
                 touch_list.touches.insert(
                     touch.id,
                     TouchPoint {
                         position: touch.position,
-                        prev_position,
+                        prev_position: None,
                     },
                 );
+                finger_count_changed = true;
+            }
+            TouchState::Move => {
+                if let Some(point) = touch_list.touches.get_mut(&touch.id) {
+                    point.position = touch.position;
+                }
             }
             TouchState::End => {
                 touch_list.touches.remove(&touch.id);
+                finger_count_changed = true;
             }
         }
+    }
 
-        if let Some(gesture) = recognize_gesture(&touch_list, &window) {
-            gesture_ev.write(gesture);
-        }
+    // A finger landing or lifting switches the gesture (e.g. pinch -> swipe),
+    // so that frame's displacement belongs to no gesture.
+    if !finger_count_changed && let Some(gesture) = recognize_gesture(&touch_list, &window) {
+        gesture_ev.write(gesture);
+    }
+
+    commit_positions(&mut touch_list);
+}
+
+/// Marks the current positions as the baseline of the next frame.
+fn commit_positions(touch_list: &mut TouchList) {
+    for point in touch_list.touches.values_mut() {
+        point.prev_position = Some(point.position);
     }
 }
 
@@ -316,4 +332,149 @@ fn recognize_swipe_gesture(p: &TouchPoint) -> Option<Vec2> {
     p.prev_position
         .map(|prev_pos| p.position - prev_pos)
         .filter(|delta| delta.length() >= MIN_SWIPE_DELTA_PX)
+}
+
+#[cfg(test)]
+mod tests {
+    use bevy_ecs::{message::Messages, system::RunSystemOnce, world::World};
+
+    use super::*;
+
+    fn setup_world() -> World {
+        let mut world = World::new();
+        world.init_resource::<TouchList>();
+        world.init_resource::<Messages<TouchInput>>();
+        world.init_resource::<Messages<TouchControl>>();
+        world.insert_resource(Window {
+            width: 400.0,
+            height: 800.0,
+            pixel_ratio: 1.0,
+        });
+        world
+    }
+
+    /// Feeds one frame's worth of touch events and returns the emitted gestures.
+    fn run_frame(world: &mut World, events: &[(TouchState, i32, f64, f64)]) -> Vec<TouchControl> {
+        for &(state, id, x, y) in events {
+            world.write_message(TouchInput {
+                state,
+                position: Vec2::new(x, y),
+                id,
+            });
+        }
+        world.run_system_once(process_touch_input_events).unwrap();
+        world.resource_mut::<Messages<TouchInput>>().clear();
+        world
+            .resource_mut::<Messages<TouchControl>>()
+            .drain()
+            .collect()
+    }
+
+    /// iOS Safari dispatches several `touchmove` events per frame; the
+    /// emitted swipe must cover all of them, not just the last one.
+    #[test]
+    fn swipe_accumulates_every_move_in_a_frame() {
+        let mut world = setup_world();
+        assert!(run_frame(&mut world, &[(TouchState::Start, 7, 100.0, 100.0)]).is_empty());
+
+        let gestures = run_frame(
+            &mut world,
+            &[
+                (TouchState::Move, 7, 110.0, 100.0),
+                (TouchState::Move, 7, 120.0, 100.0),
+                (TouchState::Move, 7, 140.0, 108.0),
+            ],
+        );
+        assert_eq!(gestures.len(), 1);
+        assert_eq!(gestures[0].gesture, TouchGesture::Swipe);
+        assert!((gestures[0].delta.x - 40.0 / 400.0).abs() < 1e-9);
+        assert!((gestures[0].delta.y - 8.0 / 800.0).abs() < 1e-9);
+
+        // The next frame starts from the committed position.
+        let gestures = run_frame(&mut world, &[(TouchState::Move, 7, 144.0, 108.0)]);
+        assert_eq!(gestures.len(), 1);
+        assert!((gestures[0].delta.x - 4.0 / 400.0).abs() < 1e-9);
+    }
+
+    /// Sub-threshold drift is measured per frame, so it never adds up to a
+    /// gesture while the fingers' main motion matches none.
+    #[test]
+    fn sub_threshold_drift_does_not_accumulate_across_frames() {
+        let mut world = setup_world();
+        run_frame(
+            &mut world,
+            &[
+                (TouchState::Start, 1, 100.0, 400.0),
+                (TouchState::Start, 2, 300.0, 400.0),
+            ],
+        );
+
+        for frame in 1..=5 {
+            let dx = 10.0 * frame as f64;
+            let dy = 0.3 * frame as f64;
+            let gestures = run_frame(
+                &mut world,
+                &[
+                    (TouchState::Move, 1, 100.0 + dx, 400.0 + dy),
+                    (TouchState::Move, 2, 300.0 + dx, 400.0 + dy),
+                ],
+            );
+            assert!(gestures.is_empty());
+        }
+    }
+
+    /// A two-finger `touchmove` reports both fingers as separate events; the
+    /// gesture must be measured once both positions are updated.
+    #[test]
+    fn spread_uses_both_fingers_updated_in_a_frame() {
+        let mut world = setup_world();
+        run_frame(
+            &mut world,
+            &[
+                (TouchState::Start, 1, 100.0, 400.0),
+                (TouchState::Start, 2, 300.0, 400.0),
+            ],
+        );
+
+        let gestures = run_frame(
+            &mut world,
+            &[
+                (TouchState::Move, 1, 90.0, 400.0),
+                (TouchState::Move, 2, 310.0, 400.0),
+                (TouchState::Move, 1, 80.0, 400.0),
+                (TouchState::Move, 2, 320.0, 400.0),
+            ],
+        );
+        assert_eq!(gestures.len(), 1);
+        assert_eq!(gestures[0].gesture, TouchGesture::Spread);
+        assert!((gestures[0].delta.x - -40.0).abs() < 1e-9);
+    }
+
+    /// Lifting a finger after a pinch must not turn the pinch displacement
+    /// into a swipe of the remaining finger.
+    #[test]
+    fn finger_count_change_resets_gesture_baseline() {
+        let mut world = setup_world();
+        run_frame(
+            &mut world,
+            &[
+                (TouchState::Start, 1, 100.0, 400.0),
+                (TouchState::Start, 2, 300.0, 400.0),
+            ],
+        );
+
+        let gestures = run_frame(
+            &mut world,
+            &[
+                (TouchState::Move, 1, 150.0, 400.0),
+                (TouchState::End, 2, 300.0, 400.0),
+            ],
+        );
+        assert!(gestures.is_empty());
+
+        let gestures = run_frame(&mut world, &[(TouchState::Move, 1, 152.0, 400.0)]);
+        assert_eq!(gestures.len(), 1);
+        assert_eq!(gestures[0].gesture, TouchGesture::Swipe);
+        assert!((gestures[0].delta.x - 2.0 / 400.0).abs() < 1e-9);
+    }
 }
