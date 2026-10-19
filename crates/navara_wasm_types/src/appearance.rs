@@ -1872,6 +1872,10 @@ pub struct RasterTileInternalMaterial {
     #[wasm_bindgen(getter_with_clone, js_name = isElevationHeatmaps)]
     #[serde(rename = "isElevationHeatmaps")]
     pub is_elevation_heatmaps: Vec<u8>,
+    /// Elevation heatmap filter mode: "linear" or "nearest" (from shared config)
+    #[wasm_bindgen(getter_with_clone, js_name = elevationHeatmapFilter)]
+    #[serde(rename = "elevationHeatmapFilter")]
+    pub elevation_heatmap_filter: String,
     // Shared elevation heatmap configuration (all heatmap layers use the same settings)
     #[wasm_bindgen(js_name = elevationMinHeight)]
     #[serde(rename = "elevationMinHeight")]
@@ -2001,6 +2005,11 @@ impl<'a> From<&'a navara_material::RasterTileInternalMaterial> for RasterTileInt
 
             // Elevation Heatmap fields
             is_elevation_heatmaps: m.is_elevation_heatmaps.iter().map(|b| b.to_u8()).collect(),
+            elevation_heatmap_filter: m
+                .elevation_heatmap_config
+                .as_ref()
+                .map(|c| c.filter.clone())
+                .unwrap_or_else(|| "linear".to_string()),
             elevation_min_height: m
                 .elevation_heatmap_config
                 .as_ref()
@@ -2209,6 +2218,9 @@ pub struct ElevationHeatmapMaterial {
     #[wasm_bindgen(js_name = logBoundary)]
     #[serde(rename = "logBoundary")]
     pub log_boundary: Option<f64>,
+    #[wasm_bindgen(getter_with_clone)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub filter: Option<String>,
 }
 
 /// Hillshade render options for a `raster` layer. The elevation decoder is taken

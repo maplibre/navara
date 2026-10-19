@@ -3,9 +3,13 @@ import {
   fetchFontStyleOverrides,
 } from "@navaramap/maplibre-style";
 import ThreeView from "@navaramap/three";
-import { type DefaultDescriptions } from "@navaramap/three-default-plugin";
+import {
+  DefaultPlugin,
+  type DefaultDescriptions,
+} from "@navaramap/three-default-plugin";
 import { Pane } from "tweakpane";
 
+import { withBase } from "../../../helpers/base";
 import {
   MVT_DATASETS,
   TERRAIN_DATASETS,
@@ -21,6 +25,7 @@ export type CustomDescriptions = DefaultDescriptions;
  */
 export async function run() {
   const view = new ThreeView<CustomDescriptions>({});
+  view.addPlugin(new DefaultPlugin());
 
   // Add the MapLibre Style plugin with font overrides
   const fontOverrides = await fetchFontStyleOverrides(
@@ -28,7 +33,8 @@ export async function run() {
     "https://fonts.googleapis.com/css2?family=Open+Sans:wght@600&display=swap",
   );
   const maplibrePlugin = new MapLibreStylePlugin(
-    "https://demotiles.maplibre.org/globe.json",
+    // "https://demotiles.maplibre.org/globe.json",
+    withBase("maplibre-style/color-relief.json"),
     {
       overrides: fontOverrides,
       forceMapLibreFov: true,
@@ -40,6 +46,8 @@ export async function run() {
 
   // Initialize the view
   await view.init();
+
+  view.addLight({ ambient: {} });
 
   // Add ellipsoid terrain as the base surface for vector features
   view.addLayer({ type: "terrain", ellipsoid: {} });

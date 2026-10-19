@@ -412,6 +412,9 @@ impl RasterLayerDescription {
                 log_boundary: e
                     .log_boundary
                     .unwrap_or_else(|| old.map_or(0.0, |c| c.log_boundary)),
+                filter: e.filter.clone().unwrap_or_else(|| {
+                    old.map_or_else(|| "linear".to_string(), |c| c.filter.clone())
+                }),
             }),
             None => old.cloned(),
         }
@@ -1245,6 +1248,7 @@ mod tests {
             min_height: 10.0,
             logarithmic: true,
             log_boundary: 5.0,
+            filter: "linear".to_string(),
         };
         let desc = RasterLayerDescription {
             elevation_heatmap: Some(serde_json::from_str(r#"{"maxHeight": 999.0}"#).unwrap()),
@@ -1266,6 +1270,7 @@ mod tests {
             min_height: 10.0,
             logarithmic: true,
             log_boundary: 5.0,
+            filter: "linear".to_string(),
         };
         let desc = RasterLayerDescription::default();
 

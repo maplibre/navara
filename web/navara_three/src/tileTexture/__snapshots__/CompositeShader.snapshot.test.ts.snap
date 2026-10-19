@@ -26,6 +26,7 @@ uniform vec4 uReprojectMerc[4];
 uniform bool uIsHillshades[4];
 uniform float uHillshadeExaggeration;
 uniform bool uIsElevationHeatmaps[4];
+uniform bool uElevationHeatmapUsesBilinear[4];
 uniform bool uWaters[4];
 
 uniform sampler2D uWatermask;
@@ -226,6 +227,29 @@ float interpolateDEMHeights(float h00, float h10, float h01, float h11, vec2 fra
     
     return normalizeElevationHeight(h);
   }
+
+  
+  
+  
+  float sampleElevationNearest(sampler2D demTexture, vec2 uv, ivec2 texSize, out bool valid) {
+    
+    vec2 pixelCoord = uv * vec2(texSize);
+    ivec2 nearestPixel = ivec2(floor(pixelCoord + 0.5));
+
+    
+    nearestPixel = clamp(nearestPixel, ivec2(0), texSize - 1);
+
+    
+    float h = decodeRawHeightForElevation(texelFetch(demTexture, nearestPixel, 0));
+
+    valid = isValidHeight(h);
+    if (!valid) {
+      return 0.0;
+    }
+
+    
+    return normalizeElevationHeight(h);
+  }
 #endif
 
 layout(location = 0) out vec4 colorBuffer;
@@ -298,7 +322,12 @@ void main() {
     if (uIsElevationHeatmaps[0]) {
       ivec2 demTexSize = textureSize(uTextures[0], 0);
       bool demValid0;
-      float normalized_h = sampleElevationBilinear(uTextures[0], texUv0, demTexSize, demValid0);
+      float normalized_h;
+      if (uElevationHeatmapUsesBilinear[0]) {
+        normalized_h = sampleElevationBilinear(uTextures[0], texUv0, demTexSize, demValid0);
+      } else {
+        normalized_h = sampleElevationNearest(uTextures[0], texUv0, demTexSize, demValid0);
+      }
       texColor0 = vec4(texture2D(uColorMapTexture, vec2(normalized_h, 0.5)).rgb, demValid0 ? 1.0 : 0.0);
     } else {
       texColor0 = texture2D(uTextures[0], texUv0) * vec4(uColors[0], 1.0);
@@ -367,7 +396,12 @@ void main() {
     if (uIsElevationHeatmaps[1]) {
       ivec2 demTexSize = textureSize(uTextures[1], 0);
       bool demValid1;
-      float normalized_h = sampleElevationBilinear(uTextures[1], texUv1, demTexSize, demValid1);
+      float normalized_h;
+      if (uElevationHeatmapUsesBilinear[1]) {
+        normalized_h = sampleElevationBilinear(uTextures[1], texUv1, demTexSize, demValid1);
+      } else {
+        normalized_h = sampleElevationNearest(uTextures[1], texUv1, demTexSize, demValid1);
+      }
       texColor1 = vec4(texture2D(uColorMapTexture, vec2(normalized_h, 0.5)).rgb, demValid1 ? 1.0 : 0.0);
     } else {
       texColor1 = texture2D(uTextures[1], texUv1) * vec4(uColors[1], 1.0);
@@ -436,7 +470,12 @@ void main() {
     if (uIsElevationHeatmaps[2]) {
       ivec2 demTexSize = textureSize(uTextures[2], 0);
       bool demValid2;
-      float normalized_h = sampleElevationBilinear(uTextures[2], texUv2, demTexSize, demValid2);
+      float normalized_h;
+      if (uElevationHeatmapUsesBilinear[2]) {
+        normalized_h = sampleElevationBilinear(uTextures[2], texUv2, demTexSize, demValid2);
+      } else {
+        normalized_h = sampleElevationNearest(uTextures[2], texUv2, demTexSize, demValid2);
+      }
       texColor2 = vec4(texture2D(uColorMapTexture, vec2(normalized_h, 0.5)).rgb, demValid2 ? 1.0 : 0.0);
     } else {
       texColor2 = texture2D(uTextures[2], texUv2) * vec4(uColors[2], 1.0);
@@ -505,7 +544,12 @@ void main() {
     if (uIsElevationHeatmaps[3]) {
       ivec2 demTexSize = textureSize(uTextures[3], 0);
       bool demValid3;
-      float normalized_h = sampleElevationBilinear(uTextures[3], texUv3, demTexSize, demValid3);
+      float normalized_h;
+      if (uElevationHeatmapUsesBilinear[3]) {
+        normalized_h = sampleElevationBilinear(uTextures[3], texUv3, demTexSize, demValid3);
+      } else {
+        normalized_h = sampleElevationNearest(uTextures[3], texUv3, demTexSize, demValid3);
+      }
       texColor3 = vec4(texture2D(uColorMapTexture, vec2(normalized_h, 0.5)).rgb, demValid3 ? 1.0 : 0.0);
     } else {
       texColor3 = texture2D(uTextures[3], texUv3) * vec4(uColors[3], 1.0);
@@ -622,6 +666,7 @@ uniform vec2 uReprojectTerrainLat[2];
 //   .z  = clamp-to-top-edge flag, .w = clamp-to-bottom-edge flag (polar cap).
 uniform vec4 uReprojectMerc[2];
 uniform bool uIsElevationHeatmaps[2];
+uniform bool uElevationHeatmapUsesBilinear[2];
 
 
 
@@ -821,6 +866,29 @@ float interpolateDEMHeights(float h00, float h10, float h01, float h11, vec2 fra
     
     return normalizeElevationHeight(h);
   }
+
+  
+  
+  
+  float sampleElevationNearest(sampler2D demTexture, vec2 uv, ivec2 texSize, out bool valid) {
+    
+    vec2 pixelCoord = uv * vec2(texSize);
+    ivec2 nearestPixel = ivec2(floor(pixelCoord + 0.5));
+
+    
+    nearestPixel = clamp(nearestPixel, ivec2(0), texSize - 1);
+
+    
+    float h = decodeRawHeightForElevation(texelFetch(demTexture, nearestPixel, 0));
+
+    valid = isValidHeight(h);
+    if (!valid) {
+      return 0.0;
+    }
+
+    
+    return normalizeElevationHeight(h);
+  }
 #endif
 
 layout(location = 0) out vec4 colorBuffer;
@@ -893,7 +961,12 @@ void main() {
     if (uIsElevationHeatmaps[0]) {
       ivec2 demTexSize = textureSize(uTextures[0], 0);
       bool demValid0;
-      float normalized_h = sampleElevationBilinear(uTextures[0], texUv0, demTexSize, demValid0);
+      float normalized_h;
+      if (uElevationHeatmapUsesBilinear[0]) {
+        normalized_h = sampleElevationBilinear(uTextures[0], texUv0, demTexSize, demValid0);
+      } else {
+        normalized_h = sampleElevationNearest(uTextures[0], texUv0, demTexSize, demValid0);
+      }
       texColor0 = vec4(texture2D(uColorMapTexture, vec2(normalized_h, 0.5)).rgb, demValid0 ? 1.0 : 0.0);
     } else {
       texColor0 = texture2D(uTextures[0], texUv0) * vec4(uColors[0], 1.0);
@@ -958,7 +1031,12 @@ void main() {
     if (uIsElevationHeatmaps[1]) {
       ivec2 demTexSize = textureSize(uTextures[1], 0);
       bool demValid1;
-      float normalized_h = sampleElevationBilinear(uTextures[1], texUv1, demTexSize, demValid1);
+      float normalized_h;
+      if (uElevationHeatmapUsesBilinear[1]) {
+        normalized_h = sampleElevationBilinear(uTextures[1], texUv1, demTexSize, demValid1);
+      } else {
+        normalized_h = sampleElevationNearest(uTextures[1], texUv1, demTexSize, demValid1);
+      }
       texColor1 = vec4(texture2D(uColorMapTexture, vec2(normalized_h, 0.5)).rgb, demValid1 ? 1.0 : 0.0);
     } else {
       texColor1 = texture2D(uTextures[1], texUv1) * vec4(uColors[1], 1.0);

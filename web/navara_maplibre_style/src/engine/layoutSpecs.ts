@@ -20,6 +20,7 @@ export const LAYOUT_SPECS_BY_TYPE = {
   "fill-extrusion": v8["layout_fill-extrusion"],
   raster: v8.layout_raster,
   hillshade: v8.layout_hillshade,
+  "color-relief": v8["layout_color-relief"],
   background: v8.layout_background,
 };
 

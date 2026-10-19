@@ -74,4 +74,27 @@
     // Normalize the interpolated height
     return normalizeElevationHeight(h);
   }
+
+  // Sample elevation using nearest neighbor (no interpolation).
+  // Directly samples the single closest texel without any interpolation.
+  // Useful for color-relief layers that require sharp boundaries.
+  float sampleElevationNearest(sampler2D demTexture, vec2 uv, ivec2 texSize, out bool valid) {
+    // Convert UV to pixel coordinates and round to nearest
+    vec2 pixelCoord = uv * vec2(texSize);
+    ivec2 nearestPixel = ivec2(floor(pixelCoord + 0.5));
+
+    // Clamp to texture bounds
+    nearestPixel = clamp(nearestPixel, ivec2(0), texSize - 1);
+
+    // Fetch and decode the single texel
+    float h = decodeRawHeightForElevation(texelFetch(demTexture, nearestPixel, 0));
+
+    valid = isValidHeight(h);
+    if (!valid) {
+      return 0.0;
+    }
+
+    // Normalize the height
+    return normalizeElevationHeight(h);
+  }
 #endif

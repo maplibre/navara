@@ -12,6 +12,7 @@ import ThreeView, {
   type Source,
   type FeatureEvaluator,
   type FeatureInfo,
+  ColorMap,
   TERRARIUM_ELEVATION_DECODER,
   MAPBOX_ELEVATION_DECODER,
   radianToDegree,
@@ -659,6 +660,7 @@ export class MapLibreStylePlugin extends Plugin<ThreeView, ViewContext> {
     "symbol",
     "raster",
     "hillshade",
+    "color-relief",
     "background",
   ]);
 
@@ -668,6 +670,12 @@ export class MapLibreStylePlugin extends Plugin<ThreeView, ViewContext> {
   private addStyleLayer(view: ThreeView, styleLayer: StyleLayer): void {
     if (!this.parsedStyle) {
       throw new Error("Style not parsed yet");
+    }
+
+    // Check visibility (layout property supported by all layer types)
+    // Skip layers with visibility: "none"
+    if (styleLayer.layout?.visibility === "none") {
+      return;
     }
 
     // Check if layer has a source
@@ -724,6 +732,15 @@ export class MapLibreStylePlugin extends Plugin<ThreeView, ViewContext> {
     // Add layer
     const layer = view.addLayer(layerDesc);
     this.layers.push(layer);
+
+    // Apply elevation colormap for color-relief layers
+    if (styleLayer.type === "color-relief") {
+      const colorMap = (layerDesc as unknown as { _colorMap?: ColorMap })
+        ._colorMap;
+      if (colorMap) {
+        view.globe.elevationColormap = colorMap;
+      }
+    }
 
     // Set up feature evaluation for vector layers
     if (

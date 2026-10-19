@@ -128,6 +128,11 @@ export type ElevationHeatmapCompositeLayer = CompositeLayerBase & {
    * Geographic terrain (baked or direct) remaps identically to color imagery.
    */
   reproject?: [number, number];
+  /**
+   * Texture filtering mode for the elevation data.
+   * "linear" uses bilinear interpolation, "nearest" uses nearest neighbor.
+   */
+  filter?: "linear" | "nearest";
 };
 
 export type CompositeLayer =

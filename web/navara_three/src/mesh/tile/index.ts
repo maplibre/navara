@@ -350,6 +350,8 @@ export class TileMesh
     const layerUvScale: Vector2[] = ud.layerUvScale?.value ?? [];
     const isHillshades: boolean[] = ud.isHillshades?.value ?? [];
     const isElevationHeatmaps: boolean[] = ud.isElevationHeatmaps?.value ?? [];
+    const elevationHeatmapUsesBilinear: boolean[] =
+      ud.elevationHeatmapUsesBilinear?.value ?? [];
     const waters: boolean[] = ud.waters?.value ?? [];
     const boundary = this.texturizedSceneIndexFrom;
 
@@ -381,6 +383,7 @@ export class TileMesh
           region === "vector" ? this.vectorDrape : this.rasterDrape
         ).slotReproject(absSlot);
         if (isElevationHeatmaps[absSlot]) {
+          const usesBilinear = elevationHeatmapUsesBilinear[absSlot] ?? true;
           layers.push({
             kind: "elevationHeatmap",
             region,
@@ -390,6 +393,7 @@ export class TileMesh
             uvScale,
             opacity: opacities[absSlot] ?? 1,
             reproject: slotReproject,
+            filter: usesBilinear ? "linear" : "nearest",
           });
         } else {
           layers.push({
@@ -1243,6 +1247,13 @@ ${generateTileCommonInjection(maxTextures)}
         value: [...new Array(maxTextures)].fill(false),
       };
     }
+    // Elevation Heatmap texture filters (true = use bilinear, false = use nearest)
+    // Default to false (nearest) for testing
+    if (!m.userData.elevationHeatmapUsesBilinear) {
+      m.userData.elevationHeatmapUsesBilinear = {
+        value: [...new Array(maxTextures)].fill(false),
+      };
+    }
     if (!m.userData.elevationRGBScaler) {
       m.userData.elevationRGBScaler = {
         value: new Vector3(0, 0, 0),
@@ -1302,6 +1313,7 @@ ${generateTileCommonInjection(maxTextures)}
       m.userData.colors.value[i] = new Color();
       m.userData.opacities.value[i] = 1;
       m.userData.isElevationHeatmaps.value[i] = false; // Reset elevation heatmap flags
+      m.userData.elevationHeatmapUsesBilinear.value[i] = true;
       m.userData.isHillshades.value[i] = false; // Reset hillshade flags
     }
 
@@ -1317,6 +1329,9 @@ ${generateTileCommonInjection(maxTextures)}
 
     // Update elevation heatmap parameters from Rust material
     if (mat.isElevationHeatmaps && mat.isElevationHeatmaps.length > 0) {
+      // Read filter from shared config (applies to all elevation heatmap slots)
+      const usesBilinear = mat.elevationHeatmapFilter !== "nearest";
+
       for (
         let i = 0;
         i < Math.min(mat.isElevationHeatmaps.length, maxTextures);
@@ -1324,6 +1339,11 @@ ${generateTileCommonInjection(maxTextures)}
       ) {
         m.userData.isElevationHeatmaps.value[i] =
           mat.isElevationHeatmaps[i] !== 0;
+
+        // Apply filter to elevation heatmap slots
+        if (mat.isElevationHeatmaps[i] !== 0) {
+          m.userData.elevationHeatmapUsesBilinear.value[i] = usesBilinear;
+        }
       }
     }
 
@@ -1546,14 +1566,19 @@ ${generateTileCommonInjection(maxTextures)}
         }
 
         if (isElevationHeatmap) {
-          // Elevation DEM textures: use NearestFilter to prevent decoding artifacts
-          // RGB-encoded heights must not be interpolated before decoding
-          if (t.minFilter !== NearestFilter) {
-            t.minFilter = NearestFilter;
+          // Elevation heatmap textures: filter mode is configurable via elevationHeatmapFilter
+          // - "nearest": NearestFilter (no interpolation, shows pixel blocks)
+          // - "linear": LinearFilter (hardware bilinear, smoother but relies on shader for correct DEM handling)
+          // The shader uses sampleElevationBilinear/sampleElevationNearest to properly decode RGB heights
+          const useNearest = mat.elevationHeatmapFilter === "nearest";
+          const targetFilter = useNearest ? NearestFilter : LinearFilter;
+
+          if (t.minFilter !== targetFilter) {
+            t.minFilter = targetFilter;
             t.needsUpdate = true;
           }
-          if (t.magFilter !== NearestFilter) {
-            t.magFilter = NearestFilter;
+          if (t.magFilter !== targetFilter) {
+            t.magFilter = targetFilter;
             t.needsUpdate = true;
           }
         }

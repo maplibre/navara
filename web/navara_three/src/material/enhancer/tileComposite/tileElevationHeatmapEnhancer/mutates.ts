@@ -23,6 +23,7 @@ export type ElevationMutates = {
 export function createElevationMutates(): ElevationMutates {
   const refs = {
     uIsElevationHeatmaps: new Uniform<boolean[]>([]),
+    uElevationHeatmapUsesBilinear: new Uniform<boolean[]>([]),
     uColorMapTexture: new Uniform<Texture | null>(null),
     uElevationRGBScaler: new Uniform(new Vector3()),
     uElevationMinMaxHeightAndBoundary: new Uniform(new Vector3()),
@@ -36,8 +37,12 @@ export function createElevationMutates(): ElevationMutates {
       refs.uIsElevationHeatmaps.value = new Array<boolean>(numTextures).fill(
         false,
       );
+      refs.uElevationHeatmapUsesBilinear.value = new Array<boolean>(
+        numTextures,
+      ).fill(true);
       refs.uColorMapTexture.value = placeholder;
       target.uIsElevationHeatmaps = refs.uIsElevationHeatmaps;
+      target.uElevationHeatmapUsesBilinear = refs.uElevationHeatmapUsesBilinear;
       target.uColorMapTexture = refs.uColorMapTexture;
       target.uElevationRGBScaler = refs.uElevationRGBScaler;
       target.uElevationMinMaxHeightAndBoundary =
@@ -49,7 +54,15 @@ export function createElevationMutates(): ElevationMutates {
       target.uLogBoundary = refs.uLogBoundary;
     },
     bindSlot: (k, layer) => {
-      refs.uIsElevationHeatmaps.value[k] = layer?.kind === "elevationHeatmap";
+      const isHeatmap = layer?.kind === "elevationHeatmap";
+      refs.uIsElevationHeatmaps.value[k] = isHeatmap;
+      if (isHeatmap) {
+        // Set filter: "linear" = true (bilinear), "nearest" = false (nearest)
+        refs.uElevationHeatmapUsesBilinear.value[k] =
+          layer.filter !== "nearest";
+      } else {
+        refs.uElevationHeatmapUsesBilinear.value[k] = true; // Default
+      }
     },
     bindGlobal: (globals) => {
       refs.uColorMapTexture.value = globals.colorMapTexture;

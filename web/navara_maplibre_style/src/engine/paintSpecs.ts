@@ -18,6 +18,7 @@ export const PAINT_SPECS_BY_TYPE = {
   symbol: v8.paint_symbol,
   raster: v8.paint_raster,
   hillshade: v8.paint_hillshade,
+  "color-relief": v8["paint_color-relief"],
   background: v8.paint_background,
 };
 

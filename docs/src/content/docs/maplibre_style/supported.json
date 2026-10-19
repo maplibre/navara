@@ -24,6 +24,11 @@
         "fill-pattern": {
           "status": "❌"
         }
+      },
+      "layout": {
+        "visibility": {
+          "status": "✅"
+        }
       }
     },
     "fill-extrusion": {
@@ -248,6 +253,11 @@
         "raster-resampling": {
           "status": "❌"
         }
+      },
+      "layout": {
+        "visibility": {
+          "status": "✅"
+        }
       }
     },
     "hillshade": {
@@ -270,6 +280,30 @@
         },
         "hillshade-accent-color": {
           "status": "❌"
+        }
+      },
+      "layout": {
+        "visibility": {
+          "status": "✅"
+        }
+      }
+    },
+    "color-relief": {
+      "status": "✅",
+      "paint": {
+        "color-relief-color": {
+          "status": "✅"
+        },
+        "color-relief-opacity": {
+          "status": "✅"
+        },
+        "resampling": {
+          "status": "✅"
+        }
+      },
+      "layout": {
+        "visibility": {
+          "status": "✅"
         }
       }
     },

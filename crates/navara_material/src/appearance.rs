@@ -13,6 +13,9 @@ pub struct ElevationHeatmapConfig {
 
     pub logarithmic: bool,
     pub log_boundary: f64,
+
+    /// Texture filter mode: "linear" for bilinear interpolation, "nearest" for nearest neighbor
+    pub filter: String,
 }
 
 /// Configuration for hillshade rendering.

@@ -1386,4 +1386,53 @@ describe("MapLibreStylePlugin", () => {
       expect(mockTileJsonPluginDispose).toHaveBeenCalledTimes(1);
     });
   });
+
+  describe("layout.visibility", () => {
+    it("should skip layers with visibility: none", async () => {
+      const style: StyleSpecification = {
+        version: 8,
+        sources: {
+          "vector-source": {
+            type: "vector",
+            tiles: ["https://example.com/{z}/{x}/{y}.mvt"],
+          },
+        },
+        layers: [
+          {
+            id: "visible-layer",
+            type: "fill",
+            source: "vector-source",
+            "source-layer": "layer1",
+            layout: {
+              visibility: "visible",
+            },
+          },
+          {
+            id: "hidden-layer",
+            type: "fill",
+            source: "vector-source",
+            "source-layer": "layer2",
+            layout: {
+              visibility: "none",
+            },
+          },
+          {
+            id: "default-visibility-layer",
+            type: "fill",
+            source: "vector-source",
+            "source-layer": "layer3",
+            // No layout.visibility specified (defaults to "visible")
+          },
+        ],
+      };
+
+      const plugin = new MapLibreStylePlugin(style);
+      const view = createMockView();
+      await plugin.init(view, mockViewContext);
+
+      // Should add only 2 layers: visible-layer and default-visibility-layer
+      // hidden-layer (visibility: "none") should be skipped entirely
+      expect(view.addLayer).toHaveBeenCalledTimes(2);
+    });
+  });
 });

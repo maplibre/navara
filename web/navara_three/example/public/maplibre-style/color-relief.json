@@ -1,0 +1,76 @@
+{
+    "version": 8,
+    "name": "Color Relief Test",
+    "projection": {
+        "type": "globe"
+      },
+    "zoom": 2,
+    "sources": {
+        "osm": {
+            "type": "raster",
+            "tiles": ["https://tile.openstreetmap.org/{z}/{x}/{y}.png"],
+            "tileSize": 256,
+            "maxzoom": 19
+        },
+        "terrain-rgb": {
+            "type": "raster-dem",
+            "tiles": [
+                "https://tiles.mapterhorn.com/{z}/{x}/{y}.webp"
+            ],
+            "tileSize": 512,
+            "encoding": "terrarium"
+        }
+    },
+    "layers": [
+        {
+            "id": "osm-basemap",
+            "type": "raster",
+            "source": "osm",
+            "paint": {
+                "raster-opacity": 1.0
+            }
+        },
+        {
+            "id": "color-relief",
+            "type": "color-relief",
+            "source": "terrain-rgb",
+            "paint": {
+                "color-relief-opacity": 1,
+                "color-relief-color": [
+                    "interpolate",
+                    ["linear"],
+                    ["elevation"],
+                    0, "#30123b",
+                    500, "#424bb5",
+                    1000, "#4196ff",
+                    1500, "#1ad2d2",
+                    2000, "#46f884",
+                    2500, "#cdec34",
+                    3000, "#f8be39",
+                    3500, "#e5470b",
+                    4000, "#7a0403"
+                ],
+                "resampling": "linear"
+            },
+            "layout": {
+                "visibility": "visible"
+            }
+        },
+        {
+            "id": "hillshade",
+            "type": "hillshade",
+            "source": "terrain-rgb",
+            "paint": {
+                "hillshade-exaggeration": 0.5,
+                "hillshade-shadow-color": "#473B24",
+                "hillshade-accent-color": "#FFF5E6",
+                "hillshade-highlight-color": "#FFFFFF",
+                "hillshade-illumination-direction": 315
+            }
+        }
+    ],
+    "terrain": {
+        "source": "terrain-rgb",
+        "exaggeration": 1.5
+    }
+}
