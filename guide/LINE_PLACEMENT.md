@@ -92,7 +92,8 @@ and runs in two phases:
    (`LabelLayout.minXEm`/`maxXEm`) measured from the shader's `-cx·w` origin,
    not the advance width: a glyph can overhang its advance, and it is the ink
    that has to stay on the line and inside the box.
-2. `lineLabelPlace`, for the survivors with their paths: the flip, the
+2. `lineLabelPlace`, for the survivors with their paths (a `Straight` label,
+   which does not bend, gets only the box of its turned block): the flip, the
    `maxAngle` test (the turn summed over a sliding window of about 1.5 em, at
    least two turns, must stay under the limit), and the rotated screen-axis box
    (`path_box`, built segment by segment the way the shader places words, in
@@ -111,14 +112,33 @@ unrotated block.
 
 ## Drawing along a line
 
-A label with a non-zero `PATH.y` skips `nvr_quadBasis`, with one exception
-below. Its basis comes from the line under each **word**, not from the camera,
-so `rotation` and `rotateWithCamera` do not apply; facing still picks the plane:
+How a label with a non-zero `PATH.y` is drawn depends on its resolved facing,
+`rotateWithCamera` and `spreadGlyphs`, the three MapLibre folds into
+`text-rotation-alignment` and `text-pitch-alignment`. The four layouts are
+`LineGlyphMode` in `linePlacement.ts` (`GlyphMode` in the kernel, which reads
+it from the label row):
 
-| facing | right | up |
-| --- | --- | --- |
-| upright | path tangent | surface normal |
-| flat | path tangent | ground normal (tangent turned 90° left) |
+| mode | when | right | up | MapLibre |
+| --- | --- | --- | --- | --- |
+| `Ground` | flat, `!rotateWithCamera` | path tangent | ground normal (tangent turned 90° left) | `map` / `map` |
+| `ScreenTangent` | upright, `!rotateWithCamera` | the segment's direction on screen | its screen perpendicular | `map` / `viewport` |
+| `FacesCamera` | `rotateWithCamera` and `spreadGlyphs` | `nvr_quadBasis`, rotation 0 | | `viewport-glyph` |
+| `Straight` | `rotateWithCamera`, no `spreadGlyphs` | `nvr_quadBasis` | | `viewport` |
+
+A `Straight` label is not bent at all: the shader sets `nvr_alongLine` false
+for it, so it lays out as a point label at its anchor, background and
+`rotation` included, while `PATH.w` still culls it until placed. The kernel
+judges only its scale band, never flips it, and boxes its block with
+`quad_screen_basis`, as `lineAnchorPlace` boxes a sprite.
+
+`rotation` spins each glyph of a bent label about its own pivot: the glyph's
+horizontal centre on the label's mid-line (`(minY + maxY) / 2`, from `BOX.zw`
+in the shader and the row's y bounds in the kernel), clockwise as
+`nvr_quadBasis` turns a whole label. The kernel cannot see the glyphs, only the
+widest one's half width (`glyphReach`, from `LabelLayout.maxGlyphHalfEm`), so
+each piece's box grows by the exact extent of such a glyph turned by the
+angle: `h·|sin θ|` along the line and `g·|sin θ| + h·|cos θ|` across, which at
+zero is the unturned box.
 
 The walk is word-rigid. `glyphWordCenter` (the centre of the glyph's word, in
 ems, identical for every glyph in the word; filled by `layout.ts`, which closes
@@ -132,15 +152,15 @@ feature: the value rides in the batch texture's packed `orientation` (see
 resolved value, and `setFeatureSpreadGlyphsByBatchIndex` lays the feature's
 labels out again when it changes.
 
-The exception: a spread glyph whose (per-feature) `rotateWithCamera` is on
-keeps its place on the path but takes its axes from `nvr_quadBasis` (with
-rotation 0), turning like a point label of the same facing (MapLibre's
-`viewport-glyph`). The kernel learns this per label from `facesCamera` and
-builds that glyph's box from the same axes (`quad_screen_basis`, which mirrors
-`nvr_quadBasis`): `wordReach` either side across the screen around each glyph
-centre on the path, instead of along the segment.
+A `FacesCamera` or `ScreenTangent` piece keeps its place on the path but takes
+screen axes, so the kernel builds its box from the same axes
+(`quad_screen_basis`, which mirrors `nvr_quadBasis`, or the projected segment):
+`wordReach` either side across the screen around each piece's centre on the
+path, instead of along the segment. A piece's centre stays at least
+`wordReach` inside either end of the text, measured on the screen and walked
+to the ground, so a word-rigid label claims its own length and not twice it.
 
-Such a glyph also keeps the anchor's on-screen size (flat ones still
+Such a piece also keeps the anchor's on-screen size (flat ones still
 foreshorten in height), so walking the ground would bunch glyphs wherever the
 line recedes. It is spaced on the screen
 instead: `nvr_screenWalk` projects the samples into the view at the anchor's
@@ -152,8 +172,8 @@ depth over the anchor's, so every glyph has the anchor's size. The kernel runs
 the same walk (`screen_walk`, `ViewFrame`) to turn the label's screen arc into
 the ground arc it covers, and uses that arc for the max-angle test, for the
 length half of the fit test (`overruns`; the ground length means nothing for
-such a label, so `fits` and `lineLabelFit`, told by the fit row's
-`facesCamera`, test only its scale band), and for the box, which projects each
+such a label, so `fits` and `lineLabelFit`, told by the fit row's glyph
+mode, test only its scale band), and for the box, which projects each
 glyph's centre the same way and keeps its quad at the anchor's size. Samples
 are a uniform `step` apart, so
 the segment is `floor((s + halfSpan) / step)`: two texel fetches, no loop. The

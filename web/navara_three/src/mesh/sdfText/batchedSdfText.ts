@@ -40,6 +40,10 @@ import {
   type SdfTextBaseProps,
   type SdfTextBaseState,
 } from "../../material/enhancer/sdfText";
+import {
+  resolveOrientation,
+  type ResolvedOrientation,
+} from "../../material/orientation";
 import { buildBatchIndexMap } from "../batchIndexMap";
 import { GEOMETRY_TYPES } from "../constants";
 import { InstancedMesh, type InstancedMeshOptions } from "../instanced";
@@ -60,6 +64,7 @@ import {
   type LinePath,
   PATH_META_STRIDE,
   findRepeatedLabels,
+  lineGlyphMode,
   packLineLabelFits,
   packLineLabels,
   takeLinePath,
@@ -181,6 +186,8 @@ type LabelRecord = {
   maxXEm: number;
   /** See `LabelLayout.maxWordHalfEm`. */
   maxWordHalfEm: number;
+  /** See `LabelLayout.maxGlyphHalfEm`. */
+  maxGlyphHalfEm: number;
   /** Current animated hide factor and the placement target it fades toward. */
   declutterHide: number;
   declutterTarget: number;
@@ -427,8 +434,7 @@ export class BatchedSdfTextMesh
         center: material.center
           ? [material.center.x, material.center.y]
           : undefined,
-        flatFacing: material.textFacing === "flat",
-        rotateWithCamera: material.rotateWithCamera ?? true,
+        ...textOrientation(material),
         rotation: material.rotation ?? 0,
         sizeInMeters: material.sizeInMeters ?? true,
         offsetDepth: material.offsetDepth ?? true,
@@ -581,7 +587,11 @@ export class BatchedSdfTextMesh
       );
       return {
         flatFacing: o.flatFacing,
-        facesCamera: o.spreadGlyphs && o.rotateWithCamera,
+        mode: lineGlyphMode(o),
+        rotation: this._resolveRotation(
+          this._labels[slot]?.batchIndex,
+          materialOrientation.rotation,
+        ),
       };
     };
 
@@ -773,6 +783,22 @@ export class BatchedSdfTextMesh
    * resolves them: the feature's own once any feature has one (the batch
    * texture then governs every feature), the material's until then.
    */
+  /** A feature's rotation in radians: its own once it has a slot, otherwise
+   *  the material's. */
+  private _resolveRotation(
+    batchIndex: number | undefined,
+    material: number,
+  ): number {
+    if (batchIndex === undefined) return material;
+    return (
+      readBatchScalar(
+        this.material as ShaderMaterial,
+        batchIndex,
+        "rotation",
+      ) ?? material
+    );
+  }
+
   private _resolveOrientation(
     batchIndex: number | undefined,
     material: Orientation = this._orientationDefaults(),
@@ -902,6 +928,7 @@ export class BatchedSdfTextMesh
       minXEm: 0,
       maxXEm: 0,
       maxWordHalfEm: 0,
+      maxGlyphHalfEm: 0,
       // Decluttered labels start hidden and fade in once the placement pass
       // grants them space — otherwise dense tiles flash their full clutter for
       // a frame before the first pass runs.
@@ -1000,8 +1027,7 @@ export class BatchedSdfTextMesh
   private _orientationDefaults(): Required<BatchAttributeDefaults> {
     return {
       rotation: (this._material.rotation ?? 0) * MathUtils.DEG2RAD,
-      flatFacing: this._material.textFacing === "flat",
-      rotateWithCamera: this._material.rotateWithCamera ?? true,
+      ...textOrientation(this._material),
       spreadGlyphs: this._spreadGlyphs,
     };
   }
@@ -1120,6 +1146,7 @@ export class BatchedSdfTextMesh
     record.minXEm = layout.minXEm;
     record.maxXEm = layout.maxXEm;
     record.maxWordHalfEm = layout.maxWordHalfEm;
+    record.maxGlyphHalfEm = layout.maxGlyphHalfEm;
     this._writeBox(record);
 
     if (layout.quads.length === 0) {
@@ -1690,8 +1717,7 @@ export class BatchedSdfTextMesh
         center: material.center
           ? [material.center.x, material.center.y]
           : [0.5, 0.0],
-        flatFacing: material.textFacing === "flat",
-        rotateWithCamera: material.rotateWithCamera ?? true,
+        ...textOrientation(material),
         rotation: material.rotation ?? 0,
         sizeInMeters: material.sizeInMeters ?? true,
         offsetDepth: material.offsetDepth ?? true,
@@ -1736,8 +1762,8 @@ export class BatchedSdfTextMesh
     const addHeightChanged = addHeight !== (prevMaterial.height ?? 0);
     const mat = this.material as ShaderMaterial;
     const rotationDeg = material.rotation ?? 0;
-    const flatFacing = material.textFacing === "flat";
-    const followCamera = material.rotateWithCamera ?? true;
+    const orientation = textOrientation(material);
+    const prevOrientation = textOrientation(prevMaterial);
     // Orientation/rotation are uniform-driven until some feature gets its own
     // value. Once a slot exists every feature reads the texture, so a changed
     // material value must be written through or evaluator overrides would
@@ -1751,9 +1777,9 @@ export class BatchedSdfTextMesh
         rotationDeg !== (prevMaterial.rotation ?? 0) &&
         hasBatchScalarSlot(mat, "rotation"),
       flatFacing:
-        flatFacing !== (prevMaterial.textFacing === "flat") && hasOrientation,
+        orientation.flatFacing !== prevOrientation.flatFacing && hasOrientation,
       rotateWithCamera:
-        followCamera !== (prevMaterial.rotateWithCamera ?? true) &&
+        orientation.rotateWithCamera !== prevOrientation.rotateWithCamera &&
         hasOrientation,
       spreadGlyphs:
         nextSpreadGlyphs !== (prevMaterial.spreadGlyphs ?? false) &&
@@ -2047,6 +2073,8 @@ export class BatchedSdfTextMesh
       degrees * MathUtils.DEG2RAD,
       this._orientationDefaults(),
     );
+    // An along-line label's collision box covers its spun glyphs.
+    this._markDeclutterDirty();
   }
 
   setFeatureSizeByBatchIndex(batchIndex: number, size: number) {
@@ -2179,6 +2207,14 @@ export class BatchedSdfTextMesh
 }
 
 /** Clamp to [0, 1], treating non-finite input as fully opaque. */
+function textOrientation(material: NavaraTextMaterial): ResolvedOrientation {
+  return resolveOrientation(
+    material.textFacing,
+    material.rotateWithCamera,
+    material.placement,
+  );
+}
+
 function clamp01(value: number): number {
   return Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : 1.0;
 }

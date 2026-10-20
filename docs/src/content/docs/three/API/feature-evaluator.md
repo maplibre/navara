@@ -149,16 +149,18 @@ The callback function can return an object containing the following properties:
 | `opacity` | `number` | Feature opacity, range 0.0-1.0 (for polygons/points/billboards/models/text) |
 | `declutterPriority` | `number` | Placement priority for decluttering. Higher wins an overlap (for points/billboards/text with [`declutter`](../../../three/material/text-material/#declutter) enabled). Overrides the layer's `declutterPriority` |
 | `image` | `string \| null` | Image URL (for billboard features). Each distinct URL is loaded once and packed into the layer's texture atlas. Return `null` to clear a previous per-feature image and revert to the billboard material's default `url` (the feature becomes invisible if the material has no `url`) |
-| `facing` | `"upright" \| "flat"` | Whether the point, billboard, or label stands up or lies on the globe surface (for points/billboards/text). Overrides the material's `pointFacing`/`billboardFacing`/`textFacing` |
-| `rotateWithCamera` | `boolean` | Whether the point, billboard, or label turns to follow the camera (for points/billboards/text). `false` fixes it in the anchor's east/north/up frame. Overrides the material's `rotateWithCamera` |
+| `facing` | `"upright" \| "flat"` | Whether the point, billboard, or label lies in the screen plane (`"upright"`) or on the globe surface (`"flat"`) (for points/billboards/text). Overrides the value the material's `pointFacing`/`billboardFacing`/`textFacing` resolves to |
+| `rotateWithCamera` | `boolean` | Whether the point, billboard, or label turns with the camera (`true`) or with the map (`false`) (for points/billboards/text). Along a line, `false` makes a label follow the line, and `true` draws it straight unless `spreadGlyphs` is set. Overrides the value the material's `rotateWithCamera` resolves to |
 | `spreadGlyphs` | `boolean` | Whether the label places each glyph on its own along its line (for text placed along a line). Overrides the material's `spreadGlyphs`, for example to keep cursive scripts or fonts word by word in a layer that spreads the rest |
-| `rotation` | `number` | In-plane rotation around the anchor, in degrees, clockwise as seen from the front (for points/billboards/text). Lets every feature in one layer point a different way. Overrides the material's `rotation` |
+| `rotation` | `number` | In-plane rotation, in degrees, clockwise as seen from the front (for points/billboards/text). It turns the feature around its anchor, except that a label following a line spins each glyph about its own center. Lets every feature in one layer point a different way. Overrides the material's `rotation` |
 | `emissive` | `Color` | Emissive color (for batched polygons/3D Tiles models/points/billboards/text, ignored on models without batch/feature ids). Pairs with `emissiveIntensity` and drives selective bloom. On text only the glyph fill glows, while the outline and background stay dark |
 | `emissiveIntensity` | `number` | Emissive intensity multiplier (for batched polygons/3D Tiles models/points/billboards/text) |
 
 :::note
 Evaluated styles override the layer's default styles.
 :::
+
+Per-feature `facing` and `rotateWithCamera` are not resolved like MapLibre's `"auto"`. Each replaces only its own half of the orientation the material resolved, so returning only `rotateWithCamera: false` for a point label keeps it upright, turned with the camera heading. Return `facing: "flat"` as well for a north-up label on the surface.
 
 **Example:**
 
@@ -329,17 +331,20 @@ type EvaluatedValue = {
    * packed into the layer's texture atlas. `null` clears a previous
    * per-feature image, reverting to the billboard material's default url */
   image?: string | null;
-  /** Whether the point, billboard, or label stands up or lies on the globe
-   * surface (for points/billboards/text). Overrides the material's facing option */
+  /** Whether the point, billboard, or label lies in the screen plane
+   * ("upright") or on the globe surface ("flat") (for points/billboards/text).
+   * Overrides the material's facing option */
   facing?: "upright" | "flat";
-  /** Whether the point, billboard, or label turns to follow the camera (for
-   * points/billboards/text) */
+  /** Whether the point, billboard, or label turns with the camera (`true`) or
+   * with the map (`false`) (for points/billboards/text). Along a line, `false`
+   * makes a label follow the line */
   rotateWithCamera?: boolean;
   /** Whether the label places each glyph on its own along its line (for
    * text placed along a line) */
   spreadGlyphs?: boolean;
-  /** In-plane rotation around the anchor, in degrees, clockwise as seen from
-   * the front (for points/billboards/text) */
+  /** In-plane rotation, in degrees, clockwise as seen from the front (for
+   * points/billboards/text). A label following a line spins each glyph about
+   * its own center */
   rotation?: number;
   /** Emissive color (for batched polygons/3D Tiles models/points/billboards/
    * text; ignored on models without batch/feature ids). Pairs with

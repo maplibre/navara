@@ -219,6 +219,9 @@ export type LabelLayout = {
    *  far line placement's rigid pieces can run along their own tangent from
    *  where they sit on the curve. */
   maxWordHalfEm: number;
+  /** Half the width of the widest glyph quad: how far a glyph spun about its
+   *  own centre by `rotation` can reach from it along a line. */
+  maxGlyphHalfEm: number;
 };
 
 export type LayoutOptions = {
@@ -245,6 +248,7 @@ const EMPTY_LAYOUT: LabelLayout = {
   minXEm: 0,
   maxXEm: 0,
   maxWordHalfEm: 0,
+  maxGlyphHalfEm: 0,
 };
 
 /**
@@ -316,6 +320,7 @@ export function buildLabelLayout(
   let minXEm = Infinity;
   let maxXEm = -Infinity;
   let maxWordHalfEm = 0;
+  let maxGlyphHalfEm = 0;
 
   for (let li = 0; li < lines.length; li++) {
     let cursorX = (blockWidthFu - widths[li]) * options.textAlign;
@@ -358,6 +363,7 @@ export function buildLabelLayout(
         maxYEm = Math.max(maxYEm, offsetEmY + sizeEmY);
         minXEm = Math.min(minXEm, offsetEmX);
         maxXEm = Math.max(maxXEm, offsetEmX + sizeEmX);
+        maxGlyphHalfEm = Math.max(maxGlyphHalfEm, sizeEmX * 0.5);
 
         quads.push({
           offsetEmX,
@@ -400,5 +406,6 @@ export function buildLabelLayout(
     minXEm,
     maxXEm,
     maxWordHalfEm,
+    maxGlyphHalfEm,
   };
 }

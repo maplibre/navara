@@ -10,7 +10,7 @@ import invariant from "tiny-invariant";
  */
 
 /** `f64` values per label in the kernel's packed input. */
-export const LINE_LABEL_STRIDE = 24;
+export const LINE_LABEL_STRIDE = 26;
 
 /** `f64` values per label in the kernel's packed output: flip, rejected, the
  *  rotated box as minX/maxX/minY/maxY, then metres per pixel at the anchor. */
@@ -18,6 +18,36 @@ export const LINE_LABEL_RESULT_STRIDE = 7;
 
 /** `f64` values per label in the `lineLabelFit` pre-pass's packed input. */
 export const LINE_LABEL_FIT_STRIDE = 12;
+
+/**
+ * How an along-line label's glyphs are laid out, from its resolved facing,
+ * `rotateWithCamera` and `spreadGlyphs`. Must match `GlyphMode` in
+ * `line_label.rs` and the branches of sdfText.vert.glsl's line walk.
+ */
+export const LineGlyphMode = {
+  /** Flat and aligned with the map: on the ground, along the line. */
+  Ground: 0,
+  /** Spread glyphs following the camera: MapLibre's `viewport-glyph`. */
+  FacesCamera: 1,
+  /** Upright and aligned with the map: on screen, turned to the line as it
+   *  runs on screen (MapLibre's `map` rotation with `viewport` pitch). */
+  ScreenTangent: 2,
+  /** Following the camera without spread glyphs: not bent at all, drawn
+   *  straight at the anchor (MapLibre's `viewport` rotation). */
+  Straight: 3,
+} as const;
+export type LineGlyphMode = (typeof LineGlyphMode)[keyof typeof LineGlyphMode];
+
+export function lineGlyphMode(o: {
+  flatFacing: boolean;
+  rotateWithCamera: boolean;
+  spreadGlyphs: boolean;
+}): LineGlyphMode {
+  if (o.rotateWithCamera) {
+    return o.spreadGlyphs ? LineGlyphMode.FacesCamera : LineGlyphMode.Straight;
+  }
+  return o.flatFacing ? LineGlyphMode.Ground : LineGlyphMode.ScreenTangent;
+}
 
 /** Scalars the engine sends per anchor alongside its path samples. */
 export const PATH_META_STRIDE = 2;
@@ -59,6 +89,7 @@ export type PackableLabel = {
   minXEm: number;
   maxXEm: number;
   maxWordHalfEm: number;
+  maxGlyphHalfEm: number;
   fontSize: number;
 };
 
@@ -76,8 +107,13 @@ export type LinePath = {
   scaleBands: Float32Array<ArrayBufferLike>;
 };
 
-/** A label's facing, as the kernel reads it. */
-export type LabelOrientation = { flatFacing: boolean; facesCamera: boolean };
+/** A label's orientation, as the kernel reads it. */
+export type LabelOrientation = {
+  flatFacing: boolean;
+  mode: LineGlyphMode;
+  /** In-plane turn, radians clockwise. */
+  rotation: number;
+};
 
 export type LinePlacementOptions = {
   sizeInMeters: boolean;
@@ -87,10 +123,9 @@ export type LinePlacementOptions = {
   center: readonly [number, number];
   /** Perpendicular offset from the line, in the font size's units. */
   lineOffset: number;
-  /** How the label faces, resolved per label since a feature can override the
-   *  material's: whether it lies flat rather than standing upright, and
-   *  whether each glyph is its own word turned to the camera (`spreadGlyphs`
-   *  with `rotateWithCamera`). */
+  /** How the label is oriented, resolved per label since a feature can
+   *  override the material's: whether it lies flat, how its glyphs follow the
+   *  line, and its rotation. */
   readOrientation: (slot: number) => LabelOrientation;
   /** Whether the label is currently walked backwards, which feeds the kernel's
    *  flip hysteresis. */
@@ -168,7 +203,7 @@ export function packLineLabelFits(
     out[o + 8] = path.scaleBands[band];
     out[o + 9] = path.scaleBands[band + 1];
     out[o + 10] = drawnWidthEm(label);
-    out[o + 11] = options.readOrientation(label.slot).facesCamera ? 1 : 0;
+    out[o + 11] = options.readOrientation(label.slot).mode;
   }
   return out;
 }
@@ -230,7 +265,9 @@ export function packLineLabels(
     out[o + 20] = scaleBands[band + 1];
     out[o + 21] = drawnWidthEm(label);
     out[o + 22] = label.maxWordHalfEm * label.fontSize;
-    out[o + 23] = orientation.facesCamera ? 1 : 0;
+    out[o + 23] = orientation.mode;
+    out[o + 24] = orientation.rotation;
+    out[o + 25] = label.maxGlyphHalfEm * label.fontSize;
 
     // Labels are created lazily and sparsely, so their path runs are gathered
     // into input order rather than passed as one contiguous slice.

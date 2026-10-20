@@ -15,7 +15,7 @@ sidebar:
 
 **Description:** 裏側から見たときにラベルを非表示にするかどうかを指定します。`false` の場合はラベルの両面を描画し、`true` の場合は表側のみを描画します。
 
-カメラに追従して立っているラベル（デフォルト）は常に表側が見えるため、影響はありません。影響があるのは次の 2 つの場合です。[`rotateWithCamera`](#rotatewithcamera) が `false` のラベルは裏側から見えることがあり、その場合は左右反転して表示されますが、この設定を有効にすると非表示になります。[`textFacing`](#textfacing) が `"flat"` のラベルは地球の外側を表側としているため、この設定を有効にすると、大きなラベルのうち地平線の向こう側に回り込んだ部分も非表示になります。
+裏側がカメラから見えるのは、地表に寝かせたラベル（[`textFacing`](#textfacing) を参照）だけです。地球の外側を表側としているため、この設定を有効にすると、大きなラベルのうち地平線の向こう側に回り込んだ部分が非表示になります。`"upright"` のラベルは常に画面と同じ平面で視点の方を向いているため、影響はありません。
 
 **Default:** `false`
 
@@ -338,7 +338,7 @@ view.addFontFamily({
 
 **Type:** `boolean | undefined`
 
-**Description:** ライン沿いに配置したラベルが上下逆さまに読める向きになる場合に反転し、ラインがどちら向きに描かれていても名前が読めるようにします。[`placement`](#placement) が `"line"` または `"line-center"` のときのみ使用されます。ラベルの読み方向はカメラに依存するため、カメラの移動に合わせて判定し直されます。`layer.update()` で変更した値は、表示中のラベルにも反映されます。
+**Description:** ライン沿いに配置したラベルが上下逆さまに読める向きになる場合に反転し、ラインがどちら向きに描かれていても名前が読めるようにします。[`placement`](#placement) が `"line"` または `"line-center"` のときのみ使用され、まっすぐ描かれるラベル（[`rotateWithCamera`](#rotatewithcamera) を参照）は反転しません。ラベルの読み方向はカメラに依存するため、カメラの移動に合わせて判定し直されます。`layer.update()` で変更した値は、表示中のラベルにも反映されます。
 
 **Default:** `true`
 
@@ -412,7 +412,7 @@ view.addFontFamily({
 
 **Type:** `number | undefined`
 
-**Description:** ライン沿いに配置したラベルを、ラインから横方向にずらします。正の値はラインの進行方向の左側に移動し、ラベルが左から右に読める向きのときはラインの上側になります。単位は [`size`](#size) と同じで、[`sizeInMeters`](#sizeinmeters) が `true` のときはメートル、それ以外はピクセルです。道路の上ではなく道路の脇に名前を置きたい場合に使用します。[`placement`](#placement) が `"line"` または `"line-center"` のときのみ使用されます。`layer.update()` で変更した値は、表示中のラベルにも反映されます。
+**Description:** ライン沿いに配置したラベルを、ラインから横方向にずらします。正の値はラインの進行方向の左側に移動し、ラベルが左から右に読める向きのときはラインの上側になります。単位は [`size`](#size) と同じで、[`sizeInMeters`](#sizeinmeters) が `true` のときはメートル、それ以外はピクセルです。道路の上ではなく道路の脇に名前を置きたい場合に使用します。[`placement`](#placement) が `"line"` または `"line-center"` のときのみ使用され、まっすぐ描かれるラベル（[`rotateWithCamera`](#rotatewithcamera) を参照）には適用されません。`layer.update()` で変更した値は、表示中のラベルにも反映されます。
 
 **Default:** `0.0`
 
@@ -434,7 +434,7 @@ view.addFontFamily({
 
 **Type:** `number | undefined`
 
-**Description:** ライン沿いに配置したラベルの下でラインが曲がってよい角度の上限（度）です。これを超えるラベルは読みにくいため非表示になります。角度はフォントサイズの約 1.5 倍の短い区間ごとに合計し、その区間をラベルに沿ってずらしながら判定します。そのため、近接した小さな角が重なると非表示になることがある一方、長く緩やかなカーブは全体でどれだけ曲がっていても表示されます。[`placement`](#placement) が `"line"` または `"line-center"` のときのみ使用されます。ラベルが収まるかどうかはカメラの移動に合わせて判定し直され、`layer.update()` で変更した値は表示中のラベルにも反映されます。
+**Description:** ライン沿いに配置したラベルの下でラインが曲がってよい角度の上限（度）です。これを超えるラベルは読みにくいため非表示になります。角度はフォントサイズの約 1.5 倍の短い区間ごとに合計し、その区間をラベルに沿ってずらしながら判定します。そのため、近接した小さな角が重なると非表示になることがある一方、長く緩やかなカーブは全体でどれだけ曲がっていても表示されます。[`placement`](#placement) が `"line"` または `"line-center"` のときのみ使用されます。まっすぐ描かれるラベル（[`rotateWithCamera`](#rotatewithcamera) を参照）は曲がらないため、この判定の対象外です。ラベルが収まるかどうかはカメラの移動に合わせて判定し直され、`layer.update()` で変更した値は表示中のラベルにも反映されます。
 
 **Default:** `45.0`
 
@@ -567,7 +567,7 @@ import { Color } from "@navaramap/three";
 **Description:** ラインおよびポリゴンジオメトリ上でのラベルの配置方法を指定します。[`geometryTypes`](#geometrytypes) に `"line"` または `"polygon"` が含まれる場合のみ有効です。ポイントジオメトリは常にその地点にラベルが配置されます。
 
 - `"point"`：ラインごとにその最初の頂点に 1 つのラベルを配置し、ポリゴンにはポリゴン内部で辺から最も遠い地点に 1 つのラベルを配置します。ベクタータイルソースでは、最初の頂点がタイルの外にある（タイルで切られた）ラインには、そのタイルではラベルを配置しません。
-- `"line"`：[`spacing`](#spacing) ごとにラインに沿ってラベルを繰り返し配置します。地図上の道路名のように、単語ごとにラインのカーブに沿って曲がります。各単語はその下のラインの向きに合わせて回転し、単語内の文字はまっすぐ並んだままです。文字ごとに回転させるには [`spreadGlyphs`](#spreadglyphs) を指定します。ポリゴンの境界リング（穴を含む）にも同じように沿って配置します。
+- `"line"`：[`spacing`](#spacing) ごとにラインに沿ってラベルを繰り返し配置します。デフォルトでは、地図上の道路名のように、単語ごとにラインのカーブに沿って曲がります。各単語はその下のラインの向きに合わせて回転し、単語内の文字はまっすぐ並んだままです。文字ごとに回転させるには [`spreadGlyphs`](#spreadglyphs) を指定します。ポリゴンの境界リング（穴を含む）にも同じように沿って配置します。
 - `"line-center"`：各ラインまたはポリゴンリングの長さの中間点に 1 つのラベルを配置し、同じように沿って曲げます。
 
 ライン沿いのラベルは、読みにくくなる場合は描画されずに非表示になります。
@@ -577,7 +577,17 @@ import { Color } from "@navaramap/three";
 
 これらの判定はカメラの移動に合わせて再実行されます。
 
-ライン沿いのラベルでは [`keepUpright`](#keepupright)、[`lineOffset`](#lineoffset)、[`spreadGlyphs`](#spreadglyphs) も使用できます。テキストをラインに沿って地表に寝かせるため、通常は `textFacing: "flat"` と組み合わせます。
+ライン沿いのラベルでは [`keepUpright`](#keepupright)、[`lineOffset`](#lineoffset)、[`spreadGlyphs`](#spreadglyphs) も使用できます。[`rotateWithCamera`](#rotatewithcamera)、[`spreadGlyphs`](#spreadglyphs)、[`textFacing`](#textfacing) をいずれも指定しない場合、ラベルは地表に寝かせてラインに沿って配置されます。これらの組み合わせで配置が決まります。
+
+| `rotateWithCamera` | `spreadGlyphs` | `textFacing` | 表示 |
+| --- | --- | --- | --- |
+| `false`（デフォルト） | `false`（デフォルト） | `"flat"`（デフォルト） | 単語がラインに沿って地表に寝かせて配置され、各単語はまっすぐのままです |
+| `false` | `true` | `"flat"` | 各文字が地表に寝かせて配置され、その下のラインの向きに合わせて回転します（MapLibre のデフォルトの道路名。`text-rotation-alignment` と `text-pitch-alignment` がともに `"map"`） |
+| `false` | どちらでも | `"upright"` | 文字（`spreadGlyphs` を指定しない場合は単語）は、アンカー位置での大きさのまま画面と同じ平面に表示されます。画面上に見えるラインに沿って間隔が決まり、それぞれ画面上でのラインの向きに合わせて回転します（`text-rotation-alignment: "map"` と `text-pitch-alignment: "viewport"`） |
+| `true` | `true` | どちらでも | 各文字はライン上に配置され、ポイントラベルと同じようにカメラに追従して回転します。間隔は画面上で決まります（`text-rotation-alignment: "viewport-glyph"`） |
+| `true` | `false` | どちらでも | ラベルは曲がらず、各アンカー位置にポイントラベルとまったく同じように、回転や背景も含めてまっすぐ描かれます（`text-rotation-alignment: "viewport"`） |
+
+まっすぐ描かれるラベルも [`spacing`](#spacing) ごとに繰り返し配置されますが、[`keepUpright`](#keepupright) による反転、[`maxAngle`](#maxangle) による判定、[`lineOffset`](#lineoffset) は適用されません。
 
 このオプションはジオメトリ構築時に適用されます。レイヤー作成時に指定してください。`layer.update()` では読み込み済みのラベルは再構築されないため、変更するにはレイヤーを削除して追加し直してください。
 
@@ -599,17 +609,17 @@ import { Color } from "@navaramap/three";
 
 **Type:** `boolean | undefined`
 
-**Description:** ラベルをカメラに追従して回転させるかどうかを指定します。
+**Description:** ラベルをカメラに合わせて回転させるか、地図に合わせて回転させるかを指定します。MapLibre の `text-rotation-alignment` に相当します（`true` が `"viewport"`、`false` が `"map"`）。
 
-`true` の場合、ラベルは常に視点の方を向きます。[`textFacing`](#textfacing) が `"upright"` のときは画面に正対するビルボードになります。`"flat"` のときは地表の法線を軸に回転し、テキストが常に左から右に読める向きになります。
+`true` の場合、ラベルは画面上で常に左から右に読める向きになります。[`textFacing`](#textfacing) が `"upright"` のときは画面に正対するビルボードになります。`"flat"` のときは地表の法線を軸に回転し、テキストが常に左から右に読める向きになります。
 
-`false` の場合、ラベルはアンカー位置のローカルな東・北・上の座標系に固定され、カメラを動かしても向きは変わりません。`"upright"` では地表に立って南を向く看板になります。北向きのカメラからは読めますが、真上から見ると縁しか見えずに消え、裏側からは鏡像になります。`"flat"` では北を上にして地表に描かれ、地図とともに回転します。
+`false` の場合、ラベルは地図に合わせた向きになります。`"upright"` では画面と同じ平面に元の大きさのまま表示されますが、カメラの方位に合わせて回転し、x 軸が常に東を向きます。テキストは東西方向に沿って読む向きになり、北を上にした地図のラベルと同じく、カメラが南を向くと上下逆さまになります。`"flat"` では北を上にして地表に描かれ、地図とともに回転します。
 
-[`placement`](#placement) が `"line"` または `"line-center"` のときは使われません。これらのラベルはラインの向きに沿います。ただし [`spreadGlyphs`](#spreadglyphs) を指定した場合は例外で、`true` のとき各文字はライン上の位置を保ったままこのように回転します。
+[`placement`](#placement) が `"line"` または `"line-center"` のとき、`false` ではラベルがラインに沿います。`true` では、[`spreadGlyphs`](#spreadglyphs) を指定しない限り、各アンカー位置にポイントラベルと同じようにまっすぐ描かれます。それぞれの配置は [`placement`](#placement) を参照してください。
 
 [`FeatureEvaluator`](../../api/feature-evaluator/) から地物ごとに指定することもできます。
 
-**Default:** `true`
+**Default:** `placement: "point"` では `true`、ライン沿いでは `false`（MapLibre の `"auto"`）
 
 **Example:**
 
@@ -626,7 +636,9 @@ import { Color } from "@navaramap/three";
 
 **Type:** `number | undefined`
 
-**Description:** ラベルを自身の平面内で、アンカー位置を中心に回転させる角度を度数で指定します。正面から見て時計回りです。回転は [`textFacing`](#textfacing) と [`rotateWithCamera`](#rotatewithcamera) で決まる向きに対して追加で適用されます。ビルボードでは画面上で回転し、地表のラベルでは方位角のように回転します。[`placement`](#placement) が `"line"` または `"line-center"` のときは使われません。
+**Description:** ラベルを自身の平面内で、アンカー位置を中心に回転させる角度を度数で指定します。正面から見て時計回りです。回転は [`textFacing`](#textfacing) と [`rotateWithCamera`](#rotatewithcamera) で決まる向きに対して追加で適用されます。ビルボードでは画面上で回転し、地表のラベルでは方位角のように回転します。
+
+[`placement`](#placement) が `"line"` または `"line-center"` のときは、各文字がライン上の位置を保ったまま自身の中心を軸に回転します。MapLibre のライン沿いラベルでの `text-rotate` と同じ動作です。まっすぐ描かれるラベル（[`spreadGlyphs`](#spreadglyphs) を指定せず `rotateWithCamera: true` の場合）は、ポイントラベルと同じくアンカー位置を中心に全体が回転します。
 
 回転の中心がテキストのどこになるかは [`center`](#center) で決まります。たとえば `{ x: 0.5, y: 0.5 }` ならテキストの中央、`{ x: 0.5, y: 0.0 }` ならテキストブロックの下端が中心になります。
 
@@ -757,8 +769,8 @@ import { Color } from "@navaramap/three";
 
 **Description:** ライン沿いに配置したラベルを、単語ごとではなく文字ごとに配置します。各文字の向きは [`rotateWithCamera`](#rotatewithcamera) によって決まります。
 
-- `false`：各文字がその下のラインの向きに合わせて回転します。MapLibre の `symbol-placement: "line"` と同じ配置です。単語はまっすぐのままではなくカーブに沿って曲がり、急なカーブでは単語内の文字の間隔が開きます。
-- `true`（デフォルト）：各文字は、同じ [`textFacing`](#textfacing) のポイントラベルと同じようにカメラに追従して回転します。ラインがどの向きでもテキストは読める向きに保たれます（MapLibre の `text-rotation-alignment: "viewport-glyph"`）。また、各文字は同じ大きさに保たれ、画面上に見えるラインに沿って間隔が決まります。そのため、カメラから遠ざかる向きのラインでも文字の間隔は均等に保たれます。
+- `false`（ライン沿いでのデフォルト）：各文字がその下のラインの向きに合わせて回転します。MapLibre の `symbol-placement: "line"` と同じ配置です。単語はまっすぐのままではなくカーブに沿って曲がり、急なカーブでは単語内の文字の間隔が開きます。
+- `true`：各文字は、同じ [`textFacing`](#textfacing) のポイントラベルと同じようにカメラに追従して回転します。ラインがどの向きでもテキストは読める向きに保たれます（MapLibre の `text-rotation-alignment: "viewport-glyph"`）。また、各文字は同じ大きさに保たれ、画面上に見えるラインに沿って間隔が決まります。そのため、カメラから遠ざかる向きのラインでも文字の間隔は均等に保たれます。`spreadGlyphs` を指定しない場合、`rotateWithCamera: true` ではラベルはまっすぐ描かれます。
 
 [`placement`](#placement) が `"line"` または `"line-center"` のときのみ使用されます。`layer.update()` で変更した値は、表示中のラベルにも反映されます。
 
@@ -820,20 +832,22 @@ import { Color } from "@navaramap/three";
 
 **Type:** `"upright" | "flat" | undefined`
 
-**Description:** ラベルを立てて表示するか、地球表面に寝かせて表示するかを指定します。`"upright"` はラベルを立てた状態に保ちます。`"flat"` はラベルをアンカー位置の周辺で地球表面に沿わせて配置します。地球の曲率に沿うため、長いテキストでも両端が地表から浮き上がりません。寝かせたラベルは地表に描かれているように見え、カメラのピッチに応じて短縮されます。
+**Description:** ラベルを画面と同じ平面に表示するか、地球表面に寝かせて表示するかを指定します。MapLibre の `text-pitch-alignment` に相当します（`"upright"` が `"viewport"`、`"flat"` が `"map"`）。`"upright"` のラベルは、カメラのピッチにかかわらず短縮されません。`"flat"` はラベルをアンカー位置の周辺で地球表面に沿わせて配置します。地球の曲率に沿うため、長いテキストでも両端が地表から浮き上がりません。寝かせたラベルは地表に描かれているように見え、カメラのピッチに応じて短縮されます。
 
-[`rotateWithCamera`](#rotatewithcamera) との組み合わせで、次の 4 通りの表示になります。
+ポイントラベルでは、[`rotateWithCamera`](#rotatewithcamera) との組み合わせで、次の 4 通りの表示になります。
 
 | `textFacing` | `rotateWithCamera` | 表示 |
 | --- | --- | --- |
-| `"upright"` | `true` | 画面に正対するビルボード。短縮されません（デフォルト） |
-| `"upright"` | `false` | 地表に立つ看板。方位は固定されます |
+| `"upright"` | `true` | 画面に正対するビルボード（デフォルト） |
+| `"upright"` | `false` | 画面と同じ平面に表示され、カメラの方位に合わせて回転し、テキストは東西方向に沿って読む向きになります（カメラが南を向くと上下逆さま） |
 | `"flat"` | `true` | 地表に描かれ、常に左から右に読める向きに回転します |
 | `"flat"` | `false` | 地表に描かれ、北を上にして地図とともに回転します |
 
+ライン沿いのラベルについては [`placement`](#placement) を参照してください。
+
 [`FeatureEvaluator`](../../api/feature-evaluator/) から `facing` として地物ごとに指定することもできます。
 
-**Default:** `"upright"`
+**Default:** `"upright"`、`rotateWithCamera` が `false` の場合は `"flat"`（MapLibre の `"auto"`）
 
 **Example:**
 

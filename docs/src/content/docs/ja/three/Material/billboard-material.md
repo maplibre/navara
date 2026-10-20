@@ -33,7 +33,7 @@ sidebar:
 
 **Description:** 裏側から見たときにビルボードを非表示にするかどうかを指定します。`false` の場合はビルボードの両面を描画し、`true` の場合は表側のみを描画します。
 
-カメラに追従して立っているビルボード（デフォルト）は常に表側が見えるため、影響はありません。影響があるのは次の 2 つの場合です。[`rotateWithCamera`](#rotatewithcamera) が `false` のビルボードは裏側から見えることがあり、その場合は左右反転して表示されますが、この設定を有効にすると非表示になります。[`billboardFacing`](#billboardfacing) が `"flat"` のビルボードは地球の外側を表側としているため、この設定を有効にすると、大きなビルボードのうち地平線の向こう側に回り込んだ部分も非表示になります。
+裏側がカメラから見えるのは、地表に寝かせたビルボード（[`billboardFacing`](#billboardfacing) を参照）だけです。地球の外側を表側としているため、この設定を有効にすると、大きなビルボードのうち地平線の向こう側に回り込んだ部分が非表示になります。`"upright"` のビルボードは常に画面と同じ平面で視点の方を向いているため、影響はありません。
 
 **Default:** `false`
 
@@ -298,7 +298,7 @@ import { Color } from "@navaramap/three";
 - `"line"`：[`spacing`](#spacing) ごとにラインに沿ってビルボードを繰り返し配置します。ラインの頂点の位置に関係なく等間隔になります。ポリゴンの境界リング（穴を含む）にも同じように沿って配置します。
 - `"line-center"`：各ラインまたはポリゴンリングの長さの中間点に 1 つのビルボードを配置します。
 
-`"line"` と `"line-center"` では、各ビルボードは配置された位置でのラインの向きにも回転します（[`rotateToLine`](#rotatetoline) を参照）。
+`"line"` と `"line-center"` では、各ビルボードはアンカー位置に 1 枚の画像として配置され、その位置でのラインの向きに回転します（[`rotateToLine`](#rotatetoline) を参照）。[`billboardFacing`](#billboardfacing) と [`rotateWithCamera`](#rotatewithcamera) を指定しない場合は地表に寝かせて地図に合わせた向きになるため、矢印の画像はラインの進行方向を指します。
 
 このオプションはジオメトリ構築時に適用されます。レイヤー作成時に指定してください。`layer.update()` では読み込み済みのビルボードは再構築されないため、変更するにはレイヤーを削除して追加し直してください。
 
@@ -342,20 +342,20 @@ import { Color } from "@navaramap/three";
 
 **Type:** `"upright" | "flat" | undefined`
 
-**Description:** ビルボードを立てて表示するか、地球表面に寝かせて表示するかを指定します。`"upright"` は立てた状態に保ちます。`"flat"` はアンカー位置の周辺で地球の曲率に沿って地表に配置するため、地表に描かれているように見え、カメラのピッチに応じて短縮されます。
+**Description:** ビルボードを画面と同じ平面に表示するか、地球表面に寝かせて表示するかを指定します。MapLibre の `icon-pitch-alignment` に相当します（`"upright"` が `"viewport"`、`"flat"` が `"map"`）。`"upright"` のビルボードは、カメラのピッチにかかわらず短縮されません。`"flat"` はアンカー位置の周辺で地球の曲率に沿って地表に配置するため、地表に描かれているように見え、カメラのピッチに応じて短縮されます。
 
 [`rotateWithCamera`](#rotatewithcamera) との組み合わせで、次の 4 通りの表示になります。
 
 | `billboardFacing` | `rotateWithCamera` | 表示 |
 | --- | --- | --- |
-| `"upright"` | `true` | 画面に正対するビルボード。短縮されません（デフォルト） |
-| `"upright"` | `false` | 地表に立ち、方位は固定されます |
+| `"upright"` | `true` | 画面に正対するビルボード（`placement: "point"` でのデフォルト） |
+| `"upright"` | `false` | 画面と同じ平面に表示され、カメラの方位に合わせて回転し、ビルボードの x 軸が東を向きます |
 | `"flat"` | `true` | 地表に描かれ、常に視点の方を向くように回転します |
-| `"flat"` | `false` | 地表に描かれ、北を上にして地図とともに回転します |
+| `"flat"` | `false` | 地表に描かれ、北を上にして地図とともに回転します（ライン沿いでのデフォルト） |
 
 [`FeatureEvaluator`](../../api/feature-evaluator/) から `facing` として地物ごとに指定することもできます。
 
-**Default:** `"upright"`
+**Default:** `"upright"`、`rotateWithCamera` が `false` の場合は `"flat"`（MapLibre の `"auto"`）
 
 **Example:**
 
@@ -373,7 +373,7 @@ import { Color } from "@navaramap/three";
 
 **Description:** ライン沿いに配置したビルボードをラインに合わせて回転させるかどうかを指定します。`true` の場合、アンカー位置でのラインの向きを方位角として [`rotation`](#rotation) に加算します。[`placement`](#placement) が `"line"` または `"line-center"` のときのみ使用されます。
 
-加算される方位角は、ビルボードが地表に固定されているときに地図上の向きとして意味を持つため、`billboardFacing: "flat"` と `rotateWithCamera: false` と組み合わせてください。画像の上端がラインの進行方向を向き、`rotation` でそこからさらに回転させられます。カメラに追従するビルボードでは、方位角は画面上で画像を回転させるだけです。
+加算される方位角は、ビルボードが地図に合わせた向き（[`rotateWithCamera`](#rotatewithcamera) が `false`）のときに地図上の向きとして意味を持ちます。ライン沿いでのデフォルトのように地表に寝かせている場合は、画像の上端がラインの進行方向を向き、`rotation` でそこからさらに回転させられます。`"upright"` の場合は画面と同じ平面に表示され、カメラの方位とラインの方位角を合わせた分だけ回転します。カメラに合わせて回転するビルボードでは、方位角は画面上で画像を回転させるだけです。
 
 このオプションはジオメトリ構築時に適用されます。`layer.update()` では読み込み済みのビルボードには反映されないため、変更するにはレイヤーを削除して追加し直してください。
 
@@ -398,11 +398,11 @@ import { Color } from "@navaramap/three";
 
 **Type:** `boolean | undefined`
 
-**Description:** ビルボードをカメラに追従して回転させるかどうかを指定します。`true` の場合は常に視点の方を向きます。`false` の場合はアンカー位置のローカルな東・北・上の座標系に固定され、カメラを動かしても向きは変わりません。`"upright"` では地表に立って南を向くため、真上から見ると縁しか見えずに消え、裏側からは鏡像になります。
+**Description:** ビルボードをカメラに合わせて回転させるか、地図に合わせて回転させるかを指定します。MapLibre の `icon-rotation-alignment` に相当します（`true` が `"viewport"`、`false` が `"map"`）。`true` の場合は画面上で正立し、画面に正対するビルボードになります。[`billboardFacing`](#billboardfacing) が `"flat"` のときは、常に視点の方を向くように回転して地表に描かれます。`false` の場合は地図に合わせた向きになります。`"upright"` では画面と同じ平面に元の大きさのまま表示されますが、カメラの方位に合わせて回転して x 軸が常に東を向き、カメラが南を向くと上下逆さまになります。`"flat"` では北を上にして地表に描かれ、地図とともに回転します。
 
 [`FeatureEvaluator`](../../api/feature-evaluator/) から地物ごとに指定することもできます。
 
-**Default:** `true`
+**Default:** `placement: "point"` では `true`、ライン沿いでは `false`（MapLibre の `"auto"`）
 
 **Example:**
 
@@ -410,7 +410,7 @@ import { Color } from "@navaramap/three";
 {
   billboard: {
     billboardFacing: "upright",
-    rotateWithCamera: false
+    rotateWithCamera: false // 画面上に表示し、カメラの方位に合わせて回転
   }
 }
 ```

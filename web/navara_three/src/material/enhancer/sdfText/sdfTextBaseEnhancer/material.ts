@@ -30,12 +30,9 @@ export function updateMaterialProps(
     material.transparent = props.transparent;
   }
   if (props.backfaceCulling !== undefined) {
-    // Off by default: a quad frozen in its anchor's frame
-    // (`rotateWithCamera: false`) can legitimately be viewed from behind,
-    // where culling would drop it rather than show it mirrored. On, it
-    // hides the parts of a flat quad wrapped over the horizon, which face
-    // away from the camera. An upright camera-following quad always faces
-    // the camera, so for it this changes nothing.
+    // Only a flat quad has a back the camera can see: the parts of a large
+    // one wrapped over the horizon face away, and culling trims them there.
+    // An upright quad lies in the screen plane, so this never affects it.
     material.side = props.backfaceCulling ? FrontSide : DoubleSide;
   }
 }

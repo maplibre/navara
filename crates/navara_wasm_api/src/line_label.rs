@@ -46,7 +46,9 @@
 //! | 19,20  | minMpp/maxMpp | the `(min, max]` ground metres per pixel the anchor shows over |
 //! | 21     | widthEm | the label's full drawn length along the line, in ems |
 //! | 22     | wordReach | half the widest word's length, in the font's own units |
-//! | 23     | facesCamera | non-zero = each glyph is its own word and turns with the camera |
+//! | 23     | glyphMode | how the glyphs follow the line, a [`GlyphMode`] |
+//! | 24     | rotationRad | each glyph's in-plane turn about its own centre, radians clockwise |
+//! | 25     | glyphReach | half the widest glyph's length, in the font's own units |
 //!
 //! `reachEm` rather than the width because the anchor need not be the text's
 //! centre: with `center.x = 0` the whole label runs off one side of it, and it
@@ -90,7 +92,7 @@
 use wasm_bindgen::prelude::*;
 
 /// Number of `f64` values per label in the packed input slice.
-pub const LINE_LABEL_STRIDE: usize = 24;
+pub const LINE_LABEL_STRIDE: usize = 26;
 
 /// Number of `f64` values per label in [`line_label_fit`]'s packed input.
 ///
@@ -104,11 +106,48 @@ pub const LINE_LABEL_STRIDE: usize = 24;
 /// | 7      | halfExtentMeters — real line either side of the anchor |
 /// | 8,9    | minMpp/maxMpp — the anchor's scale band |
 /// | 10     | widthEm — the label's full drawn length along the line, in ems |
-/// | 11     | facesCamera — non-zero = spaced on the screen, so its length is not tested here |
+/// | 11     | glyphMode — a [`GlyphMode`]; only `Ground` has its length tested here |
 ///
 /// Offsets 0–6 are the full layout's, so a fit row is a prefix of a full row
 /// plus its extent, band, width and facing.
 pub const LINE_LABEL_FIT_STRIDE: usize = 12;
+
+/// How an along-line label's glyphs follow its line, as resolved from its
+/// facing, `rotateWithCamera` and `spreadGlyphs`: `LineGlyphMode` in
+/// `linePlacement.ts`, and the branches of the vertex shader's line walk.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum GlyphMode {
+    /// Flat and aligned with the map: words or glyphs lie on the ground along
+    /// the line.
+    Ground,
+    /// Spread glyphs turned to the camera, keeping the anchor's size on the
+    /// screen and spaced on it (MapLibre's `viewport-glyph`).
+    FacesCamera,
+    /// Upright and aligned with the map: on the screen at the anchor's size,
+    /// spaced on it, each turned to the line as it runs on the screen.
+    ScreenTangent,
+    /// Not bent at all: the whole label is drawn at its anchor as a point
+    /// label turned to the camera would be (MapLibre's `viewport` rotation).
+    Straight,
+}
+
+impl GlyphMode {
+    fn from_row(value: f64) -> Self {
+        match value as u8 {
+            0 => Self::Ground,
+            1 => Self::FacesCamera,
+            2 => Self::ScreenTangent,
+            3 => Self::Straight,
+            _ => unreachable!("glyph mode {value}"),
+        }
+    }
+
+    /// Glyphs keep the anchor's size on the screen, so they are spaced on it
+    /// and their ground reach is only known once the path is walked.
+    fn screen_spaced(self) -> bool {
+        matches!(self, Self::FacesCamera | Self::ScreenTangent)
+    }
+}
 
 /// Number of `f64` values per anchor in [`line_anchor_place`]'s packed input.
 ///
@@ -123,7 +162,7 @@ pub const LINE_LABEL_FIT_STRIDE: usize = 12;
 /// | 11     | rotation — the quad's in-plane turn, radians clockwise, the line's bearing included when it follows the line |
 /// | 12     | bearing — the line's tangent, radians clockwise from north |
 /// | 13     | flatFacing — `0.0` = upright, non-zero = flat, as resolved for this anchor |
-/// | 14     | rotateWithCamera — `0.0` = frozen in the anchor's frame, non-zero = follows the camera |
+/// | 14     | rotateWithCamera — `0.0` = aligned with the map, non-zero = follows the camera |
 pub const LINE_ANCHOR_STRIDE: usize = 15;
 
 /// Number of `f64` values per anchor in [`line_anchor_place`]'s output: shown
@@ -190,6 +229,23 @@ pub fn line_label_place(
 
     for (l, path) in rows.iter().zip(paths.chunks_exact(samples_per_label * 2)) {
         let m = meters_per_px((l[0], l[1], l[2]), l[3], &cam);
+        let mode = GlyphMode::from_row(l[23]);
+
+        // A straight label is a point label at its anchor: no reading
+        // direction to flip, no bend to measure, and the box of its block
+        // turned as the shader turns it.
+        if mode == GlyphMode::Straight {
+            let rejected = !fits(l, m, l[10], (l[19], l[20]), l[21], spacing_px, false);
+            let (bx0, bx1, by0, by1) = if rejected {
+                (0.0, 0.0, 0.0, 0.0)
+            } else {
+                let (right, up) = quad_screen_basis(l, view, l[18] != 0.0, true, l[24]);
+                basis_box(l[13], l[14], l[15], l[16], right, up)
+            };
+            out.extend_from_slice(&[0.0, if rejected { 1.0 } else { 0.0 }, bx0, bx1, by0, by1, m]);
+            continue;
+        }
+
         let meters_per_unit = meters_per_font_unit(l, m);
         let meters_per_em = l[5] * meters_per_unit;
 
@@ -211,24 +267,36 @@ pub fn line_label_place(
         let flip = l[8] != 0.0 && should_flip(sx, sy, l[12] != 0.0);
         let arc = if flip { (-x1, -x0) } else { (x0, x1) };
 
-        // Glyphs that face the camera turn like a point label and keep the
-        // anchor's size on the screen, so they are also spaced on it: the arc
-        // is walked on the screen and becomes the stretch of ground it lands on.
-        let faces_camera = l[23] != 0.0;
+        // Glyphs on the screen keep the anchor's size there, so they are also
+        // spaced on it: the arc is walked on the screen and becomes the
+        // stretch of ground it lands on.
         let frame = ViewFrame::new(l, view);
-        let glyph_basis = faces_camera.then(|| quad_screen_basis(l, view, l[18] != 0.0, true, 0.0));
-        let (arc, overruns) = match glyph_basis {
-            Some(_) => {
-                let centre = (samples_per_label - 1) as f64 * 0.5;
-                let walk = |s| screen_walk(path, samples_per_label, &frame, s);
-                let ((t0, out0), (t1, out1)) = (walk(arc.0), walk(arc.1));
-                let ground = ((t0 - centre) * l[9], (t1 - centre) * l[9]);
-                (
-                    ground,
-                    out0 || out1 || -ground.0 > l[10] || ground.1 > l[10],
-                )
+        let glyphs = match mode {
+            GlyphMode::Ground => GlyphBasis::Ground,
+            GlyphMode::FacesCamera => {
+                let (right, up) = quad_screen_basis(l, view, l[18] != 0.0, true, 0.0);
+                GlyphBasis::Fixed(right, up)
             }
-            None => (arc, false),
+            GlyphMode::ScreenTangent => GlyphBasis::ScreenTangent,
+            GlyphMode::Straight => unreachable!(),
+        };
+        // Where a piece's centre can fall: no nearer either end of the text
+        // than the widest piece reaches, so it does not run past it.
+        let (arc, overruns, centres) = if mode.screen_spaced() {
+            let centre = (samples_per_label - 1) as f64 * 0.5;
+            let walk = |s| screen_walk(path, samples_per_label, &frame, s);
+            let ground = |t: f64| (t - centre) * l[9];
+            let ((t0, out0), (t1, out1)) = (walk(arc.0), walk(arc.1));
+            let reach = (l[22] * meters_per_unit).min(0.5 * (arc.1 - arc.0));
+            let (c0, c1) = (walk(arc.0 + reach).0, walk(arc.1 - reach).0);
+            let arc = (ground(t0), ground(t1));
+            (
+                arc,
+                out0 || out1 || -arc.0 > l[10] || arc.1 > l[10],
+                (ground(c0), ground(c1)),
+            )
+        } else {
+            (arc, false, arc)
         };
 
         // The fit test is repeated here rather than trusted from phase one, so
@@ -242,7 +310,7 @@ pub fn line_label_place(
             (l[19], l[20]),
             l[21],
             spacing_px,
-            !faces_camera,
+            mode == GlyphMode::Ground,
         ) || overruns
             || exceeds_max_angle(
                 path,
@@ -263,8 +331,8 @@ pub fn line_label_place(
                 path,
                 samples_per_label,
                 &frame,
-                glyph_basis,
-                (flip, arc),
+                glyphs,
+                (flip, arc, centres),
                 meters_per_unit,
             )
         };
@@ -361,9 +429,10 @@ fn in_scale_band(m: f64, (min, max): (f64, f64), length: (f64, bool), spacing_px
 /// offsets in each, so they are passed in. `m` is [`meters_per_px`] at the
 /// anchor.
 ///
-/// `on_ground` is unset for a label spaced on the screen (`facesCamera`): its
-/// ground reach is not known until its path is walked, so only its scale band
-/// is tested here and [`line_label_place`] tests its length.
+/// `on_ground` is unset unless the label lies along the ground
+/// ([`GlyphMode::Ground`]): a label spaced on the screen has a ground reach
+/// only known once its path is walked, so [`line_label_place`] tests its
+/// length, and a straight label does not follow the line at all.
 fn fits(
     row: &[f64],
     m: f64,
@@ -411,7 +480,7 @@ pub fn line_label_fit(
                 (l[8], l[9]),
                 l[10],
                 spacing_px,
-                l[11] == 0.0,
+                GlyphMode::from_row(l[11]) == GlyphMode::Ground,
             ))
         })
         .collect()
@@ -470,36 +539,40 @@ fn quad_screen_basis(
     follow: bool,
     rotation: f64,
 ) -> ((f64, f64), (f64, f64)) {
-    let (right, up) = match (flat, follow) {
+    let (right, up) = if !flat && follow {
         // Screen plane, screen up.
-        (false, true) => ((1.0, 0.0), (0.0, 1.0)),
-        // Tangent plane, yawed so screen right projected onto it stays right.
-        (true, true) => {
-            let (x, y, z) = (row[0], row[1], row[2]);
-            let len = (x * x + y * y + z * z).sqrt();
-            let n = (
-                (view[0] * x + view[4] * y + view[8] * z) / len,
-                (view[1] * x + view[5] * y + view[9] * z) / len,
-                (view[2] * x + view[6] * y + view[10] * z) / len,
-            );
-            let reject = |a: (f64, f64, f64), d: f64| (a.0 - d * n.0, a.1 - d * n.1, a.2 - d * n.2);
+        ((1.0, 0.0), (0.0, 1.0))
+    } else {
+        let (east, north, normal) = enu_basis(row);
+        let (east, north, n) = (
+            view_dir(view, east),
+            view_dir(view, north),
+            view_dir(view, normal),
+        );
+        if flat && !follow {
+            // Tangent plane, north-up.
+            ((east.0, east.1), (north.0, north.1))
+        } else {
+            // Screen right projected onto the tangent plane.
+            let reject = |a: Vec3, d: f64| (a.0 - d * n.0, a.1 - d * n.1, a.2 - d * n.2);
             let t = reject((1.0, 0.0, 0.0), n.0);
             let t_len = (t.0 * t.0 + t.1 * t.1 + t.2 * t.2).sqrt();
-            let r = if t_len > 1e-4 {
+            let t = if t_len > 1e-4 {
                 (t.0 / t_len, t.1 / t_len, t.2 / t_len)
             } else {
                 let t = reject((0.0, 1.0, 0.0), n.1);
                 let t_len = (t.0 * t.0 + t.1 * t.1 + t.2 * t.2).sqrt();
                 (t.0 / t_len, t.1 / t_len, t.2 / t_len)
             };
-            // cross(n, r), screen plane only.
-            let u = (n.1 * r.2 - n.2 * r.1, n.2 * r.0 - n.0 * r.2);
-            ((r.0, r.1), u)
-        }
-        // Frozen in the anchor's east-north-up frame.
-        _ => {
-            let axes = enu_screen_axes(row, view);
-            (axes.east, if flat { axes.north } else { axes.up })
+            if flat {
+                // Tangent plane, yawed to read left-to-right: up = cross(n, t).
+                ((t.0, t.1), (n.1 * t.2 - n.2 * t.1, n.2 * t.0 - n.0 * t.2))
+            } else {
+                // Screen plane, turned by the camera heading so x points east.
+                let dot = |a: Vec3, b: Vec3| a.0 * b.0 + a.1 * b.1 + a.2 * b.2;
+                let r = (dot(t, east), -dot(t, north));
+                (r, (-r.1, r.0))
+            }
         }
     };
     // Clockwise seen from the front, as the shader turns it.
@@ -510,12 +583,11 @@ fn quad_screen_basis(
     )
 }
 
-/// The anchor's east, north and up unit vectors, as view-space x/y.
+/// The anchor's east and north unit vectors, as view-space x/y.
 #[derive(Clone, Copy)]
 struct ScreenAxes {
     east: (f64, f64),
     north: (f64, f64),
-    up: (f64, f64),
 }
 
 impl ScreenAxes {
@@ -562,14 +634,14 @@ fn view_dir(view: &[f64], v: Vec3) -> Vec3 {
     )
 }
 
-/// The anchor's east, north and up directions, projected into view space and
+/// The anchor's east and north directions, projected into view space and
 /// kept as 2D screen axes.
 ///
 /// Built from the same basis the vertex shader lays the label out in. Only the
 /// x/y components survive: view space shares the screen's axes, and the
 /// label's orientation is a 2D question.
 fn enu_screen_axes(l: &[f64], view: &[f64]) -> ScreenAxes {
-    let (east, north, up) = enu_basis(l);
+    let (east, north, _) = enu_basis(l);
     let rot = |v: Vec3| {
         let r = view_dir(view, v);
         (r.0, r.1)
@@ -577,31 +649,28 @@ fn enu_screen_axes(l: &[f64], view: &[f64]) -> ScreenAxes {
     ScreenAxes {
         east: rot(east),
         north: rot(north),
-        up: rot(up),
     }
 }
 
-/// The anchor in view space with its east, north and up directions, for
-/// carrying a label's points onto the screen with perspective, as the shader's
+/// The anchor in view space with its east and north directions, for carrying
+/// a label's points onto the screen with perspective, as the shader's
 /// projection does.
 #[derive(Clone, Copy)]
 struct ViewFrame {
     anchor: Vec3,
     east: Vec3,
     north: Vec3,
-    up: Vec3,
 }
 
 impl ViewFrame {
     fn new(l: &[f64], view: &[f64]) -> Self {
-        let (east, north, up) = enu_basis(l);
+        let (east, north, _) = enu_basis(l);
         let a = raised((l[0], l[1], l[2]), l[3]);
         let r = view_dir(view, a);
         ViewFrame {
             anchor: (r.0 + view[12], r.1 + view[13], r.2 + view[14]),
             east: view_dir(view, east),
             north: view_dir(view, north),
-            up: view_dir(view, up),
         }
     }
 
@@ -778,37 +847,64 @@ fn basis_box(
 ///
 /// - along the segment's line, from the samples themselves;
 /// - off it by `lineOffset`, across the ground (the shader's `normal`);
-/// - up by the text's height, along that same ground normal when the label
-///   lies flat, and along the surface normal when it stands upright.
+/// - up by the text's height, along that same ground normal.
 ///
 /// Every corner is carried onto the screen through the `frame` with
 /// perspective, as the shader's projection sees the 3D point it draws, in the
 /// font's own units at the anchor's depth (the declutter kernel scales those
-/// to pixels there). So an upright label seen from above and a flat one seen
-/// edge-on both claim the thin strip they actually cover, and the end of a word
-/// running toward a pitched camera claims the larger space it is drawn in.
+/// to pixels there). So a label seen edge-on claims the thin strip it actually
+/// covers, and the end of a word running toward a pitched camera claims the
+/// larger space it is drawn in.
 ///
-/// A label whose glyphs face the camera (`glyph_basis`) has each glyph as its
-/// own word, centred on the path, but its quad spans that camera-facing basis
-/// rather than the segment's axes: `wordReach` either side across the screen,
-/// its height up it. Only the glyph's centre is projected; the quads keep their
-/// size at the anchor's depth, as the shader's `glyphDepthScale` keeps them.
+/// A label spaced on the screen ([`GlyphBasis::Fixed`] or
+/// [`GlyphBasis::ScreenTangent`]) has its pieces centred on the path, but
+/// their quads span a screen basis rather than the segment's ground axes:
+/// `wordReach` either side, its height across. Only the piece's centre is
+/// projected; the quads keep their size at the anchor's depth, as the
+/// shader's `glyphDepthScale` keeps them.
+///
+/// A non-zero `rotationRad` spins each glyph about its own centre on the
+/// label's mid-line. A glyph `2g` wide and `2h` tall turned by `θ` spans
+/// `g·|cos θ| + h·|sin θ|` along its piece and `g·|sin θ| + h·|cos θ|` across,
+/// so with `g` bounded by `glyphReach` each piece grows by `h·|sin θ|` along
+/// the line and spans that across, which at zero is the unturned box.
 ///
 /// `arc` is the stretch of path the text covers, in ground metres from the
-/// anchor, already walked backwards when `flip`ped.
+/// anchor, already walked backwards when `flip`ped; `centres` the part of it a
+/// screen-spaced piece's centre can fall on.
+/// The screen axes a bent label's pieces are laid along, per [`GlyphMode`].
+#[derive(Clone, Copy)]
+enum GlyphBasis {
+    /// Each segment's own ground axes.
+    Ground,
+    /// One basis for every piece, as view-space x/y.
+    Fixed((f64, f64), (f64, f64)),
+    /// Each segment's direction as it runs on the screen, and its screen
+    /// perpendicular.
+    ScreenTangent,
+}
+
 fn path_box(
     l: &[f64],
     path: &[f32],
     samples: usize,
     frame: &ViewFrame,
-    glyph_basis: Option<((f64, f64), (f64, f64))>,
-    (flip, (lo, hi)): (bool, (f64, f64)),
+    glyphs: GlyphBasis,
+    (flip, (lo, hi), (centre_lo, centre_hi)): (bool, (f64, f64), (f64, f64)),
     meters_per_unit: f64,
 ) -> (f64, f64, f64, f64) {
-    let (min_y, max_y, line_offset, flat) = (l[15], l[16], l[17], l[18] != 0.0);
+    let line_offset = l[17];
     let step = l[9];
     let reach = l[22] * meters_per_unit;
     let d = if flip { -1.0 } else { 1.0 };
+    let (sin, cos) = l[24].sin_cos();
+    let half_height = 0.5 * (l[16] - l[15]);
+    let mid = 0.5 * (l[15] + l[16]);
+    // The extra reach along the line a spun glyph claims, in font units, and
+    // its half span across about the mid-line.
+    let along = half_height * sin.abs();
+    let across = l[25] * sin.abs() + half_height * cos.abs();
+    let (min_y, max_y) = (mid - across, mid + across);
     // A view-space offset from the anchor, in metres, on the screen in font
     // units.
     let project = |v: Vec3| {
@@ -840,9 +936,10 @@ fn path_box(
         // along the segment; past `[0, 1]` it runs on beyond the segment. A
         // word centred at `c` reaches at most `hi - c` back, or it would
         // overrun the text's far end.
+        let slack = along * meters_per_unit;
         let (t0, t1) = (
-            (lo.max(c_lo - reach).max(2.0 * c_lo - hi) - k_lo) / step,
-            (hi.min(c_hi + reach).min(2.0 * c_hi - lo) - k_lo) / step,
+            (lo.max(c_lo - reach).max(2.0 * c_lo - hi) - slack - k_lo) / step,
+            (hi.min(c_hi + reach).min(2.0 * c_hi - lo) + slack - k_lo) / step,
         );
         let (pa, pb) = (sample(k), sample(k + 1));
         let (ge, gn) = (pb.0 - pa.0, pb.1 - pa.1);
@@ -860,27 +957,45 @@ fn path_box(
             te * line_offset * meters_per_unit,
         );
         let on_line = |t: f64| frame.ground((pa.0 + ge * t + offset.0, pa.1 + gn * t + offset.1));
-        match glyph_basis {
-            // A glyph's centre on the path, with its camera-facing quad around
-            // it on the screen.
+        let screen_basis = match glyphs {
+            GlyphBasis::Ground => None,
+            GlyphBasis::Fixed(right, up) => Some((right, up)),
+            // The shader's direction from the projected samples, without the
+            // line offset, including its fallback and turned by the flip.
+            GlyphBasis::ScreenTangent => {
+                let (qa, qb) = (frame.project(pa).0, frame.project(pb).0);
+                let (dx, dy) = (qb.0 - qa.0, qb.1 - qa.1);
+                let len = dx.hypot(dy);
+                let r = if len > 1e-6 {
+                    (dx / len * d, dy / len * d)
+                } else {
+                    (d, 0.0)
+                };
+                Some((r, (-r.1, r.0)))
+            }
+        };
+        match screen_basis {
+            // A piece's centre on the path, with its quad around it on the
+            // screen.
             Some((right, up)) => {
+                let (c_lo, c_hi) = (c_lo.max(centre_lo), c_hi.min(centre_hi));
+                if c_lo > c_hi {
+                    continue;
+                }
                 for t in [(c_lo - k_lo) / step, (c_hi - k_lo) / step] {
                     let (px, py) = project(on_line(t));
                     for (w, h) in [(-1.0, min_y), (-1.0, max_y), (1.0, min_y), (1.0, max_y)] {
-                        let w = w * l[22];
+                        let w = w * (l[22] + along);
                         extend((px + right.0 * w + up.0 * h, py + right.1 * w + up.1 * h));
                     }
                 }
             }
-            // A rigid word along this segment's own line, its height stood up
-            // across the ground when flat and along the surface normal when
-            // upright: each corner is a point in 3D, projected at its own depth.
+            // A rigid word along this segment's own line, its height across
+            // the ground: each corner is a point in 3D, projected at its own
+            // depth.
             None => {
-                let up = if flat {
-                    frame.ground((-tn, te))
-                } else {
-                    frame.up
-                };
+                debug_assert!(l[18] != 0.0, "only a flat label lies along the ground");
+                let up = frame.ground((-tn, te));
                 for t in [t0, t1] {
                     let p = on_line(t);
                     for h in [min_y, max_y] {
@@ -1027,6 +1142,30 @@ mod tests {
         ]
     }
 
+    /// [`top_down_view`] with the camera turned to `heading_rad`, clockwise
+    /// from north: screen up is the heading, screen right a quarter turn on.
+    fn top_down_view_heading(distance_m: f64, heading_rad: f64) -> Vec<f64> {
+        let (s, c) = heading_rad.sin_cos();
+        vec![
+            0.0,
+            0.0,
+            1.0,
+            0.0, // col 0: ECEF x (up) -> towards the camera
+            c,
+            s,
+            0.0,
+            0.0, // col 1: ECEF y (east)
+            -s,
+            c,
+            0.0,
+            0.0, // col 2: ECEF z (north)
+            0.0,
+            0.0,
+            -WGS84_A_64 - distance_m,
+            1.0,
+        ]
+    }
+
     /// The camera close enough that a pixel-sized label stays short.
     fn view() -> Vec<f64> {
         top_down_view(500.0)
@@ -1060,7 +1199,9 @@ mod tests {
             f64::INFINITY,
             4.0,  // widthEm
             20.0, // wordReach: one word, the whole label
-            0.0,  // facesCamera
+            0.0,  // glyphMode: Ground
+            0.0,  // rotationRad
+            4.0,  // glyphReach: glyphs 0.8 em wide
         ]
     }
 
@@ -1302,80 +1443,79 @@ mod tests {
     }
 
     #[test]
-    fn the_box_stands_the_text_up_the_way_the_shader_does() {
+    fn the_box_lies_flat_or_stands_on_the_screen_the_way_the_shader_does() {
         // Flat text lies across the ground, so its height runs along the
-        // road's normal; upright text stands along the surface normal. The
-        // line offset always runs across the ground. Seen from above, then from
-        // ground level looking along the road's normal, each of the three
-        // either shows at full size or collapses to nothing.
+        // road's normal there. Upright text aligned with the map stays on the
+        // screen at the anchor's size, turned to the road as it runs there.
+        // The line offset always runs across the ground. Seen from above, then
+        // from ground level looking along the road's normal.
         let path = straight_path(32, 10.0);
-        let place = |flat: bool, view: &[f64]| {
+        let place = |mode: f64, view: &[f64]| {
             let mut l = label(std::f64::consts::FRAC_PI_2, false, false);
             l[9] = 10.0;
             l[17] = 5.0;
-            l[18] = if flat { 1.0 } else { 0.0 };
+            l[18] = if mode == 0.0 { 1.0 } else { 0.0 };
+            l[23] = mode;
             let out = line_label_place(&l, &path, 32, view, 1000.0, 1.0, SPACING);
             (out[3] - out[2], out[4], out[5])
         };
         let (above, level) = (top_down_view(500.0), level_view_north(500.0));
-        // Upright text seen from above stands 10 m toward the camera, so its
-        // top is drawn that much larger.
-        let top = 500.0 / 490.0;
+        let (ground, screen) = (0.0, 2.0);
 
-        for (flat, width) in [(true, 40.0), (false, 40.0 * top)] {
-            let (w, _, _) = place(flat, &above);
-            assert!((w - width).abs() < 1e-6, "flat {flat}: width {w}");
+        // From above both show the offset, their full length and height.
+        for mode in [ground, screen] {
+            let (w, y0, y1) = place(mode, &above);
+            assert!(
+                (w - 40.0).abs() < 1e-6 && (y0 - 5.0).abs() < 1e-6 && (y1 - 15.0).abs() < 1e-6,
+                "mode {mode} above: {w} wide, {y0}..{y1}"
+            );
         }
-        // From above: the offset shows, and only flat text shows its height
-        // (upright text only spreads out from the screen centre as it rises).
-        let (_, y0, y1) = place(true, &above);
-        assert!(
-            (y0 - 5.0).abs() < 1e-6 && (y1 - 15.0).abs() < 1e-6,
-            "flat above {y0}..{y1}"
-        );
-        let (_, y0, y1) = place(false, &above);
-        assert!(
-            (y0 - 5.0).abs() < 1e-6 && (y1 - 5.0 * top).abs() < 1e-6,
-            "upright above {y0}..{y1}"
-        );
-        // From ground level: the offset is depth, so only upright text shows
-        // its height, drawn smaller for standing the offset farther away.
-        let (_, y0, y1) = place(false, &level);
-        assert!(
-            y0.abs() < 1e-6 && (y1 - 10.0 * 500.0 / 505.0).abs() < 1e-6,
-            "upright level {y0}..{y1}"
-        );
-        let (_, y0, y1) = place(true, &level);
+        // From ground level the offset is depth. Flat text collapses to its
+        // edge; on the screen it keeps its full size.
+        let (_, y0, y1) = place(ground, &level);
         assert!(y0.abs() < 1e-6 && y1.abs() < 1e-6, "flat level {y0}..{y1}");
+        let (w, y0, y1) = place(screen, &level);
+        assert!(
+            (w - 40.0).abs() < 1e-6 && y0.abs() < 1e-6 && (y1 - 10.0).abs() < 1e-6,
+            "screen level: {w} wide, {y0}..{y1}"
+        );
     }
 
     #[test]
     fn a_glyph_facing_the_camera_spans_the_screen_not_the_road() {
         // A road running up the screen, seen from above, with glyphs one em
-        // (10 units) wide. Rigid upright words stand their height toward the
-        // camera and run along the road, so the box is a sliver 40 tall (its
-        // top, 10 m nearer, a little longer). Glyphs
-        // that face the camera each claim their own width across the road and
-        // their height up it, whichever way they would otherwise face.
+        // (10 units) wide. A word along the road, on the ground or turned to
+        // it on the screen, lays its height across the road (left of travel,
+        // screen left) and its length up it. Glyphs that face the camera each
+        // claim their own width across the road and their height up it,
+        // whichever way they would otherwise face, but no glyph runs past the
+        // text's own ends.
         let path = directed_path(32, 10.0, (0.0, 1.0));
-        let place = |faces_camera: bool, flat: bool| {
+        let place = |mode: f64, flat: bool| {
             let mut l = label(std::f64::consts::FRAC_PI_2, false, false);
             l[9] = 10.0;
             l[18] = if flat { 1.0 } else { 0.0 };
             l[22] = 5.0;
-            l[23] = if faces_camera { 1.0 } else { 0.0 };
+            l[23] = mode;
             let out = line_label_place(&l, &path, 32, &view(), 1000.0, 1.0, SPACING);
-            (out[3] - out[2], out[5] - out[4])
+            (out[2], out[3], out[4], out[5])
+        };
+        let close = |a: (f64, f64, f64, f64), b: (f64, f64, f64, f64)| {
+            (a.0 - b.0).abs() < 1e-6
+                && (a.1 - b.1).abs() < 1e-6
+                && (a.2 - b.2).abs() < 1e-6
+                && (a.3 - b.3).abs() < 1e-6
         };
 
-        let (w, h) = place(false, false);
-        let h_top = 40.0 * 500.0 / 490.0;
-        assert!(w.abs() < 1e-6 && (h - h_top).abs() < 1e-6, "rigid {w}x{h}");
+        for (mode, flat) in [(0.0, true), (2.0, false)] {
+            let b = place(mode, flat);
+            assert!(close(b, (-10.0, 0.0, -20.0, 20.0)), "mode {mode}: {b:?}");
+        }
         for flat in [false, true] {
-            let (w, h) = place(true, flat);
+            let b = place(1.0, flat);
             assert!(
-                (w - 10.0).abs() < 1e-6 && (h - 50.0).abs() < 1e-6,
-                "facing camera, flat {flat}: {w}x{h}"
+                close(b, (-5.0, 5.0, -15.0, 25.0)),
+                "facing camera, flat {flat}: {b:?}"
             );
         }
     }
@@ -1417,8 +1557,9 @@ mod tests {
     fn glyphs_facing_the_camera_keep_their_spacing_on_a_receding_road() {
         // Rigid flat words foreshorten with the ground, so their box shrinks up
         // the screen. Glyphs facing the camera are spaced on the screen, so the
-        // text keeps its full 40 units, plus one glyph's height: all of it when
-        // upright, foreshortened by the 45° tilt when flat.
+        // text keeps its full 40 units: glyph centres from half a glyph inside
+        // either end, each glyph standing its height up the screen — all of it
+        // when upright, foreshortened by the 45° tilt when flat.
         let path = directed_path(32, 10.0, (0.0, 1.0));
         let view = tilted_view_north(300.0);
         let place = |faces_camera: bool, flat: bool| {
@@ -1436,11 +1577,11 @@ mod tests {
         assert!(h < 40.0, "rigid flat words foreshorten: {h}");
         let (w, h) = place(true, false);
         assert!(
-            (w - 10.0).abs() < 1e-6 && (h - 50.0).abs() < 1e-6,
+            (w - 10.0).abs() < 1e-6 && (h - 40.0).abs() < 1e-6,
             "upright facing camera: {w}x{h}"
         );
         let (w, h) = place(true, true);
-        let flat_h = 40.0 + 10.0 * std::f64::consts::FRAC_1_SQRT_2;
+        let flat_h = 30.0 + 10.0 * std::f64::consts::FRAC_1_SQRT_2;
         assert!(
             (w - 10.0).abs() < 1e-6 && (h - flat_h).abs() < 1e-6,
             "flat facing camera: {w}x{h}"
@@ -1852,12 +1993,42 @@ mod tests {
             assert!((got - want).abs() < 1e-9, "{:?}", &out[1..]);
         }
 
-        // Standing up but frozen, seen from straight above: the quad is
-        // edge-on, so it claims only its width across the screen.
+        // Upright but aligned with the map stays in the screen plane, turned
+        // by the camera heading — none here — so it claims the same box.
         let mut upright = row;
-        (upright[11], upright[12], upright[14]) = (0.0, 0.0, 0.0);
+        upright[14] = 0.0;
         let out = line_anchor_place(&upright, &view(), 1000.0, 1.0, SPACING);
-        assert!((out[2] - out[1] - 100.0).abs() < 1e-9 && (out[4] - out[3]).abs() < 1e-9);
+        for (got, want) in out[1..].iter().zip(expected) {
+            assert!((got - want).abs() < 1e-9, "{:?}", &out[1..]);
+        }
+    }
+
+    /// Upright and aligned with the map: on screen, never foreshortened, with
+    /// its x-axis turned by the camera heading to keep pointing east.
+    #[test]
+    fn an_upright_map_aligned_quad_turns_with_the_camera_heading() {
+        let row = sprite((0.0, f64::INFINITY), (1.0, 1.0), 0.0, 0.0, 0.0);
+        let close =
+            |a: (f64, f64), b: (f64, f64)| (a.0 - b.0).abs() < 1e-9 && (a.1 - b.1).abs() < 1e-9;
+        for (heading_deg, right, up) in [
+            (0.0, (1.0, 0.0), (0.0, 1.0)),
+            // Looking east, east runs up the screen.
+            (90.0, (0.0, 1.0), (-1.0, 0.0)),
+            // Looking south, the label reads upside down, as on the map.
+            (180.0, (-1.0, 0.0), (0.0, -1.0)),
+        ] {
+            let view = top_down_view_heading(500.0, f64::to_radians(heading_deg));
+            let (r, u) = quad_screen_basis(&row, &view, false, false, 0.0);
+            assert!(
+                close(r, right) && close(u, up),
+                "{heading_deg}°: {r:?} {u:?}"
+            );
+        }
+        // Pitched or level, it stays full size in the screen plane.
+        for view in [tilted_view_north(500.0), level_view_north(500.0)] {
+            let (r, u) = quad_screen_basis(&row, &view, false, false, 0.0);
+            assert!(close(r, (1.0, 0.0)) && close(u, (0.0, 1.0)), "{r:?} {u:?}");
+        }
     }
 
     #[test]
@@ -2090,31 +2261,121 @@ mod tests {
             )
         };
         let a = to_view((WGS84_A_64, 0.0, 0.0));
-        for flat in [false, true] {
-            let mut l = label(0.0, false, false);
-            l[9] = 10.0;
-            l[18] = if flat { 1.0 } else { 0.0 };
-            let out = line_label_place(&l, &path, 32, &view, 1000.0, 1.0, SPACING);
-            assert_eq!(out[1], 0.0, "flat {flat}: rejected");
-            // One 4-em word, 20 m either side of the anchor along the road
-            // (ECEF +z, north), 10 m tall: up the surface normal (ECEF +x), or
-            // when flat, left of travel across the ground (west, ECEF -y).
-            for s in [-20.0, 20.0] {
-                for h in [0.0, 10.0] {
-                    let (up, west) = if flat { (0.0, h) } else { (h, 0.0) };
-                    let p = to_view((WGS84_A_64 + up, -west, s));
-                    let k = a.2 / p.2;
-                    let (x, y) = (p.0 * k - a.0, p.1 * k - a.1);
-                    assert!(
-                        out[2] - 1e-6 <= x
-                            && x <= out[3] + 1e-6
-                            && out[4] - 1e-6 <= y
-                            && y <= out[5] + 1e-6,
-                        "flat {flat}: corner ({x}, {y}) at {s} m outside box {:?}",
-                        &out[2..6]
-                    );
-                }
+        let mut l = label(0.0, false, false);
+        l[9] = 10.0;
+        let out = line_label_place(&l, &path, 32, &view, 1000.0, 1.0, SPACING);
+        assert_eq!(out[1], 0.0, "rejected");
+        // One 4-em word, 20 m either side of the anchor along the road
+        // (ECEF +z, north), 10 m tall left of travel across the ground (west,
+        // ECEF -y).
+        for s in [-20.0, 20.0] {
+            for h in [0.0, 10.0] {
+                let p = to_view((WGS84_A_64, -h, s));
+                let k = a.2 / p.2;
+                let (x, y) = (p.0 * k - a.0, p.1 * k - a.1);
+                assert!(
+                    out[2] - 1e-6 <= x
+                        && x <= out[3] + 1e-6
+                        && out[4] - 1e-6 <= y
+                        && y <= out[5] + 1e-6,
+                    "corner ({x}, {y}) at {s} m outside box {:?}",
+                    &out[2..6]
+                );
             }
+        }
+    }
+
+    /// Upright and aligned with the map, a word on a receding road stays at
+    /// the anchor's size on the screen, turned to the road as it runs there:
+    /// up the screen, its height to the left.
+    #[test]
+    fn a_word_on_the_screen_keeps_its_size_on_a_receding_road() {
+        let path = directed_path(32, 10.0, (0.0, 1.0));
+        let mut l = label(0.0, false, false);
+        l[9] = 10.0;
+        (l[18], l[23]) = (0.0, 2.0);
+        let out = line_label_place(
+            &l,
+            &path,
+            32,
+            &tilted_view_north(30.0),
+            1000.0,
+            1.0,
+            SPACING,
+        );
+        assert_eq!(out[1], 0.0, "rejected");
+        for (got, want) in out[2..6].iter().zip([-10.0, 0.0, -20.0, 20.0]) {
+            assert!((got - want).abs() < 1e-6, "{:?}", &out[2..6]);
+        }
+    }
+
+    /// A straight label is a point label at its anchor: never flipped, never
+    /// bent, and its box the block turned as the shader turns it, whichever
+    /// way the road runs under it.
+    #[test]
+    fn a_straight_label_claims_its_turned_block() {
+        let path = directed_path(32, 10.0, (-1.0, 0.0));
+        let place = |rotation: f64| {
+            let mut l = label(-std::f64::consts::FRAC_PI_2, true, false);
+            l[9] = 10.0;
+            (l[18], l[23], l[24]) = (0.0, 3.0, rotation);
+            line_label_place(&l, &path, 32, &view(), 1000.0, 1.0, SPACING)
+        };
+        let close = |out: &[f64], want: [f64; 4]| {
+            out[2..6]
+                .iter()
+                .zip(want)
+                .all(|(g, w)| (g - w).abs() < 1e-6)
+        };
+
+        let out = place(0.0);
+        assert_eq!(
+            (out[0], out[1]),
+            (0.0, 0.0),
+            "a westbound road flips no straight label"
+        );
+        assert!(close(&out, [-20.0, 20.0, 0.0, 10.0]), "{:?}", &out[2..6]);
+        // A quarter turn clockwise: the text reads down the screen.
+        let out = place(std::f64::consts::FRAC_PI_2);
+        assert!(close(&out, [0.0, 10.0, -20.0, 20.0]), "{:?}", &out[2..6]);
+    }
+
+    /// Glyphs spun about their own centres grow the box by their turned
+    /// extent: along the road by half their height, across it to their own
+    /// width about the text's mid-line. Unturned, the box is the word.
+    #[test]
+    fn spun_glyphs_claim_their_turned_extent() {
+        let path = straight_path(32, 10.0);
+        let place = |mode: f64, rotation: f64| {
+            let mut l = label(std::f64::consts::FRAC_PI_2, false, false);
+            l[9] = 10.0;
+            l[18] = if mode == 0.0 { 1.0 } else { 0.0 };
+            (l[23], l[24]) = (mode, rotation);
+            line_label_place(&l, &path, 32, &view(), 1000.0, 1.0, SPACING)
+        };
+        for mode in [0.0, 2.0] {
+            let out = place(mode, 0.0);
+            let want = [-20.0, 20.0, 0.0, 10.0];
+            assert!(
+                out[2..6]
+                    .iter()
+                    .zip(want)
+                    .all(|(g, w)| (g - w).abs() < 1e-6),
+                "mode {mode}: {:?}",
+                &out[2..6]
+            );
+            // A quarter turn: glyphs 8 wide and 10 tall stand 8 tall about
+            // the mid-line (5 ± 4), and reach 5 past either end.
+            let out = place(mode, std::f64::consts::FRAC_PI_2);
+            let want = [-25.0, 25.0, 1.0, 9.0];
+            assert!(
+                out[2..6]
+                    .iter()
+                    .zip(want)
+                    .all(|(g, w)| (g - w).abs() < 1e-6),
+                "mode {mode}: {:?}",
+                &out[2..6]
+            );
         }
     }
 }

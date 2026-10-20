@@ -216,10 +216,34 @@
           "status": "❌"
         },
         "text-rotate": {
-          "status": "❌"
+          "status": "✅"
         },
         "icon-rotate": {
-          "status": "❌"
+          "status": "✅"
+        },
+        "symbol-placement": {
+          "status": "⚠️ Evaluated once at layer construction"
+        },
+        "symbol-spacing": {
+          "status": "⚠️ Evaluated once at layer construction"
+        },
+        "text-rotation-alignment": {
+          "status": "⚠️ Evaluated once at layer construction"
+        },
+        "text-pitch-alignment": {
+          "status": "⚠️ Evaluated once at layer construction"
+        },
+        "text-keep-upright": {
+          "status": "⚠️ Evaluated once at layer construction"
+        },
+        "text-max-angle": {
+          "status": "⚠️ Evaluated once at layer construction"
+        },
+        "icon-rotation-alignment": {
+          "status": "⚠️ Evaluated once at layer construction"
+        },
+        "icon-pitch-alignment": {
+          "status": "⚠️ Evaluated once; on-screen icons turn by ground bearing on lines"
         },
         "symbol-sort-key": {
           "status": "❌"

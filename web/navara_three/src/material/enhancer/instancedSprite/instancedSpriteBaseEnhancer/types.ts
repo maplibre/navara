@@ -18,11 +18,13 @@ export type InstancedSpriteBaseProps = {
   // Mutable state
   scale?: number;
   center?: [number, number];
-  /** `false` (the default) stands the quad up; `true` lays it on the globe
-   *  surface around the anchor, wrapped to its curvature. Material-level default;
-   *  per-feature overrides come from the batch data texture. */
+  /** `false` (the default) keeps the quad in the screen plane; `true` lays it
+   *  on the globe surface around the anchor, wrapped to its curvature.
+   *  Material-level default; per-feature overrides come from the batch data
+   *  texture. */
   flatFacing?: boolean;
-  /** Whether the quad turns to follow the camera. Material-level default. */
+  /** Whether the quad turns with the camera (`true`) or with the map.
+   *  Material-level default. */
   rotateWithCamera?: boolean;
   /** Spin of the quad inside its own plane about the anchor, in **degrees**,
    *  clockwise seen from the front. Converted to radians in state. */
