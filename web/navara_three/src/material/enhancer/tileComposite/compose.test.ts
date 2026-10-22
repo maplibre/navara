@@ -60,7 +60,7 @@ describe("composeCompositeContributions", () => {
       2,
     );
     const hill = c.slotUniformDecls.indexOf("uIsHillshades");
-    const elev = c.slotUniformDecls.indexOf("uIsElevationHeatmaps");
+    const elev = c.slotUniformDecls.indexOf("uElevationHeatmapParams");
     const water = c.slotUniformDecls.indexOf("uWaters");
     expect(hill).toBeGreaterThanOrEqual(0);
     expect(hill).toBeLessThan(elev);

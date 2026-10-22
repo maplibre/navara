@@ -35,6 +35,14 @@ vi.mock("@navaramap/three", () => ({
       public name: string,
       public colors: number[][],
     ) {}
+    flatten() {
+      // Mock flatten: return a flat Float32Array of RGB values
+      const flat: number[] = [];
+      for (const color of this.colors) {
+        flat.push(...color);
+      }
+      return new Float32Array(flat);
+    }
   },
 }));
 
