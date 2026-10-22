@@ -211,16 +211,13 @@ function createColorReliefLayer(
       maxHeight,
       logarithmic: false,
       filter: resampling,
+      // Per-layer color mapping: flatten colorMap to Float32Array
+      colorMap: colorMap ? colorMap.flatten() : undefined,
     },
     raster: {
       opacity,
     },
   };
-
-  // Store colorMap in metadata so MapLibreStylePlugin can apply it to globe
-  if (colorMap) {
-    (layerDesc as unknown as { _colorMap?: ColorMap })._colorMap = colorMap;
-  }
 
   return layerDesc;
 }

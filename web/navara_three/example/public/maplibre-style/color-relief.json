@@ -4,7 +4,9 @@
     "projection": {
         "type": "globe"
       },
-    "zoom": 2,
+    "center": [138.73, 35.27],
+    "zoom": 9,
+    "pitch": 60,
     "sources": {
         "osm": {
             "type": "raster",
@@ -12,7 +14,15 @@
             "tileSize": 256,
             "maxzoom": 19
         },
-        "terrain-rgb": {
+        "terrain-1": {
+            "type": "raster-dem",
+            "tiles": [
+                "https://tiles.mapterhorn.com/{z}/{x}/{y}.webp"
+            ],
+            "tileSize": 512,
+            "encoding": "terrarium"
+        },
+        "terrain-2": {
             "type": "raster-dem",
             "tiles": [
                 "https://tiles.mapterhorn.com/{z}/{x}/{y}.webp"
@@ -31,24 +41,48 @@
             }
         },
         {
-            "id": "color-relief",
+            "id": "color-relief1",
             "type": "color-relief",
-            "source": "terrain-rgb",
+            "source": "terrain-1",
             "paint": {
-                "color-relief-opacity": 1,
+                "color-relief-opacity": 0.5,
                 "color-relief-color": [
                     "interpolate",
                     ["linear"],
                     ["elevation"],
-                    0, "#30123b",
-                    500, "#424bb5",
-                    1000, "#4196ff",
-                    1500, "#1ad2d2",
-                    2000, "#46f884",
-                    2500, "#cdec34",
-                    3000, "#f8be39",
-                    3500, "#e5470b",
-                    4000, "#7a0403"
+                    0, "#000000",
+                    500, "#000022",
+                    1000, "#000044",
+                    1500, "#000066",
+                    2000, "#000088",
+                    2500, "#0000AA",
+                    3000, "#0000CC",
+                    3500, "#0000EE",
+                    4000, "#0000FF"
+                ],
+                "resampling": "linear"
+            },
+            "layout": {
+                "visibility": "visible"
+            }
+        },
+        {
+            "id": "color-relief2",
+            "type": "color-relief",
+            "source": "terrain-2",
+            "paint": {
+                "color-relief-opacity": 0.5,
+                "color-relief-color": [
+                    "interpolate",
+                    ["linear"],
+                    ["elevation"],
+                    0, "#000000",
+                    500, "#4664da",
+                    1000, "#35abf8",
+                    1500, "#18ddc2",
+                    2000, "#b1f936",
+                    2500, "#f9781e",
+                    3000, "#8e0a01"
                 ],
                 "resampling": "linear"
             },
@@ -59,18 +93,11 @@
         {
             "id": "hillshade",
             "type": "hillshade",
-            "source": "terrain-rgb",
-            "paint": {
-                "hillshade-exaggeration": 0.5,
-                "hillshade-shadow-color": "#473B24",
-                "hillshade-accent-color": "#FFF5E6",
-                "hillshade-highlight-color": "#FFFFFF",
-                "hillshade-illumination-direction": 315
-            }
+            "source": "terrain-1"
         }
     ],
     "terrain": {
-        "source": "terrain-rgb",
+        "source": "terrain-1",
         "exaggeration": 1.5
     }
 }

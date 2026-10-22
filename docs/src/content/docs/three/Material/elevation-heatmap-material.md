@@ -17,6 +17,37 @@ Because it decodes DEM tiles, it requires a [`raster-dem`](../../../three/source
 
 ## Properties
 
+### colorMap
+
+**Type:** `Float32Array | undefined`
+
+**Default:** `undefined`
+
+**Description:** Color map lookup table for this layer. A flattened RGB array `[r0,g0,b0, r1,g1,b1, ...]` where each color component is in the range [0, 1]. Use `ColorMap.flatten()` to convert a ColorMap instance to this format.
+
+```typescript
+import { ColorMap, Color } from "@navaramap/three";
+
+const colorMap = new ColorMap("sequential", "YlGnBu", [
+  new Color().setStyle("#ffffd9"),
+  new Color().setStyle("#edf8b1"),
+  new Color().setStyle("#c7e9b4"),
+  new Color().setStyle("#7fcdbb"),
+  new Color().setStyle("#41b6c4"),
+  new Color().setStyle("#1d91c0"),
+  new Color().setStyle("#225ea8"),
+  new Color().setStyle("#253494"),
+  new Color().setStyle("#081d58"),
+]);
+
+{
+  elevationHeatmap: {
+    colorMap: colorMap.flatten(),
+    maxHeight: 3000,
+  }
+}
+```
+
 ### maxHeight
 
 **Type:** `number | undefined`
@@ -101,10 +132,10 @@ view.addLayer({
 
 ### Customizing the colormap
 
-The heatmap colors are controlled by the `globe.elevationColormap` property.
+Each layer can have its own color map. Define it using the `colorMap` property.
 
 ```typescript
-import ThreeView, { ColorMap, Color } from "@navaramap/three";
+import ThreeView, { ColorMap, Color, TERRARIUM_ELEVATION_DECODER } from "@navaramap/three";
 
 const view = new ThreeView();
 await view.init();
@@ -124,12 +155,27 @@ const rdYlBuColorMap = new ColorMap("diverging", "RdYlBu", [
   new Color().setStyle("#a50026"),
 ]);
 
-view.globe.elevationColormap = rdYlBuColorMap;
+const dem = view.addSource({
+  type: "raster-dem",
+  url: "https://example.com/terrarium/{z}/{x}/{y}.png",
+  elevationDecoder: TERRARIUM_ELEVATION_DECODER(),
+  maxZoom: 15,
+});
+
+view.addLayer({
+  type: "raster",
+  source: dem,
+  elevationHeatmap: {
+    colorMap: rdYlBuColorMap.flatten(),
+    maxHeight: 3000,
+    minHeight: 0,
+  },
+});
 ```
 
 ## Related Resources
 
 - [Raster Layer](../../../three/layer/raster-layer/): how to use this material
 - [Raster DEM Source](../../../three/source/raster-dem-source/): DEM source and its elevation decoder
-- [ColorMap class](../../../three/api/colormap/) / [Globe class](../../../three/api/globe/): `elevationColormap`
+- [ColorMap class](../../../three/api/colormap/): creating and managing color maps
 - [HillshadeMaterial](../../../three/material/hillshade-material/): shaded relief from DEM tiles

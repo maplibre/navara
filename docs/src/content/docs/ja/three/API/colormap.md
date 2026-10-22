@@ -187,7 +187,7 @@ createImage(): HTMLCanvasElement
 
 ### flatten()
 
-WASM/GPU 用にカラーマップを `Float32Array` に変換します。内部的に `globe.elevationColormap` に設定する際に使用されます。
+GPU 用にカラーマップを `Float32Array` に変換します。標高ヒートマップレイヤーの `colorMap` プロパティを設定する際に使用します。
 
 **Syntax:**
 
@@ -231,10 +231,7 @@ const spectralColorMap = new ColorMap("diverging", "Spectral", [
   new Color().setStyle("#5e4fa2"),
 ]);
 
-// Globe にカラーマップを設定
-view.globe.elevationColormap = spectralColorMap;
-
-// 標高ヒートマップレイヤーを追加
+// カラーマップを使った標高ヒートマップレイヤーを追加
 const heatmapSource = view.addSource({
   type: "raster-dem",
   url: "https://example.com/terrain/{z}/{x}/{y}.png",
@@ -245,6 +242,7 @@ view.addLayer({
   type: "raster",
   source: heatmapSource,
   elevationHeatmap: {
+    colorMap: spectralColorMap.flatten(),
     maxHeight: 3000,
     minHeight: 0,
   },
@@ -254,7 +252,7 @@ view.addLayer({
 ### 動的なカラーマップ切り替え
 
 ```typescript
-import ThreeView, { ColorMap, Color } from "@navaramap/three";
+import ThreeView, { ColorMap, Color, TERRARIUM_ELEVATION_DECODER, type LayerDescription } from "@navaramap/three";
 
 const view = new ThreeView();
 await view.init();
@@ -305,9 +303,31 @@ const colorMaps = {
   ]),
 };
 
+const heatmapSource = view.addSource({
+  type: "raster-dem",
+  url: "https://example.com/terrain/{z}/{x}/{y}.png",
+  elevationDecoder: TERRARIUM_ELEVATION_DECODER(),
+  maxZoom: 15,
+});
+
+const layerDef: LayerDescription = {
+  type: "raster",
+  source: heatmapSource.id,
+  elevationHeatmap: {
+    colorMap: colorMaps.rdYlGn.flatten(),
+    maxHeight: 3000,
+    minHeight: 0,
+  },
+};
+
+const layer = view.addLayer(layerDef);
+
 // カラーマップを切り替える関数
 function setColorMap(name: keyof typeof colorMaps) {
-  view.globe.elevationColormap = colorMaps[name];
+  if (layerDef.elevationHeatmap) {
+    layerDef.elevationHeatmap.colorMap = colorMaps[name].flatten();
+    view.updateLayerById(layer.id, layerDef);
+  }
 }
 
 // 使用例
@@ -317,5 +337,4 @@ setColorMap("rdYlGn");
 ## 関連項目
 
 - [Color クラス](../../../three/api/color/) - 色を表現するクラス
-- [Globe クラス](../../../three/api/globe/) - `elevationColormap` プロパティ
-- [ElevationHeatmapMaterial](../../../three/material/elevation-heatmap-material/) - 標高ヒートマップマテリアル
+- [ElevationHeatmapMaterial](../../../three/material/elevation-heatmap-material/) - 標高ヒートマップレイヤーでカラーマップを使用

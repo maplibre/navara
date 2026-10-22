@@ -1,7 +1,6 @@
 import { EventManager, EventHandler, Globe, Plugin } from "@navaramap/core";
 import type {
   CameraPosition,
-  ColorMap,
   GlobeOptions,
   Nullable,
   XYZ,
@@ -50,7 +49,6 @@ import {
   Texture,
   Vector2,
   LinearFilter,
-  ClampToEdgeWrapping,
   RepeatWrapping,
   Group,
   PCFShadowMap,
@@ -61,6 +59,7 @@ import { Atmosphere, type AtmosphereOptions } from "./atmosphere";
 import { flushBatchTextureUpdates } from "./batchTexture";
 import { ThreeViewCamera } from "./camera";
 import { Color } from "./Color";
+import { ColorMapAtlas } from "./colorMapAtlas";
 import { createDefaultConcurrencyManager } from "./concurrency";
 import { WATER_NORMAL_URL } from "./constants/assets";
 import {
@@ -590,6 +589,9 @@ export default class ThreeView<
   // Hillshade processing context
   // Scoped to this view instance to prevent cross-view contamination
   private _hillshadeContext = new HillshadeContext();
+  // ColorMap atlas for elevation heatmap layers
+  // Manages 2D texture containing all layers' colorMaps
+  private _colorMapAtlas = new ColorMapAtlas();
   private _initialized = false;
 
   /**
@@ -790,9 +792,6 @@ export default class ThreeView<
     getWireframe: () => {
       return this._core?.getGlobeWireframe();
     },
-    getElevationColormap: () => {
-      return this._core?.getGlobeElevationColormap();
-    },
     setTransparent: (value: boolean) => {
       this._core?.setGlobeTransparent(value);
     },
@@ -816,27 +815,6 @@ export default class ThreeView<
     },
     setWireframe: (value: boolean) => {
       this._core?.setGlobeWireframe(value);
-    },
-    setElevationColormap: (value: ColorMap) => {
-      this._core?.setGlobeElevationColormap(value.flatten());
-
-      const canvas = value.createImage();
-      const texture = new Texture(canvas);
-      texture.wrapS = ClampToEdgeWrapping;
-      texture.wrapT = ClampToEdgeWrapping;
-      texture.minFilter = LinearFilter;
-      texture.magFilter = LinearFilter;
-      texture.generateMipmaps = false;
-      texture.flipY = false;
-      texture.needsUpdate = true;
-
-      this._uniforms.colorMapTexture.value = texture;
-
-      // Track additional texture usage
-      this._defaultTextureOptions.additionalTexturesInUse = {
-        ...this._defaultTextureOptions.additionalTexturesInUse,
-        colorMapTexture: true,
-      };
     },
   };
   private _workerTaskHandler: WorkerTaskHandler = {
@@ -1617,6 +1595,7 @@ export default class ThreeView<
       tileMeshToFragmentIds: this._tileMeshToFragmentIds,
       hillshadeContext: this._hillshadeContext,
       declutter: this._declutter,
+      colorMapAtlas: this._colorMapAtlas,
     });
 
     // Register built-in descriptors
@@ -1978,6 +1957,17 @@ export default class ThreeView<
     this._uniforms.screenHeightPx.value = viewport?.height ?? 0;
   }
 
+  /**
+   * Updates the colorMap texture atlas uniform.
+   * Should be called after modifying the colorMap atlas (adding/removing layers).
+   */
+  private _updateColorMapTexture() {
+    const texture = this._colorMapAtlas.getTexture();
+    if (this._uniforms.colorMapTexture) {
+      this._uniforms.colorMapTexture.value = texture;
+    }
+  }
+
   /** Returns true if the scene was updated and needs to be rendered. */
   private _update(updatedAt: number): boolean {
     this.emit("preUpdate", updatedAt);
@@ -2157,6 +2147,23 @@ export default class ThreeView<
       this._convertColorsToNumbers.bind(this),
     );
     this.layersManager.add(layer);
+
+    // Register colorMap for elevation heatmap layers (raster type only)
+    if (
+      l.type === "raster" &&
+      l.elevationHeatmap?.colorMap &&
+      l.elevationHeatmap.colorMap instanceof Float32Array
+    ) {
+      this._colorMapAtlas.setColorMap(layerId, l.elevationHeatmap.colorMap);
+      // Update the texture uniform
+      this._updateColorMapTexture();
+    }
+
+    // Clean up colorMap when layer is deleted
+    layer.on("deleted", () => {
+      this._colorMapAtlas.removeColorMap(layerId);
+      this._updateColorMapTexture();
+    });
 
     return layer;
   }
@@ -2490,6 +2497,16 @@ export default class ThreeView<
     const target = this.layersManager.get(id);
     if (!target || !(target instanceof Layer)) return;
     target.update(l);
+
+    // Update colorMap if this is an elevation heatmap layer
+    if (
+      l.type === "raster" &&
+      l.elevationHeatmap?.colorMap &&
+      l.elevationHeatmap.colorMap instanceof Float32Array
+    ) {
+      this._colorMapAtlas.setColorMap(id, l.elevationHeatmap.colorMap);
+      this._updateColorMapTexture();
+    }
   }
 
   /**

@@ -1,6 +1,6 @@
 import type { Globe as GlobeWasm } from "@navaramap/engine";
 
-import { ColorMap, Color } from "../color";
+import { Color } from "../color";
 import type { RemoveFreeRecursively } from "../types";
 /**
  * Handler for accessing individual Globe properties from WASM.
@@ -15,7 +15,6 @@ export type GlobeHandler = {
   getUseNormal: () => boolean | undefined;
   getOpacity: () => number | undefined;
   getWireframe: () => boolean | undefined;
-  getElevationColormap: () => Float32Array | undefined;
   setTransparent: (value: boolean) => void;
   setMaxSse: (value: number) => void;
   setSegments: (value: number) => void;
@@ -24,23 +23,14 @@ export type GlobeHandler = {
   setUseNormal: (value: boolean) => void;
   setOpacity: (value: number) => void;
   setWireframe: (value: boolean) => void;
-  setElevationColormap: (value: ColorMap) => void;
 };
 
 // `isGeographicTiling` is engine-set output (the tiling scheme is dictated by
 // the terrain source, not configurable), so it is excluded from both the
 // options and the wrapper below.
 export type GlobeOptions = Partial<
-  Omit<
-    GlobeWasm,
-    | "constructor"
-    | "free"
-    | "elevationColormap"
-    | "color"
-    | "isGeographicTiling"
-  >
+  Omit<GlobeWasm, "constructor" | "free" | "color" | "isGeographicTiling">
 > & {
-  elevationColormap?: ColorMap;
   color?: Color;
 };
 
@@ -52,10 +42,9 @@ export type GlobeOptions = Partial<
  */
 export class Globe implements Omit<
   RemoveFreeRecursively<GlobeWasm>,
-  "elevationColormap" | "color" | "isGeographicTiling"
+  "color" | "isGeographicTiling"
 > {
   private handler: GlobeHandler;
-  private _elevationColormap?: ColorMap;
 
   constructor(handler: GlobeHandler, options?: GlobeOptions) {
     this.handler = handler;
@@ -86,9 +75,6 @@ export class Globe implements Omit<
     }
     if (options?.wireframe != null) {
       this.wireframe = options.wireframe;
-    }
-    if (options?.elevationColormap != null) {
-      this.elevationColormap = options.elevationColormap;
     }
   }
 
@@ -153,14 +139,5 @@ export class Globe implements Omit<
 
   set wireframe(value: boolean) {
     this.handler.setWireframe(value);
-  }
-
-  get elevationColormap(): ColorMap | undefined {
-    return this._elevationColormap;
-  }
-
-  set elevationColormap(value: ColorMap) {
-    this._elevationColormap = value;
-    this.handler.setElevationColormap(value);
   }
 }

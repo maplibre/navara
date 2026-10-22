@@ -415,6 +415,7 @@ impl RasterLayerDescription {
                 filter: e.filter.clone().unwrap_or_else(|| {
                     old.map_or_else(|| "linear".to_string(), |c| c.filter.clone())
                 }),
+                color_map: None, // Color map is managed in TypeScript via ColorMapAtlas
             }),
             None => old.cloned(),
         }
@@ -1249,6 +1250,7 @@ mod tests {
             logarithmic: true,
             log_boundary: 5.0,
             filter: "linear".to_string(),
+            color_map: None,
         };
         let desc = RasterLayerDescription {
             elevation_heatmap: Some(serde_json::from_str(r#"{"maxHeight": 999.0}"#).unwrap()),
@@ -1271,6 +1273,7 @@ mod tests {
             logarithmic: true,
             log_boundary: 5.0,
             filter: "linear".to_string(),
+            color_map: None,
         };
         let desc = RasterLayerDescription::default();
 
