@@ -30,8 +30,9 @@ pub fn composite_key(font_index: u32, glyph_id: u32) -> u64 {
 
 /// Atlas bytes returned to TypeScript. `channels`: 1 → R8 (SDF),
 /// 4 → RGBA8 (MSDF or color).
-#[wasm_bindgen(getter_with_clone)]
+#[wasm_bindgen]
 pub struct FontAtlas {
+    #[wasm_bindgen(getter_with_clone)]
     pub data: js_sys::Uint8Array,
     pub width: u32,
     pub height: u32,
@@ -70,9 +71,11 @@ pub struct WasmShapedGlyph {
     pub direction: u8,
 }
 
-#[wasm_bindgen(getter_with_clone)]
+#[wasm_bindgen]
 pub struct ShapeTextResult {
+    #[wasm_bindgen(getter_with_clone)]
     pub glyphs: Vec<WasmShapedGlyph>,
+    #[wasm_bindgen(getter_with_clone)]
     pub metrics: Vec<WasmGlyphMetrics>,
     pub units_per_em: u16,
     /// Vertical line metrics in font units, for multi-line layout.

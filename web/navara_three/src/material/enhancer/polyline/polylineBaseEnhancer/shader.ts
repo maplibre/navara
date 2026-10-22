@@ -5,6 +5,8 @@ import PolylineVertShader from "@shaders/glsl/polyline.vert.glsl";
 import { packing } from "@takram/three-geospatial/shaders";
 import type { WebGLProgramParametersWithUniforms } from "three";
 
+import { SOLID_DASH_ROW } from "../../../../lineDash";
+
 import type { SupportedMaterial } from "./material";
 import type { PolylineBaseMutates, PolylineBaseState } from "./types";
 
@@ -76,6 +78,12 @@ export const transformShader = (
     shader.defines.NVR_GROUND_POLYLINE_NORMALS = true;
   } else {
     delete shader.defines.NVR_GROUND_POLYLINE_NORMALS;
+  }
+
+  if (state.dashRow !== SOLID_DASH_ROW) {
+    shader.defines.NVR_LINE_DASH = true;
+  } else {
+    delete shader.defines.NVR_LINE_DASH;
   }
 
   if (material.userData.defines) {

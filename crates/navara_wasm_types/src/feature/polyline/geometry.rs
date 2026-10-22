@@ -78,29 +78,23 @@ impl ConstructedPolylineGeometry {
     pub fn end_low_size(&mut self) -> Option<u8> {
         self.geometry.end_low_size()
     }
-    pub fn start_normals(&mut self) -> Option<js_sys::Float32Array> {
-        self.geometry.start_normals()
+    pub fn start_normal_and_length_high(&mut self) -> Option<js_sys::Float32Array> {
+        self.geometry.start_normal_and_length_high()
     }
-    pub fn start_normals_size(&mut self) -> Option<u8> {
-        self.geometry.start_normals_size()
+    pub fn start_normal_and_length_high_size(&mut self) -> Option<u8> {
+        self.geometry.start_normal_and_length_high_size()
     }
-    pub fn end_normal_and_texture_coordinate_normalization_x(
-        &mut self,
-    ) -> Option<js_sys::Float32Array> {
-        self.geometry
-            .end_normal_and_texture_coordinate_normalization_x()
+    pub fn end_normal_and_segment_length(&mut self) -> Option<js_sys::Float32Array> {
+        self.geometry.end_normal_and_segment_length()
     }
-    pub fn end_normal_and_texture_coordinate_normalization_x_size(&mut self) -> Option<u8> {
-        self.geometry
-            .end_normal_and_texture_coordinate_normalization_x_size()
+    pub fn end_normal_and_segment_length_size(&mut self) -> Option<u8> {
+        self.geometry.end_normal_and_segment_length_size()
     }
-    pub fn right_normal_and_texture_coordinate_normalization_y(&mut self) -> js_sys::Float32Array {
-        self.geometry
-            .right_normal_and_texture_coordinate_normalization_y()
+    pub fn right_normal_and_line_length(&mut self) -> js_sys::Float32Array {
+        self.geometry.right_normal_and_line_length()
     }
-    pub fn right_normal_and_texture_coordinate_normalization_y_size(&mut self) -> u8 {
-        self.geometry
-            .right_normal_and_texture_coordinate_normalization_y_size()
+    pub fn right_normal_and_line_length_size(&mut self) -> u8 {
+        self.geometry.right_normal_and_line_length_size()
     }
     pub fn batch_id(&mut self) -> Option<js_sys::Float32Array> {
         self.geometry.batch_id()
@@ -116,6 +110,12 @@ impl ConstructedPolylineGeometry {
     }
     pub fn indices(&mut self) -> js_sys::Uint32Array {
         self.geometry.indices()
+    }
+    pub fn line_segments(&mut self) -> Option<js_sys::Float32Array> {
+        self.geometry.line_segments()
+    }
+    pub fn line_distance_and_ends(&mut self) -> Option<js_sys::Float32Array> {
+        self.geometry.line_distance_and_ends()
     }
 }
 
@@ -191,29 +191,24 @@ impl PolylineGeometry {
     pub fn end_low_size(&mut self) -> Option<u8> {
         self.attributes.transfer_end_low_size()
     }
-    pub fn start_normals(&mut self) -> Option<js_sys::Float32Array> {
-        self.attributes.transfer_start_normals()
+    pub fn start_normal_and_length_high(&mut self) -> Option<js_sys::Float32Array> {
+        self.attributes.transfer_start_normal_and_length_high()
     }
-    pub fn start_normals_size(&mut self) -> Option<u8> {
-        self.attributes.transfer_start_normals_size()
+    pub fn start_normal_and_length_high_size(&mut self) -> Option<u8> {
+        self.attributes.transfer_start_normal_and_length_high_size()
     }
-    pub fn end_normal_and_texture_coordinate_normalization_x(
-        &mut self,
-    ) -> Option<js_sys::Float32Array> {
+    pub fn end_normal_and_segment_length(&mut self) -> Option<js_sys::Float32Array> {
+        self.attributes.transfer_end_normal_and_segment_length()
+    }
+    pub fn end_normal_and_segment_length_size(&mut self) -> Option<u8> {
         self.attributes
-            .transfer_end_normal_and_texture_coordinate_normalization_x()
+            .transfer_end_normal_and_segment_length_size()
     }
-    pub fn end_normal_and_texture_coordinate_normalization_x_size(&mut self) -> Option<u8> {
-        self.attributes
-            .transfer_end_normal_and_texture_coordinate_normalization_x_size()
+    pub fn right_normal_and_line_length(&mut self) -> js_sys::Float32Array {
+        self.attributes.transfer_right_normal_and_line_length()
     }
-    pub fn right_normal_and_texture_coordinate_normalization_y(&mut self) -> js_sys::Float32Array {
-        self.attributes
-            .transfer_right_normal_and_texture_coordinate_normalization_y()
-    }
-    pub fn right_normal_and_texture_coordinate_normalization_y_size(&mut self) -> u8 {
-        self.attributes
-            .transfer_right_normal_and_texture_coordinate_normalization_y_size()
+    pub fn right_normal_and_line_length_size(&mut self) -> u8 {
+        self.attributes.transfer_right_normal_and_line_length_size()
     }
     pub fn batch_id(&mut self) -> Option<js_sys::Float32Array> {
         self.attributes.transfer_batch_id()
@@ -230,6 +225,12 @@ impl PolylineGeometry {
     pub fn indices(&mut self) -> js_sys::Uint32Array {
         copy_u32_array(&self.indices)
     }
+    pub fn line_segments(&mut self) -> Option<js_sys::Float32Array> {
+        self.attributes.transfer_line_segments()
+    }
+    pub fn line_distance_and_ends(&mut self) -> Option<js_sys::Float32Array> {
+        self.attributes.transfer_line_distance_and_ends()
+    }
 }
 
 #[wasm_bindgen]
@@ -244,11 +245,13 @@ pub struct PolylineGeometryAttributes {
     forward_offset: Option<FloatAttribute>,
     end_high: Option<FloatAttribute>,
     end_low: Option<FloatAttribute>,
-    start_normals: Option<FloatAttribute>,
-    end_normal_and_texture_coordinate_normalization_x: Option<FloatAttribute>,
-    right_normal_and_texture_coordinate_normalization_y: FloatAttribute,
+    start_normal_and_length_high: Option<FloatAttribute>,
+    end_normal_and_segment_length: Option<FloatAttribute>,
+    right_normal_and_line_length: FloatAttribute,
     batch_ids: Option<FloatAttribute>,
     batch_index: Option<UintAttribute>,
+    line_segments: Option<FloatAttribute>,
+    line_distance_and_ends: Option<FloatAttribute>,
 }
 
 #[wasm_bindgen]
@@ -309,35 +312,31 @@ impl PolylineGeometryAttributes {
     pub fn transfer_end_low_size(&mut self) -> Option<u8> {
         self.end_low.as_ref().map(|attr| attr.size)
     }
-    pub fn transfer_start_normals(&mut self) -> Option<js_sys::Float32Array> {
-        self.start_normals.as_mut().map(|attr| attr.transfer_data())
-    }
-    pub fn transfer_start_normals_size(&mut self) -> Option<u8> {
-        self.start_normals.as_ref().map(|attr| attr.size)
-    }
-    pub fn transfer_end_normal_and_texture_coordinate_normalization_x(
-        &mut self,
-    ) -> Option<js_sys::Float32Array> {
-        self.end_normal_and_texture_coordinate_normalization_x
+    pub fn transfer_start_normal_and_length_high(&mut self) -> Option<js_sys::Float32Array> {
+        self.start_normal_and_length_high
             .as_mut()
             .map(|attr| attr.transfer_data())
     }
-    pub fn transfer_end_normal_and_texture_coordinate_normalization_x_size(
-        &mut self,
-    ) -> Option<u8> {
-        self.end_normal_and_texture_coordinate_normalization_x
+    pub fn transfer_start_normal_and_length_high_size(&mut self) -> Option<u8> {
+        self.start_normal_and_length_high
             .as_ref()
             .map(|attr| attr.size)
     }
-    pub fn transfer_right_normal_and_texture_coordinate_normalization_y(
-        &mut self,
-    ) -> js_sys::Float32Array {
-        self.right_normal_and_texture_coordinate_normalization_y
-            .transfer_data()
+    pub fn transfer_end_normal_and_segment_length(&mut self) -> Option<js_sys::Float32Array> {
+        self.end_normal_and_segment_length
+            .as_mut()
+            .map(|attr| attr.transfer_data())
     }
-    pub fn transfer_right_normal_and_texture_coordinate_normalization_y_size(&mut self) -> u8 {
-        self.right_normal_and_texture_coordinate_normalization_y
-            .size
+    pub fn transfer_end_normal_and_segment_length_size(&mut self) -> Option<u8> {
+        self.end_normal_and_segment_length
+            .as_ref()
+            .map(|attr| attr.size)
+    }
+    pub fn transfer_right_normal_and_line_length(&mut self) -> js_sys::Float32Array {
+        self.right_normal_and_line_length.transfer_data()
+    }
+    pub fn transfer_right_normal_and_line_length_size(&mut self) -> u8 {
+        self.right_normal_and_line_length.size
     }
     pub fn transfer_batch_id(&mut self) -> Option<js_sys::Float32Array> {
         let Some(batch_id) = &mut self.batch_ids else {
@@ -363,6 +362,14 @@ impl PolylineGeometryAttributes {
         };
         Some(batch_index.size)
     }
+    pub fn transfer_line_segments(&mut self) -> Option<js_sys::Float32Array> {
+        self.line_segments.as_mut().map(|attr| attr.transfer_data())
+    }
+    pub fn transfer_line_distance_and_ends(&mut self) -> Option<js_sys::Float32Array> {
+        self.line_distance_and_ends
+            .as_mut()
+            .map(|attr| attr.transfer_data())
+    }
 }
 
 impl From<PolylineGeometryAttributes> for navara_geometry::PolylineGeometryAttributes {
@@ -374,18 +381,16 @@ impl From<PolylineGeometryAttributes> for navara_geometry::PolylineGeometryAttri
             start: val.start.map(|v| v.into()),
             start_high: val.start_high.map(|v| v.into()),
             start_low: val.start_low.map(|v| v.into()),
-            start_normals: val.start_normals.map(|v| v.into()),
+            start_normal_and_length_high: val.start_normal_and_length_high.map(|v| v.into()),
             forward_offset: val.forward_offset.map(|v| v.into()),
             end_high: val.end_high.map(|v| v.into()),
             end_low: val.end_low.map(|v| v.into()),
-            end_normal_and_texture_coordinate_normalization_x: val
-                .end_normal_and_texture_coordinate_normalization_x
-                .map(|v| v.into()),
-            right_normal_and_texture_coordinate_normalization_y: val
-                .right_normal_and_texture_coordinate_normalization_y
-                .into(),
+            end_normal_and_segment_length: val.end_normal_and_segment_length.map(|v| v.into()),
+            right_normal_and_line_length: val.right_normal_and_line_length.into(),
             batch_ids: val.batch_ids.map(|v| v.into()),
             batch_index: val.batch_index.map(|v| v.into()),
+            line_segments: val.line_segments.map(|v| v.into()),
+            line_distance_and_ends: val.line_distance_and_ends.map(|v| v.into()),
         }
     }
 }
@@ -398,18 +403,16 @@ impl From<navara_geometry::PolylineGeometryAttributes> for PolylineGeometryAttri
             start: val.start.map(|v| v.into()),
             start_high: val.start_high.map(|v| v.into()),
             start_low: val.start_low.map(|v| v.into()),
-            start_normals: val.start_normals.map(|v| v.into()),
+            start_normal_and_length_high: val.start_normal_and_length_high.map(|v| v.into()),
             forward_offset: val.forward_offset.map(|v| v.into()),
             end_high: val.end_high.map(|v| v.into()),
             end_low: val.end_low.map(|v| v.into()),
-            end_normal_and_texture_coordinate_normalization_x: val
-                .end_normal_and_texture_coordinate_normalization_x
-                .map(|v| v.into()),
-            right_normal_and_texture_coordinate_normalization_y: val
-                .right_normal_and_texture_coordinate_normalization_y
-                .into(),
+            end_normal_and_segment_length: val.end_normal_and_segment_length.map(|v| v.into()),
+            right_normal_and_line_length: val.right_normal_and_line_length.into(),
             batch_ids: val.batch_ids.map(|v| v.into()),
             batch_index: val.batch_index.map(|v| v.into()),
+            line_segments: val.line_segments.map(|v| v.into()),
+            line_distance_and_ends: val.line_distance_and_ends.map(|v| v.into()),
         }
     }
 }

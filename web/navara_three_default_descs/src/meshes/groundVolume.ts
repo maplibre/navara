@@ -10,13 +10,17 @@ import type { GeographicExtent, HeightRange } from "@navaramap/three";
 export class GroundVolumeWatch {
   /** `[min, max]`, or `undefined` while no extent is watched. */
   heights?: [number, number];
+  /**
+   * The terrain heights `heights` were computed from, or `undefined` while no
+   * extent is watched.
+   */
+  terrainHeights?: HeightRange;
   private readonly view: ThreeView;
   private readonly volume: (
     range: HeightRange,
     extent: GeographicExtent,
   ) => [number, number];
   private readonly onChange: () => void;
-  private range?: HeightRange;
   private unobserve?: () => void;
 
   constructor(
@@ -33,7 +37,7 @@ export class GroundVolumeWatch {
   watch(extent: GeographicExtent | undefined) {
     this.unobserve?.();
     this.unobserve = undefined;
-    this.range = undefined;
+    this.terrainHeights = undefined;
     this.heights = undefined;
     if (!extent) return;
 
@@ -45,7 +49,10 @@ export class GroundVolumeWatch {
     // The observer's first event usually repeats this range and is skipped.
     this.onChange();
     this.unobserve = this.view.observeTerrainHeightRange(extent, (range) => {
-      if (this.range?.min === range.min && this.range.max === range.max) {
+      if (
+        this.terrainHeights?.min === range.min &&
+        this.terrainHeights.max === range.max
+      ) {
         return;
       }
       this.update(range, extent);
@@ -54,7 +61,7 @@ export class GroundVolumeWatch {
   }
 
   private update(range: HeightRange, extent: GeographicExtent) {
-    this.range = range;
+    this.terrainHeights = range;
     this.heights = this.volume(range, extent);
   }
 }

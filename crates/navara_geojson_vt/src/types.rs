@@ -53,6 +53,10 @@ pub struct Ring {
     /// Geometry size: absolute area for polygon rings, total distance for line rings.
     /// Preserved through clipping for the small-geometry skip check.
     pub size: f64,
+    /// Line rings: distance along the original line at the first point, in [0,1]
+    /// space. Clipping sets it on every piece it cuts out, so a piece knows where it
+    /// lies on the whole line.
+    pub line_start: f64,
 }
 
 impl Ring {
@@ -62,6 +66,7 @@ impl Ring {
             area: 0.0,
             dist: 0.0,
             size: 0.0,
+            line_start: 0.0,
         }
     }
 
@@ -100,11 +105,20 @@ pub struct InternalFeature {
     pub source_index: usize,
 }
 
+/// A line of an output tile, in tile-local space.
+#[derive(Debug, Clone, PartialEq)]
+pub struct TileLine {
+    pub points: Vec<[f64; 2]>,
+    /// Distance along the original line at the first point, in tile-local units: a
+    /// line the tile clipped out of a longer one starts there, not at zero.
+    pub start: f64,
+}
+
 /// Geometry types for output tiles with coordinates in tile-local space.
 #[derive(Debug, Clone)]
 pub enum TileGeometry {
     Points(Vec<[f64; 2]>),
-    Lines(Vec<Vec<[f64; 2]>>),
+    Lines(Vec<TileLine>),
     Polygons(Vec<Vec<Vec<[f64; 2]>>>),
 }
 

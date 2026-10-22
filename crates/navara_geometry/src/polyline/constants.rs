@@ -21,3 +21,15 @@ pub(super) const REFERENCE_INDICES: [u32; 36] = [
     5, 2, 6, 5, 1, 2, // end
     3, 6, 2, 3, 7, 6, // top
 ];
+
+/// Step of the high part of a length along a polyline, in meters. The length
+/// is split as `high + low` with `high` a multiple of this step: a shader
+/// taking the length modulo a period reduces `high` as a whole number of
+/// steps, in integer arithmetic, and keeps the full f32 precision of `low`.
+/// It must stay a power of two.
+pub const LINE_LENGTH_HIGH_STEP: f64 = 16384.;
+
+/// [`LINE_LENGTH_HIGH_STEP`] for a flat polyline's distance along its original
+/// line, in the tile-normalized units of its positions. It must stay a power of
+/// two.
+pub const FLAT_LINE_DISTANCE_HIGH_STEP: f64 = 1.;

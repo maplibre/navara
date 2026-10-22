@@ -48,10 +48,12 @@ export type PolylineGeometryData = {
   startLow: Float32Array;
   endHigh: Float32Array;
   endLow: Float32Array;
-  startNormal: Float32Array;
-  endNormalAndTextureCoordinateNormalizationX: Float32Array;
-  rightNormalAndTextureCoordinateNormalizationY: Float32Array;
+  startNormalAndLengthHigh: Float32Array;
+  endNormalAndSegmentLength: Float32Array;
+  rightNormalAndLineLength: Float32Array;
   indices: Uint32Array;
+  /** One entry of three RGBA texels per segment, for a dash pattern. */
+  lineSegments: Float32Array;
   extent: GeographicExtent;
 };
 
@@ -174,8 +176,9 @@ export function buildPolylineGeometry(
     const startLow = built.start_low();
     const endHigh = built.end_high();
     const endLow = built.end_low();
-    const startNormal = built.start_normals();
-    const endNormal = built.end_normal_and_texture_coordinate_normalization_x();
+    const startNormalAndLengthHigh = built.start_normal_and_length_high();
+    const endNormal = built.end_normal_and_segment_length();
+    const lineSegments = built.line_segments();
     const extent = built.extent;
     if (
       !positionHigh ||
@@ -184,8 +187,9 @@ export function buildPolylineGeometry(
       !startLow ||
       !endHigh ||
       !endLow ||
-      !startNormal ||
+      !startNormalAndLengthHigh ||
       !endNormal ||
+      !lineSegments ||
       !extent
     ) {
       throw new Error("buildPolylineGeometry: incomplete RTE geometry");
@@ -199,11 +203,11 @@ export function buildPolylineGeometry(
       startLow,
       endHigh,
       endLow,
-      startNormal,
-      endNormalAndTextureCoordinateNormalizationX: endNormal,
-      rightNormalAndTextureCoordinateNormalizationY:
-        built.right_normal_and_texture_coordinate_normalization_y(),
+      startNormalAndLengthHigh,
+      endNormalAndSegmentLength: endNormal,
+      rightNormalAndLineLength: built.right_normal_and_line_length(),
       indices: built.indices(),
+      lineSegments,
       extent: toDegrees(extent),
     };
   } finally {

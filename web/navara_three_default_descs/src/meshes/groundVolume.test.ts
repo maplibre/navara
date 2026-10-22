@@ -20,14 +20,16 @@ describe("GroundVolumeWatch", () => {
       },
     } as unknown as ThreeView;
     const onChange = vi.fn();
+    // The volume reaches below the terrain, as the curvature needs.
     const watch = new GroundVolumeWatch(
       view,
-      (range) => [range.min, range.max],
+      (range) => [range.min - 100, range.max],
       onChange,
     );
 
     watch.watch(EXTENT);
-    expect(watch.heights).toEqual([10, 20]);
+    expect(watch.heights).toEqual([-90, 20]);
+    expect(watch.terrainHeights).toEqual({ min: 10, max: 20 });
     expect(onChange).toHaveBeenCalledTimes(1);
 
     // The observer's first event repeats the sampled range.
@@ -35,7 +37,8 @@ describe("GroundVolumeWatch", () => {
     expect(onChange).toHaveBeenCalledTimes(1);
 
     observe?.({ min: 5, max: 20 });
-    expect(watch.heights).toEqual([5, 20]);
+    expect(watch.heights).toEqual([-95, 20]);
+    expect(watch.terrainHeights).toEqual({ min: 5, max: 20 });
     expect(onChange).toHaveBeenCalledTimes(2);
   });
 });

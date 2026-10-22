@@ -42,6 +42,7 @@ describe("polylineBaseEnhancer/mutates", () => {
         ...DEFAULT_BASE_STATE,
         pickable: true,
         minMaxHeight: [10, 100],
+        groundHeightRange: [20, 90],
         width: 3,
         drapeRtSize: 1024,
         opacity: 0.4,
@@ -53,6 +54,7 @@ describe("polylineBaseEnhancer/mutates", () => {
       mutates.updateUniforms(uniforms, state);
 
       expect(uniforms.minMaxHeightAndWidth?.value).toEqual([10, 100, 3]);
+      expect(uniforms.nvr_uGroundHeightRange?.value).toEqual([20, 90]);
       expect(uniforms.nvr_uPickable?.value).toBe(1);
       expect(uniforms.uDrapeRtSize?.value).toBe(1024);
       expect(uniforms.uOpacity?.value).toBe(0.4);

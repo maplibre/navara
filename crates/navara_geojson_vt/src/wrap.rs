@@ -91,6 +91,7 @@ fn shift_ring(ring: &crate::types::Ring, offset: f64) -> crate::types::Ring {
         area: ring.area,
         dist: ring.dist,
         size: ring.size,
+        line_start: ring.line_start,
     }
 }
 

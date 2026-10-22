@@ -4,7 +4,7 @@ use navara_component::OrderByDistance;
 use navara_core::CRS;
 use navara_core::TileXYZ;
 use navara_feature_component::batch::BatchTable;
-use navara_geojson_vt::types::TileGeometry;
+use navara_geojson_vt::types::{TileGeometry, TileLine};
 use navara_geometry::{
     Hierarchy, WindingOrder, close_flat_ring, open_ring_len, tile_ring_boundary_runs,
 };
@@ -27,6 +27,26 @@ fn add_boundary_runs(builder: &mut GeometryBuilder, converter: &PosConverter, ri
             builder.add_polyline(projected, CRS::Geographic, true);
         }
     }
+}
+
+/// Projects a tile line for a draped polyline, with the distance along the
+/// original line at each point as its third component, in the projected units.
+/// A line the tile clipped out of a longer one therefore continues the original
+/// line's distance, and a dash pattern laid out along it lines up across tiles.
+fn project_line_on_center(converter: &PosConverter, line: &TileLine) -> Vec<f64> {
+    let mut projected = Vec::with_capacity(line.points.len() * 3);
+    // The projection maps the extent onto [-1, 1].
+    let mut distance = line.start * 2.0 / converter.extent();
+    let mut previous: Option<(f64, f64)> = None;
+    for point in &line.points {
+        let (x, y) = converter.project_point_on_center(point[0], point[1]);
+        if let Some((previous_x, previous_y)) = previous {
+            distance += (x - previous_x).hypot(y - previous_y);
+        }
+        projected.extend_from_slice(&[x, y, distance]);
+        previous = Some((x, y));
+    }
+    projected
 }
 
 /// Construct polygon entities from GeoJsonVt tile features.
@@ -169,13 +189,13 @@ pub(crate) fn construct_geojson_tile_geometry(
             }
             TileGeometry::Lines(lines) if polyline_from_lines => {
                 for line in lines {
-                    if line.is_empty() {
+                    if line.points.is_empty() {
                         continue;
                     }
                     let projected = if flat {
-                        converter.project_points_on_center(line)
+                        project_line_on_center(&converter, line)
                     } else {
-                        converter.project_points(line)
+                        converter.project_points(&line.points)
                     };
                     if projected.is_empty() {
                         continue;
@@ -257,7 +277,12 @@ mod test {
 
     fn line_feature(coords: Vec<Vec<[f64; 2]>>) -> TileFeature {
         TileFeature {
-            geometry: TileGeometry::Lines(coords),
+            geometry: TileGeometry::Lines(
+                coords
+                    .into_iter()
+                    .map(|points| TileLine { points, start: 0.0 })
+                    .collect(),
+            ),
             properties: Arc::new(serde_json::json!({})),
         }
     }
@@ -819,6 +844,20 @@ mod test {
         let out = app.world().resource::<TestOutput>();
         assert!(out.0.is_some());
         assert_eq!(out.0.as_ref().unwrap().len(), 1);
+    }
+
+    #[test]
+    fn flat_line_carries_the_distance_along_the_original_line() {
+        let converter = PosConverter::new(TileXYZ { x: 0, y: 0, z: 0 }, 4096);
+        // Clipped out of a longer line: starts a quarter of the extent into it.
+        let line = TileLine {
+            points: vec![[0.0, 2048.0], [2048.0, 2048.0], [2048.0, 0.0]],
+            start: 1024.0,
+        };
+        let projected = project_line_on_center(&converter, &line);
+        let distances: Vec<f64> = projected.chunks(3).map(|p| p[2]).collect();
+        // The projection maps the extent onto [-1, 1], twice its size.
+        assert_eq!(distances, [0.5, 1.5, 2.5]);
     }
 
     #[test]

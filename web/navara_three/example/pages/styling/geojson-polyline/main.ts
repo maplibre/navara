@@ -1,6 +1,7 @@
 import ThreeView, {
   Color,
   JAPAN_GSI_ELEVATION_DECODER,
+  type LineCap,
 } from "@navaramap/three";
 import { DefaultPlugin } from "@navaramap/three-default-plugin";
 import { Pane } from "tweakpane";
@@ -11,6 +12,15 @@ import {
   TILE_DATASETS,
 } from "../../../helpers/constants";
 import { addDateControl } from "../../../helpers/control";
+
+// Dash and gap lengths in line widths. A zero-length dash is a dot once the
+// cap is round.
+const DASH_ARRAYS: Record<string, number[]> = {
+  solid: [],
+  dashed: [2, 2],
+  dotted: [0, 2],
+  "dash-dot": [3, 2, 0, 2],
+};
 
 const run = async () => {
   const view = new ThreeView({
@@ -67,7 +77,13 @@ const run = async () => {
   // Track updated features to prevent duplicate evaluations
   let updatedFeatures = new Set<bigint>();
 
-  const params = { width: 10, maxWidth: 1000000 };
+  const params = {
+    width: 10,
+    maxWidth: 1000000,
+    dash: "dotted",
+    cap: "round" as LineCap,
+    clampToGround: true,
+  };
 
   // GeoJSON polyline layer with feature evaluator
   const addGeoJsonLayer = () => {
@@ -85,8 +101,10 @@ const run = async () => {
         color: new Color().setStyle("#ff0000"),
         width: params.width,
         maxWidth: params.maxWidth,
+        dashArray: DASH_ARRAYS[params.dash],
+        cap: params.cap,
         height: 1,
-        clampToGround: true,
+        clampToGround: params.clampToGround,
       },
     });
 
@@ -156,6 +174,35 @@ const run = async () => {
     .on("change", ({ value }) => {
       layer?.update({ polyline: { maxWidth: value } });
     });
+
+  pane
+    .addBinding(params, "dash", {
+      options: {
+        solid: "solid",
+        dashed: "dashed",
+        dotted: "dotted",
+        "dash-dot": "dash-dot",
+      },
+    })
+    .on("change", ({ value }) => {
+      layer?.update({ polyline: { dashArray: DASH_ARRAYS[value] } });
+    });
+
+  pane
+    .addBinding(params, "cap", {
+      options: { butt: "butt", round: "round", square: "square" },
+    })
+    .on("change", ({ value }) => {
+      layer?.update({ polyline: { cap: value } });
+    });
+
+  // Draped lines and lines in the 3D scene are built differently, so the
+  // layer is re-created.
+  pane.addBinding(params, "clampToGround").on("change", () => {
+    if (!layer) return;
+    view.deleteLayerById(layer.id);
+    layer = addGeoJsonLayer();
+  });
 
   attribution?.add([
     TILE_DATASETS.openstreetmap,

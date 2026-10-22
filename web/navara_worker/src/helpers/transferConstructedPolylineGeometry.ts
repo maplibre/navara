@@ -16,13 +16,15 @@ export function transferConstructedPolylineGeometry(
       like.start_low?.buffer,
       like.end_high?.buffer,
       like.end_low?.buffer,
-      like.start_normals?.buffer,
+      like.start_normal_and_length_high?.buffer,
       like.forward_offset?.buffer,
-      like.end_normal_and_texture_coordinate_normalization_x?.buffer,
-      like.right_normal_and_texture_coordinate_normalization_y.buffer,
+      like.end_normal_and_segment_length?.buffer,
+      like.right_normal_and_line_length.buffer,
       like.batch_id?.buffer,
       like.batch_index?.buffer,
       like.indices.buffer,
+      like.line_segments?.buffer,
+      like.line_distance_and_ends?.buffer,
     ].filter(isNotNullish),
   };
 }

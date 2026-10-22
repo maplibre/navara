@@ -7,7 +7,6 @@ use wasm_bindgen::prelude::*;
 pub struct TransferableHierarchy {
     pub(crate) outer_ring: Vec<FloatType>,
     pub(crate) holes: TransferableHoles,
-    #[wasm_bindgen(getter_with_clone)]
     pub expected_winding_order: u8,
 }
 

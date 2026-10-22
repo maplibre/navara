@@ -1,16 +1,10 @@
-import {
-  ClampToEdgeWrapping,
-  DataTexture,
-  FloatType,
-  NearestFilter,
-  RGBAFormat,
-  Vector2,
-} from "three";
+import { type DataTexture, Vector2 } from "three";
 
 import {
   LABEL_ROWS,
   LabelRow,
 } from "../../material/enhancer/sdfText/sdfTextBaseEnhancer/types";
+import { createFloatDataTexture } from "../../utils/floatDataTexture";
 
 export { LABEL_ROWS, LabelRow };
 
@@ -214,21 +208,7 @@ export class LabelDataTexture {
     // Derived from the buffer rather than recomputed from `_capacity`: the
     // texture must describe exactly the memory it is backed by.
     const height = this._data.length / (this._width * 4);
-    const tex = new DataTexture(
-      this._data,
-      this._width,
-      height,
-      RGBAFormat,
-      FloatType,
-    );
-    // texelFetch is unfiltered by definition, but the sampler state still has
-    // to be complete for the texture to be bindable.
-    tex.magFilter = NearestFilter;
-    tex.minFilter = NearestFilter;
-    tex.wrapS = ClampToEdgeWrapping;
-    tex.wrapT = ClampToEdgeWrapping;
-    tex.generateMipmaps = false;
-    tex.needsUpdate = true;
+    const tex = createFloatDataTexture(this._data, this._width, height);
     this._size.set(this._width, height);
     return tex;
   }

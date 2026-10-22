@@ -334,6 +334,14 @@ clipped, and the depth is written per fragment, from the log depth's `w` or
 from the unclamped window depth, saturating at the far plane, which is still
 behind the terrain.
 
+The ground `PolylineMeshDesc`'s volume (`NVR_GROUND_POLYLINE` in
+`polyline.vert.glsl`) has the same
+problem: over a wide extent it reaches thousands of kilometres down, and the
+faces it rasterizes are the far ones, so around the camera's nadir they fall
+past the far plane and the line gets a hole. Its vertex shader caps
+`gl_Position.z` at `w` the same way; no depth needs restoring, since its
+fragment shader writes the ground's depth.
+
 The consequence that governs everything else: **the final pass has no depth
 test, so one pixel can be covered by several back faces** where the volume
 folds over a peak or the shape is non-convex. Only the first one in triangle

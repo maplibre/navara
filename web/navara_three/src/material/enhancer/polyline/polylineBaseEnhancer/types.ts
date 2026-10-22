@@ -16,9 +16,29 @@ export type PolylineBaseProps = {
 
   // Height/width
   minMaxHeight?: [number, number];
+  /**
+   * Height range of the terrain under a `groundCulling` line. A dash pattern
+   * lifts the points it reads from the segment table, which lie on the
+   * ellipsoid, to its middle. `minMaxHeight` encloses it, plus the volume's
+   * allowance for the curvature.
+   */
+  groundHeightRange?: [number, number];
   addHeight?: number;
   width?: number;
   maxWidth?: number;
+
+  /**
+   * Row of the line's dash pattern in `lineDashAtlas` (`LineDashAtlas.register`);
+   * `SOLID_DASH_ROW` draws a solid line.
+   */
+  dashRow?: number;
+  /** The view's dash pattern atlas (`LineDashAtlas.uniform`). */
+  lineDashAtlas?: { value: Texture | null | undefined };
+  /**
+   * A volume line's segment table (`createLineSegmentTextureReleasedOnUpload`), needed while
+   * the line has a dash pattern.
+   */
+  lineDashSegments?: { value: Texture | null | undefined };
 
   isTexturized?: boolean;
 
@@ -89,9 +109,11 @@ export type PolylineBaseState = Readonly<{
   emissiveColor: number;
   emissiveIntensity: number;
   minMaxHeight: [number, number];
+  groundHeightRange: [number, number];
   addHeight: number;
   width: number;
   maxWidth: number;
+  dashRow: number;
   color: number;
   opacity: number;
   // Batch texture state - when true, material.color is white and colors come from batch texture
@@ -108,6 +130,7 @@ export type PolylineBaseState = Readonly<{
 export type PolylineBaseRefs = {
   // Core uniforms
   minMaxHeightAndWidth: UniformValue<[number, number, number]>;
+  nvr_uGroundHeightRange: UniformValue<[number, number]>;
   maxWidth: UniformValue<number>;
   uAddHeight: UniformValue<number>;
   color: UniformValue<Color>;
@@ -118,9 +141,12 @@ export type PolylineBaseRefs = {
   uOpacity: UniformValue<number>;
   nvr_uPickingCoord: UniformValue<Vector2>;
   uDrapeRtSize: UniformValue<number>;
+  uLineDashRow: UniformValue<number>;
 
   // Optional uniforms
   batchDataTexture?: UniformValue<Texture | null>;
+  tLineDashAtlas?: { value: Texture | null | undefined };
+  tLineDashSegments?: { value: Texture | null | undefined };
   tGlobeDepth?: { value: Texture | null | undefined };
   tGlobeNormal?: { value: Texture | null | undefined };
   inverseProjectionMatrix?: { value: Matrix4 | null | undefined };
@@ -197,6 +223,8 @@ export type PolylineBaseMutates = Mutates<
       globeDepth?: { value: Texture | null | undefined };
       globeNormal?: { value: Texture | null | undefined };
       inverseProjectionMatrix?: { value: Matrix4 | null | undefined };
+      lineDashAtlas?: { value: Texture | null | undefined };
+      lineDashSegments?: { value: Texture | null | undefined };
     }) => void;
   }
 >;

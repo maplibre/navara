@@ -9,6 +9,26 @@ sidebar:
 
 ## Properties
 
+### cap
+
+**Type:** `"butt" | "round" | "square" | undefined`
+
+**Description:** Shape of the ends of the line and of the dashes of its [`dashArray`](#dasharray) pattern. `"round"` adds a half circle, half a line width in radius, beyond both ends of the line and of every dash. Each dash is therefore one line width longer than its `dashArray` entry, and a dash of length `0` is drawn as a dot. `"square"` extends both ends of the line by half a line width and leaves the ends of the dashes square. A closed ring has no ends.
+
+**Default:** `"butt"`
+
+**Example:**
+
+```typescript
+{
+  polyline: {
+    // A dotted line
+    dashArray: [0, 2],
+    cap: "round"
+  }
+}
+```
+
 ### castShadow
 
 **Type:** `boolean | undefined`
@@ -61,6 +81,28 @@ import { Color } from "@navaramap/three";
 {
   polyline: {
     color: new Color().setHex(0x0066cc)
+  }
+}
+```
+
+### dashArray
+
+**Type:** `number[] | undefined`
+
+**Description:** Lengths of the alternating dashes and gaps of the line, in multiples of the line width. The pattern repeats along the line with a period equal to the sum of the entries, following the `line-dasharray` property of the MapLibre Style Spec. An array with an odd number of entries therefore ends in a dash that joins the first one: `[1, 2, 1]` draws dashes two line widths long. An empty array draws a solid line.
+
+The pattern keeps its place on the line while the camera moves, and a dash is drawn up to twice as long as specified, depending on the camera distance. A line that is not clamped to the ground starts the pattern in the middle of its longest gap, and a line clamped with [`clampToGround`](#clamptoground) starts it with the first dash. A clamped line of a GeoJSON source continues one pattern across the tiles it is drawn in, while a line of a vector-tile source, or a [`tiled`](#tiled) line that is not clamped, restarts the pattern at every tile boundary. Picking treats the gaps as part of the line.
+
+**Default:** `undefined`
+
+**Example:**
+
+```typescript
+{
+  polyline: {
+    width: 4,
+    // 12px dashes separated by 8px gaps
+    dashArray: [3, 2]
   }
 }
 ```

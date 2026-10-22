@@ -7,7 +7,7 @@ use crate::ring::ring_endpoints_coincide;
 
 use super::{
     attributes::{PolylineGeometryAttributes, generate_geometry_attributes},
-    constants::{WALL_INITIAL_MAX_HEIGHT, WALL_INITIAL_MIN_HEIGHT},
+    constants::{FLAT_LINE_DISTANCE_HIGH_STEP, WALL_INITIAL_MAX_HEIGHT, WALL_INITIAL_MIN_HEIGHT},
     helpers::{compute_right_normal, compute_vertex_miter_normal, interpolate_segment},
 };
 
@@ -18,6 +18,11 @@ pub struct PolylineGeometry {
 }
 
 pub const DEFAULT_POLYLINE_GRANULARITY_METERS: f64 = 9999.;
+
+/// Shortest segment a volume polyline keeps: a position closer than this to
+/// the one before it is dropped. Below it, the segment's direction and the
+/// shaders' divisions by its length are noise.
+const MIN_SEGMENT_LENGTH_METERS: f64 = 1e-3;
 
 pub struct PolylineGeometryOptions {
     pub positions: Vec<LLE<f64, Radians>>,
@@ -77,6 +82,19 @@ pub fn create_polyline_geometry(
                     && (first.height.val() - last.height.val()).abs() <= 1e-9
             });
     let mut cartographics = unique_with_delta_e(cartographics, 9);
+    // A step that leaves the wall's bottom in place would make a zero-length
+    // segment: one only in height (the wall is built at fixed heights), or
+    // between two coordinates of one point (a longitude of ±180°, a pole).
+    let mut previous_bottom: Option<Vec3> = None;
+    cartographics.retain(|cartographic| {
+        let bottom = get_position(ellipsoid, cartographic, WALL_INITIAL_MIN_HEIGHT);
+        let keep = previous_bottom
+            .is_none_or(|previous| previous.distance(bottom) > MIN_SEGMENT_LENGTH_METERS);
+        if keep {
+            previous_bottom = Some(bottom);
+        }
+        keep
+    });
     let restored_closing_vertex = is_closed_ring && cartographics.len() >= 3;
     if restored_closing_vertex {
         cartographics.push(cartographics[0]);
@@ -373,6 +391,33 @@ struct PointJoin {
     outgoing_right: u32,
 }
 
+/// Appends a copy of `source` whose distance along the line is `distance`, and
+/// returns its index.
+fn duplicate_vertex_at_distance(
+    flat_positions: &mut Vec<f32>,
+    right_normal_and_tex_y: &mut Vec<f32>,
+    vertex_count: &mut u32,
+    source: u32,
+    distance: f32,
+) -> u32 {
+    let source = source as usize;
+    flat_positions.extend_from_within(source * 3..source * 3 + 3);
+    right_normal_and_tex_y.extend_from_within(source * 4..source * 4 + 4);
+    let index = *vertex_count;
+    right_normal_and_tex_y[index as usize * 4 + 2] = distance;
+    *vertex_count += 1;
+    index
+}
+
+/// `1` when a flat line's end point `position` is an end of the line itself,
+/// `0` when a tile clip cut the line there. A tile clips its lines on or
+/// outside its own square, `[-1, 1]` in the flat positions' units, so only an
+/// end strictly inside that square is the line's own. An end of the line that
+/// lies outside the square is drawn by the tile it lies in.
+fn flat_line_end_mask(position: navara_math::Vec3) -> u32 {
+    (position.x.abs() < 1. && position.y.abs() < 1.) as u32
+}
+
 /// Compute the 90-degree-counterclockwise perpendicular ("left normal") of
 /// a 2D unit direction vector `(dx, dy)`.
 #[inline]
@@ -382,7 +427,9 @@ fn perp(dir: (f32, f32)) -> (f32, f32) {
 
 /// Options for creating flat polyline geometry in Cartesian coordinates
 pub struct FlatPolylineGeometryOptions {
-    /// Positions in Cartesian coordinates (already converted from source CRS)
+    /// Positions in Cartesian coordinates (already converted from source CRS).
+    /// The first one's z is its distance along the original line the positions
+    /// were clipped out of, in the positions' units; zero for a whole line.
     pub positions: Vec<navara_math::Vec3>,
     /// Line width
     pub width: f32,
@@ -407,7 +454,10 @@ impl Default for FlatPolylineGeometryOptions {
 pub fn create_flat_polyline_geometry(
     options: FlatPolylineGeometryOptions,
 ) -> Option<PolylineGeometry> {
-    let positions = &options.positions;
+    // A repeated position would make a segment without a direction.
+    let mut positions = options.positions;
+    positions.dedup_by(|a, b| a.x == b.x && a.y == b.y);
+    let positions = &positions;
 
     if positions.len() < 2 {
         return None;
@@ -430,15 +480,21 @@ pub fn create_flat_polyline_geometry(
     let mut right_normal_and_tex_y = vec![];
     let mut indices = vec![];
 
-    // Precompute per-segment unit direction vectors
+    // Precompute per-segment unit direction vectors and the distance along the
+    // line at each point
     let seg_count = n - 1;
     let mut seg_dirs: Vec<(f32, f32)> = Vec::with_capacity(seg_count);
+    let mut distances: Vec<f32> = Vec::with_capacity(n);
+    let mut distance = 0.0f64;
+    distances.push(0.0);
     for i in 0..seg_count {
         let p0 = positions[i];
         let p1 = positions[i + 1];
         let dx = (p1.x - p0.x) as f32;
         let dy = (p1.y - p0.y) as f32;
         let len = (dx * dx + dy * dy).sqrt();
+        distance += ((p1.x - p0.x).powi(2) + (p1.y - p0.y).powi(2)).sqrt();
+        distances.push(distance as f32);
 
         if len < 1e-10 {
             seg_dirs.push((0.0, 0.0));
@@ -450,6 +506,8 @@ pub fn create_flat_polyline_geometry(
     // Helper: push one vertex into all attribute arrays.
     // `normal` and `miter_len` encode the offset the vertex shader will apply:
     //   final_pos = position + normal * (lineWidth/2) * miter_len
+    // The attribute's z is the distance along the line, written per point
+    // after its vertices are pushed.
     let mut vertex_count = 0u32;
     let push_vertex = |flat_positions: &mut Vec<f32>,
                        right_normal_and_tex_y: &mut Vec<f32>,
@@ -494,10 +552,33 @@ pub fn create_flat_polyline_geometry(
         // passed at i == 0. Reusing that joint keeps the corner a single set of
         // vertices, so a clamped seam gets its bevel exactly once.
         if closed && i == n - 1 {
-            joins.push(joins[0]);
+            // The closing segment ends at the full length while the seam's own
+            // vertices start at zero, so it gets copies that differ only in
+            // the distance.
+            let seam = joins[0];
+            let incoming_left = duplicate_vertex_at_distance(
+                &mut flat_positions,
+                &mut right_normal_and_tex_y,
+                &mut vertex_count,
+                seam.incoming_left,
+                distances[i],
+            );
+            let incoming_right = duplicate_vertex_at_distance(
+                &mut flat_positions,
+                &mut right_normal_and_tex_y,
+                &mut vertex_count,
+                seam.incoming_right,
+                distances[i],
+            );
+            joins.push(PointJoin {
+                incoming_left,
+                incoming_right,
+                ..seam
+            });
             continue;
         }
 
+        let first_vertex = vertex_count as usize;
         let px = p.x as f32;
         let py = p.y as f32;
         let miter = compute_flat_miter(&seg_dirs, i, n, closed);
@@ -631,6 +712,10 @@ pub fn create_flat_polyline_geometry(
                 outgoing_right: right,
             });
         }
+
+        for vertex in first_vertex..vertex_count as usize {
+            right_normal_and_tex_y[vertex * 4 + 2] = distances[i];
+        }
     }
 
     // ── Index generation ──
@@ -662,6 +747,28 @@ pub fn create_flat_polyline_geometry(
         return None;
     }
 
+    // The distance along the original line, from where its first position lies
+    // on it. Every vertex of the line shares one high part.
+    let line_start = positions[0].z;
+    let line_start_high =
+        (line_start / FLAT_LINE_DISTANCE_HIGH_STEP).floor() * FLAT_LINE_DISTANCE_HIGH_STEP;
+    let line_start_low = (line_start - line_start_high) as f32;
+    let line_length = distances[n - 1];
+    let line_ends = if closed {
+        0
+    } else {
+        flat_line_end_mask(positions[0]) | flat_line_end_mask(positions[n - 1]) << 1
+    };
+    let mut line_distance_and_ends = Vec::with_capacity(vertex_count as usize * 4);
+    for vertex in 0..vertex_count as usize {
+        line_distance_and_ends.extend_from_slice(&[
+            line_start_high as f32,
+            line_start_low + right_normal_and_tex_y[vertex * 4 + 2],
+            line_length,
+            line_ends as f32,
+        ]);
+    }
+
     Some(PolylineGeometry {
         attributes: PolylineGeometryAttributes {
             position: crate::FloatAttribute::new(flat_positions, 3),
@@ -673,14 +780,13 @@ pub fn create_flat_polyline_geometry(
             forward_offset: None,
             end_high: None,
             end_low: None,
-            start_normals: None,
-            end_normal_and_texture_coordinate_normalization_x: None,
-            right_normal_and_texture_coordinate_normalization_y: crate::FloatAttribute::new(
-                right_normal_and_tex_y,
-                4,
-            ),
+            start_normal_and_length_high: None,
+            end_normal_and_segment_length: None,
+            right_normal_and_line_length: crate::FloatAttribute::new(right_normal_and_tex_y, 4),
             batch_ids: None,
             batch_index: None,
+            line_segments: None,
+            line_distance_and_ends: Some(crate::FloatAttribute::new(line_distance_and_ends, 4)),
         },
         indices,
     })
@@ -716,7 +822,7 @@ mod test {
 
         // let values = geometry
         //     .attributes
-        //     .end_normal_and_texture_coordinate_normalization_x
+        //     .end_normal_and_segment_length
         //     .data;
         // for i in 0..4 {
         //     let index = i * 4 + 3;
@@ -790,6 +896,59 @@ mod test {
     }
 
     #[test]
+    fn vertical_step_makes_no_zero_length_segment() {
+        let geometry = create_polyline_geometry(
+            WGS84_64,
+            PolylineGeometryOptions {
+                positions: vec![
+                    LLE::<f64, Degrees>::from_float(0.01, 0.01, 0.).rad(),
+                    LLE::<f64, Degrees>::from_float(0.02, 0.01, 0.).rad(),
+                    LLE::<f64, Degrees>::from_float(0.02, 0.01, 10.).rad(),
+                    LLE::<f64, Degrees>::from_float(0.02, 0.02, 10.).rad(),
+                ],
+                granularity: 0.0,
+                use_rte: true,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+
+        let table = &geometry.attributes.line_segments.unwrap().data;
+        assert_eq!(table.len(), 2 * crate::polyline::LINE_SEGMENT_TEXELS * 4);
+        assert!(
+            geometry
+                .attributes
+                .position
+                .data
+                .iter()
+                .all(|v| v.is_finite())
+        );
+    }
+
+    #[test]
+    fn one_point_named_twice_makes_no_zero_length_segment() {
+        let segment_count = |positions: [(f64, f64); 3]| {
+            let geometry = create_polyline_geometry(
+                WGS84_64,
+                PolylineGeometryOptions {
+                    positions: positions
+                        .iter()
+                        .map(|&(lng, lat)| LLE::<f64, Degrees>::from_float(lng, lat, 0.).rad())
+                        .collect(),
+                    granularity: 0.0,
+                    use_rte: true,
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+            let table = geometry.attributes.line_segments.unwrap().data;
+            table.len() / (crate::polyline::LINE_SEGMENT_TEXELS * 4)
+        };
+        assert_eq!(segment_count([(179.9, 0.), (180., 0.), (-180., 0.)]), 1);
+        assert_eq!(segment_count([(0., 89.9), (0., 90.), (90., 90.)]), 1);
+    }
+
+    #[test]
     fn path_closed_only_in_2d_is_not_reclosed() {
         // A ramp returning over its start point at a different height is an
         // open path: re-closing it would append a zero-length segment whose
@@ -817,23 +976,14 @@ mod test {
         };
         assert_finite(&geometry.attributes.position.data, "position");
         assert_finite(
-            &geometry
-                .attributes
-                .right_normal_and_texture_coordinate_normalization_y
-                .data,
-            "right_normal_and_texture_coordinate_normalization_y",
+            &geometry.attributes.right_normal_and_line_length.data,
+            "right_normal_and_line_length",
         );
-        if let Some(attr) = &geometry.attributes.start_normals {
-            assert_finite(&attr.data, "start_normals");
+        if let Some(attr) = &geometry.attributes.start_normal_and_length_high {
+            assert_finite(&attr.data, "start_normal_and_length_high");
         }
-        if let Some(attr) = &geometry
-            .attributes
-            .end_normal_and_texture_coordinate_normalization_x
-        {
-            assert_finite(
-                &attr.data,
-                "end_normal_and_texture_coordinate_normalization_x",
-            );
+        if let Some(attr) = &geometry.attributes.end_normal_and_segment_length {
+            assert_finite(&attr.data, "end_normal_and_segment_length");
         }
     }
 
@@ -841,7 +991,7 @@ mod test {
     fn it_computes_flat_polyline_geometry() {
         use navara_math::Vec3;
 
-        // Single segment (2 points = 4 vertices, 6 indices)
+        // Single segment: 2 points = 4 vertices and 6 indices.
         let geometry = create_flat_polyline_geometry(FlatPolylineGeometryOptions {
             positions: vec![Vec3::new(0.0, 0.0, 0.0), Vec3::new(1.0, 0.0, 0.0)],
             width: 1.0,
@@ -852,7 +1002,8 @@ mod test {
         assert_eq!(geometry.indices.len(), 6);
         assert_eq!(geometry.attributes.position.data.len() / 3, 4);
 
-        // Two segments, moderate angle (unclamped miter): 3 points = 6 vertices, 12 indices
+        // Two segments, moderate angle (unclamped miter): 3 points = 6 vertices,
+        // 12 indices
         let geometry = create_flat_polyline_geometry(FlatPolylineGeometryOptions {
             positions: vec![
                 Vec3::new(0.0, 0.0, 0.0),
@@ -885,10 +1036,7 @@ mod test {
         .unwrap();
 
         // Interior point (index 1) is unclamped → 2 vertices at indices 2 and 3
-        let rnty = &geometry
-            .attributes
-            .right_normal_and_texture_coordinate_normalization_y
-            .data;
+        let rnty = &geometry.attributes.right_normal_and_line_length.data;
         let miter_len = rnty[2 * 4 + 3]; // vertex 2 (point 1, left side), w component
         assert!(
             (miter_len - 1.0).abs() < 1e-5,
@@ -913,10 +1061,7 @@ mod test {
         .unwrap();
 
         // Unclamped → 2 vertices for interior point, at indices 2 and 3
-        let rnty = &geometry
-            .attributes
-            .right_normal_and_texture_coordinate_normalization_y
-            .data;
+        let rnty = &geometry.attributes.right_normal_and_line_length.data;
         let miter_len = rnty[2 * 4 + 3]; // interior left vertex, w component
         let expected = std::f32::consts::SQRT_2;
         assert!(
@@ -959,10 +1104,15 @@ mod test {
         // and the same way once the miter is broken, which is exactly how every
         // interior joint pairs up.
         let seam_planes_cross = |geometry: &super::PolylineGeometry| {
-            let starts = &geometry.attributes.start_normals.as_ref().unwrap().data;
+            let starts = &geometry
+                .attributes
+                .start_normal_and_length_high
+                .as_ref()
+                .unwrap()
+                .data;
             let ends = &geometry
                 .attributes
-                .end_normal_and_texture_coordinate_normalization_x
+                .end_normal_and_segment_length
                 .as_ref()
                 .unwrap()
                 .data;
@@ -1049,14 +1199,12 @@ mod test {
         };
 
         let closed = ring(true);
-        // The seam is one joint, so the repeated last point adds no vertices:
-        // the square's four corners leave 8.
-        assert_eq!(closed.attributes.position.data.len() / 3, 8);
+        // The seam is one joint: the square's four corners leave 8 vertices,
+        // and the repeated last point adds only the two full-distance copies
+        // the closing segment ends on.
+        assert_eq!(closed.attributes.position.data.len() / 3, 10);
 
-        let closed_rnty = &closed
-            .attributes
-            .right_normal_and_texture_coordinate_normalization_y
-            .data;
+        let closed_rnty = &closed.attributes.right_normal_and_line_length.data;
         let expected_len = std::f32::consts::SQRT_2;
         assert!(
             (closed_rnty[3] - expected_len).abs() < 1e-4,
@@ -1067,10 +1215,7 @@ mod test {
         // The same vertices left open keep their caps, so the assertion above
         // is about closure and not about right angles in general.
         let open = ring(false);
-        let open_rnty = &open
-            .attributes
-            .right_normal_and_texture_coordinate_normalization_y
-            .data;
+        let open_rnty = &open.attributes.right_normal_and_line_length.data;
         assert!(
             (open_rnty[3] - 1.0).abs() < 1e-6,
             "open start must stay capped"
@@ -1097,17 +1242,15 @@ mod test {
         .unwrap();
 
         // Seam and the corner at (1,0) clamp and emit 3 vertices each, the
-        // shallow corner at (0.5,0.05) emits 2, the repeated point none.
-        assert_eq!(geometry.attributes.position.data.len() / 3, 8);
+        // shallow corner at (0.5,0.05) emits 2, the repeated point the two
+        // full-distance copies.
+        assert_eq!(geometry.attributes.position.data.len() / 3, 10);
         // 3 segment quads (18) + 2 bevel triangles (6)
         assert_eq!(geometry.indices.len(), 24);
 
         // The seam's outside pair carries the closing and the opening segment
         // perpendicular at full half-width; a bevel triangle spans them.
-        let rnty = &geometry
-            .attributes
-            .right_normal_and_texture_coordinate_normalization_y
-            .data;
+        let rnty = &geometry.attributes.right_normal_and_line_length.data;
         let closing_len = (0.5f32 * 0.5 + 0.05 * 0.05).sqrt();
         let incoming = perp((-0.5 / closing_len, -0.05 / closing_len));
         assert!(
@@ -1145,11 +1288,10 @@ mod test {
 
         // Clamped interior point emits 3 vertices instead of 2:
         //   point 0: 2 vertices, point 1: 3 vertices (bevel), point 2: 2 vertices
-        //   Total = 7 vertices
         let vertex_count = geometry.attributes.position.data.len() / 3;
         assert_eq!(vertex_count, 7);
 
-        // 2 segment quads (12) + 1 bevel triangle (3) = 15 indices
+        // 2 segment quads (12) + 1 bevel triangle (3)
         assert_eq!(geometry.indices.len(), 15);
     }
 
@@ -1243,6 +1385,380 @@ mod test {
         assert!(
             (position_high.data[0] - encoded.high.x as f32).abs() < 1.0,
             "first vertex high.x doesn't match expected encoding"
+        );
+    }
+
+    /// Distance along the line carried by each vertex of a flat polyline.
+    fn flat_distances(geometry: &super::PolylineGeometry) -> Vec<f32> {
+        let rnty = &geometry.attributes.right_normal_and_line_length.data;
+        let mut distances = Vec::with_capacity(rnty.len() / 4);
+        for &[_, _, distance, _] in rnty.as_chunks::<4>().0 {
+            distances.push(distance);
+        }
+        distances
+    }
+
+    #[test]
+    fn flat_polyline_continues_the_distance_along_its_original_line() {
+        use navara_math::Vec3;
+
+        // Clipped out of a longer line, 2.75 units along it.
+        let geometry = create_flat_polyline_geometry(FlatPolylineGeometryOptions {
+            positions: vec![Vec3::new(0.0, 0.0, 2.75), Vec3::new(3.0, 0.0, 5.75)],
+            width: 1.0,
+            ring: false,
+        })
+        .unwrap();
+
+        let line_distance_and_ends = &geometry.attributes.line_distance_and_ends.unwrap().data;
+        let mut distances = vec![];
+        for &[high, low, _, _] in line_distance_and_ends.as_chunks::<4>().0 {
+            distances.push((high, low));
+        }
+        assert_eq!(
+            distances,
+            [(2.0, 0.75), (2.0, 0.75), (2.0, 3.75), (2.0, 3.75)]
+        );
+    }
+
+    #[test]
+    fn flat_polyline_carries_distance_along_the_line() {
+        use navara_math::Vec3;
+
+        // The corner at (3,0) clamps into a bevel, so it emits three vertices
+        // at one point; all of them sit at the same distance.
+        let geometry = create_flat_polyline_geometry(FlatPolylineGeometryOptions {
+            positions: vec![
+                Vec3::new(0.0, 0.0, 0.0),
+                Vec3::new(3.0, 0.0, 0.0),
+                Vec3::new(0.0, 0.4, 0.0),
+                Vec3::new(0.0, 4.4, 0.0),
+            ],
+            width: 1.0,
+            ring: false,
+        })
+        .unwrap();
+
+        let second = 3.0 + (9.0f32 + 0.16).sqrt();
+        let expected = [
+            0.0,
+            0.0,
+            3.0,
+            3.0,
+            3.0,
+            second,
+            second,
+            second + 4.0,
+            second + 4.0,
+        ];
+        let distances = flat_distances(&geometry);
+        assert_eq!(distances.len(), expected.len());
+        for (distance, expected) in distances.iter().zip(expected) {
+            assert!(
+                (distance - expected).abs() < 1e-5,
+                "distances {distances:?} differ from {expected}"
+            );
+        }
+    }
+
+    #[test]
+    fn flat_closed_ring_ends_its_closing_segment_at_the_full_length() {
+        use navara_math::Vec3;
+
+        let geometry = create_flat_polyline_geometry(FlatPolylineGeometryOptions {
+            positions: vec![
+                Vec3::new(0.0, 0.0, 0.0),
+                Vec3::new(1.0, 0.0, 0.0),
+                Vec3::new(1.0, 1.0, 0.0),
+                Vec3::new(0.0, 1.0, 0.0),
+                Vec3::new(0.0, 0.0, 0.0),
+            ],
+            width: 1.0,
+            ring: true,
+        })
+        .unwrap();
+        let distances = flat_distances(&geometry);
+
+        // Every segment quad runs forward: its end vertices are one segment
+        // length past its start vertices, the closing one included.
+        for quad in geometry.indices.as_chunks::<6>().0.iter().take(4) {
+            let start = distances[quad[0] as usize];
+            let end = distances[quad[2] as usize];
+            assert!(
+                (end - start - 1.0).abs() < 1e-6,
+                "segment runs from {start} to {end}"
+            );
+            assert_eq!(distances[quad[1] as usize], start);
+            assert_eq!(distances[quad[4] as usize], end);
+        }
+
+        // The copies sit exactly on the seam's own vertices.
+        let positions = &geometry.attributes.position.data;
+        assert_eq!(positions[8 * 3..10 * 3], positions[0..2 * 3]);
+    }
+
+    #[test]
+    fn polyline_segments_carry_lengths_in_meters() {
+        use crate::polyline::constants::LINE_LENGTH_HIGH_STEP;
+
+        // Three ~11.1 km segments along the equator, so the length so far
+        // passes the high step before the last one.
+        let geometry = create_polyline_geometry(
+            WGS84_64,
+            PolylineGeometryOptions {
+                positions: vec![
+                    LLE::<f64, Degrees>::from_float(0.0, 0.0, 0.).rad(),
+                    LLE::<f64, Degrees>::from_float(0.1, 0.0, 0.).rad(),
+                    LLE::<f64, Degrees>::from_float(0.2, 0.0, 0.).rad(),
+                    LLE::<f64, Degrees>::from_float(0.3, 0.0, 0.).rad(),
+                ],
+                granularity: 0.0,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+
+        let attributes = &geometry.attributes;
+        let start_normal_and_length_high =
+            attributes.start_normal_and_length_high.as_ref().unwrap();
+        assert_eq!(start_normal_and_length_high.size, 4);
+        let end_normals = &attributes
+            .end_normal_and_segment_length
+            .as_ref()
+            .unwrap()
+            .data;
+        let right_normals = &attributes.right_normal_and_line_length.data;
+
+        let segment_count = end_normals.len() / 4 / 8;
+        assert_eq!(segment_count, 3);
+
+        let mut length_so_far = 0.0f64;
+        for segment in 0..segment_count {
+            let first = segment * 8;
+            let segment_length = end_normals[first * 4 + 3] as f64;
+            assert!(
+                (segment_length - 11_132.0).abs() < 1.0,
+                "segment length {segment_length} is not ~11.1 km"
+            );
+
+            for vertex in first..first + 8 {
+                let w = vertex * 4 + 3;
+                // Right side positive, left side negative.
+                let side = if vertex - first < 4 { 1.0 } else { -1.0 };
+                assert_eq!(end_normals[w] as f64, side * segment_length);
+
+                let high = start_normal_and_length_high.data[w] as f64;
+                let low = right_normals[w] as f64;
+                assert_eq!(high % LINE_LENGTH_HIGH_STEP, 0.0);
+                assert!((0.0..LINE_LENGTH_HIGH_STEP).contains(&low));
+                assert!(
+                    (high + low - length_so_far).abs() < 1e-2,
+                    "segment {segment} starts at {} instead of {length_so_far}",
+                    high + low
+                );
+            }
+            length_so_far += segment_length;
+        }
+        assert_eq!(
+            start_normal_and_length_high.data[2 * 8 * 4 + 3] as f64,
+            LINE_LENGTH_HIGH_STEP
+        );
+        // Only an RTE volume carries a segment table.
+        assert!(attributes.line_segments.is_none());
+    }
+
+    #[test]
+    fn rte_polyline_tables_its_segments() {
+        use crate::polyline::LINE_SEGMENT_TEXELS;
+
+        let geometry = create_polyline_geometry(
+            WGS84_64,
+            PolylineGeometryOptions {
+                positions: vec![
+                    LLE::<f64, Degrees>::from_float(0.0, 0.0, 0.).rad(),
+                    LLE::<f64, Degrees>::from_float(0.1, 0.0, 0.).rad(),
+                    LLE::<f64, Degrees>::from_float(0.2, 0.1, 0.).rad(),
+                ],
+                granularity: 0.0,
+                use_rte: true,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+
+        let attributes = &geometry.attributes;
+        let table = &attributes.line_segments.as_ref().unwrap().data;
+        let start_high = &attributes.start_high.as_ref().unwrap().data;
+        let start_low = &attributes.start_low.as_ref().unwrap().data;
+        let end_high = &attributes.end_high.as_ref().unwrap().data;
+        let end_low = &attributes.end_low.as_ref().unwrap().data;
+        let start_normal_and_length_high = &attributes
+            .start_normal_and_length_high
+            .as_ref()
+            .unwrap()
+            .data;
+        let right_normals = &attributes.right_normal_and_line_length.data;
+        let end_normals = &attributes
+            .end_normal_and_segment_length
+            .as_ref()
+            .unwrap()
+            .data;
+
+        let segment_count = end_normals.len() / 4 / 8;
+        assert_eq!(segment_count, 2);
+        assert_eq!(table.len(), segment_count * LINE_SEGMENT_TEXELS * 4);
+        for segment in 0..segment_count {
+            // Every vertex of a segment carries its start, end and lengths.
+            let p = segment * 8 * 3;
+            let n = segment * 8 * 4;
+            let entry = &table[segment * LINE_SEGMENT_TEXELS * 4..];
+            assert_eq!(entry[0..3], start_high[p..p + 3]);
+            assert_eq!(entry[4..7], start_low[p..p + 3]);
+            assert_eq!(entry[3], start_normal_and_length_high[n + 3]);
+            assert_eq!(entry[7], right_normals[n + 3]);
+            assert_eq!(entry[11], segment as f32);
+            for axis in 0..3 {
+                let offset = (end_high[p + axis] as f64 - start_high[p + axis] as f64)
+                    + (end_low[p + axis] as f64 - start_low[p + axis] as f64);
+                assert!((entry[8 + axis] as f64 - offset).abs() < 1e-3);
+            }
+            // The segment length is the length of the offset.
+            let offset_length = (entry[8] as f64)
+                .hypot(entry[9] as f64)
+                .hypot(entry[10] as f64);
+            assert!((offset_length - end_normals[n + 3].abs() as f64).abs() < 1e-3);
+        }
+    }
+
+    #[test]
+    fn rte_closed_ring_marks_its_segments() {
+        use crate::polyline::LINE_SEGMENT_TEXELS;
+
+        let corners = [(0.0, 0.0), (0.1, 0.0), (0.1, 0.1), (0.0, 0.1), (0.0, 0.0)];
+        let table = |ring: bool| {
+            let geometry = create_polyline_geometry(
+                WGS84_64,
+                PolylineGeometryOptions {
+                    positions: corners
+                        .iter()
+                        .map(|&(lng, lat)| LLE::<f64, Degrees>::from_float(lng, lat, 0.).rad())
+                        .collect(),
+                    granularity: 0.0,
+                    use_rte: true,
+                    ring,
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+            let table = geometry.attributes.line_segments.unwrap().data;
+            table
+                .chunks(LINE_SEGMENT_TEXELS * 4)
+                .map(|entry| entry[11])
+                .collect::<Vec<f32>>()
+        };
+        assert_eq!(table(true), [-1., -2., -3., -4.]);
+        // The same positions as an open line have two ends.
+        assert_eq!(table(false), [0., 1., 2., 3.]);
+    }
+
+    /// `(line length, end mask)` carried by each vertex of a flat polyline.
+    fn flat_line_ends(geometry: &super::PolylineGeometry) -> Vec<(f32, f32)> {
+        let data = &geometry
+            .attributes
+            .line_distance_and_ends
+            .as_ref()
+            .unwrap()
+            .data;
+        let mut ends = Vec::with_capacity(data.len() / 4);
+        for &[_, _, length, mask] in data.as_chunks::<4>().0 {
+            ends.push((length, mask));
+        }
+        ends
+    }
+
+    fn flat_positions_lie_in_the_plane(geometry: &super::PolylineGeometry) -> bool {
+        geometry
+            .attributes
+            .position
+            .data
+            .as_chunks::<3>()
+            .0
+            .iter()
+            .all(|p| p[2] == 0.0)
+    }
+
+    #[test]
+    fn flat_polyline_marks_its_own_ends() {
+        use navara_math::Vec3;
+
+        // The repeated point adds no segment.
+        let geometry = create_flat_polyline_geometry(FlatPolylineGeometryOptions {
+            positions: vec![
+                Vec3::new(0.0, 0.0, 0.0),
+                Vec3::new(0.5, 0.0, 0.0),
+                Vec3::new(0.5, 0.0, 0.0),
+                Vec3::new(0.5, 0.25, 0.0),
+            ],
+            width: 1.0,
+            ring: false,
+        })
+        .unwrap();
+        assert!(flat_positions_lie_in_the_plane(&geometry));
+        assert_eq!(flat_line_ends(&geometry), [(0.75, 3.0); 6]);
+        // The end vertices are the ones at distance zero and at the length.
+        assert_eq!(flat_distances(&geometry), [0.0, 0.0, 0.5, 0.5, 0.75, 0.75]);
+    }
+
+    #[test]
+    fn flat_polyline_has_no_end_where_a_tile_clipped_it() {
+        use navara_math::Vec3;
+
+        let ends = |positions: Vec<Vec3>| {
+            let geometry = create_flat_polyline_geometry(FlatPolylineGeometryOptions {
+                positions,
+                width: 1.0,
+                ring: false,
+            })
+            .unwrap();
+            flat_line_ends(&geometry)[0].1
+        };
+        // Clipped in the tile's buffer at the start.
+        assert_eq!(
+            ends(vec![Vec3::new(-1.0625, 0.0, 0.0), Vec3::new(0.5, 0.0, 0.0)]),
+            2.0
+        );
+        // Clipped on the tile's edge at the end.
+        assert_eq!(
+            ends(vec![Vec3::new(0.5, 0.0, 0.0), Vec3::new(0.5, 1.0, 0.0)]),
+            1.0
+        );
+        // Clipped at both.
+        assert_eq!(
+            ends(vec![Vec3::new(-1.0, 0.0, 0.0), Vec3::new(1.0, 0.0, 0.0)]),
+            0.0
+        );
+    }
+
+    #[test]
+    fn flat_closed_ring_has_no_end_caps() {
+        use navara_math::Vec3;
+
+        let geometry = create_flat_polyline_geometry(FlatPolylineGeometryOptions {
+            positions: vec![
+                Vec3::new(0.0, 0.0, 0.0),
+                Vec3::new(0.5, 0.0, 0.0),
+                Vec3::new(0.5, 0.5, 0.0),
+                Vec3::new(0.0, 0.0, 0.0),
+            ],
+            width: 1.0,
+            ring: true,
+        })
+        .unwrap();
+        assert!(flat_positions_lie_in_the_plane(&geometry));
+        assert!(
+            flat_line_ends(&geometry)
+                .iter()
+                .all(|&(_, mask)| mask == 0.0)
         );
     }
 }

@@ -7,8 +7,10 @@
 import type { StyleSpecification } from "@maplibre/maplibre-gl-style-spec";
 import { Plugin } from "@navaramap/core";
 import ThreeView, {
+  Color,
   type ViewContext,
   type Layer,
+  type LayerDescription,
   type Source,
   type FeatureEvaluator,
   type FeatureInfo,
@@ -23,7 +25,11 @@ import {
   createPaintEvaluators,
   toEvaluatedValue,
 } from "./adapters/toEvaluatedValue";
-import { toLayerDescription } from "./adapters/toLayerDescription";
+import {
+  getSymbolPlacement,
+  symbolLayerFollowsZoom,
+  toLayerDescription,
+} from "./adapters/toLayerDescription";
 import { BackgroundHandler } from "./BackgroundHandler";
 import { RustStyleEngine } from "./engine/RustStyleEngine";
 import type { ParsedStyle, StyleLayer } from "./engine/types";
@@ -43,6 +49,18 @@ type MapLibreStylePluginOptions = {
   tileJsonPlugin?: TileJsonPlugin;
   forceMapLibreFov?: boolean;
 };
+
+/**
+ * A symbol layer's materials, comparable across zooms (the source is not).
+ * `Color` keeps its value in a private field, which JSON cannot see.
+ */
+function serializeMaterials(layerDesc: LayerDescription): string {
+  return "text" in layerDesc || "billboard" in layerDesc
+    ? JSON.stringify([layerDesc.text, layerDesc.billboard], (_key, value) =>
+        value instanceof Color ? value.toHex() : value,
+      )
+    : "";
+}
 
 export class MapLibreStylePlugin extends Plugin<ThreeView, ViewContext> {
   private sources: Map<string, Source> = new Map<string, Source>();
@@ -105,6 +123,20 @@ export class MapLibreStylePlugin extends Plugin<ThreeView, ViewContext> {
    * Only these layers need to be updated when zoom changes.
    */
   private zoomDependentLayers = new Set<Layer>();
+  /**
+   * Symbol layers with a layer-level property (alignment, halo, ...) that
+   * follows zoom, with what is needed to rebuild their description and the
+   * last one applied, serialized without its source.
+   */
+  private zoomFollowingSymbolLayers = new Map<
+    Layer,
+    {
+      styleLayer: StyleLayer;
+      source: Source;
+      fontFamily: string | undefined;
+      appliedMaterials: string;
+    }
+  >();
   /**
    * Background layer handler for evaluating and applying background colors.
    */
@@ -538,6 +570,7 @@ export class MapLibreStylePlugin extends Plugin<ThreeView, ViewContext> {
         if (this.backgroundHandler?.needsZoomUpdate()) {
           this.backgroundHandler.apply(view, currentZoom);
         }
+        this.refreshZoomFollowingSymbolLayers(currentZoom);
         // On initial zoom, also update zoom-dependent features
         for (const layer of this.zoomDependentLayers) {
           layer.forceUpdate();
@@ -554,6 +587,7 @@ export class MapLibreStylePlugin extends Plugin<ThreeView, ViewContext> {
         if (this.backgroundHandler?.needsZoomUpdate()) {
           this.backgroundHandler.apply(view, currentZoom);
         }
+        this.refreshZoomFollowingSymbolLayers(currentZoom);
 
         // Trigger re-evaluation only on layers with zoom-dependent expressions
         for (const layer of this.zoomDependentLayers) {
@@ -569,6 +603,28 @@ export class MapLibreStylePlugin extends Plugin<ThreeView, ViewContext> {
     view.camera.on("move", this.zoomChangeListener);
     view.camera.on("moveend", this.zoomChangeListener);
     view.camera.on("frustumChanged", this.zoomChangeListener);
+  }
+
+  /**
+   * Re-evaluate the layer-level symbol properties that follow zoom and apply
+   * them with `layer.update()`, only for layers whose materials changed (a
+   * `step` crossing), since each update re-lays out the layer's labels.
+   */
+  private refreshZoomFollowingSymbolLayers(zoom: number): void {
+    for (const [layer, entry] of this.zoomFollowingSymbolLayers) {
+      const layerDesc = toLayerDescription(
+        entry.source,
+        entry.styleLayer,
+        entry.fontFamily,
+        this.engine,
+        zoom,
+      );
+      if (!layerDesc) continue;
+      const materials = serializeMaterials(layerDesc);
+      if (materials === entry.appliedMaterials) continue;
+      entry.appliedMaterials = materials;
+      layer.update(layerDesc);
+    }
   }
 
   /**
@@ -721,6 +777,7 @@ export class MapLibreStylePlugin extends Plugin<ThreeView, ViewContext> {
       styleLayer,
       fontFamily,
       this.engine,
+      view.getZoomLevel(MAPLIBRE_TILE_SIZE),
     );
 
     // Skip unsupported layers (toLayerDescription returns null for unsupported types)
@@ -731,6 +788,15 @@ export class MapLibreStylePlugin extends Plugin<ThreeView, ViewContext> {
     // Add layer
     const layer = view.addLayer(layerDesc);
     this.layers.push(layer);
+
+    if (symbolLayerFollowsZoom(styleLayer)) {
+      this.zoomFollowingSymbolLayers.set(layer, {
+        styleLayer,
+        source,
+        fontFamily,
+        appliedMaterials: serializeMaterials(layerDesc),
+      });
+    }
 
     // Set up feature evaluation for vector layers
     if (
@@ -760,10 +826,12 @@ export class MapLibreStylePlugin extends Plugin<ThreeView, ViewContext> {
 
     // Determine MapLibre feature geometry type for expression evaluation
     // This is the GeoJSON geometry type used in MapLibre expressions (e.g., ["geometry-type"])
+    // Symbol layers placed along lines only consume line geometry (see toLayerDescription).
     const featureGeometryType =
       styleLayer.type === "fill" || styleLayer.type === "fill-extrusion"
         ? "Polygon"
-        : styleLayer.type === "line"
+        : styleLayer.type === "line" ||
+            getSymbolPlacement(styleLayer, this.engine) !== "point"
           ? "LineString"
           : "Point";
 
@@ -842,9 +910,8 @@ export class MapLibreStylePlugin extends Plugin<ThreeView, ViewContext> {
         const iconProps = [
           "icon-image",
           "icon-size",
-          "icon-anchor",
-          "icon-offset",
           "icon-rotate",
+          "symbol-sort-key",
         ];
         for (const key of iconProps) {
           const evalFn = layoutEvaluators[key];
@@ -859,11 +926,10 @@ export class MapLibreStylePlugin extends Plugin<ThreeView, ViewContext> {
         const textProps = [
           "text-field",
           "text-size",
-          "text-font",
           "text-letter-spacing",
-          "text-anchor",
-          "text-offset",
           "text-rotate",
+          "text-transform",
+          "symbol-sort-key",
         ];
         for (const key of textProps) {
           const evalFn = layoutEvaluators[key];
@@ -1039,6 +1105,7 @@ export class MapLibreStylePlugin extends Plugin<ThreeView, ViewContext> {
     this.warnedLayers.clear();
     this.warnedSources.clear();
     this.zoomDependentLayers.clear();
+    this.zoomFollowingSymbolLayers.clear();
     this.backgroundHandler?.clearCache();
     this.backgroundHandler = undefined;
     this.parsedStyle = null;

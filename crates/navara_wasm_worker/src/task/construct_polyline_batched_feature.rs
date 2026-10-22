@@ -2,7 +2,7 @@ use navara_core::{Extent, Radians};
 use navara_feature_component::polyline::{
     construct_flat_polyline_feature, construct_polyline_feature,
 };
-use navara_geometry::PolylineGeometryAttributes;
+use navara_geometry::{FloatAttribute, PolylineGeometryAttributes};
 use navara_wasm_types::{
     PolylineMaterial,
     polyline::{ConstructedPolylineGeometry, PolylineGeometry, TransferablePolylineBatchedFeature},
@@ -73,28 +73,26 @@ fn construct_polyline(
             combined.data.append(&mut src.data);
         }
         if let (Some(combined), Some(ref mut src)) = (
-            combined_attributes.start_normals.as_mut(),
-            constructed_geometry.attributes.start_normals,
+            combined_attributes.start_normal_and_length_high.as_mut(),
+            constructed_geometry.attributes.start_normal_and_length_high,
         ) {
             combined.data.append(&mut src.data);
         }
         if let (Some(combined), Some(ref mut src)) = (
-            combined_attributes
-                .end_normal_and_texture_coordinate_normalization_x
-                .as_mut(),
+            combined_attributes.end_normal_and_segment_length.as_mut(),
             constructed_geometry
                 .attributes
-                .end_normal_and_texture_coordinate_normalization_x,
+                .end_normal_and_segment_length,
         ) {
             combined.data.append(&mut src.data);
         }
         combined_attributes
-            .right_normal_and_texture_coordinate_normalization_y
+            .right_normal_and_line_length
             .data
             .append(
                 &mut constructed_geometry
                     .attributes
-                    .right_normal_and_texture_coordinate_normalization_y
+                    .right_normal_and_line_length
                     .data,
             );
 
@@ -154,6 +152,12 @@ fn construct_polyline(
         ) {
             combined.data.append(&mut geo.data);
         }
+        if let (Some(combined), Some(geo)) = (
+            &mut combined_attributes.line_segments,
+            &mut constructed_geometry.attributes.line_segments,
+        ) {
+            combined.data.append(&mut geo.data);
+        }
 
         if index_offset == 0 {
             indices.append(&mut constructed_geometry.indices);
@@ -178,7 +182,10 @@ fn construct_flat_polyline(
 ) -> Option<ConstructedPolylineGeometry> {
     let material: navara_material::PolylineMaterial = material.into();
 
-    let mut combined_attributes = PolylineGeometryAttributes::with_batch_id();
+    let mut combined_attributes = PolylineGeometryAttributes {
+        line_distance_and_ends: Some(FloatAttribute::new(vec![], 4)),
+        ..PolylineGeometryAttributes::with_batch_id()
+    };
     let mut indices = vec![];
     let mut index_offset = 0;
 
@@ -214,30 +221,34 @@ fn construct_flat_polyline(
             combined.data.append(&mut src.data);
         }
         if let (Some(combined), Some(ref mut src)) = (
-            combined_attributes.start_normals.as_mut(),
-            constructed_geometry.attributes.start_normals,
+            combined_attributes.start_normal_and_length_high.as_mut(),
+            constructed_geometry.attributes.start_normal_and_length_high,
         ) {
             combined.data.append(&mut src.data);
         }
         if let (Some(combined), Some(ref mut src)) = (
-            combined_attributes
-                .end_normal_and_texture_coordinate_normalization_x
-                .as_mut(),
+            combined_attributes.end_normal_and_segment_length.as_mut(),
             constructed_geometry
                 .attributes
-                .end_normal_and_texture_coordinate_normalization_x,
+                .end_normal_and_segment_length,
         ) {
             combined.data.append(&mut src.data);
         }
         combined_attributes
-            .right_normal_and_texture_coordinate_normalization_y
+            .right_normal_and_line_length
             .data
             .append(
                 &mut constructed_geometry
                     .attributes
-                    .right_normal_and_texture_coordinate_normalization_y
+                    .right_normal_and_line_length
                     .data,
             );
+        if let (Some(combined), Some(src)) = (
+            &mut combined_attributes.line_distance_and_ends,
+            &mut constructed_geometry.attributes.line_distance_and_ends,
+        ) {
+            combined.data.append(&mut src.data);
+        }
 
         let mut batch_ids = vec![];
         let mut batch_indices = vec![];

@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use crate::Options;
 use crate::types::{
-    BBox, InternalFeature, InternalGeometry, Ring, Tile, TileFeature, TileGeometry,
+    BBox, InternalFeature, InternalGeometry, Ring, Tile, TileFeature, TileGeometry, TileLine,
 };
 
 /// Creates an output Tile from internal features.
@@ -117,8 +117,8 @@ fn transform_geometry(
             }
         }
         InternalGeometry::LineString(ring) => {
-            let mut lines: Vec<Vec<[f64; 2]>> = Vec::with_capacity(1);
-            add_line(
+            let mut lines: Vec<TileLine> = Vec::with_capacity(1);
+            add_tile_line(
                 &mut lines,
                 ring,
                 z2,
@@ -127,8 +127,6 @@ fn transform_geometry(
                 extent,
                 tolerance,
                 sq_tolerance,
-                false,
-                false,
                 num_points,
                 num_simplified,
             );
@@ -139,9 +137,9 @@ fn transform_geometry(
             }
         }
         InternalGeometry::MultiLineString(rings) => {
-            let mut lines: Vec<Vec<[f64; 2]>> = Vec::with_capacity(rings.len());
+            let mut lines: Vec<TileLine> = Vec::with_capacity(rings.len());
             for ring in rings {
-                add_line(
+                add_tile_line(
                     &mut lines,
                     ring,
                     z2,
@@ -150,8 +148,6 @@ fn transform_geometry(
                     extent,
                     tolerance,
                     sq_tolerance,
-                    false,
-                    false,
                     num_points,
                     num_simplified,
                 );
@@ -220,6 +216,44 @@ fn transform_geometry(
                 Some(TileGeometry::Polygons(all_polygons))
             }
         }
+    }
+}
+
+/// [`add_line`] for a line ring, keeping where the line starts on the original one.
+#[allow(clippy::too_many_arguments)]
+fn add_tile_line(
+    result: &mut Vec<TileLine>,
+    ring: &Ring,
+    z2: f64,
+    tile_x: f64,
+    tile_y: f64,
+    extent: f64,
+    tolerance: f64,
+    sq_tolerance: f64,
+    num_points: &mut u32,
+    num_simplified: &mut u32,
+) {
+    let mut lines = Vec::with_capacity(1);
+    add_line(
+        &mut lines,
+        ring,
+        z2,
+        tile_x,
+        tile_y,
+        extent,
+        tolerance,
+        sq_tolerance,
+        false,
+        false,
+        num_points,
+        num_simplified,
+    );
+    if let Some(points) = lines.pop() {
+        result.push(TileLine {
+            points,
+            // The scale `transform_point` gives a distance in [0,1] space.
+            start: ring.line_start * z2 * extent,
+        });
     }
 }
 
@@ -369,6 +403,40 @@ mod tests {
     }
 
     #[test]
+    fn test_create_tile_keeps_where_a_line_starts() {
+        let ring = Ring {
+            coords: vec![0.25, 0.25, 1.0, 0.5, 0.25, 1.0],
+            area: 0.0,
+            dist: 0.25,
+            size: 0.25,
+            line_start: 0.125,
+        };
+        let feature = Arc::new(InternalFeature {
+            geometry: InternalGeometry::LineString(ring),
+            bbox: BBox {
+                min_x: 0.25,
+                min_y: 0.25,
+                max_x: 0.5,
+                max_y: 0.25,
+            },
+            properties: Arc::new(serde_json::Value::Null),
+            source_index: 0,
+        });
+
+        let opts = default_options();
+        let tile = create_tile(&[feature], 1, 0, 0, &opts);
+        match &tile.features[0].geometry {
+            TileGeometry::Lines(lines) => {
+                // In the tile's units, like its points: 0.125 of the world is a
+                // quarter of a z1 tile.
+                assert_eq!(lines[0].start, 0.25 * opts.extent as f64);
+                assert_eq!(lines[0].points[0], [0.5 * opts.extent as f64; 2]);
+            }
+            _ => panic!("Expected Lines geometry"),
+        }
+    }
+
+    #[test]
     fn test_create_tile_with_polygon() {
         // z-coords set to 1.0 so they survive simplification filtering
         let ring = Ring {
@@ -378,6 +446,7 @@ mod tests {
             area: 0.25,
             dist: 0.0,
             size: 0.25,
+            line_start: 0.0,
         };
 
         let feature = Arc::new(InternalFeature {

@@ -144,6 +144,8 @@ evaluate(
 | `extrudedHeight` | `number` | ポリゴンの押し出し高さ（メートル） |
 | `text` | `string` | ラベルテキストの内容（テキスト/ラベル地物用） |
 | `width` | `number` | ライン幅（ピクセル、ポリライン地物用） |
+| `dashArray` | `number[]` | ダッシュと隙間の長さ（線幅の倍数、ポリライン地物用）。空の配列を返すとその地物は実線になります。マテリアルの [`dashArray`](../../../three/material/polyline-material/#dasharray) を上書きします |
+| `cap` | `"butt" \| "round" \| "square"` | 各ダッシュの端の形状（ポリライン地物用）。マテリアルの [`cap`](../../../three/material/polyline-material/#cap) を上書きします |
 | `size` | `number` | ポイント/テキストサイズ（メートルまたはピクセル、ポイント/テキスト地物用） |
 | `letterSpacing` | `number` | 文字間に追加する間隔（em 単位、テキスト地物用）。マテリアルの [`letterSpacing`](../../../three/material/text-material/#letterspacing) を上書きします |
 | `opacity` | `number` | 地物の不透明度、範囲 0.0-1.0（ポリゴン/ポイント/ビルボード/モデル/テキスト用） |

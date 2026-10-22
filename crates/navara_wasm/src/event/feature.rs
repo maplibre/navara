@@ -76,7 +76,6 @@ pub struct PolygonMesh {
     pub outline_geometry: Option<TransferablePolygonOutlineGeometry>,
     pub transform: Transform,
     pub active: bool,
-    #[wasm_bindgen(getter_with_clone)]
     pub bounding_sphere: Option<BoundingSphere>,
     pub batch_length: u32,
 }

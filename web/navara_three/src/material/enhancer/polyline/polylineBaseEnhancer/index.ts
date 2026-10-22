@@ -2,6 +2,7 @@ import { defaults } from "lodash-es";
 import type { WebGLProgramParametersWithUniforms } from "three";
 import invariant from "tiny-invariant";
 
+import { SOLID_DASH_ROW } from "../../../../lineDash";
 import type { MaterialEnhancer } from "../../MaterialEnhancer";
 
 import { AVAILABLE_SHADERS, type SupportedMaterial } from "./material";
@@ -79,6 +80,8 @@ export function createPolylineBaseEnhancer(
         globeDepth: props.globeDepth,
         globeNormal: props.globeNormal,
         inverseProjectionMatrix: props.inverseProjectionMatrix,
+        lineDashAtlas: props.lineDashAtlas,
+        lineDashSegments: props.lineDashSegments,
       });
       updateMaterialProps(material, mergedProps, state.isTexturized);
     },
@@ -90,6 +93,7 @@ export function createPolylineBaseEnhancer(
       const prevIsTexturized = state.isTexturized;
       const prevGroundCulling = state.groundCulling;
       const prevUseGroundNormals = state.useGroundNormals;
+      const prevDashed = state.dashRow !== SOLID_DASH_ROW;
 
       state = updateState(props, state);
       mutates.update(state);
@@ -98,7 +102,8 @@ export function createPolylineBaseEnhancer(
       if (
         state.isTexturized !== prevIsTexturized ||
         state.groundCulling !== prevGroundCulling ||
-        state.useGroundNormals !== prevUseGroundNormals
+        state.useGroundNormals !== prevUseGroundNormals ||
+        (state.dashRow !== SOLID_DASH_ROW) !== prevDashed
       ) {
         material.needsUpdate = true;
       }
@@ -128,6 +133,7 @@ export function createPolylineBaseEnhancer(
         groundCulling: state.groundCulling,
         useGroundNormals: state.useGroundNormals,
         useRTE: state.useRTE,
+        dashed: state.dashRow !== SOLID_DASH_ROW,
         // Custom defines that may influence shader variants
         userDataDefines: material.userData?.defines ?? undefined,
       });

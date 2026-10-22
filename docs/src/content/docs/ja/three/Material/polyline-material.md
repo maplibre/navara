@@ -9,6 +9,26 @@ sidebar:
 
 ## Properties
 
+### cap
+
+**Type:** `"butt" | "round" | "square" | undefined`
+
+**Description:** 線の両端と、[`dashArray`](#dasharray) のパターンを構成する各ダッシュの端の形状を指定します。`"round"` は、線の両端とすべてのダッシュの両端の外側に、線幅の半分を半径とする半円を追加します。そのため各ダッシュは `dashArray` の値より線幅ひとつ分長くなり、長さ `0` のダッシュは点として描画されます。`"square"` は線の両端を線幅の半分だけ延ばし、ダッシュの端は直角のままにします。閉じたリングには端がありません。
+
+**Default:** `"butt"`
+
+**Example:**
+
+```typescript
+{
+  polyline: {
+    // 点線
+    dashArray: [0, 2],
+    cap: "round"
+  }
+}
+```
+
 ### castShadow
 
 **Type:** `boolean | undefined`
@@ -61,6 +81,28 @@ import { Color } from "@navaramap/three";
 {
   polyline: {
     color: new Color().setHex(0x0066cc)
+  }
+}
+```
+
+### dashArray
+
+**Type:** `number[] | undefined`
+
+**Description:** 線を構成するダッシュと隙間の長さを、線幅の倍数で交互に指定します。パターンは線に沿って繰り返され、その周期は配列の値の合計です。これは MapLibre Style Spec の `line-dasharray` プロパティと同じ挙動です。そのため要素数が奇数の配列では、最後のダッシュが最初のダッシュにつながります。`[1, 2, 1]` は線幅 2 つ分の長さのダッシュを描画します。空の配列を指定すると実線になります。
+
+カメラが動いても、パターンは線上の同じ位置にとどまります。ダッシュは、カメラからの距離に応じて、指定した長さの最大 2 倍まで長く描画されます。地面にクランプされていない線のパターンはいちばん長い隙間の中央から始まり、[`clampToGround`](#clamptoground) でクランプされた線のパターンは最初のダッシュから始まります。GeoJSON ソースのクランプされた線は、描画されるタイルをまたいで 1 つのパターンが続きます。一方、vector-tile ソースの線と、クランプされていない [`tiled`](#tiled) の線では、タイルの境界ごとにパターンが最初から始まります。ピッキングでは、隙間も線の一部として扱われます。
+
+**Default:** `undefined`
+
+**Example:**
+
+```typescript
+{
+  polyline: {
+    width: 4,
+    // 12px のダッシュと 8px の隙間
+    dashArray: [3, 2]
   }
 }
 ```

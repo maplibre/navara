@@ -12,6 +12,8 @@ debug = ["navara_wasm_utils/console_error_panic_hook"]
 
 [dependencies]
 wasm-bindgen.workspace = true
+js-sys.workspace = true
+web-sys.workspace = true
 serde.workspace = true
 serde-wasm-bindgen.workspace = true
 url.workspace = true

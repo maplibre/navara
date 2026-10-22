@@ -1250,7 +1250,7 @@ function buildPolylineGeometry(
 
 **Returns:**
 
-The vertex attributes of the line volume (`position`, the RTE encoded `positionHigh` / `positionLow`, `startHigh` / `startLow`, `endHigh` / `endLow`, `startNormal`, `endNormalAndTextureCoordinateNormalizationX`, `rightNormalAndTextureCoordinateNormalizationY`), `indices` and the geographic `extent` in degrees. Returns `undefined` when fewer than two distinct positions remain. Throws when `material` is not a valid polyline material.
+The vertex attributes of the line volume (`position`, the RTE encoded `positionHigh` / `positionLow`, `startHigh` / `startLow`, `endHigh` / `endLow`, `startNormalAndLengthHigh`, `endNormalAndSegmentLength`, `rightNormalAndLineLength`), `lineSegments`, `indices` and the geographic `extent` in degrees. `lineSegments` is the table a dash pattern reads its segments from, three RGBA float texels per segment, which the shader samples as a texture rather than a vertex attribute. Returns `undefined` when fewer than two distinct positions remain. Throws when `material` is not a valid polyline material.
 
 **Example:**
 

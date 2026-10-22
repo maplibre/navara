@@ -79,7 +79,42 @@ impl SourceGeometryType {
     }
 }
 
-/// Plane a label or sprite quad lies in: MapLibre's `*-pitch-alignment`.
+/// Shape of the ends of a polyline and of its dashes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum LineCap {
+    /// The line and each dash end squarely at their end points.
+    #[default]
+    Butt,
+    /// The line and each dash end in a half circle one half line width in
+    /// radius, centered on the end point. A zero-length dash becomes a dot.
+    Round,
+    /// The line ends half a line width past its end points, squarely; the
+    /// dashes end like [`LineCap::Butt`].
+    Square,
+}
+
+impl LineCap {
+    /// Parse the JS-facing name (`"butt" | "round" | "square"`).
+    pub fn parse(value: &str) -> Option<Self> {
+        match value {
+            "butt" => Some(Self::Butt),
+            "round" => Some(Self::Round),
+            "square" => Some(Self::Square),
+            _ => None,
+        }
+    }
+
+    /// JS-facing name of this cap.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Butt => "butt",
+            Self::Round => "round",
+            Self::Square => "square",
+        }
+    }
+}
+
+/// Plane a label or sprite quad lies in.
 ///
 /// Orthogonal to the material's `rotate_with_camera`, which picks what the
 /// quad turns with inside that plane (MapLibre's `*-rotation-alignment`).
@@ -622,6 +657,11 @@ pub struct PolylineMaterial {
     pub color: u32,
     pub width: f32,
     pub max_width: f32,
+    /// Alternating dash and gap lengths in line widths, repeated along the
+    /// line. `None` draws a solid line.
+    pub dash_array: Option<Vec<f32>>,
+    /// Shape of the ends of the line and of its dashes.
+    pub cap: LineCap,
     pub clamp_to_ground: bool,
     pub tiled: bool,
     pub height: f32,
@@ -653,6 +693,8 @@ impl Default for PolylineMaterial {
             color: 0xffffff,
             width: 1.,
             max_width: 10000.,
+            dash_array: None,
+            cap: LineCap::Butt,
             clamp_to_ground: true,
             tiled: false,
             height: 1.,

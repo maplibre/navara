@@ -42,18 +42,12 @@ if command -v wasm-opt &> /dev/null; then
   else 
     echo "wasm-opt not found, skipping optimization"
 fi
-
-# Generate package.json for pnpm workspace
-cp crates/navara_wasm/_package.json web/wasm/navara_engine/package.json
 ''']
 
 [tasks.bindgen-rust.windows]
 script = ['''
 wasm-bindgen target/wasm32-unknown-unknown/release/navara_wasm.wasm --out-dir web/wasm/navara_engine --target web
 where wasm-opt >nul 2>&1 && wasm-opt -Oz --strip-debug --strip-producers web/wasm/navara_engine/navara_wasm_bg.wasm -o web/wasm/navara_engine/navara_wasm_bg.wasm || echo "wasm-opt not found, skipping optimization"
-
-REM Generate package.json for pnpm workspace
-copy /Y "crates\navara_wasm\_package.json" "web\wasm\navara_engine\package.json"
 ''']
 
 [tasks.bindgen-dev-rust]
@@ -61,17 +55,11 @@ script = ['''
 #!/usr/bin/env bash
 
 wasm-bindgen target/wasm32-unknown-unknown/debug/navara_wasm.wasm --out-dir web/wasm/navara_engine --target web --keep-debug
-
-# Generate package.json for pnpm workspace
-cp crates/navara_wasm/_package.json web/wasm/navara_engine/package.json
 ''']
 
 [tasks.bindgen-dev-rust.windows]
 script = ['''
 wasm-bindgen target/wasm32-unknown-unknown/debug/navara_wasm.wasm --out-dir web/wasm/navara_engine --target web --keep-debug
-
-REM Generate package.json for pnpm workspace
-copy /Y "crates\navara_wasm\_package.json" "web\wasm\navara_engine\package.json"
 ''']
 # ============================================================================
 #                               SIZE REPORT

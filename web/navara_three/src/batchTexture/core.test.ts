@@ -207,6 +207,18 @@ describe("lazy allocation", () => {
     expect(data[batchBaseIndex(6, 1, 5, 0) + 1]).toBe(-1);
   });
 
+  test("lineDash leaves untouched batches on the solid row", () => {
+    const { material } = setupBatchMaterial(6, ["lineDash"]);
+    updateBatchAttribute(material, 2, "lineDash", 3);
+
+    expect(material.userData.defines.USE_BATCH_LINE_DASH).toBeDefined();
+    const texture = getBatchDataTexture(material);
+    invariant(texture);
+    const data = texture.image.data as Float32Array;
+    expect(data[batchBaseIndex(6, 1, 2, 0)]).toBe(3);
+    expect(data[batchBaseIndex(6, 1, 5, 0)]).toBe(0);
+  });
+
   test("ignores scalars outside the capability list and leaves the define unset", () => {
     // Polyline-style capabilities: no extrudedHeight. Setting the attribute
     // must be a no-op — enabling USE_BATCH_EXTRUDED_HEIGHT would reference

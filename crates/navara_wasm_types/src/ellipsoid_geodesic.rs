@@ -6,9 +6,7 @@ use crate::LLE;
 
 #[wasm_bindgen]
 pub struct EllipsoidGeodesic {
-    #[wasm_bindgen(getter_with_clone)]
     pub start: LLE,
-    #[wasm_bindgen(getter_with_clone)]
     pub end: LLE,
     pub distance: FloatType,
     pub start_heading: FloatType,

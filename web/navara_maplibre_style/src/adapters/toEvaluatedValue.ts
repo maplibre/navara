@@ -27,6 +27,7 @@ type EvaluatedResult = {
   image?: string;
   /** Degrees clockwise, like MapLibre's `text-rotate` / `icon-rotate`. */
   rotation?: number;
+  declutterPriority?: number;
 };
 
 /**
@@ -190,16 +191,13 @@ export function createLayoutEvaluators(
   const supportedProperties = [
     "text-field",
     "text-size",
-    "text-font",
     "text-letter-spacing",
+    "text-rotate",
+    "text-transform",
     "icon-image",
     "icon-size",
-    "text-anchor",
-    "icon-anchor",
-    "text-offset",
-    "icon-offset",
-    "text-rotate",
     "icon-rotate",
+    "symbol-sort-key",
   ];
 
   for (const key of supportedProperties) {
@@ -397,6 +395,33 @@ function extractFormattedText(value: unknown): string | undefined {
 }
 
 /**
+ * Apply MapLibre `text-transform` (`toLocale*Case`, as MapLibre does).
+ */
+function applyTextTransform(text: string, transform: unknown): string {
+  if (transform === "uppercase") return text.toLocaleUpperCase();
+  if (transform === "lowercase") return text.toLocaleLowerCase();
+  return text;
+}
+
+/**
+ * Apply the per-feature placement properties shared by icons and text:
+ * `*-rotate` and `symbol-sort-key`.
+ */
+function applySymbolPlacement(
+  result: EvaluatedResult,
+  rotate: unknown,
+  sortKey: unknown,
+): void {
+  if (typeof rotate === "number" && Number.isFinite(rotate)) {
+    result.rotation = rotate;
+  }
+  // A lower sort key is placed first in MapLibre; higher priority wins in Navara.
+  if (typeof sortKey === "number" && Number.isFinite(sortKey)) {
+    result.declutterPriority = -sortKey;
+  }
+}
+
+/**
  * Process symbol layer properties.
  *
  * IMPORTANT: Symbol layers require an explicit meshGeomType ("billboard" or "text")
@@ -406,14 +431,6 @@ function extractFormattedText(value: unknown): string | undefined {
  * Note: layoutValues should contain evaluated values for all critical properties
  * (text-size, icon-size, etc.) with spec defaults, provided by createLayoutEvaluators.
  */
-/** Degrees clockwise in both MapLibre and Navara; always present (spec
- *  default 0). */
-function applyRotation(result: EvaluatedResult, value: unknown): void {
-  if (typeof value === "number" && Number.isFinite(value)) {
-    result.rotation = value;
-  }
-}
-
 function processSymbolLayer(
   result: EvaluatedResult,
   paintValues: Record<string, unknown>,
@@ -466,13 +483,20 @@ function processSymbolLayer(
       result.size = iconSize;
     }
 
-    applyRotation(result, layoutValues?.["icon-rotate"]);
+    applySymbolPlacement(
+      result,
+      layoutValues?.["icon-rotate"],
+      layoutValues?.["symbol-sort-key"],
+    );
   }
 
   // Process text properties for text geometry
   if (meshGeomType === "text") {
     if (hasText) {
-      result.text = textField;
+      result.text = applyTextTransform(
+        textField,
+        layoutValues?.["text-transform"],
+      );
 
       applyColorAndOpacity(
         result,
@@ -494,7 +518,11 @@ function processSymbolLayer(
         result.letterSpacing = letterSpacing;
       }
 
-      applyRotation(result, layoutValues?.["text-rotate"]);
+      applySymbolPlacement(
+        result,
+        layoutValues?.["text-rotate"],
+        layoutValues?.["symbol-sort-key"],
+      );
     } else {
       // Hide text features with empty text-field (e.g., from zoom-based step expressions)
       result.show = false;

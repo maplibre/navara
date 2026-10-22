@@ -1250,7 +1250,7 @@ function buildPolylineGeometry(
 
 **Returns:**
 
-線のボリュームの頂点属性（`position`、RTE エンコードされた `positionHigh` / `positionLow`、`startHigh` / `startLow`、`endHigh` / `endLow`、`startNormal`、`endNormalAndTextureCoordinateNormalizationX`、`rightNormalAndTextureCoordinateNormalizationY`）、`indices`、度単位の地理的範囲 `extent`。重複しない座標が 2 つ未満の場合は `undefined` を返します。`material` がポリラインマテリアルとして不正な場合は例外を投げます。
+線のボリュームの頂点属性（`position`、RTE エンコードされた `positionHigh` / `positionLow`、`startHigh` / `startLow`、`endHigh` / `endLow`、`startNormalAndLengthHigh`、`endNormalAndSegmentLength`、`rightNormalAndLineLength`）、`lineSegments`、`indices`、度単位の地理的範囲 `extent`。`lineSegments` は破線パターンが線分を参照するテーブルで、線分ごとに RGBA の float テクセル 3 つからなり、シェーダーは頂点属性ではなくテクスチャとして読み取ります。重複しない座標が 2 つ未満の場合は `undefined` を返します。`material` がポリラインマテリアルとして不正な場合は例外を投げます。
 
 **Example:**
 

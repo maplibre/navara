@@ -49,10 +49,10 @@
     ivec2 texSize = textureSize(demTexture, 0);
 
     // Sample 3x3 grid of heights with bilinear interpolation
-    // Grid layout:
-    //   a  b  c
+    // Grid layout (DEM rows run top-down, so +v points south):
+    //   g  h  i   north
     //   d  e  f
-    //   g  h  i
+    //   a  b  c   south
     // Texture has 1-pixel padding with backfilled neighbor data, so we can sample freely
     float a = sampleHeightBilinear(demTexture, uv + vec2(-texelSize.x,  texelSize.y), texSize);
     float b = sampleHeightBilinear(demTexture, uv + vec2(0.0,           texelSize.y), texSize);
@@ -77,13 +77,11 @@
 
     // Sobel operator for gradient calculation
     float dX = (c + f + f + i) - (a + d + d + g);
-    float dY = (g + h + h + i) - (a + b + b + c);
+    float dY = (a + b + b + c) - (g + h + h + i);
 
-    // Calculate slope using real-world distance
-    // Sobel kernel has 4 weighted samples, so divide by 4 to normalize
-    // Then divide by metersPerTexel to get slope (rise over run)
-    float slopeX = (dX / 4.0) / metersPerTexel;
-    float slopeY = (dY / 4.0) / metersPerTexel;
+    // Sobel weights sum to 4 and the differences span 2 texels
+    float slopeX = dX / (8.0 * metersPerTexel);
+    float slopeY = dY / (8.0 * metersPerTexel);
 
     // Construct normal vector
     vec3 normal = vec3(-slopeX, slopeY, 1.0);

@@ -61,6 +61,7 @@ pub fn geom_to_js_value(geom: &TileGeometry) -> serde_json::Value {
                 .iter()
                 .map(|line| {
                     let pts: Vec<serde_json::Value> = line
+                        .points
                         .iter()
                         .map(|p| serde_json::json!([p[0].round() as i64, p[1].round() as i64]))
                         .collect();

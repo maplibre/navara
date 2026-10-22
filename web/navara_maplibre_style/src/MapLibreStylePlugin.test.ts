@@ -36,9 +36,26 @@ vi.mock("@navaramap/three", () => {
 
   // Mock Color class with methods used by MapLibreStylePlugin
   class MockColor {
-    r = 0;
-    g = 0;
-    b = 0;
+    // Private storage, like the real Color: JSON.stringify sees nothing.
+    #rgb = [0, 0, 0];
+    get r() {
+      return this.#rgb[0];
+    }
+    set r(v: number) {
+      this.#rgb[0] = v;
+    }
+    get g() {
+      return this.#rgb[1];
+    }
+    set g(v: number) {
+      this.#rgb[1] = v;
+    }
+    get b() {
+      return this.#rgb[2];
+    }
+    set b(v: number) {
+      this.#rgb[2] = v;
+    }
 
     setStyle(_style: string) {
       // Simple parsing for test purposes
@@ -58,6 +75,14 @@ vi.mock("@navaramap/three", () => {
       copy.g = this.g;
       copy.b = this.b;
       return copy;
+    }
+
+    toHex(): number {
+      return (
+        (Math.round(this.r * 255) << 16) |
+        (Math.round(this.g * 255) << 8) |
+        Math.round(this.b * 255)
+      );
     }
   }
 
@@ -1317,6 +1342,143 @@ describe("MapLibreStylePlugin", () => {
 
       // forceUpdate should NOT be called for constant layers
       expect(mockLayer.forceUpdate).not.toHaveBeenCalled();
+    });
+
+    const symbolStyle = (
+      layout: Record<string, unknown>,
+    ): StyleSpecification => ({
+      version: 8,
+      sources: {
+        test: {
+          type: "geojson",
+          data: { type: "FeatureCollection", features: [] },
+        },
+      },
+      layers: [
+        {
+          id: "icons",
+          type: "symbol",
+          source: "test",
+          layout: { "icon-image": "marker", ...layout },
+        } as StyleSpecification["layers"][number],
+      ],
+    });
+
+    it("updates a symbol layer's materials when a zoom step is crossed", async () => {
+      const mockLayer = {
+        delete: vi.fn(),
+        on: vi.fn(),
+        forceUpdate: vi.fn(),
+        update: vi.fn(),
+      };
+      const plugin = new MapLibreStylePlugin(
+        symbolStyle({
+          "icon-pitch-alignment": ["step", ["zoom"], "viewport", 14, "map"],
+        }),
+      );
+      const view = createMockView(10);
+      view.addLayer = vi.fn().mockReturnValue(mockLayer);
+
+      await plugin.init(view, mockViewContext);
+
+      // Built at the current zoom.
+      expect(
+        (view.addLayer as any).mock.calls[0][0].billboard.billboardFacing,
+      ).toBe("upright");
+
+      const moveListener = (view.camera.on as any).mock.calls.find(
+        (call: any) => call[0] === "move",
+      )[1];
+      moveListener();
+      setMockZoom(view, 12);
+      moveListener();
+      expect(mockLayer.update).not.toHaveBeenCalled();
+
+      setMockZoom(view, 15);
+      moveListener();
+      expect(mockLayer.update).toHaveBeenCalledTimes(1);
+      expect(mockLayer.update.mock.calls[0][0].billboard.billboardFacing).toBe(
+        "flat",
+      );
+
+      // Same materials past the step: no further update.
+      setMockZoom(view, 16);
+      moveListener();
+      expect(mockLayer.update).toHaveBeenCalledTimes(1);
+    });
+
+    it("updates a symbol layer when only its halo color crosses a zoom step", async () => {
+      const mockLayer = {
+        delete: vi.fn(),
+        on: vi.fn(),
+        forceUpdate: vi.fn(),
+        update: vi.fn(),
+      };
+      const plugin = new MapLibreStylePlugin({
+        version: 8,
+        "font-faces": { Test: "https://example.com/test.woff2" },
+        sources: {
+          test: {
+            type: "geojson",
+            data: { type: "FeatureCollection", features: [] },
+          },
+        },
+        layers: [
+          {
+            id: "labels",
+            type: "symbol",
+            source: "test",
+            layout: { "text-field": "{name}", "text-font": ["Test"] },
+            paint: {
+              "text-halo-color": ["step", ["zoom"], "#ffffff", 14, "#ffdc00"],
+            },
+          },
+        ],
+      } as StyleSpecification);
+      const view = createMockView(10);
+      view.addLayer = vi.fn().mockReturnValue(mockLayer);
+
+      await plugin.init(view, mockViewContext);
+      expect((view.addLayer as any).mock.calls[0][0].text).toBeDefined();
+
+      const moveListener = (view.camera.on as any).mock.calls.find(
+        (call: any) => call[0] === "move",
+      )[1];
+      moveListener();
+      setMockZoom(view, 15);
+      moveListener();
+
+      expect(mockLayer.update).toHaveBeenCalledTimes(1);
+    });
+
+    it("does not update symbol layers whose layer-level properties are constant", async () => {
+      const mockLayer = {
+        delete: vi.fn(),
+        on: vi.fn(),
+        forceUpdate: vi.fn(),
+        update: vi.fn(),
+      };
+      const plugin = new MapLibreStylePlugin(
+        symbolStyle({
+          "icon-pitch-alignment": "map",
+          "icon-size": ["interpolate", ["linear"], ["zoom"], 10, 1, 16, 2],
+        }),
+      );
+      const view = createMockView(10);
+      view.addLayer = vi.fn().mockReturnValue(mockLayer);
+
+      await plugin.init(view, mockViewContext);
+
+      const moveListener = (view.camera.on as any).mock.calls.find(
+        (call: any) => call[0] === "move",
+      )[1];
+      moveListener();
+      setMockZoom(view, 15);
+      moveListener();
+
+      // icon-size is evaluated per feature, not through layer.update().
+      expect(mockLayer.forceUpdate).toHaveBeenCalled();
+      expect(mockLayer.update).not.toHaveBeenCalled();
     });
   });
 

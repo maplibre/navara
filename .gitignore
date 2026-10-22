@@ -22,7 +22,9 @@ pnpm-debug.log*
 lerna-debug.log*
 
 # WEB
-web/wasm
+# Build output; package.json is the tracked manifest of each WASM package
+web/wasm/*/*
+!web/wasm/*/package.json
 node_modules
 dist
 dist-example

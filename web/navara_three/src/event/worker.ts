@@ -815,8 +815,10 @@ async function processConstructPolylineBatchedFeature(
       const startLow = result.start_low
         ? registered.register(bufHandler.adoptF32(result.start_low))
         : undefined;
-      const startNormals = result.start_normals
-        ? registered.register(bufHandler.adoptF32(result.start_normals))
+      const startNormals = result.start_normal_and_length_high
+        ? registered.register(
+            bufHandler.adoptF32(result.start_normal_and_length_high),
+          )
         : undefined;
       const forwardOffset = result.forward_offset
         ? registered.register(bufHandler.adoptF32(result.forward_offset))
@@ -827,29 +829,32 @@ async function processConstructPolylineBatchedFeature(
       const endLow = result.end_low
         ? registered.register(bufHandler.adoptF32(result.end_low))
         : undefined;
-      const endNormalAndTextureCoordinateNormalizationX =
-        result.end_normal_and_texture_coordinate_normalization_x
-          ? registered.register(
-              bufHandler.adoptF32(
-                result.end_normal_and_texture_coordinate_normalization_x,
-              ),
-            )
-          : undefined;
-      const rightNormalAndTextureCoordinateNormalizationY = registered.register(
-        bufHandler.adoptF32(
-          result.right_normal_and_texture_coordinate_normalization_y,
-        ),
+      const endNormalAndSegmentLength = result.end_normal_and_segment_length
+        ? registered.register(
+            bufHandler.adoptF32(result.end_normal_and_segment_length),
+          )
+        : undefined;
+      const rightNormalAndLineLength = registered.register(
+        bufHandler.adoptF32(result.right_normal_and_line_length),
       );
       const batchId = registered.register(bufHandler.newF32(result.batch_id));
       const batchIndex = registered.register(
         bufHandler.adoptU32(result.batch_index),
       );
       const indices = registered.register(bufHandler.adoptU32(result.indices));
+      const lineSegments = result.line_segments
+        ? registered.register(bufHandler.adoptF32(result.line_segments))
+        : undefined;
+      const lineDistanceAndEnds = result.line_distance_and_ends
+        ? registered.register(
+            bufHandler.adoptF32(result.line_distance_and_ends),
+          )
+        : undefined;
       if (
         !batchId ||
         !batchIndex ||
         !position ||
-        !rightNormalAndTextureCoordinateNormalizationY ||
+        !rightNormalAndLineLength ||
         !indices
       ) {
         registered.free();
@@ -898,7 +903,7 @@ async function processConstructPolylineBatchedFeature(
       const transferableStartNormals = startNormals
         ? new TransferableFloatAttribute(
             startNormals,
-            result.start_normals_size ?? 0,
+            result.start_normal_and_length_high_size ?? 0,
           )
         : undefined;
       const transferableForwardOffset = forwardOffset
@@ -907,18 +912,16 @@ async function processConstructPolylineBatchedFeature(
             result.forward_offset_size ?? 0,
           )
         : undefined;
-      const transferableEndNormalAndTextureCoordinateNormalizationX =
-        endNormalAndTextureCoordinateNormalizationX
-          ? new TransferableFloatAttribute(
-              endNormalAndTextureCoordinateNormalizationX,
-              result.end_normal_and_texture_coordinate_normalization_x_size ??
-                0,
-            )
-          : undefined;
-      const transferableRightNormalAndTextureCoordinateNormalizationY =
+      const transferableEndNormalAndSegmentLength = endNormalAndSegmentLength
+        ? new TransferableFloatAttribute(
+            endNormalAndSegmentLength,
+            result.end_normal_and_segment_length_size ?? 0,
+          )
+        : undefined;
+      const transferableRightNormalAndLineLength =
         new TransferableFloatAttribute(
-          rightNormalAndTextureCoordinateNormalizationY,
-          result.right_normal_and_texture_coordinate_normalization_y_size,
+          rightNormalAndLineLength,
+          result.right_normal_and_line_length_size,
         );
 
       const geometry = new TransferablePolylineGeometry(
@@ -932,11 +935,17 @@ async function processConstructPolylineBatchedFeature(
         transferableEndHigh,
         transferableEndLow,
         transferableStartNormals,
-        transferableEndNormalAndTextureCoordinateNormalizationX,
-        transferableRightNormalAndTextureCoordinateNormalizationY,
+        transferableEndNormalAndSegmentLength,
+        transferableRightNormalAndLineLength,
         transferableBatchId,
         transferableBatchIndex,
         indices,
+        lineSegments
+          ? new TransferableFloatAttribute(lineSegments, 4)
+          : undefined,
+        lineDistanceAndEnds
+          ? new TransferableFloatAttribute(lineDistanceAndEnds, 4)
+          : undefined,
       );
 
       const extent = result.extent;

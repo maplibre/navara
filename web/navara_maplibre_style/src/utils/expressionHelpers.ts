@@ -70,3 +70,13 @@ export function expressionUsesZoom(expr: unknown): boolean {
 
   return false;
 }
+
+/**
+ * Check if a filter or expression tests the feature's geometry type, through
+ * the legacy `$type` key or the `["geometry-type"]` expression.
+ */
+export function expressionUsesGeometryType(expr: unknown): boolean {
+  if (expr === "$type") return true;
+  if (!Array.isArray(expr)) return false;
+  return expr[0] === "geometry-type" || expr.some(expressionUsesGeometryType);
+}

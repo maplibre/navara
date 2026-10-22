@@ -14,6 +14,7 @@ export const SCALAR_DEFINE_SUFFIX: Record<BatchScalarSlotKey, string> = {
   height: "HEIGHT",
   extrudedHeight: "EXTRUDED_HEIGHT",
   lineWidth: "LINE_WIDTH",
+  lineDash: "LINE_DASH",
   size: "SIZE",
   rotation: "ROTATION",
   orientation: "ORIENTATION",

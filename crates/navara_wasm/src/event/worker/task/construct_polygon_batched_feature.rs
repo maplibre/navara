@@ -37,10 +37,8 @@ pub struct ConstructPolygonBatchedFeatureResult {
     pub geometry: TransferablePolygonGeometry,
     #[wasm_bindgen(getter_with_clone)]
     pub outline_geometry: Option<TransferablePolygonOutlineGeometry>,
-    #[wasm_bindgen(getter_with_clone)]
     pub extent: Option<ExtentRadianF32>,
     /// RTC (Relative-To-Center) translation vector
-    #[wasm_bindgen(getter_with_clone)]
     pub rtc_translation: Option<Vec3>,
 }
 

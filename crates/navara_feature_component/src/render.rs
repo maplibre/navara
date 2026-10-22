@@ -240,12 +240,14 @@ pub struct TransferablePolylineGeometry {
     pub forward_offset: Option<TransferableFloatAttribute>,
     pub end_high: Option<TransferableFloatAttribute>,
     pub end_low: Option<TransferableFloatAttribute>,
-    pub start_normals: Option<TransferableFloatAttribute>,
-    pub end_normal_and_texture_coordinate_normalization_x: Option<TransferableFloatAttribute>,
-    pub right_normal_and_texture_coordinate_normalization_y: TransferableFloatAttribute,
+    pub start_normal_and_length_high: Option<TransferableFloatAttribute>,
+    pub end_normal_and_segment_length: Option<TransferableFloatAttribute>,
+    pub right_normal_and_line_length: TransferableFloatAttribute,
     pub batch_ids: Option<TransferableFloatAttribute>,
     pub batch_index: Option<TransferableUintAttribute>,
     pub indices: Handle,
+    pub line_segments: Option<TransferableFloatAttribute>,
+    pub line_distance_and_ends: Option<TransferableFloatAttribute>,
 }
 
 impl TransferablePolylineGeometry {
@@ -254,11 +256,8 @@ impl TransferablePolylineGeometry {
         geo: navara_geometry::PolylineGeometry,
     ) -> TransferablePolylineGeometry {
         let position = buf.new_f32(geo.attributes.position.data);
-        let right_normal_and_texture_coordinate_normalization_y = buf.new_f32(
-            geo.attributes
-                .right_normal_and_texture_coordinate_normalization_y
-                .data,
-        );
+        let right_normal_and_line_length =
+            buf.new_f32(geo.attributes.right_normal_and_line_length.data);
         let indices = buf.new_u32(geo.indices);
 
         TransferablePolylineGeometry {
@@ -319,26 +318,21 @@ impl TransferablePolylineGeometry {
                     data: buf.new_f32(attr.data),
                     size: attr.size,
                 }),
-            start_normals: geo
-                .attributes
-                .start_normals
-                .map(|attr| TransferableFloatAttribute {
+            start_normal_and_length_high: geo.attributes.start_normal_and_length_high.map(|attr| {
+                TransferableFloatAttribute {
                     data: buf.new_f32(attr.data),
                     size: attr.size,
-                }),
-            end_normal_and_texture_coordinate_normalization_x: geo
-                .attributes
-                .end_normal_and_texture_coordinate_normalization_x
-                .map(|attr| TransferableFloatAttribute {
+                }
+            }),
+            end_normal_and_segment_length: geo.attributes.end_normal_and_segment_length.map(
+                |attr| TransferableFloatAttribute {
                     data: buf.new_f32(attr.data),
                     size: attr.size,
-                }),
-            right_normal_and_texture_coordinate_normalization_y: TransferableFloatAttribute {
-                data: right_normal_and_texture_coordinate_normalization_y,
-                size: geo
-                    .attributes
-                    .right_normal_and_texture_coordinate_normalization_y
-                    .size,
+                },
+            ),
+            right_normal_and_line_length: TransferableFloatAttribute {
+                data: right_normal_and_line_length,
+                size: geo.attributes.right_normal_and_line_length.size,
             },
             batch_ids: geo
                 .attributes
@@ -355,6 +349,19 @@ impl TransferablePolylineGeometry {
                     size: batch_idx.size,
                 }),
             indices,
+            line_segments: geo
+                .attributes
+                .line_segments
+                .map(|attr| TransferableFloatAttribute {
+                    data: buf.new_f32(attr.data),
+                    size: attr.size,
+                }),
+            line_distance_and_ends: geo.attributes.line_distance_and_ends.map(|attr| {
+                TransferableFloatAttribute {
+                    data: buf.new_f32(attr.data),
+                    size: attr.size,
+                }
+            }),
         }
     }
 
@@ -395,17 +402,13 @@ impl TransferablePolylineGeometry {
         if let Some(forward_offset) = &self.forward_offset {
             buf.remove(&forward_offset.data);
         }
-        if let Some(start_normals) = &self.start_normals {
-            buf.remove(&start_normals.data);
+        if let Some(start_normal_and_length_high) = &self.start_normal_and_length_high {
+            buf.remove(&start_normal_and_length_high.data);
         }
-        if let Some(end_normal) = &self.end_normal_and_texture_coordinate_normalization_x {
+        if let Some(end_normal) = &self.end_normal_and_segment_length {
             buf.remove(&end_normal.data);
         }
-        buf.remove(
-            &self
-                .right_normal_and_texture_coordinate_normalization_y
-                .data,
-        );
+        buf.remove(&self.right_normal_and_line_length.data);
         let mut removed_batch_ids = Vec::new();
         if let Some(batch_ids) = &self.batch_ids
             && let Some(vec_ids) = buf.remove_f32(&batch_ids.data)
@@ -416,6 +419,12 @@ impl TransferablePolylineGeometry {
         }
         if let Some(batch_index) = &self.batch_index {
             buf.remove(&batch_index.data);
+        }
+        if let Some(line_segments) = &self.line_segments {
+            buf.remove(&line_segments.data);
+        }
+        if let Some(line_distance_and_ends) = &self.line_distance_and_ends {
+            buf.remove(&line_distance_and_ends.data);
         }
         buf.remove(&self.indices);
         removed_batch_ids

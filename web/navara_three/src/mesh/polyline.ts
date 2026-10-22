@@ -5,6 +5,7 @@ import {
 import {
   BufferAttribute,
   BufferGeometry,
+  type DataTexture,
   Matrix4,
   ShaderMaterial,
   Vector2,
@@ -18,6 +19,11 @@ import {
   type BatchTextureSupport,
 } from "../batchTexture";
 import type { EventContext } from "../event/context";
+import {
+  createLineSegmentTextureReleasedOnUpload,
+  SOLID_DASH_ROW,
+  type LineCap,
+} from "../lineDash";
 import { applyLitOption } from "../material";
 import { createPolylineMaterialEnhancer } from "../material/enhancer";
 
@@ -26,7 +32,10 @@ import {
   type BatchedFeatureAttributes,
 } from "./batchedFeature";
 import { GEOMETRY_TYPES } from "./constants";
-import { releaseGeometryArraysAfterUpload } from "./releaseGeometryArrays";
+import {
+  releaseAttributeAfterUpload,
+  releaseGeometryArraysAfterUpload,
+} from "./releaseGeometryArrays";
 import { setupRTECallback } from "./rtcRteHelper";
 
 // Sentinel value for picking coordinate when not picking (reused to avoid allocations)
@@ -55,12 +64,33 @@ type Attributes = BatchedFeatureAttributes<{
   start?: BufferAttribute;
   forward_offset?: BufferAttribute;
   // Common attributes (present for non-flat polylines)
-  start_normal?: BufferAttribute;
-  end_normal_and_texture_coordinate_normalization_x?: BufferAttribute;
+  start_normal_and_length_high?: BufferAttribute;
+  end_normal_and_segment_length?: BufferAttribute;
+  // Flat polylines: distance along the original line and the line's own ends
+  line_distance_and_ends?: BufferAttribute;
   // Always present
-  right_normal_and_texture_coordinate_normalization_y: BufferAttribute;
+  right_normal_and_line_length: BufferAttribute;
   attrBatchId: BufferAttribute;
 }>;
+
+/** A feature's own dash pattern; an omitted half follows the material's. */
+type FeatureLineDash = {
+  row: number;
+  dashArray: number[] | undefined;
+  cap: LineCap | undefined;
+};
+
+function sameDashArray(
+  a: ArrayLike<number> | undefined,
+  b: ArrayLike<number> | undefined,
+): boolean {
+  if (a === undefined || b === undefined) return a === b;
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    if (a[i] !== b[i]) return false;
+  }
+  return true;
+}
 
 export class PolylineMesh extends BatchedFeatureMesh<
   BufferGeometry<Attributes>,
@@ -71,6 +101,22 @@ export class PolylineMesh extends BatchedFeatureMesh<
   private _enhancedMaterial?: ReturnType<typeof createPolylineMaterialEnhancer>;
   /** Flag indicating geometry initialization failed - mesh should never be visible */
   private _geometryInitFailed = false;
+  /** Material dash pattern, completing a per-feature one that sets only half. */
+  private _dashArray?: number[];
+  private _cap: LineCap = "butt";
+  /** Atlas row this mesh holds for the material's pattern. */
+  private _dashRow = SOLID_DASH_ROW;
+  /** Per-feature patterns by batch id, as set, with the atlas row each holds. */
+  private readonly _featureLineDashes = new Map<number, FeatureLineDash>();
+  /** Segment table of an RTE volume line (the geometry's `line_segments`). */
+  private readonly _lineSegmentTexture: { value: DataTexture | null } = {
+    value: null,
+  };
+  /**
+   * A flat line's `line_distance_and_ends`, kept off the geometry until a dash
+   * may be drawn so that a line never dashed never uploads it.
+   */
+  private _pendingLineDistanceAndEnds?: BufferAttribute;
 
   constructor(ctx: EventContext) {
     super(new BufferGeometry<Attributes>(), new ShaderMaterial());
@@ -120,17 +166,14 @@ export class PolylineMesh extends BatchedFeatureMesh<
     const start_low = g.start_low ? buf.removeF32(g.start_low.data) : null;
     const end_high = g.end_high ? buf.removeF32(g.end_high.data) : null;
     const end_low = g.end_low ? buf.removeF32(g.end_low.data) : null;
-    const start_normals = g.start_normals
-      ? buf.removeF32(g.start_normals.data)
+    const start_normal_and_length_high = g.start_normal_and_length_high
+      ? buf.removeF32(g.start_normal_and_length_high.data)
       : null;
-    const end_normal_and_texture_coordinate_normalization_x =
-      g.end_normal_and_texture_coordinate_normalization_x
-        ? buf.removeF32(
-            g.end_normal_and_texture_coordinate_normalization_x.data,
-          )
-        : null;
-    const right_normal_and_texture_coordinate_normalization_y = buf.removeF32(
-      g.right_normal_and_texture_coordinate_normalization_y.data,
+    const end_normal_and_segment_length = g.end_normal_and_segment_length
+      ? buf.removeF32(g.end_normal_and_segment_length.data)
+      : null;
+    const right_normal_and_line_length = buf.removeF32(
+      g.right_normal_and_line_length.data,
     );
     const indices = buf.removeU32(g.indices);
     const batchIds = g.batch_ids ? buf.removeF32(g.batch_ids.data) : undefined;
@@ -139,12 +182,14 @@ export class PolylineMesh extends BatchedFeatureMesh<
       ? buf.removeU32(g.batch_index.data)
       : undefined;
     const batchIndexSize = g.batch_index ? g.batch_index.size : 0;
+    const lineSegments = g.line_segments
+      ? buf.removeF32(g.line_segments.data)
+      : undefined;
+    const lineDistanceAndEnds = g.line_distance_and_ends
+      ? buf.removeF32(g.line_distance_and_ends.data)
+      : undefined;
 
-    if (
-      !position ||
-      !right_normal_and_texture_coordinate_normalization_y ||
-      !indices
-    ) {
+    if (!position || !right_normal_and_line_length || !indices) {
       return { success: false, useRTE: false };
     }
 
@@ -206,31 +251,37 @@ export class PolylineMesh extends BatchedFeatureMesh<
       );
     }
 
-    if (start_normals && g.start_normals) {
+    if (start_normal_and_length_high && g.start_normal_and_length_high) {
       geometry.setAttribute(
-        "start_normal",
-        new BufferAttribute(start_normals, g.start_normals.size),
+        "start_normal_and_length_high",
+        new BufferAttribute(
+          start_normal_and_length_high,
+          g.start_normal_and_length_high.size,
+        ),
       );
     }
-    if (
-      end_normal_and_texture_coordinate_normalization_x &&
-      g.end_normal_and_texture_coordinate_normalization_x
-    ) {
+    if (end_normal_and_segment_length && g.end_normal_and_segment_length) {
       geometry.setAttribute(
-        "end_normal_and_texture_coordinate_normalization_x",
+        "end_normal_and_segment_length",
         new BufferAttribute(
-          end_normal_and_texture_coordinate_normalization_x,
-          g.end_normal_and_texture_coordinate_normalization_x.size,
+          end_normal_and_segment_length,
+          g.end_normal_and_segment_length.size,
         ),
       );
     }
     geometry.setAttribute(
-      "right_normal_and_texture_coordinate_normalization_y",
+      "right_normal_and_line_length",
       new BufferAttribute(
-        right_normal_and_texture_coordinate_normalization_y,
-        g.right_normal_and_texture_coordinate_normalization_y.size,
+        right_normal_and_line_length,
+        g.right_normal_and_line_length.size,
       ),
     );
+    if (lineDistanceAndEnds && g.line_distance_and_ends) {
+      this._pendingLineDistanceAndEnds = new BufferAttribute(
+        lineDistanceAndEnds,
+        g.line_distance_and_ends.size,
+      );
+    }
 
     if (batchIds) {
       geometry.setAttribute(
@@ -259,6 +310,11 @@ export class PolylineMesh extends BatchedFeatureMesh<
     // no CPU read survives the first upload. Drop the JS-heap copies to keep a
     // single resident (GPU) copy — see releaseGeometryArraysAfterUpload for the
     // context-loss trade-off.
+    if (lineSegments) {
+      this._lineSegmentTexture.value =
+        createLineSegmentTextureReleasedOnUpload(lineSegments);
+    }
+
     releaseGeometryArraysAfterUpload(geometry);
 
     return { success: true, useRTE };
@@ -300,6 +356,8 @@ export class PolylineMesh extends BatchedFeatureMesh<
         addHeight: meshMaterial.height ?? 0,
         width: meshMaterial.width,
         maxWidth: meshMaterial.maxWidth,
+        lineDashAtlas: this.ctx.viewContext.getLineDashAtlasUniform(),
+        lineDashSegments: this._lineSegmentTexture,
         isTexturized,
         drapeRtSize: this.ctx.tileTextureCompositor.size,
         pickable: false,
@@ -392,6 +450,85 @@ export class PolylineMesh extends BatchedFeatureMesh<
     return true;
   }
 
+  /**
+   * Sets one feature's dash pattern. An omitted `dashArray` or `cap` takes the
+   * material's.
+   */
+  _setFeatureLineDash(
+    batchId: number,
+    dashArray: readonly number[] | undefined,
+    cap: LineCap | undefined,
+  ): boolean {
+    const previous = this._featureLineDashes.get(batchId);
+    if (
+      previous &&
+      previous.cap === cap &&
+      sameDashArray(previous.dashArray, dashArray)
+    ) {
+      return true;
+    }
+    return this._writeFeatureLineDash(
+      batchId,
+      dashArray && Array.from(dashArray),
+      cap,
+      previous?.row,
+    );
+  }
+
+  /**
+   * Registers one feature's pattern, completed by the material's, writes its
+   * row and releases `previousRow`, the row it replaces.
+   */
+  private _writeFeatureLineDash(
+    batchId: number,
+    dashArray: number[] | undefined,
+    cap: LineCap | undefined,
+    previousRow: number | undefined,
+  ): boolean {
+    const { viewContext } = this.ctx;
+    // The write turns on the batch dash path, which reads the attribute.
+    this._attachLineDistanceAndEnds();
+    const row = viewContext.registerLineDash(
+      dashArray ?? this._dashArray,
+      cap ?? this._cap,
+    );
+    if (!this._updateBatchAttribute(batchId, "lineDash", row)) {
+      viewContext.releaseLineDash(row);
+      return false;
+    }
+    if (previousRow !== undefined) viewContext.releaseLineDash(previousRow);
+    this._featureLineDashes.set(batchId, { row, dashArray, cap });
+    return true;
+  }
+
+  private _setMaterialLineDash(
+    dashArray: number[] | undefined,
+    cap: LineCap,
+  ): void {
+    const { viewContext } = this.ctx;
+    const previousRow = this._dashRow;
+    this._dashArray = dashArray;
+    this._cap = cap;
+    this._dashRow = viewContext.registerLineDash(dashArray, cap);
+    if (this._dashRow !== SOLID_DASH_ROW) this._attachLineDistanceAndEnds();
+    // A feature that sets only half of its pattern follows the material's
+    // other half.
+    for (const [batchId, dash] of this._featureLineDashes) {
+      if (dash.dashArray === undefined || dash.cap === undefined) {
+        this._writeFeatureLineDash(batchId, dash.dashArray, dash.cap, dash.row);
+      }
+    }
+    viewContext.releaseLineDash(previousRow);
+  }
+
+  private _attachLineDistanceAndEnds(): void {
+    const attribute = this._pendingLineDistanceAndEnds;
+    if (!attribute) return;
+    this._pendingLineDistanceAndEnds = undefined;
+    this.geometry.setAttribute("line_distance_and_ends", attribute);
+    releaseAttributeAfterUpload(attribute);
+  }
+
   _update(material: PolylineMaterial, active: boolean) {
     // If geometry initialization failed, keep mesh permanently invisible
     // to prevent WebGL errors from missing attributes/buffers
@@ -418,6 +555,12 @@ export class PolylineMesh extends BatchedFeatureMesh<
 
     const base = enhancer.states();
 
+    const dashArray = material.dashArray;
+    const cap = (material.cap as LineCap | undefined) ?? "butt";
+    if (cap !== this._cap || !sameDashArray(this._dashArray, dashArray)) {
+      this._setMaterialLineDash(dashArray && Array.from(dashArray), cap);
+    }
+
     // Build update props from material
     const minMaxHeights = material.__internal__?.minMaxHeights;
     enhancer.update({
@@ -432,6 +575,7 @@ export class PolylineMesh extends BatchedFeatureMesh<
         addHeight: material.height,
         width: material.width,
         maxWidth: material.maxWidth,
+        dashRow: this._dashRow,
         transparent: material.transparent,
         opacity: material.opacity,
         depthWrite: material.depthWrite,
@@ -521,10 +665,19 @@ export class PolylineMesh extends BatchedFeatureMesh<
     cloned.geometry = this.geometry;
     cloned.material = this.material;
     cloned._enhancedMaterial = this._enhancedMaterial;
+    cloned._pendingLineDistanceAndEnds = this._pendingLineDistanceAndEnds;
     return cloned;
   }
 
   dispose() {
-    this.ctx.viewContext.removeShadowMaterial(this.material);
+    this._lineSegmentTexture.value?.dispose();
+    const { viewContext } = this.ctx;
+    viewContext.releaseLineDash(this._dashRow);
+    this._dashRow = SOLID_DASH_ROW;
+    for (const { row } of this._featureLineDashes.values()) {
+      viewContext.releaseLineDash(row);
+    }
+    this._featureLineDashes.clear();
+    viewContext.removeShadowMaterial(this.material);
   }
 }

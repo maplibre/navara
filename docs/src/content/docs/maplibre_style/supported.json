@@ -160,10 +160,10 @@
           "status": "✅"
         },
         "text-halo-color": {
-          "status": "⚠️ Evaluated once at layer construction"
+          "status": "⚠️ Follows zoom, but is the same for every feature in the layer"
         },
         "text-halo-width": {
-          "status": "⚠️ Evaluated once at layer construction"
+          "status": "⚠️ Follows zoom, but is the same for every feature in the layer"
         },
         "text-halo-blur": {
           "status": "❌"
@@ -207,7 +207,7 @@
           "status": "❌"
         },
         "icon-anchor": {
-          "status": "❌"
+          "status": "⚠️ Follows zoom, but is the same for every feature in the layer"
         },
         "text-offset": {
           "status": "❌"
@@ -221,31 +221,61 @@
         "icon-rotate": {
           "status": "✅"
         },
+        "symbol-sort-key": {
+          "status": "⚠️ Sets placement priority only, not draw order"
+        },
         "symbol-placement": {
-          "status": "⚠️ Evaluated once at layer construction"
+          "status": "⚠️ Line placement labels line geometry only, not polygon outlines"
         },
         "symbol-spacing": {
           "status": "⚠️ Evaluated once at layer construction"
         },
-        "text-rotation-alignment": {
-          "status": "⚠️ Evaluated once at layer construction"
+        "text-transform": {
+          "status": "✅"
         },
-        "text-pitch-alignment": {
-          "status": "⚠️ Evaluated once at layer construction"
+        "text-max-width": {
+          "status": "⚠️ Follows zoom, but is the same for every feature in the layer"
         },
-        "text-keep-upright": {
-          "status": "⚠️ Evaluated once at layer construction"
+        "text-justify": {
+          "status": "⚠️ Follows zoom, but is the same for every feature in the layer; auto is centered"
         },
         "text-max-angle": {
-          "status": "⚠️ Evaluated once at layer construction"
+          "status": "✅"
+        },
+        "text-keep-upright": {
+          "status": "✅"
+        },
+        "text-rotation-alignment": {
+          "status": "✅"
+        },
+        "text-pitch-alignment": {
+          "status": "✅"
         },
         "icon-rotation-alignment": {
-          "status": "⚠️ Evaluated once at layer construction"
+          "status": "⚠️ Evaluated once at layer construction on line placement"
         },
         "icon-pitch-alignment": {
-          "status": "⚠️ Evaluated once; on-screen icons turn by ground bearing on lines"
+          "status": "⚠️ On-screen icons turn by ground bearing on lines"
         },
-        "symbol-sort-key": {
+        "text-allow-overlap": {
+          "status": "⚠️ Also lets other symbols overlap the text"
+        },
+        "icon-allow-overlap": {
+          "status": "⚠️ Also lets other symbols overlap the icon"
+        },
+        "text-overlap": {
+          "status": "⚠️ cooperative is treated as never"
+        },
+        "icon-overlap": {
+          "status": "⚠️ cooperative is treated as never"
+        },
+        "text-ignore-placement": {
+          "status": "❌"
+        },
+        "icon-ignore-placement": {
+          "status": "❌"
+        },
+        "text-line-height": {
           "status": "❌"
         }
       }

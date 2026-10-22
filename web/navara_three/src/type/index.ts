@@ -24,10 +24,12 @@ import type {
   SkyEnvMapPassConfig,
   TransparentPassConfig,
 } from "../layers/effect";
+import type { LineCap } from "../lineDash";
 import type { TileMesh } from "../mesh";
 import type { Source } from "../source";
 
 export type { Promise as WorkerPoolPromise } from "@navaramap/worker";
+export type { LineCap } from "../lineDash";
 
 export type Descriptions = {
   mesh?: object;
@@ -101,16 +103,21 @@ export type TextFacing = Facing;
 
 /**
  * Helper type to narrow the material fields that wasm-bindgen generates as
- * bare `string`s to their literal unions. One recursive pass covers them all.
+ * bare `string`s to their literal unions, and its typed arrays to the plain
+ * arrays the layer description accepts. One recursive pass covers them all.
  */
 type ConvertStringUnionFields<T> = {
   [K in keyof T]: K extends "geometryTypes"
     ? SourceGeometryType[] | Extract<T[K], undefined>
     : K extends "textFacing" | "billboardFacing" | "pointFacing"
       ? Facing | Extract<T[K], undefined>
-      : T[K] extends object | undefined
-        ? ConvertStringUnionFields<T[K]> | Extract<T[K], undefined>
-        : T[K];
+      : K extends "cap"
+        ? LineCap | Extract<T[K], undefined>
+        : K extends "dashArray"
+          ? number[] | Extract<T[K], undefined>
+          : T[K] extends object | undefined
+            ? ConvertStringUnionFields<T[K]> | Extract<T[K], undefined>
+            : T[K];
 };
 
 /**

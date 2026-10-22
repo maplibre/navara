@@ -6,8 +6,9 @@ use crate::{
 };
 
 use super::{
-    constants::REFERENCE_INDICES,
+    constants::{LINE_LENGTH_HIGH_STEP, REFERENCE_INDICES},
     helpers::{adjust_height, break_miter},
+    segment_table::{LINE_SEGMENT_TEXELS, append_line_segment},
 };
 
 #[derive(Clone, Debug, PartialEq)]
@@ -30,11 +31,35 @@ pub struct PolylineGeometryAttributes {
     /// RTE low-precision component of segment end positions.
     pub end_low: Option<FloatAttribute>,
 
-    pub start_normals: Option<FloatAttribute>,
-    pub end_normal_and_texture_coordinate_normalization_x: Option<FloatAttribute>,
-    pub right_normal_and_texture_coordinate_normalization_y: FloatAttribute,
+    /// xyz: segment start plane normal. w: the high part of the length so far
+    /// along the line at the segment start, in meters — a multiple of
+    /// `LINE_LENGTH_HIGH_STEP`.
+    pub start_normal_and_length_high: Option<FloatAttribute>,
+    /// xyz: segment end plane normal. w: the segment length in meters, signed
+    /// positive on the right side of the line and negative on the left.
+    pub end_normal_and_segment_length: Option<FloatAttribute>,
+    /// Volume polylines — xyz: right plane normal; w: the low part of the
+    /// length so far along the line at the segment start, in meters.
+    ///
+    /// Flat polylines — xy: miter normal; z: distance along the line in the
+    /// position's units; w: signed miter length.
+    pub right_normal_and_line_length: FloatAttribute,
     pub batch_ids: Option<FloatAttribute>,
     pub batch_index: Option<UintAttribute>,
+    /// RTE volume polylines: the segment table, one entry of
+    /// `LINE_SEGMENT_TEXELS` texels per segment rather than a vertex
+    /// attribute. See `append_line_segment` for the layout.
+    pub line_segments: Option<FloatAttribute>,
+    /// Flat polylines, per vertex: `(high, low, line length, end mask)`.
+    /// `high + low` is the distance along the original line, with `high` a
+    /// multiple of `FLAT_LINE_DISTANCE_HIGH_STEP`, in the position's units. A
+    /// line clipped out of a longer one starts at the distance its first
+    /// position carries in z, so a dash pattern lines up across the tiles it
+    /// was clipped into. The line length is that of this line, from its first
+    /// position. The end mask has bit 0 set when the first position is an end
+    /// of the line itself and bit 1 for the last one; a tile clip end and a
+    /// closed ring's seam have none.
+    pub line_distance_and_ends: Option<FloatAttribute>,
 }
 
 impl PolylineGeometryAttributes {
@@ -50,8 +75,8 @@ impl PolylineGeometryAttributes {
         Self {
             start: Some(FloatAttribute::new(vec![], 3)),
             forward_offset: Some(FloatAttribute::new(vec![], 3)),
-            start_normals: Some(FloatAttribute::new(vec![], 3)),
-            end_normal_and_texture_coordinate_normalization_x: Some(FloatAttribute::new(vec![], 4)),
+            start_normal_and_length_high: Some(FloatAttribute::new(vec![], 4)),
+            end_normal_and_segment_length: Some(FloatAttribute::new(vec![], 4)),
             batch_ids: Some(FloatAttribute::new(vec![], 1)),
             batch_index: Some(UintAttribute::new(vec![], 1)),
             position_high: Some(FloatAttribute::new(vec![], 3)),
@@ -60,6 +85,7 @@ impl PolylineGeometryAttributes {
             start_low: Some(FloatAttribute::new(vec![], 3)),
             end_high: Some(FloatAttribute::new(vec![], 3)),
             end_low: Some(FloatAttribute::new(vec![], 3)),
+            line_segments: Some(FloatAttribute::new(vec![], 4)),
             ..Default::default()
         }
     }
@@ -77,11 +103,13 @@ impl Default for PolylineGeometryAttributes {
             forward_offset: None,
             end_high: None,
             end_low: None,
-            start_normals: None,
-            end_normal_and_texture_coordinate_normalization_x: None,
-            right_normal_and_texture_coordinate_normalization_y: FloatAttribute::new(vec![], 4),
+            start_normal_and_length_high: None,
+            end_normal_and_segment_length: None,
+            right_normal_and_line_length: FloatAttribute::new(vec![], 4),
             batch_ids: None,
             batch_index: None,
+            line_segments: None,
+            line_distance_and_ends: None,
         }
     }
 }
@@ -162,9 +190,14 @@ pub(super) fn generate_geometry_attributes(
     } else {
         None
     };
-    let mut start_normals = vec![0.; array_size_vec3];
-    let mut end_normal_and_texture_coordinate_normalization_x = vec![0.; array_size_vec4];
-    let mut right_normal_and_texture_coordinate_normalization_y = vec![0.; array_size_vec4];
+    let mut line_segments = if use_rte {
+        Some(Vec::with_capacity(segment_count * LINE_SEGMENT_TEXELS * 4))
+    } else {
+        None
+    };
+    let mut start_normal_and_length_high = vec![0.; array_size_vec4];
+    let mut end_normal_and_segment_length = vec![0.; array_size_vec4];
+    let mut right_normal_and_line_length = vec![0.; array_size_vec4];
 
     // let cartographics_length_full = cartographics_array.len();
     // let cartographics_length = cartographics_length_full / 2;
@@ -178,27 +211,15 @@ pub(super) fn generate_geometry_attributes(
     //     0.,
     // );
 
-    // 3D
-    let positions_length = top_positions_array.len() / 3;
-    let mut segment_end_cartesian = unpack_flatten_vec3(&top_positions_array, 0);
-    let mut length_3d = 0.;
-    let mut index = 3;
-    for _ in 1..positions_length {
-        let segment_start_cartesian = segment_end_cartesian;
-        segment_end_cartesian = unpack_flatten_vec3(&top_positions_array, index);
-        length_3d += segment_start_cartesian.distance(segment_end_cartesian);
-        index += 3;
-    }
-
     // Generates segments
 
-    index = 3;
+    let mut index = 3;
 
     let mut end_bottom = unpack_flatten_vec3(&bottom_positions_array, 0);
     let mut end_top = unpack_flatten_vec3(&top_positions_array, 0);
     let mut end_geometry_normal = unpack_flatten_vec3(&normals_array, 0);
 
-    let mut length_so_far_3d = 0.;
+    let mut length_so_far: f64 = 0.;
 
     // For the bounding sphere
     // let mut sum_heights = 0.;
@@ -228,7 +249,7 @@ pub(super) fn generate_geometry_attributes(
     let mut vec3s_write_index = 0;
     let mut vec4s_write_index = 0;
 
-    for _ in 0..segment_count {
+    for segment in 0..segment_count {
         let start_bottom = end_bottom;
         let start_top = end_top;
         let mut start_geometry_normal = end_geometry_normal;
@@ -252,14 +273,25 @@ pub(super) fn generate_geometry_attributes(
          * the line on terrain":
          * - position of start + offset to end
          * - start, end, and right-facing planes
-         * - encoded texture coordinate offsets(TODO)
+         * - segment length and length so far along the line, in meters
          ****************************************/
 
-        /* 3D */
-        let segment_length_3d = start_top.distance(end_top);
+        let segment_length = start_bottom.distance(end_bottom);
+        let length_so_far_high =
+            (length_so_far / LINE_LENGTH_HIGH_STEP).floor() * LINE_LENGTH_HIGH_STEP;
+        let length_so_far_low = length_so_far - length_so_far_high;
 
-        // TODO: Support the encoded vertex for f64.
-        // let encoded_start = EncodedVec3::new(...);
+        if let Some(ref mut table) = line_segments {
+            append_line_segment(
+                table,
+                start_bottom,
+                end_bottom,
+                length_so_far_high,
+                length_so_far_low,
+                segment,
+                closed_ring,
+            );
+        }
 
         let forward_offset = end_bottom - start_bottom;
         let forward = forward_offset.normalize();
@@ -271,9 +303,6 @@ pub(super) fn generate_geometry_attributes(
 
         let end_up = (end_top - end_bottom).normalize();
         let end_plane_normal = end_geometry_normal.cross(end_up).normalize();
-
-        let tex_coords_normal_3d_x = segment_length_3d / length_3d;
-        let tex_coords_normal_3d_y = length_so_far_3d / length_3d;
 
         // Adjust height for actual rendering
         // The actual height is updated by shader uniform.
@@ -292,7 +321,6 @@ pub(super) fn generate_geometry_attributes(
             let w_index = vec4_index + 3;
 
             let right_plane_side = if j < 4 { 1. } else { -1. };
-            let top_bottom_side = if [2, 3, 6, 7].contains(&j) { 1.0 } else { -1. };
 
             append_flatten_vec3_with_index(&mut starts_array, &start_bottom, vec3_index);
             // Store f64 start for RTE encoding using unadjusted coordinates
@@ -310,27 +338,26 @@ pub(super) fn generate_geometry_attributes(
                 f64_ends.push(end_bottom.y);
                 f64_ends.push(end_bottom.z);
             }
-            append_flatten_vec3_with_index(&mut start_normals, &start_plane_normal, vec3_index);
+            append_flatten_vec3_with_index(
+                &mut start_normal_and_length_high,
+                &start_plane_normal,
+                vec4_index,
+            );
+            start_normal_and_length_high[w_index] = length_so_far_high as f32;
 
             append_flatten_vec3_with_index(
-                &mut end_normal_and_texture_coordinate_normalization_x,
+                &mut end_normal_and_segment_length,
                 &end_plane_normal,
                 vec4_index,
             );
-            end_normal_and_texture_coordinate_normalization_x[w_index] =
-                (tex_coords_normal_3d_x * right_plane_side) as f32;
+            end_normal_and_segment_length[w_index] = (segment_length * right_plane_side) as f32;
 
             append_flatten_vec3_with_index(
-                &mut right_normal_and_texture_coordinate_normalization_y,
+                &mut right_normal_and_line_length,
                 &right_normal,
                 vec4_index,
             );
-            let mut tex_coord_normal = tex_coords_normal_3d_y * top_bottom_side;
-            // TODO: I don't know why this is necessary. This might be unnecessary.
-            if tex_coord_normal == 0. && top_bottom_side < 0. {
-                tex_coord_normal = 9.; // Some value greater than 1.0.
-            }
-            right_normal_and_texture_coordinate_normalization_y[w_index] = tex_coord_normal as f32;
+            right_normal_and_line_length[w_index] = length_so_far_low as f32;
         }
 
         if let Some(ref mut f64_positions) = positions_f64 {
@@ -414,7 +441,7 @@ pub(super) fn generate_geometry_attributes(
 
         vec3s_write_index += 24;
         vec4s_write_index += 32;
-        length_so_far_3d += segment_length_3d;
+        length_so_far += segment_length;
     }
 
     index = 0;
@@ -442,17 +469,13 @@ pub(super) fn generate_geometry_attributes(
         forward_offset: Some(FloatAttribute::new(forward_offsets, 3)),
         end_high,
         end_low,
-        start_normals: Some(FloatAttribute::new(start_normals, 3)),
-        end_normal_and_texture_coordinate_normalization_x: Some(FloatAttribute::new(
-            end_normal_and_texture_coordinate_normalization_x,
-            4,
-        )),
-        right_normal_and_texture_coordinate_normalization_y: FloatAttribute::new(
-            right_normal_and_texture_coordinate_normalization_y,
-            4,
-        ),
+        start_normal_and_length_high: Some(FloatAttribute::new(start_normal_and_length_high, 4)),
+        end_normal_and_segment_length: Some(FloatAttribute::new(end_normal_and_segment_length, 4)),
+        right_normal_and_line_length: FloatAttribute::new(right_normal_and_line_length, 4),
         batch_ids: None,
         batch_index: None,
+        line_segments: line_segments.map(|table| FloatAttribute::new(table, 4)),
+        line_distance_and_ends: None,
     };
 
     // TODO: Bounding sphere

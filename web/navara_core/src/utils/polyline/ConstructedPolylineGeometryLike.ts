@@ -22,17 +22,19 @@ export class ConstructedPolylineGeometryLike {
   end_high_size: number | undefined;
   end_low: Float32Array | undefined;
   end_low_size: number | undefined;
-  start_normals: Float32Array | undefined;
-  start_normals_size: number | undefined;
-  end_normal_and_texture_coordinate_normalization_x: Float32Array | undefined;
-  end_normal_and_texture_coordinate_normalization_x_size: number | undefined;
-  right_normal_and_texture_coordinate_normalization_y: Float32Array;
-  right_normal_and_texture_coordinate_normalization_y_size: number;
+  start_normal_and_length_high: Float32Array | undefined;
+  start_normal_and_length_high_size: number | undefined;
+  end_normal_and_segment_length: Float32Array | undefined;
+  end_normal_and_segment_length_size: number | undefined;
+  right_normal_and_line_length: Float32Array;
+  right_normal_and_line_length_size: number;
   batch_id: Float32Array | undefined;
   batch_id_size: number | undefined;
   batch_index: Uint32Array | undefined;
   batch_index_size: number | undefined;
   indices: Uint32Array;
+  line_segments: Float32Array | undefined;
+  line_distance_and_ends: Float32Array | undefined;
 
   constructor(t: ConstructedPolylineGeometry) {
     const extent = t.extent;
@@ -56,22 +58,27 @@ export class ConstructedPolylineGeometryLike {
     this.end_high_size = t.end_high_size();
     this.end_low = t.end_low()?.slice();
     this.end_low_size = t.end_low_size();
-    this.start_normals = t.start_normals()?.slice();
-    this.start_normals_size = t.start_normals_size();
-    this.end_normal_and_texture_coordinate_normalization_x = t
-      .end_normal_and_texture_coordinate_normalization_x()
+    this.start_normal_and_length_high = t
+      .start_normal_and_length_high()
       ?.slice();
-    this.end_normal_and_texture_coordinate_normalization_x_size =
-      t.end_normal_and_texture_coordinate_normalization_x_size();
-    this.right_normal_and_texture_coordinate_normalization_y = t
-      .right_normal_and_texture_coordinate_normalization_y()
+    this.start_normal_and_length_high_size =
+      t.start_normal_and_length_high_size();
+    this.end_normal_and_segment_length = t
+      .end_normal_and_segment_length()
+      ?.slice();
+    this.end_normal_and_segment_length_size =
+      t.end_normal_and_segment_length_size();
+    this.right_normal_and_line_length = t
+      .right_normal_and_line_length()
       .slice();
-    this.right_normal_and_texture_coordinate_normalization_y_size =
-      t.right_normal_and_texture_coordinate_normalization_y_size();
+    this.right_normal_and_line_length_size =
+      t.right_normal_and_line_length_size();
     this.batch_id = t.batch_id()?.slice();
     this.batch_id_size = t.batch_id_size();
     this.batch_index = t.batch_index()?.slice();
     this.batch_index_size = t.batch_index_size();
     this.indices = t.indices().slice();
+    this.line_segments = t.line_segments()?.slice();
+    this.line_distance_and_ends = t.line_distance_and_ends()?.slice();
   }
 }

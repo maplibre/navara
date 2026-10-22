@@ -1,6 +1,27 @@
 import { describe, it, expect } from "vitest";
 
-import { expressionUsesZoom } from "./expressionHelpers";
+import {
+  expressionUsesGeometryType,
+  expressionUsesZoom,
+} from "./expressionHelpers";
+
+describe("expressionUsesGeometryType", () => {
+  it("detects legacy $type and geometry-type expressions", () => {
+    expect(expressionUsesGeometryType(["==", "$type", "Point"])).toBe(true);
+    expect(
+      expressionUsesGeometryType([
+        "all",
+        ["has", "name"],
+        ["==", ["geometry-type"], "LineString"],
+      ]),
+    ).toBe(true);
+  });
+
+  it("ignores filters that only test properties", () => {
+    expect(expressionUsesGeometryType(["!=", "name", "x"])).toBe(false);
+    expect(expressionUsesGeometryType(undefined)).toBe(false);
+  });
+});
 
 describe("expressionUsesZoom", () => {
   describe("Modern expressions", () => {

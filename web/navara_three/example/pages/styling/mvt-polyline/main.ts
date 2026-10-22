@@ -114,17 +114,14 @@ const run = async () => {
 
           const code = treeInfo?.value[0]?.value;
 
-          // Color based on street tree presence
-          const color = (() => {
-            // Has street trees
-            if (code === "1") {
-              return 0x00ff00;
-            }
-            return 0x777777;
-          })();
+          // Color and dash pattern based on street tree presence: a solid
+          // green line with street trees, a dashed gray one without.
+          const hasStreetTrees = code === "1";
 
           return {
-            color: new Color().setHex(color),
+            color: new Color().setHex(hasStreetTrees ? 0x00ff00 : 0x777777),
+            // Dash and gap lengths in line widths; an empty array is solid.
+            dashArray: hasStreetTrees ? [] : [3, 1.5],
           };
         },
         { filters: ["attributes"] },

@@ -23,7 +23,7 @@ export const POLYGON_BATCH_SUPPORT: BatchTextureSupport = {
 export const POLYLINE_BATCH_SUPPORT: BatchTextureSupport = {
   // No extrudedHeight, and no emissive: polyline.frag has no emissive
   // G-buffer output.
-  scalars: ["height", "lineWidth"],
+  scalars: ["height", "lineWidth", "lineDash"],
   vec3s: ["color"],
 };
 

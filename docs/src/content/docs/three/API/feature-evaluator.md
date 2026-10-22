@@ -144,6 +144,8 @@ The callback function can return an object containing the following properties:
 | `extrudedHeight` | `number` | Polygon extrusion height (meters) |
 | `text` | `string` | Label text content (for text/label features) |
 | `width` | `number` | Line width (pixels, for polyline features) |
+| `dashArray` | `number[]` | Dash and gap lengths in line widths (for polyline features). An empty array draws the feature solid. Overrides the material's [`dashArray`](../../../three/material/polyline-material/#dasharray) |
+| `cap` | `"butt" \| "round" \| "square"` | Shape of the ends of each dash (for polyline features). Overrides the material's [`cap`](../../../three/material/polyline-material/#cap) |
 | `size` | `number` | Point/text size (meters or pixels, for point/text features) |
 | `letterSpacing` | `number` | Extra space between characters in ems (for text features). Overrides the material's [`letterSpacing`](../../../three/material/text-material/#letterspacing) |
 | `opacity` | `number` | Feature opacity, range 0.0-1.0 (for polygons/points/billboards/models/text) |

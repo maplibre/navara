@@ -77,15 +77,17 @@ mod test {
                 forward_offset: None,
                 end_high: None,
                 end_low: None,
-                start_normals: None,
-                end_normal_and_texture_coordinate_normalization_x: None,
-                right_normal_and_texture_coordinate_normalization_y: TransferableFloatAttribute {
+                start_normal_and_length_high: None,
+                end_normal_and_segment_length: None,
+                right_normal_and_line_length: TransferableFloatAttribute {
                     data: buf.new_f32(vec![0.]),
                     size: 4,
                 },
                 batch_ids: None,
                 batch_index: None,
                 indices: buf.new_u32(vec![0]),
+                line_segments: None,
+                line_distance_and_ends: None,
             },
         }
     }

@@ -118,4 +118,46 @@ describe("resolveSymbolOrientation", () => {
     expect(resolved.text.maxAngle).toBe(30);
     expect(resolved.text.keepUpright).toBe(false);
   });
+
+  it("evaluates alignments at the given zoom, geometry properties at the construction zoom", () => {
+    const step = (below: unknown, above: unknown) => [
+      "step",
+      ["zoom"],
+      below,
+      14,
+      above,
+    ];
+    const layer = symbol({
+      "symbol-placement": step("line", "point"),
+      "symbol-spacing": step(100, 900),
+      "text-rotation-alignment": step("map", "viewport"),
+      "text-keep-upright": step(true, false),
+      "icon-rotation-alignment": step("map", "viewport"),
+    });
+
+    const atConstruction = resolveSymbolOrientation(layer, engine);
+    const zoomedIn = resolveSymbolOrientation(layer, engine, 15);
+
+    expect(zoomedIn.placement).toBe(atConstruction.placement);
+    expect(zoomedIn.spacing).toBe(100);
+    expect(zoomedIn.text).toMatchObject({
+      rotateWithCamera: true,
+      spreadGlyphs: false,
+      keepUpright: false,
+    });
+    // Along a line, the icon's rotation alignment sets rotateToLine, which is
+    // baked into geometry.
+    expect(zoomedIn.icon).toEqual(atConstruction.icon);
+  });
+
+  it("lets a point-placed icon's rotation alignment follow zoom", () => {
+    const resolved = resolveSymbolOrientation(
+      symbol({
+        "icon-rotation-alignment": ["step", ["zoom"], "viewport", 14, "map"],
+      }),
+      engine,
+      15,
+    );
+    expect(resolved.icon.rotateWithCamera).toBe(false);
+  });
 });

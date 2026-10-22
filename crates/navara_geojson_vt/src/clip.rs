@@ -60,6 +60,7 @@ pub fn clip(
                     intersect,
                     false,
                     ring.size,
+                    ring.line_start,
                     &mut new_rings,
                 );
                 if !new_rings.is_empty() {
@@ -95,6 +96,7 @@ pub fn clip(
                         intersect,
                         false,
                         ring.size,
+                        ring.line_start,
                         &mut new_rings,
                     );
                 }
@@ -206,7 +208,8 @@ fn clip_multi_point(
 
 /// Clips a line (flat coords [x,y,z,...]) to a 1D range [k1, k2] along the given axis.
 /// Produces zero or more Ring segments. `orig_size` is inherited by new Ring segments
-/// for the small-geometry simplification check.
+/// for the small-geometry simplification check. `line_start` is the distance along the
+/// original line at `coords`' first point; each new segment records its own.
 #[allow(clippy::too_many_arguments)]
 fn clip_line(
     coords: &[f64],
@@ -216,6 +219,7 @@ fn clip_line(
     intersect: fn(&[f64], &[f64], f64) -> f64,
     is_polygon: bool,
     orig_size: f64,
+    line_start: f64,
     result: &mut Vec<Ring>,
 ) {
     let n = coords.len() / 3;
@@ -223,14 +227,17 @@ fn clip_line(
         return;
     }
 
-    let new_ring = || {
+    let new_ring = |start: f64| {
         let mut r = Ring::new();
         r.size = orig_size;
+        r.line_start = start;
         r.coords.reserve(coords.len());
         r
     };
 
     let mut current_ring: Option<Ring> = None;
+    // Distance along the original line at the previous point.
+    let mut b_distance = line_start;
 
     for i in 0..n {
         let ax = coords[i * 3];
@@ -241,7 +248,7 @@ fn clip_line(
         if i == 0 {
             // First point: just add it if inside
             if ak >= k1 && ak <= k2 {
-                let ring = current_ring.get_or_insert_with(&new_ring);
+                let ring = current_ring.get_or_insert_with(|| new_ring(line_start));
                 ring.coords.extend_from_slice(&[ax, ay, az]);
             }
             continue;
@@ -257,6 +264,10 @@ fn clip_line(
 
         let a_pt = &[ax, ay, az];
         let b_pt = &[bx, by, bz];
+
+        let segment_length = ((ax - bx).powi(2) + (ay - by).powi(2)).sqrt();
+        // Distance along the original line at `a + (b - a) * t`.
+        let distance_at = |t: f64| b_distance + segment_length * (1.0 - t);
 
         if b_inside != a_inside {
             // Edge crosses at least one boundary
@@ -281,13 +292,13 @@ fn clip_line(
                 let boundary = if bk < k1 { k1 } else { k2 };
                 let t = intersect(a_pt, b_pt, boundary);
                 let (ix, iy, iz) = interp_point(a_pt, b_pt, t, axis, boundary);
-                let ring = current_ring.get_or_insert_with(&new_ring);
+                let ring = current_ring.get_or_insert_with(|| new_ring(distance_at(t)));
                 ring.coords.extend_from_slice(&[ix, iy, iz]);
                 ring.coords.extend_from_slice(&[ax, ay, az]);
             }
         } else if a_inside {
             // Both inside: just add current point
-            let ring = current_ring.get_or_insert_with(&new_ring);
+            let ring = current_ring.get_or_insert_with(|| new_ring(distance_at(0.0)));
             ring.coords.extend_from_slice(&[ax, ay, az]);
         } else {
             // Both outside - but the segment might pass through the clip region
@@ -303,7 +314,7 @@ fn clip_line(
                 let (ix2, iy2, iz2) = interp_point(a_pt, b_pt, t2, axis, exit_k);
 
                 // Add in order from b to a (t1 closer to b, t2 closer to a)
-                let ring = current_ring.get_or_insert_with(&new_ring);
+                let ring = current_ring.get_or_insert_with(|| new_ring(distance_at(t1.max(t2))));
                 // Entry and exit in order along the segment (b→a)
                 if t1 > t2 {
                     ring.coords.extend_from_slice(&[ix1, iy1, iz1]);
@@ -322,6 +333,7 @@ fn clip_line(
             }
             // else: both outside on the same side, skip
         }
+        b_distance += segment_length;
     }
 
     if let Some(ring) = current_ring.take()
@@ -367,6 +379,7 @@ fn clip_polygon(
                 area: ring.area,
                 dist: ring.dist,
                 size: ring.size, // Preserve original size for small-geometry check
+                line_start: 0.0,
             };
             // Recalculate area for clipped ring (needed for winding direction)
             new_ring.area = calc_ring_area_from_coords(&new_ring.coords);
@@ -711,6 +724,7 @@ mod tests {
             area: 0.25,
             dist: 0.0,
             size: 0.25,
+            line_start: 0.0,
         };
 
         let feature = make_feature(
@@ -767,7 +781,17 @@ mod tests {
         // Line entirely within [0.25, 0.75]
         let coords = vec![0.3, 0.1, 0.0, 0.5, 0.2, 0.0, 0.7, 0.3, 0.0];
         let mut result = Vec::new();
-        clip_line(&coords, 0.25, 0.75, 0, intersect_x, false, 0.0, &mut result);
+        clip_line(
+            &coords,
+            0.25,
+            0.75,
+            0,
+            intersect_x,
+            false,
+            0.0,
+            0.0,
+            &mut result,
+        );
         assert_eq!(result.len(), 1);
         assert_eq!(result[0].coords.len() / 3, 3); // all 3 points kept
     }
@@ -777,7 +801,17 @@ mod tests {
         // Line entirely outside [0.5, 1.0]
         let coords = vec![0.1, 0.1, 0.0, 0.2, 0.2, 0.0, 0.3, 0.3, 0.0];
         let mut result = Vec::new();
-        clip_line(&coords, 0.5, 1.0, 0, intersect_x, false, 0.0, &mut result);
+        clip_line(
+            &coords,
+            0.5,
+            1.0,
+            0,
+            intersect_x,
+            false,
+            0.0,
+            0.0,
+            &mut result,
+        );
         assert!(result.is_empty());
     }
 
@@ -786,7 +820,17 @@ mod tests {
         // Line goes from outside to inside to outside: x = 0.0, 0.5, 1.0
         let coords = vec![0.0, 0.0, 0.0, 0.5, 0.5, 0.0, 1.0, 1.0, 0.0];
         let mut result = Vec::new();
-        clip_line(&coords, 0.25, 0.75, 0, intersect_x, false, 0.0, &mut result);
+        clip_line(
+            &coords,
+            0.25,
+            0.75,
+            0,
+            intersect_x,
+            false,
+            0.0,
+            0.0,
+            &mut result,
+        );
         assert_eq!(result.len(), 1);
         // First point should be the entry intersection at x=0.25
         assert!((result[0].coords[0] - 0.25).abs() < 1e-10);
@@ -806,7 +850,17 @@ mod tests {
             0.5, 0.4, 0.0, // inside
         ];
         let mut result = Vec::new();
-        clip_line(&coords, 0.2, 0.7, 0, intersect_x, false, 0.0, &mut result);
+        clip_line(
+            &coords,
+            0.2,
+            0.7,
+            0,
+            intersect_x,
+            false,
+            0.0,
+            0.0,
+            &mut result,
+        );
         assert_eq!(result.len(), 2, "Expected 2 segments");
     }
 
@@ -815,7 +869,17 @@ mod tests {
         // Single segment from x=0.0 to x=1.0 crossing both k1=0.25 and k2=0.75
         let coords = vec![0.0, 0.0, 0.0, 1.0, 1.0, 0.0];
         let mut result = Vec::new();
-        clip_line(&coords, 0.25, 0.75, 0, intersect_x, false, 0.0, &mut result);
+        clip_line(
+            &coords,
+            0.25,
+            0.75,
+            0,
+            intersect_x,
+            false,
+            0.0,
+            0.0,
+            &mut result,
+        );
         assert_eq!(result.len(), 1);
         // Should have exactly 2 points: entry and exit
         assert_eq!(result[0].coords.len() / 3, 2);
@@ -824,12 +888,77 @@ mod tests {
     }
 
     #[test]
+    fn clip_line_records_where_each_piece_starts_on_the_line() {
+        // Enters at x=0.25 between its first two points.
+        let coords = vec![0.0, 0.0, 0.0, 0.5, 0.0, 0.0, 1.0, 0.0, 0.0];
+        let mut result = Vec::new();
+        clip_line(
+            &coords,
+            0.25,
+            0.75,
+            0,
+            intersect_x,
+            false,
+            0.0,
+            10.0,
+            &mut result,
+        );
+        assert_eq!(result.len(), 1);
+        assert!((result[0].line_start - 10.25).abs() < 1e-12);
+
+        // Crosses both boundaries on one segment.
+        let coords = vec![0.0, 0.0, 0.0, 1.0, 0.0, 0.0];
+        let mut result = Vec::new();
+        clip_line(
+            &coords,
+            0.25,
+            0.75,
+            0,
+            intersect_x,
+            false,
+            0.0,
+            10.0,
+            &mut result,
+        );
+        assert!((result[0].line_start - 10.25).abs() < 1e-12);
+
+        // Leaves and comes back: the second piece starts past the detour.
+        let coords = vec![0.5, 0.0, 0.0, 1.0, 0.0, 0.0, 0.5, 0.25, 0.0];
+        let mut result = Vec::new();
+        clip_line(
+            &coords,
+            0.25,
+            0.75,
+            0,
+            intersect_x,
+            false,
+            0.0,
+            0.0,
+            &mut result,
+        );
+        assert_eq!(result.len(), 2);
+        assert_eq!(result[0].line_start, 0.0);
+        let second = 0.5 + (0.25f64.powi(2) + 0.125f64.powi(2)).sqrt();
+        assert!((result[1].line_start - second).abs() < 1e-12);
+    }
+
+    #[test]
     fn clip_line_z_at_intersection() {
         // Line from (0.0, 0.0, 10.0) to (1.0, 1.0, 20.0)
         // Clip at x=0.5: intersection z should be 1.0 (always important)
         let coords = vec![0.0, 0.0, 10.0, 1.0, 1.0, 20.0];
         let mut result = Vec::new();
-        clip_line(&coords, 0.5, 1.0, 0, intersect_x, false, 0.0, &mut result);
+        clip_line(
+            &coords,
+            0.5,
+            1.0,
+            0,
+            intersect_x,
+            false,
+            0.0,
+            0.0,
+            &mut result,
+        );
         assert_eq!(result.len(), 1);
         // Intersection points always get z=1.0 (simplification importance)
         assert!(
@@ -843,7 +972,17 @@ mod tests {
     fn clip_line_empty_input() {
         let coords: Vec<f64> = Vec::new();
         let mut result = Vec::new();
-        clip_line(&coords, 0.0, 1.0, 0, intersect_x, false, 0.0, &mut result);
+        clip_line(
+            &coords,
+            0.0,
+            1.0,
+            0,
+            intersect_x,
+            false,
+            0.0,
+            0.0,
+            &mut result,
+        );
         assert!(result.is_empty());
     }
 
@@ -851,7 +990,17 @@ mod tests {
     fn clip_line_single_point_inside() {
         let coords = vec![0.5, 0.5, 0.0];
         let mut result = Vec::new();
-        clip_line(&coords, 0.0, 1.0, 0, intersect_x, false, 0.0, &mut result);
+        clip_line(
+            &coords,
+            0.0,
+            1.0,
+            0,
+            intersect_x,
+            false,
+            0.0,
+            0.0,
+            &mut result,
+        );
         assert_eq!(result.len(), 1);
         assert_eq!(result[0].coords.len() / 3, 1);
     }
@@ -860,7 +1009,17 @@ mod tests {
     fn clip_line_single_point_outside() {
         let coords = vec![1.5, 0.5, 0.0];
         let mut result = Vec::new();
-        clip_line(&coords, 0.0, 1.0, 0, intersect_x, false, 0.0, &mut result);
+        clip_line(
+            &coords,
+            0.0,
+            1.0,
+            0,
+            intersect_x,
+            false,
+            0.0,
+            0.0,
+            &mut result,
+        );
         assert!(result.is_empty());
     }
 
@@ -869,7 +1028,17 @@ mod tests {
         // Clip along y-axis
         let coords = vec![0.5, 0.0, 0.0, 0.5, 0.5, 0.0, 0.5, 1.0, 0.0];
         let mut result = Vec::new();
-        clip_line(&coords, 0.25, 0.75, 1, intersect_y, false, 0.0, &mut result);
+        clip_line(
+            &coords,
+            0.25,
+            0.75,
+            1,
+            intersect_y,
+            false,
+            0.0,
+            0.0,
+            &mut result,
+        );
         assert_eq!(result.len(), 1);
         assert!((result[0].coords[1] - 0.25).abs() < 1e-10);
         let last_idx = result[0].coords.len() - 3;
@@ -913,6 +1082,7 @@ mod tests {
             area: 0.0,
             dist: 0.0,
             size: 0.0,
+            line_start: 0.0,
         };
         let feature = make_feature(
             InternalGeometry::LineString(ring),
@@ -942,12 +1112,14 @@ mod tests {
             area: 0.0,
             dist: 0.0,
             size: 0.0,
+            line_start: 0.0,
         };
         let ring2 = Ring {
             coords: vec![0.0, 0.7, 0.0, 1.0, 0.7, 0.0],
             area: 0.0,
             dist: 0.0,
             size: 0.0,
+            line_start: 0.0,
         };
         let feature = make_feature(
             InternalGeometry::MultiLineString(vec![ring1, ring2]),
@@ -998,6 +1170,7 @@ mod tests {
             area: (x2 - x1) * (y2 - y1),
             dist: 0.0,
             size: (x2 - x1) * (y2 - y1),
+            line_start: 0.0,
         };
         make_feature(
             InternalGeometry::Polygon(vec![ring]),
@@ -1132,6 +1305,7 @@ mod tests {
             area: 0.0,
             dist: 0.0,
             size: 0.0,
+            line_start: 0.0,
         };
         let feature = make_feature(
             InternalGeometry::LineString(ring),
@@ -1190,6 +1364,7 @@ mod tests {
             area: 1.0,
             dist: 0.0,
             size: 1.0,
+            line_start: 0.0,
         };
         let feature = make_feature(
             InternalGeometry::Polygon(vec![ring]),

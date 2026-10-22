@@ -12,6 +12,7 @@ import type {
 import invariant from "tiny-invariant";
 
 import type { LayersManager } from "../layersManager";
+import { LineDashAtlas, type LineCap } from "../lineDash";
 import { type ResolvedGBufferOptions } from "../material/gbufferLayout";
 import type { PickableMesh } from "../mesh/pickableMesh";
 import type { RenderPassOrchestrator } from "../orchestrators";
@@ -73,6 +74,7 @@ export class ViewContext extends EventHandler<ViewContextEvents> {
   private _selectiveEffectRegistry: SelectiveEffectRegistry;
   private _renderPass?: CustomRenderPass;
   private _registries?: Registries;
+  private _lineDashAtlas = new LineDashAtlas();
 
   constructor(
     /** Scene containers for different rendering passes. */
@@ -230,6 +232,40 @@ export class ViewContext extends EventHandler<ViewContextEvents> {
   /** Uniform ref to the camera's inverse projection matrix. */
   getInverseProjectionMatrixUniform(): RefThree<Matrix4> {
     return this._commonUniforms.inverseProjectionMatrix;
+  }
+
+  /**
+   * Uniform ref to the view's line dash atlas, which holds one dash pattern
+   * per row. Rows come from {@link registerLineDash}.
+   */
+  getLineDashAtlasUniform(): RefThree<Texture> {
+    return this._lineDashAtlas.uniform;
+  }
+
+  /**
+   * Returns the row of the line dash atlas holding the pattern of `dashArray`
+   * (alternating dash and gap lengths in line widths) drawn with `cap`, adding
+   * it on first use. A solid line is row `0`. Every call holds the row until a
+   * matching {@link releaseLineDash}.
+   */
+  registerLineDash(
+    dashArray: readonly number[] | null | undefined,
+    cap?: LineCap,
+  ): number {
+    return this._lineDashAtlas.register(dashArray, cap);
+  }
+
+  /**
+   * Ends one {@link registerLineDash} of `row`, once nothing draws with it.
+   * A row no registration holds is reused for another pattern.
+   */
+  releaseLineDash(row: number): void {
+    this._lineDashAtlas.release(row);
+  }
+
+  /** @internal */
+  _dispose(): void {
+    this._lineDashAtlas.dispose();
   }
 
   /** Uniform ref to the frame timestamp passed to `preUpdate`. */

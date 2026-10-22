@@ -1,3 +1,5 @@
+import { SOLID_DASH_ROW } from "../../../../lineDash";
+
 import type { PolylineBaseProps, PolylineBaseState } from "./types";
 
 export const DEFAULT_BASE_PROPS: Required<
@@ -5,6 +7,7 @@ export const DEFAULT_BASE_PROPS: Required<
     PolylineBaseProps,
     | "batchDataTexture"
     | "minMaxHeight"
+    | "groundHeightRange"
     | "viewportAndPixelRatio"
     | "frustumNearFar"
     | "frustumRatio"
@@ -12,6 +15,8 @@ export const DEFAULT_BASE_PROPS: Required<
     | "globeDepth"
     | "globeNormal"
     | "inverseProjectionMatrix"
+    | "lineDashAtlas"
+    | "lineDashSegments"
   >
 > = {
   color: 0xffffff,
@@ -21,6 +26,7 @@ export const DEFAULT_BASE_PROPS: Required<
   addHeight: 0,
   width: 1,
   maxWidth: 1000,
+  dashRow: SOLID_DASH_ROW,
   isTexturized: false,
   drapeRtSize: 512,
   pickable: false,
@@ -45,9 +51,11 @@ export const DEFAULT_BASE_STATE: PolylineBaseState = {
   emissiveColor: DEFAULT_BASE_PROPS.emissiveColor,
   emissiveIntensity: DEFAULT_BASE_PROPS.emissiveIntensity,
   minMaxHeight: [0, 0],
+  groundHeightRange: [0, 0],
   addHeight: DEFAULT_BASE_PROPS.addHeight,
   width: DEFAULT_BASE_PROPS.width,
   maxWidth: DEFAULT_BASE_PROPS.maxWidth,
+  dashRow: DEFAULT_BASE_PROPS.dashRow,
   color: DEFAULT_BASE_PROPS.color,
   opacity: DEFAULT_BASE_PROPS.opacity,
   batchColorEnabled: DEFAULT_BASE_PROPS.batchColorEnabled,
@@ -80,9 +88,12 @@ export const updateState = (
     emissiveIntensity:
       props.emissiveIntensity ?? currentState.emissiveIntensity,
     minMaxHeight: props.minMaxHeight ?? currentState.minMaxHeight,
+    groundHeightRange:
+      props.groundHeightRange ?? currentState.groundHeightRange,
     addHeight: props.addHeight ?? currentState.addHeight,
     width: props.width ?? currentState.width,
     maxWidth: props.maxWidth ?? currentState.maxWidth,
+    dashRow: props.dashRow ?? currentState.dashRow,
     color: props.color ?? currentState.color,
     opacity: props.opacity ?? currentState.opacity,
     // batchColorEnabled can only transition from false to true, never back

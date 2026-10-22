@@ -423,6 +423,49 @@ describe("toEvaluatedValue", () => {
       expect(result.image).toBeUndefined();
     });
 
+    it("should map icon-rotate and symbol-sort-key for billboards", () => {
+      const layer: StyleLayer = { id: "test", type: "symbol", source: "test" };
+
+      const result = toEvaluatedValue(
+        layer,
+        {},
+        { "icon-image": "marker", "icon-rotate": 45, "symbol-sort-key": 3 },
+        "billboard",
+      );
+
+      expect(result.rotation).toBe(45);
+      // Lower sort keys are placed first, so they get higher priority.
+      expect(result.declutterPriority).toBe(-3);
+    });
+
+    it("should map text-rotate, text-transform and symbol-sort-key for text", () => {
+      const layer: StyleLayer = { id: "test", type: "symbol", source: "test" };
+
+      const upper = toEvaluatedValue(
+        layer,
+        {},
+        {
+          "text-field": "Main Street",
+          "text-rotate": -30,
+          "text-transform": "uppercase",
+          "symbol-sort-key": -2,
+        },
+        "text",
+      );
+      expect(upper.text).toBe("MAIN STREET");
+      expect(upper.rotation).toBe(-30);
+      expect(upper.declutterPriority).toBe(2);
+
+      const lower = toEvaluatedValue(
+        layer,
+        {},
+        { "text-field": "Main Street", "text-transform": "lowercase" },
+        "text",
+      );
+      expect(lower.text).toBe("main street");
+      expect(lower).not.toHaveProperty("declutterPriority");
+    });
+
     it("should warn and skip when geometryType is invalid (not billboard or text)", () => {
       const consoleWarnSpy = vi
         .spyOn(console, "warn")

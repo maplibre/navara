@@ -50,6 +50,21 @@ fn parse_facing(field: &str, value: &Option<String>) -> Option<navara_material::
     }
 }
 
+/// Parse a JS-facing line cap name, warning on an unknown value so the caller
+/// keeps the material's current value.
+fn parse_line_cap(value: &Option<String>) -> Option<navara_material::LineCap> {
+    let name = value.as_ref()?;
+    match navara_material::LineCap::parse(name) {
+        Some(cap) => Some(cap),
+        None => {
+            bevy_log::warn!(
+                "cap: unknown value {name:?} (expected \"butt\", \"round\" or \"square\")"
+            );
+            None
+        }
+    }
+}
+
 /// Parse a JS-facing placement name, warning on an unknown value so the caller
 /// keeps the material's current value.
 fn parse_placement(value: &Option<String>) -> Option<navara_material::Placement> {
@@ -922,6 +937,20 @@ pub struct PolylineMaterial {
     #[wasm_bindgen(js_name = maxWidth)]
     #[serde(rename = "maxWidth")]
     pub max_width: Option<f32>,
+    /// Alternating dash and gap lengths, in multiples of the line width,
+    /// repeated along the line. The pattern's period is the sum of the
+    /// entries, so an odd-length array ends in a dash that runs into the first
+    /// one. An empty array draws a solid line, which is the default.
+    #[wasm_bindgen(getter_with_clone, js_name = dashArray)]
+    #[serde(rename = "dashArray")]
+    pub dash_array: Option<Vec<f32>>,
+    /// Shape of the ends of the line and of its dashes: `"butt"` (the
+    /// default), `"round"` or `"square"`. `"round"` adds a half circle one
+    /// half line width in radius beyond both ends of the line and of every
+    /// dash, so a zero-length dash becomes a dot. `"square"` extends the ends
+    /// of the line by half a line width and leaves the dashes' ends square.
+    #[wasm_bindgen(getter_with_clone)]
+    pub cap: Option<String>,
     #[wasm_bindgen(js_name = clampToGround)]
     #[serde(rename = "clampToGround")]
     pub clamp_to_ground: Option<bool>,
@@ -994,6 +1023,8 @@ impl PolylineMaterial {
             height,
             width,
             max_width,
+            dash_array: None,
+            cap: None,
             geometry_types: None,
             __internal__,
             effect_ids: None,
@@ -1019,6 +1050,8 @@ impl PolylineMaterial {
             color: self.color.unwrap_or(other.color),
             width: self.width.unwrap_or(other.width),
             max_width: self.max_width.unwrap_or(other.max_width),
+            dash_array: self.dash_array.clone().or_else(|| other.dash_array.clone()),
+            cap: parse_line_cap(&self.cap).unwrap_or(other.cap),
             clamp_to_ground: self.clamp_to_ground.unwrap_or(other.clamp_to_ground),
             tiled: self.tiled.unwrap_or(other.tiled),
             height: self.height.unwrap_or(other.height),
@@ -1050,6 +1083,8 @@ impl From<PolylineMaterial> for navara_material::PolylineMaterial {
             color: val.color.unwrap_or(default.color),
             width: val.width.unwrap_or(default.width),
             max_width: val.max_width.unwrap_or(default.max_width),
+            cap: parse_line_cap(&val.cap).unwrap_or(default.cap),
+            dash_array: val.dash_array.or(default.dash_array),
             clamp_to_ground: val.clamp_to_ground.unwrap_or(default.clamp_to_ground),
             tiled: val.tiled.unwrap_or(default.tiled),
             height: val.height.unwrap_or(default.height),
@@ -1075,6 +1110,8 @@ impl<'a> From<&'a navara_material::PolylineMaterial> for PolylineMaterial {
             color: Some(value.color),
             width: Some(value.width),
             max_width: Some(value.max_width),
+            dash_array: value.dash_array.clone(),
+            cap: Some(value.cap.as_str().to_string()),
             clamp_to_ground: Some(value.clamp_to_ground),
             tiled: Some(value.tiled),
             height: Some(value.height),
@@ -1100,6 +1137,8 @@ impl From<navara_material::PolylineMaterial> for PolylineMaterial {
             color: Some(value.color),
             width: Some(value.width),
             max_width: Some(value.max_width),
+            cap: Some(value.cap.as_str().to_string()),
+            dash_array: value.dash_array,
             clamp_to_ground: Some(value.clamp_to_ground),
             tiled: Some(value.tiled),
             height: Some(value.height),
@@ -1749,13 +1788,13 @@ impl ModelMaterial {
 #[wasm_bindgen]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ModelInternalMaterial {
-    #[wasm_bindgen(getter_with_clone, js_name = pointCloud)]
+    #[wasm_bindgen(js_name = pointCloud)]
     #[serde(rename = "pointCloud")]
     pub point_cloud: bool,
     #[wasm_bindgen(getter_with_clone, js_name = dracoAttributes)]
     #[serde(rename = "dracoAttributes")]
     pub draco_attributes: Option<Vec<DracoAttributeId>>,
-    #[wasm_bindgen(getter_with_clone, js_name = pointCloudGeodeticNormal)]
+    #[wasm_bindgen(js_name = pointCloudGeodeticNormal)]
     #[serde(rename = "pointCloudGeodeticNormal")]
     pub point_cloud_geodetic_normal: WasmVec3,
 }

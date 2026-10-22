@@ -139,7 +139,13 @@ const drawEdge = () => {
     edge.update({ polyline: { positions } });
   } else {
     edge = view.addMesh<PolylineMeshDesc>({
-      polyline: { positions, color: DRAWING_COLOR, width: 3 },
+      polyline: {
+        positions,
+        color: DRAWING_COLOR,
+        width: 3,
+        // Dash and gap lengths in line widths.
+        dashArray: [3, 2],
+      },
       lit: false,
     });
   }

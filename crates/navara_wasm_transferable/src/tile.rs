@@ -7,7 +7,6 @@ pub struct TransferableTile {
     pub coords: TileXYZ,
     pub max_height: f64,
     pub min_height: f64,
-    #[wasm_bindgen(getter_with_clone)]
     pub cached_mesh_handle: Option<CachedMeshHandle>,
 }
 

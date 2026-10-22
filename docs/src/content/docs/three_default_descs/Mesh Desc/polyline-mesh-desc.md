@@ -215,6 +215,48 @@ A mesh draws one line. Add one mesh per part of a multi-line.
 }
 ```
 
+### dashArray
+
+**Type:** `number[]`
+
+**Description:** Lengths of the alternating dashes and gaps of the line, in multiples of the line width. The pattern repeats along the line with a period equal to the sum of the entries, following the `line-dasharray` property of the MapLibre Style Spec. An array with an odd number of entries therefore ends in a dash that joins the first one. An empty array draws a solid line.
+
+The pattern keeps its place on the line while the camera moves, and a dash is drawn up to twice as long as specified, depending on the camera distance. The pattern starts in the middle of its longest gap. Picking treats the gaps as part of the line.
+
+**Default:** `[]`
+
+**Example:**
+
+```typescript
+{
+  polyline: {
+    width: 4,
+    // 12px dashes separated by 8px gaps
+    dashArray: [3, 2],
+  }
+}
+```
+
+### cap
+
+**Type:** `"butt" | "round" | "square"`
+
+**Description:** Shape of the ends of the line and of the dashes of its [`dashArray`](#dasharray) pattern. `"round"` adds a half circle, half a line width in radius, beyond both ends of the line and of every dash. Each dash is therefore one line width longer than its `dashArray` entry, and a dash of length `0` is drawn as a dot. `"square"` extends both ends of the line by half a line width and leaves the ends of the dashes square. A closed ring has no ends.
+
+**Default:** `"butt"`
+
+**Example:**
+
+```typescript
+{
+  polyline: {
+    // A dotted line
+    dashArray: [0, 2],
+    cap: "round",
+  }
+}
+```
+
 ### color
 
 **Type:** `Color`

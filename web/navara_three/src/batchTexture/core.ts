@@ -1,12 +1,7 @@
-import {
-  Color,
-  DataTexture,
-  FloatType,
-  Material,
-  RGBAFormat,
-  type WebGLRenderer,
-} from "three";
+import { Color, type DataTexture, Material, type WebGLRenderer } from "three";
 import invariant from "tiny-invariant";
+
+import { createFloatDataTexture } from "../utils/floatDataTexture";
 
 import { batchBaseIndex } from "./layout";
 import {
@@ -42,6 +37,9 @@ function scalarDefault(key: BatchScalarKey): number {
     // Negative value indicates shader should fall back to minMaxHeightAndWidth.z
     case "lineWidth":
       return -1.0;
+    // The atlas row every view reserves for a solid line.
+    case "lineDash":
+      return 0.0;
     // Negative value indicates shader should fall back to the material size
     case "size":
       return -1.0;
@@ -205,14 +203,7 @@ function ensureTextureRows(state: BatchTextureState): Float32Array {
     data.set(old.image.data as Float32Array);
     old.dispose();
   }
-  const texture = new DataTexture(
-    data,
-    state.width,
-    height,
-    RGBAFormat,
-    FloatType,
-  );
-  texture.needsUpdate = true;
+  const texture = createFloatDataTexture(data, state.width, height);
   pendingFirstUpload.add(texture);
   textureOwners.set(texture, state);
   texture.addEventListener("dispose", () => {
@@ -653,6 +644,7 @@ export function updateBatchAttribute(
     case "height":
     case "extrudedHeight":
     case "lineWidth":
+    case "lineDash":
     case "size": {
       if (typeof value !== "number") return false;
 

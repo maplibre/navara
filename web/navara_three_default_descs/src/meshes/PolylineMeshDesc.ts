@@ -4,7 +4,9 @@ import {
   buildPolylineGeometry,
   polylineGroundVolume,
   createPolylineMaterialEnhancer,
+  SOLID_DASH_ROW,
   setupRTECallback,
+  createLineSegmentTextureReleasedOnUpload,
   type CustomObject3DEventMap,
   type GBufferName,
   type GeographicExtent,
@@ -19,6 +21,7 @@ import type { LineString } from "geojson";
 import {
   BufferAttribute,
   BufferGeometry,
+  type DataTexture,
   Matrix4,
   ShaderMaterial,
   type Object3DEventMap,
@@ -121,13 +124,22 @@ export class PolylineMeshDesc extends MeshDescWithSelectiveEffect<
   /** The transform the current geometry was built with. */
   private bakedTransform = new Matrix4();
   private enhancer?: ReturnType<typeof createPolylineMaterialEnhancer>;
+  /** The dash atlas row this mesh holds. */
+  private dashRow = SOLID_DASH_ROW;
+  /** The current geometry's segment table. */
+  private readonly lineSegments: { value: DataTexture | null } = {
+    value: null,
+  };
   private readonly ground = new GroundVolumeWatch(
     this.view,
     polylineGroundVolume,
     () => {
       if (!this.enhancer || !this.config.polyline) return;
       this.enhancer.update({
-        base: { minMaxHeight: this.minMaxHeight(this.config.polyline) },
+        base: {
+          minMaxHeight: this.minMaxHeight(this.config.polyline),
+          groundHeightRange: this.groundHeightRange(this.config.polyline),
+        },
       });
       this.emit("needsUpdate");
     },
@@ -169,6 +181,7 @@ export class PolylineMeshDesc extends MeshDescWithSelectiveEffect<
     const transform = this.composeTransform();
     const built = this.buildGeometry(style, transform);
     this.bakedTransform = transform;
+    this.setSegmentTable(built.lineSegments);
     this.ground.watch(isClampedToGround(style) ? built.extent : undefined);
     const material = new ShaderMaterial();
     material.lights = true;
@@ -200,6 +213,8 @@ export class PolylineMeshDesc extends MeshDescWithSelectiveEffect<
         globeDepth: this.ctx.getGlobeDepthTextureUniform(),
         globeNormal: this.ctx.getGlobeNormalTextureUniform(),
         inverseProjectionMatrix: this.ctx.getInverseProjectionMatrixUniform(),
+        lineDashAtlas: this.ctx.getLineDashAtlasUniform(),
+        lineDashSegments: this.lineSegments,
       },
     });
     this.enhancer = enhancer;
@@ -248,13 +263,28 @@ export class PolylineMeshDesc extends MeshDescWithSelectiveEffect<
       depthWrite: style.depthWrite,
       width: style.width,
       maxWidth: style.maxWidth,
+      dashRow: this.lineDashRow(style),
       // A clamped volume must enclose the ground, so it is never offset.
       addHeight: isClampedToGround(style) ? 0 : (style.height ?? 0),
       emissiveColor: style.emissiveColor?.toHex(),
       emissiveIntensity: style.emissiveIntensity,
       minMaxHeight: this.minMaxHeight(style),
+      groundHeightRange: this.groundHeightRange(style),
       effectIdsMask: this.effectIdsMask(),
     };
+  }
+
+  /** Registers `style`'s dash pattern, releasing the one it replaces. */
+  private lineDashRow(style: NonNullable<Description["polyline"]>): number {
+    const previous = this.dashRow;
+    this.dashRow = this.ctx.registerLineDash(style.dashArray, style.cap);
+    this.ctx.releaseLineDash(previous);
+    return this.dashRow;
+  }
+
+  private setSegmentTable(table: Float32Array): void {
+    this.lineSegments.value?.dispose();
+    this.lineSegments.value = createLineSegmentTextureReleasedOnUpload(table);
   }
 
   private effectIdsMask(): number {
@@ -288,6 +318,24 @@ export class PolylineMeshDesc extends MeshDescWithSelectiveEffect<
   }
 
   /**
+   * Height range of the terrain under the line; zero when unclamped. Call
+   * after the ground is watched.
+   */
+  private groundHeightRange(
+    style: NonNullable<Description["polyline"]>,
+  ): [number, number] {
+    if (!isClampedToGround(style)) return [0, 0];
+
+    const terrain = this.ground.terrainHeights;
+    if (!terrain) {
+      throw new Error(
+        "PolylineMesh: the ground volume is read before it is watched",
+      );
+    }
+    return [terrain.min, terrain.max];
+  }
+
+  /**
    * Bakes the transform into the geometry, since the builder and the ground
    * volume need world positions. The mesh object stays at identity.
    */
@@ -302,10 +350,12 @@ export class PolylineMeshDesc extends MeshDescWithSelectiveEffect<
   private replaceGeometry(built: {
     geometry: BufferGeometry;
     extent: GeographicExtent;
+    lineSegments: Float32Array;
   }): void {
     if (!this._instance) return;
     this._instance.geometry.dispose();
     this._instance.geometry = built.geometry;
+    this.setSegmentTable(built.lineSegments);
     this.ground.watch(isClampedToGround(this.style) ? built.extent : undefined);
   }
 
@@ -316,6 +366,7 @@ export class PolylineMeshDesc extends MeshDescWithSelectiveEffect<
   ): {
     geometry: BufferGeometry;
     extent: GeographicExtent;
+    lineSegments: Float32Array;
   } {
     const positions = buildPositions(style, transform);
     if (positions.rings.length !== 1) {
@@ -354,19 +405,16 @@ export class PolylineMeshDesc extends MeshDescWithSelectiveEffect<
     geometry.setAttribute("end_3d_high", new BufferAttribute(built.endHigh, 3));
     geometry.setAttribute("end_3d_low", new BufferAttribute(built.endLow, 3));
     geometry.setAttribute(
-      "start_normal",
-      new BufferAttribute(built.startNormal, 3),
+      "start_normal_and_length_high",
+      new BufferAttribute(built.startNormalAndLengthHigh, 4),
     );
     geometry.setAttribute(
-      "end_normal_and_texture_coordinate_normalization_x",
-      new BufferAttribute(built.endNormalAndTextureCoordinateNormalizationX, 4),
+      "end_normal_and_segment_length",
+      new BufferAttribute(built.endNormalAndSegmentLength, 4),
     );
     geometry.setAttribute(
-      "right_normal_and_texture_coordinate_normalization_y",
-      new BufferAttribute(
-        built.rightNormalAndTextureCoordinateNormalizationY,
-        4,
-      ),
+      "right_normal_and_line_length",
+      new BufferAttribute(built.rightNormalAndLineLength, 4),
     );
     geometry.setIndex(new BufferAttribute(built.indices, 1));
     setBatchIdAttribute(
@@ -376,7 +424,11 @@ export class PolylineMeshDesc extends MeshDescWithSelectiveEffect<
     );
     // `position` holds world-space coordinates, used for depth sorting.
     geometry.computeBoundingSphere();
-    return { geometry, extent: built.extent };
+    return {
+      geometry,
+      extent: built.extent,
+      lineSegments: built.lineSegments,
+    };
   }
 
   onUpdateConfig(updates: PolylineMeshUpdate): void {
@@ -449,6 +501,10 @@ export class PolylineMeshDesc extends MeshDescWithSelectiveEffect<
   }
 
   protected disposeMesh(): void {
+    this.lineSegments.value?.dispose();
+    this.lineSegments.value = null;
+    this.ctx.releaseLineDash(this.dashRow);
+    this.dashRow = SOLID_DASH_ROW;
     if (this._instance) {
       this._instance.geometry.dispose();
       releaseFeatureMaterial(this.ctx, this._instance.material);

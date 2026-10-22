@@ -294,6 +294,9 @@ const updateCursor = (clientX: number, clientY: number) => {
         color: MARKER_COLOR,
         width: 3,
         maxWidth: MAX_LINE_WIDTH,
+        // A zero-length dash with a round cap is a dot.
+        dashArray: [0, 2],
+        cap: "round",
         transparent: true,
         opacity: 0.25,
         clampToGround: true,

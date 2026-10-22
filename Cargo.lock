@@ -2739,6 +2739,7 @@ dependencies = [
 name = "navara_wasm_api"
 version = "0.1.0"
 dependencies = [
+ "js-sys",
  "navara_camera",
  "navara_core",
  "navara_feature_component",
@@ -2753,6 +2754,7 @@ dependencies = [
  "serde-wasm-bindgen",
  "url",
  "wasm-bindgen",
+ "web-sys",
 ]
 
 [[package]]
