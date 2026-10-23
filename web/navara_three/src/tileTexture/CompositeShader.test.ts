@@ -100,9 +100,9 @@ describe("generateCompositeFragmentShader", () => {
       ...ALL_OFF,
       hasElevationHeatmap: true,
     });
-    expect(src).toContain("uniform bool uIsElevationHeatmaps[2];");
+    expect(src).toContain("uniform vec4 uElevationHeatmapParams[2];");
     expect(src).toContain("uniform sampler2D uColorMapTexture;");
-    expect(src).toContain("if (uIsElevationHeatmaps[0])");
+    expect(src).toContain("bool isHeatmap0 = params0.x > 0.5;");
     expect(src).toContain("sampleElevationBilinear(uTextures[0]");
   });
 

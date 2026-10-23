@@ -39,7 +39,7 @@ view.camera.on("moveend", () => {
 
 **Read-only** (getter)
 
-地形、画像レイヤー、グローブ固有の設定を管理する Globe インスタンス。透明度、ワイヤーフレーム表示、標高ヒートマップのカラーマップなど、地球表示に関するさまざまなプロパティを制御できます。
+地形、画像レイヤー、グローブ固有の設定を管理する Globe インスタンス。透明度やワイヤーフレーム表示など、地球表示に関するさまざまなプロパティを制御できます。
 
 **Example:**
 
@@ -50,9 +50,6 @@ view.globe.opacity = 0.8;
 
 // ワイヤーフレームモードを有効化
 view.globe.wireframe = true;
-
-// 標高ヒートマップ用カラーマップを設定
-view.globe.elevationColormap = customColorMap;
 ```
 
 :::tip[関連ドキュメント]

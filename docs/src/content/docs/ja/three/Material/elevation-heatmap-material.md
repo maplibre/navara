@@ -17,6 +17,37 @@ DEM タイルをデコードするため、[`raster-dem`](../../../three/source/
 
 ## プロパティ
 
+### colorMap
+
+**型:** `Float32Array | undefined`
+
+**デフォルト:** `undefined`
+
+**説明:** このレイヤー用のカラーマップルックアップテーブル。フラット化された RGB 配列 `[r0,g0,b0, r1,g1,b1, ...]` で、各色成分は [0, 1] の範囲です。ColorMap インスタンスをこの形式に変換するには `ColorMap.flatten()` を使用します。
+
+```typescript
+import { ColorMap, Color } from "@navaramap/three";
+
+const colorMap = new ColorMap("sequential", "YlGnBu", [
+  new Color().setStyle("#ffffd9"),
+  new Color().setStyle("#edf8b1"),
+  new Color().setStyle("#c7e9b4"),
+  new Color().setStyle("#7fcdbb"),
+  new Color().setStyle("#41b6c4"),
+  new Color().setStyle("#1d91c0"),
+  new Color().setStyle("#225ea8"),
+  new Color().setStyle("#253494"),
+  new Color().setStyle("#081d58"),
+]);
+
+{
+  elevationHeatmap: {
+    colorMap: colorMap.flatten(),
+    maxHeight: 3000,
+  }
+}
+```
+
 ### maxHeight
 
 **型:** `number | undefined`
@@ -101,10 +132,10 @@ view.addLayer({
 
 ### カラーマップのカスタマイズ
 
-ヒートマップの色は `globe.elevationColormap` プロパティで制御します。
+各レイヤーは独自のカラーマップを持つことができます。`colorMap` プロパティで定義します。
 
 ```typescript
-import ThreeView, { ColorMap, Color } from "@navaramap/three";
+import ThreeView, { ColorMap, Color, TERRARIUM_ELEVATION_DECODER } from "@navaramap/three";
 
 const view = new ThreeView();
 await view.init();
@@ -124,12 +155,27 @@ const rdYlBuColorMap = new ColorMap("diverging", "RdYlBu", [
   new Color().setStyle("#a50026"),
 ]);
 
-view.globe.elevationColormap = rdYlBuColorMap;
+const dem = view.addSource({
+  type: "raster-dem",
+  url: "https://example.com/terrarium/{z}/{x}/{y}.png",
+  elevationDecoder: TERRARIUM_ELEVATION_DECODER(),
+  maxZoom: 15,
+});
+
+view.addLayer({
+  type: "raster",
+  source: dem,
+  elevationHeatmap: {
+    colorMap: rdYlBuColorMap.flatten(),
+    maxHeight: 3000,
+    minHeight: 0,
+  },
+});
 ```
 
 ## 関連リソース
 
 - [Raster Layer](../../../three/layer/raster-layer/): このマテリアルの使い方
 - [Raster DEM Source](../../../three/source/raster-dem-source/): DEM の Source とその標高デコーダ
-- [ColorMap class](../../../three/api/colormap/) / [Globe class](../../../three/api/globe/): `elevationColormap`
+- [ColorMap class](../../../three/api/colormap/): カラーマップの作成と管理
 - [HillshadeMaterial](../../../three/material/hillshade-material/): DEM タイルから生成する陰影起伏

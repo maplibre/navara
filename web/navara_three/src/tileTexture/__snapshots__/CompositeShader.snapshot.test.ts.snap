@@ -25,7 +25,12 @@ uniform vec2 uReprojectTerrainLat[4];
 uniform vec4 uReprojectMerc[4];
 uniform bool uIsHillshades[4];
 uniform float uHillshadeExaggeration;
-uniform bool uIsElevationHeatmaps[4];
+// Packed elevation heatmap params: (isHeatmap, usesBilinear, colorMapRowIndex, logBoundary)
+uniform vec4 uElevationHeatmapParams[4];
+uniform vec2 uElevationMinMaxHeights[4];
+uniform vec2 uGlobalMinMaxHeight;  // (min, max) global height range
+uniform vec4 uElevationRGBScalersAndBoundaries[4];  // (r, g, b, boundary)
+uniform vec4 uElevationDecoderOffsets[4];  // (minOffset, maxOffset, epsilon, offset)
 uniform bool uWaters[4];
 
 uniform sampler2D uWatermask;
@@ -155,39 +160,37 @@ float interpolateDEMHeights(float h00, float h10, float h01, float h11, vec2 fra
 #endif
 
   uniform sampler2D uColorMapTexture;
-  uniform vec3 uElevationRGBScaler;
-  uniform vec3 uElevationMinMaxHeightAndBoundary;
-  uniform vec4 uElevationMinMaxOffsetAndEpsilonAndOffset;
-  uniform bool uLogarithmic; 
-  uniform float uLogBase; 
-  uniform float uLogBoundary; 
 
-  float pseudoLog(float value) {
-    return value > uLogBoundary ? log(value) / uLogBase : value < -uLogBoundary ? -log(-value) / uLogBase : value / uLogBoundary;
+  
+  
+  float pseudoLog(float value, float logBase, float logBoundary) {
+    return value > logBoundary ? log(value) / logBase : value < -logBoundary ? -log(-value) / logBase : value / logBoundary;
   }
 
   
-  float decodeRawHeightForElevation(vec4 color) {
+  
+  float decodeRawHeightForElevation(vec4 color, int slot) {
     return decodeDEMHeight(
       color,
-      uElevationRGBScaler,
-      uElevationMinMaxHeightAndBoundary.z,  
-      uElevationMinMaxOffsetAndEpsilonAndOffset.x,  
-      uElevationMinMaxOffsetAndEpsilonAndOffset.y,  
-      uElevationMinMaxOffsetAndEpsilonAndOffset.z,  
-      uElevationMinMaxOffsetAndEpsilonAndOffset.w   
+      uElevationRGBScalersAndBoundaries[slot].xyz,  
+      uElevationRGBScalersAndBoundaries[slot].w,    
+      uElevationDecoderOffsets[slot].x,             
+      uElevationDecoderOffsets[slot].y,             
+      uElevationDecoderOffsets[slot].z,             
+      uElevationDecoderOffsets[slot].w              
     );
   }
 
   
-  float normalizeElevationHeight(float h) {
+  
+  float normalizeElevationHeight(float h, float minHeight, float maxHeight, bool logarithmic, float logBase, float logBoundary) {
     
-    float minHeight = nvr_branchFreeTernary(uLogarithmic, pseudoLog(uElevationMinMaxHeightAndBoundary.x), uElevationMinMaxHeightAndBoundary.x);
-    float maxHeight = nvr_branchFreeTernary(uLogarithmic, pseudoLog(uElevationMinMaxHeightAndBoundary.y), uElevationMinMaxHeightAndBoundary.y);
-    float value = nvr_branchFreeTernary(uLogarithmic, pseudoLog(h), h);
+    float normalizedMinHeight = nvr_branchFreeTernary(logarithmic, pseudoLog(minHeight, logBase, logBoundary), minHeight);
+    float normalizedMaxHeight = nvr_branchFreeTernary(logarithmic, pseudoLog(maxHeight, logBase, logBoundary), maxHeight);
+    float value = nvr_branchFreeTernary(logarithmic, pseudoLog(h, logBase, logBoundary), h);
 
     return clamp(
-        (value - minHeight) / (maxHeight - minHeight),
+        (value - normalizedMinHeight) / (normalizedMaxHeight - normalizedMinHeight),
         0.0,
         1.0
     );
@@ -198,21 +201,18 @@ float interpolateDEMHeights(float h00, float h10, float h01, float h11, vec2 fra
   
   
   
-  
-  
-  
-  float sampleElevationBilinear(sampler2D demTexture, vec2 uv, ivec2 texSize, out bool valid) {
+  float sampleElevationBilinear(sampler2D demTexture, vec2 uv, ivec2 texSize, int slot, float minHeight, float maxHeight, bool logarithmic, float logBase, float logBoundary, out bool valid) {
     
     DEMBilinearData data = prepareDEMBilinear(texSize, uv);
 
     float h = invalidHeight; 
 
     
-    float h00 = decodeRawHeightForElevation(texelFetch(demTexture, data.p00, 0));
+    float h00 = decodeRawHeightForElevation(texelFetch(demTexture, data.p00, 0), slot);
     if(isValidHeight(h00)) {
-      float h10 = decodeRawHeightForElevation(texelFetch(demTexture, data.p10, 0));
-      float h01 = decodeRawHeightForElevation(texelFetch(demTexture, data.p01, 0));
-      float h11 = decodeRawHeightForElevation(texelFetch(demTexture, data.p11, 0));
+      float h10 = decodeRawHeightForElevation(texelFetch(demTexture, data.p10, 0), slot);
+      float h01 = decodeRawHeightForElevation(texelFetch(demTexture, data.p01, 0), slot);
+      float h11 = decodeRawHeightForElevation(texelFetch(demTexture, data.p11, 0), slot);
 
       
       h = interpolateDEMHeights(h00, h10, h01, h11, data.frac);
@@ -224,7 +224,30 @@ float interpolateDEMHeights(float h00, float h10, float h01, float h11, vec2 fra
     }
 
     
-    return normalizeElevationHeight(h);
+    return normalizeElevationHeight(h, minHeight, maxHeight, logarithmic, logBase, logBoundary);
+  }
+
+  
+  
+  
+  float sampleElevationNearest(sampler2D demTexture, vec2 uv, ivec2 texSize, int slot, float minHeight, float maxHeight, bool logarithmic, float logBase, float logBoundary, out bool valid) {
+    
+    vec2 pixelCoord = uv * vec2(texSize);
+    ivec2 nearestPixel = ivec2(floor(pixelCoord + 0.5));
+
+    
+    nearestPixel = clamp(nearestPixel, ivec2(0), texSize - 1);
+
+    
+    float h = decodeRawHeightForElevation(texelFetch(demTexture, nearestPixel, 0), slot);
+
+    valid = isValidHeight(h);
+    if (!valid) {
+      return 0.0;
+    }
+
+    
+    return normalizeElevationHeight(h, minHeight, maxHeight, logarithmic, logBase, logBoundary);
   }
 #endif
 
@@ -295,11 +318,34 @@ void main() {
     }
 
     vec4 texColor0;
-    if (uIsElevationHeatmaps[0]) {
+    // Extract packed params: (isHeatmap, usesBilinear, colorMapRowIndex, logBoundary)
+    vec4 params0 = uElevationHeatmapParams[0];
+    bool isHeatmap0 = params0.x > 0.5;
+
+    if (isHeatmap0) {
+      bool usesBilinear0 = params0.y > 0.5;
+      float colorMapY = params0.z;
+      float logBoundary = params0.w;
+
       ivec2 demTexSize = textureSize(uTextures[0], 0);
       bool demValid0;
-      float normalized_h = sampleElevationBilinear(uTextures[0], texUv0, demTexSize, demValid0);
-      texColor0 = vec4(texture2D(uColorMapTexture, vec2(normalized_h, 0.5)).rgb, demValid0 ? 1.0 : 0.0);
+      float normalized_h;
+
+      // Per-layer logarithmic scaling: 0 = off, >0 = on with boundary value
+      bool logarithmic = logBoundary > 0.0;
+      float logBase = logarithmic ? log(logBoundary) : 1.0;  // ln(boundary)
+
+      // Use GLOBAL min/max for elevation normalization (shared across all layers)
+      // This matches MapLibre's behavior where multiple color-relief layers on the
+      // same source share the elevation range for consistent colormap sampling
+      if (usesBilinear0) {
+        normalized_h = sampleElevationBilinear(uTextures[0], texUv0, demTexSize, 0, uGlobalMinMaxHeight.x, uGlobalMinMaxHeight.y, logarithmic, logBase, logBoundary, demValid0);
+      } else {
+        normalized_h = sampleElevationNearest(uTextures[0], texUv0, demTexSize, 0, uGlobalMinMaxHeight.x, uGlobalMinMaxHeight.y, logarithmic, logBase, logBoundary, demValid0);
+      }
+
+      // Sample from 2D colorMap atlas: x = normalized height, y = layer's row index
+      texColor0 = vec4(texture2D(uColorMapTexture, vec2(normalized_h, colorMapY)).rgb, demValid0 ? 1.0 : 0.0);
     } else {
       texColor0 = texture2D(uTextures[0], texUv0) * vec4(uColors[0], 1.0);
     }
@@ -364,11 +410,34 @@ void main() {
     }
 
     vec4 texColor1;
-    if (uIsElevationHeatmaps[1]) {
+    // Extract packed params: (isHeatmap, usesBilinear, colorMapRowIndex, logBoundary)
+    vec4 params1 = uElevationHeatmapParams[1];
+    bool isHeatmap1 = params1.x > 0.5;
+
+    if (isHeatmap1) {
+      bool usesBilinear1 = params1.y > 0.5;
+      float colorMapY = params1.z;
+      float logBoundary = params1.w;
+
       ivec2 demTexSize = textureSize(uTextures[1], 0);
       bool demValid1;
-      float normalized_h = sampleElevationBilinear(uTextures[1], texUv1, demTexSize, demValid1);
-      texColor1 = vec4(texture2D(uColorMapTexture, vec2(normalized_h, 0.5)).rgb, demValid1 ? 1.0 : 0.0);
+      float normalized_h;
+
+      // Per-layer logarithmic scaling: 0 = off, >0 = on with boundary value
+      bool logarithmic = logBoundary > 0.0;
+      float logBase = logarithmic ? log(logBoundary) : 1.0;  // ln(boundary)
+
+      // Use GLOBAL min/max for elevation normalization (shared across all layers)
+      // This matches MapLibre's behavior where multiple color-relief layers on the
+      // same source share the elevation range for consistent colormap sampling
+      if (usesBilinear1) {
+        normalized_h = sampleElevationBilinear(uTextures[1], texUv1, demTexSize, 1, uGlobalMinMaxHeight.x, uGlobalMinMaxHeight.y, logarithmic, logBase, logBoundary, demValid1);
+      } else {
+        normalized_h = sampleElevationNearest(uTextures[1], texUv1, demTexSize, 1, uGlobalMinMaxHeight.x, uGlobalMinMaxHeight.y, logarithmic, logBase, logBoundary, demValid1);
+      }
+
+      // Sample from 2D colorMap atlas: x = normalized height, y = layer's row index
+      texColor1 = vec4(texture2D(uColorMapTexture, vec2(normalized_h, colorMapY)).rgb, demValid1 ? 1.0 : 0.0);
     } else {
       texColor1 = texture2D(uTextures[1], texUv1) * vec4(uColors[1], 1.0);
     }
@@ -433,11 +502,34 @@ void main() {
     }
 
     vec4 texColor2;
-    if (uIsElevationHeatmaps[2]) {
+    // Extract packed params: (isHeatmap, usesBilinear, colorMapRowIndex, logBoundary)
+    vec4 params2 = uElevationHeatmapParams[2];
+    bool isHeatmap2 = params2.x > 0.5;
+
+    if (isHeatmap2) {
+      bool usesBilinear2 = params2.y > 0.5;
+      float colorMapY = params2.z;
+      float logBoundary = params2.w;
+
       ivec2 demTexSize = textureSize(uTextures[2], 0);
       bool demValid2;
-      float normalized_h = sampleElevationBilinear(uTextures[2], texUv2, demTexSize, demValid2);
-      texColor2 = vec4(texture2D(uColorMapTexture, vec2(normalized_h, 0.5)).rgb, demValid2 ? 1.0 : 0.0);
+      float normalized_h;
+
+      // Per-layer logarithmic scaling: 0 = off, >0 = on with boundary value
+      bool logarithmic = logBoundary > 0.0;
+      float logBase = logarithmic ? log(logBoundary) : 1.0;  // ln(boundary)
+
+      // Use GLOBAL min/max for elevation normalization (shared across all layers)
+      // This matches MapLibre's behavior where multiple color-relief layers on the
+      // same source share the elevation range for consistent colormap sampling
+      if (usesBilinear2) {
+        normalized_h = sampleElevationBilinear(uTextures[2], texUv2, demTexSize, 2, uGlobalMinMaxHeight.x, uGlobalMinMaxHeight.y, logarithmic, logBase, logBoundary, demValid2);
+      } else {
+        normalized_h = sampleElevationNearest(uTextures[2], texUv2, demTexSize, 2, uGlobalMinMaxHeight.x, uGlobalMinMaxHeight.y, logarithmic, logBase, logBoundary, demValid2);
+      }
+
+      // Sample from 2D colorMap atlas: x = normalized height, y = layer's row index
+      texColor2 = vec4(texture2D(uColorMapTexture, vec2(normalized_h, colorMapY)).rgb, demValid2 ? 1.0 : 0.0);
     } else {
       texColor2 = texture2D(uTextures[2], texUv2) * vec4(uColors[2], 1.0);
     }
@@ -502,11 +594,34 @@ void main() {
     }
 
     vec4 texColor3;
-    if (uIsElevationHeatmaps[3]) {
+    // Extract packed params: (isHeatmap, usesBilinear, colorMapRowIndex, logBoundary)
+    vec4 params3 = uElevationHeatmapParams[3];
+    bool isHeatmap3 = params3.x > 0.5;
+
+    if (isHeatmap3) {
+      bool usesBilinear3 = params3.y > 0.5;
+      float colorMapY = params3.z;
+      float logBoundary = params3.w;
+
       ivec2 demTexSize = textureSize(uTextures[3], 0);
       bool demValid3;
-      float normalized_h = sampleElevationBilinear(uTextures[3], texUv3, demTexSize, demValid3);
-      texColor3 = vec4(texture2D(uColorMapTexture, vec2(normalized_h, 0.5)).rgb, demValid3 ? 1.0 : 0.0);
+      float normalized_h;
+
+      // Per-layer logarithmic scaling: 0 = off, >0 = on with boundary value
+      bool logarithmic = logBoundary > 0.0;
+      float logBase = logarithmic ? log(logBoundary) : 1.0;  // ln(boundary)
+
+      // Use GLOBAL min/max for elevation normalization (shared across all layers)
+      // This matches MapLibre's behavior where multiple color-relief layers on the
+      // same source share the elevation range for consistent colormap sampling
+      if (usesBilinear3) {
+        normalized_h = sampleElevationBilinear(uTextures[3], texUv3, demTexSize, 3, uGlobalMinMaxHeight.x, uGlobalMinMaxHeight.y, logarithmic, logBase, logBoundary, demValid3);
+      } else {
+        normalized_h = sampleElevationNearest(uTextures[3], texUv3, demTexSize, 3, uGlobalMinMaxHeight.x, uGlobalMinMaxHeight.y, logarithmic, logBase, logBoundary, demValid3);
+      }
+
+      // Sample from 2D colorMap atlas: x = normalized height, y = layer's row index
+      texColor3 = vec4(texture2D(uColorMapTexture, vec2(normalized_h, colorMapY)).rgb, demValid3 ? 1.0 : 0.0);
     } else {
       texColor3 = texture2D(uTextures[3], texUv3) * vec4(uColors[3], 1.0);
     }
@@ -621,7 +736,12 @@ uniform vec2 uReprojectTerrainLat[2];
 //   .xy = (mRs, mDen) — source tile's Mercator band start + span,
 //   .z  = clamp-to-top-edge flag, .w = clamp-to-bottom-edge flag (polar cap).
 uniform vec4 uReprojectMerc[2];
-uniform bool uIsElevationHeatmaps[2];
+// Packed elevation heatmap params: (isHeatmap, usesBilinear, colorMapRowIndex, logBoundary)
+uniform vec4 uElevationHeatmapParams[2];
+uniform vec2 uElevationMinMaxHeights[2];
+uniform vec2 uGlobalMinMaxHeight;  // (min, max) global height range
+uniform vec4 uElevationRGBScalersAndBoundaries[2];  // (r, g, b, boundary)
+uniform vec4 uElevationDecoderOffsets[2];  // (minOffset, maxOffset, epsilon, offset)
 
 
 
@@ -750,39 +870,37 @@ float interpolateDEMHeights(float h00, float h10, float h01, float h11, vec2 fra
 #endif
 
   uniform sampler2D uColorMapTexture;
-  uniform vec3 uElevationRGBScaler;
-  uniform vec3 uElevationMinMaxHeightAndBoundary;
-  uniform vec4 uElevationMinMaxOffsetAndEpsilonAndOffset;
-  uniform bool uLogarithmic; 
-  uniform float uLogBase; 
-  uniform float uLogBoundary; 
 
-  float pseudoLog(float value) {
-    return value > uLogBoundary ? log(value) / uLogBase : value < -uLogBoundary ? -log(-value) / uLogBase : value / uLogBoundary;
+  
+  
+  float pseudoLog(float value, float logBase, float logBoundary) {
+    return value > logBoundary ? log(value) / logBase : value < -logBoundary ? -log(-value) / logBase : value / logBoundary;
   }
 
   
-  float decodeRawHeightForElevation(vec4 color) {
+  
+  float decodeRawHeightForElevation(vec4 color, int slot) {
     return decodeDEMHeight(
       color,
-      uElevationRGBScaler,
-      uElevationMinMaxHeightAndBoundary.z,  
-      uElevationMinMaxOffsetAndEpsilonAndOffset.x,  
-      uElevationMinMaxOffsetAndEpsilonAndOffset.y,  
-      uElevationMinMaxOffsetAndEpsilonAndOffset.z,  
-      uElevationMinMaxOffsetAndEpsilonAndOffset.w   
+      uElevationRGBScalersAndBoundaries[slot].xyz,  
+      uElevationRGBScalersAndBoundaries[slot].w,    
+      uElevationDecoderOffsets[slot].x,             
+      uElevationDecoderOffsets[slot].y,             
+      uElevationDecoderOffsets[slot].z,             
+      uElevationDecoderOffsets[slot].w              
     );
   }
 
   
-  float normalizeElevationHeight(float h) {
+  
+  float normalizeElevationHeight(float h, float minHeight, float maxHeight, bool logarithmic, float logBase, float logBoundary) {
     
-    float minHeight = nvr_branchFreeTernary(uLogarithmic, pseudoLog(uElevationMinMaxHeightAndBoundary.x), uElevationMinMaxHeightAndBoundary.x);
-    float maxHeight = nvr_branchFreeTernary(uLogarithmic, pseudoLog(uElevationMinMaxHeightAndBoundary.y), uElevationMinMaxHeightAndBoundary.y);
-    float value = nvr_branchFreeTernary(uLogarithmic, pseudoLog(h), h);
+    float normalizedMinHeight = nvr_branchFreeTernary(logarithmic, pseudoLog(minHeight, logBase, logBoundary), minHeight);
+    float normalizedMaxHeight = nvr_branchFreeTernary(logarithmic, pseudoLog(maxHeight, logBase, logBoundary), maxHeight);
+    float value = nvr_branchFreeTernary(logarithmic, pseudoLog(h, logBase, logBoundary), h);
 
     return clamp(
-        (value - minHeight) / (maxHeight - minHeight),
+        (value - normalizedMinHeight) / (normalizedMaxHeight - normalizedMinHeight),
         0.0,
         1.0
     );
@@ -793,21 +911,18 @@ float interpolateDEMHeights(float h00, float h10, float h01, float h11, vec2 fra
   
   
   
-  
-  
-  
-  float sampleElevationBilinear(sampler2D demTexture, vec2 uv, ivec2 texSize, out bool valid) {
+  float sampleElevationBilinear(sampler2D demTexture, vec2 uv, ivec2 texSize, int slot, float minHeight, float maxHeight, bool logarithmic, float logBase, float logBoundary, out bool valid) {
     
     DEMBilinearData data = prepareDEMBilinear(texSize, uv);
 
     float h = invalidHeight; 
 
     
-    float h00 = decodeRawHeightForElevation(texelFetch(demTexture, data.p00, 0));
+    float h00 = decodeRawHeightForElevation(texelFetch(demTexture, data.p00, 0), slot);
     if(isValidHeight(h00)) {
-      float h10 = decodeRawHeightForElevation(texelFetch(demTexture, data.p10, 0));
-      float h01 = decodeRawHeightForElevation(texelFetch(demTexture, data.p01, 0));
-      float h11 = decodeRawHeightForElevation(texelFetch(demTexture, data.p11, 0));
+      float h10 = decodeRawHeightForElevation(texelFetch(demTexture, data.p10, 0), slot);
+      float h01 = decodeRawHeightForElevation(texelFetch(demTexture, data.p01, 0), slot);
+      float h11 = decodeRawHeightForElevation(texelFetch(demTexture, data.p11, 0), slot);
 
       
       h = interpolateDEMHeights(h00, h10, h01, h11, data.frac);
@@ -819,7 +934,30 @@ float interpolateDEMHeights(float h00, float h10, float h01, float h11, vec2 fra
     }
 
     
-    return normalizeElevationHeight(h);
+    return normalizeElevationHeight(h, minHeight, maxHeight, logarithmic, logBase, logBoundary);
+  }
+
+  
+  
+  
+  float sampleElevationNearest(sampler2D demTexture, vec2 uv, ivec2 texSize, int slot, float minHeight, float maxHeight, bool logarithmic, float logBase, float logBoundary, out bool valid) {
+    
+    vec2 pixelCoord = uv * vec2(texSize);
+    ivec2 nearestPixel = ivec2(floor(pixelCoord + 0.5));
+
+    
+    nearestPixel = clamp(nearestPixel, ivec2(0), texSize - 1);
+
+    
+    float h = decodeRawHeightForElevation(texelFetch(demTexture, nearestPixel, 0), slot);
+
+    valid = isValidHeight(h);
+    if (!valid) {
+      return 0.0;
+    }
+
+    
+    return normalizeElevationHeight(h, minHeight, maxHeight, logarithmic, logBase, logBoundary);
   }
 #endif
 
@@ -890,11 +1028,34 @@ void main() {
     }
 
     vec4 texColor0;
-    if (uIsElevationHeatmaps[0]) {
+    // Extract packed params: (isHeatmap, usesBilinear, colorMapRowIndex, logBoundary)
+    vec4 params0 = uElevationHeatmapParams[0];
+    bool isHeatmap0 = params0.x > 0.5;
+
+    if (isHeatmap0) {
+      bool usesBilinear0 = params0.y > 0.5;
+      float colorMapY = params0.z;
+      float logBoundary = params0.w;
+
       ivec2 demTexSize = textureSize(uTextures[0], 0);
       bool demValid0;
-      float normalized_h = sampleElevationBilinear(uTextures[0], texUv0, demTexSize, demValid0);
-      texColor0 = vec4(texture2D(uColorMapTexture, vec2(normalized_h, 0.5)).rgb, demValid0 ? 1.0 : 0.0);
+      float normalized_h;
+
+      // Per-layer logarithmic scaling: 0 = off, >0 = on with boundary value
+      bool logarithmic = logBoundary > 0.0;
+      float logBase = logarithmic ? log(logBoundary) : 1.0;  // ln(boundary)
+
+      // Use GLOBAL min/max for elevation normalization (shared across all layers)
+      // This matches MapLibre's behavior where multiple color-relief layers on the
+      // same source share the elevation range for consistent colormap sampling
+      if (usesBilinear0) {
+        normalized_h = sampleElevationBilinear(uTextures[0], texUv0, demTexSize, 0, uGlobalMinMaxHeight.x, uGlobalMinMaxHeight.y, logarithmic, logBase, logBoundary, demValid0);
+      } else {
+        normalized_h = sampleElevationNearest(uTextures[0], texUv0, demTexSize, 0, uGlobalMinMaxHeight.x, uGlobalMinMaxHeight.y, logarithmic, logBase, logBoundary, demValid0);
+      }
+
+      // Sample from 2D colorMap atlas: x = normalized height, y = layer's row index
+      texColor0 = vec4(texture2D(uColorMapTexture, vec2(normalized_h, colorMapY)).rgb, demValid0 ? 1.0 : 0.0);
     } else {
       texColor0 = texture2D(uTextures[0], texUv0) * vec4(uColors[0], 1.0);
     }
@@ -955,11 +1116,34 @@ void main() {
     }
 
     vec4 texColor1;
-    if (uIsElevationHeatmaps[1]) {
+    // Extract packed params: (isHeatmap, usesBilinear, colorMapRowIndex, logBoundary)
+    vec4 params1 = uElevationHeatmapParams[1];
+    bool isHeatmap1 = params1.x > 0.5;
+
+    if (isHeatmap1) {
+      bool usesBilinear1 = params1.y > 0.5;
+      float colorMapY = params1.z;
+      float logBoundary = params1.w;
+
       ivec2 demTexSize = textureSize(uTextures[1], 0);
       bool demValid1;
-      float normalized_h = sampleElevationBilinear(uTextures[1], texUv1, demTexSize, demValid1);
-      texColor1 = vec4(texture2D(uColorMapTexture, vec2(normalized_h, 0.5)).rgb, demValid1 ? 1.0 : 0.0);
+      float normalized_h;
+
+      // Per-layer logarithmic scaling: 0 = off, >0 = on with boundary value
+      bool logarithmic = logBoundary > 0.0;
+      float logBase = logarithmic ? log(logBoundary) : 1.0;  // ln(boundary)
+
+      // Use GLOBAL min/max for elevation normalization (shared across all layers)
+      // This matches MapLibre's behavior where multiple color-relief layers on the
+      // same source share the elevation range for consistent colormap sampling
+      if (usesBilinear1) {
+        normalized_h = sampleElevationBilinear(uTextures[1], texUv1, demTexSize, 1, uGlobalMinMaxHeight.x, uGlobalMinMaxHeight.y, logarithmic, logBase, logBoundary, demValid1);
+      } else {
+        normalized_h = sampleElevationNearest(uTextures[1], texUv1, demTexSize, 1, uGlobalMinMaxHeight.x, uGlobalMinMaxHeight.y, logarithmic, logBase, logBoundary, demValid1);
+      }
+
+      // Sample from 2D colorMap atlas: x = normalized height, y = layer's row index
+      texColor1 = vec4(texture2D(uColorMapTexture, vec2(normalized_h, colorMapY)).rgb, demValid1 ? 1.0 : 0.0);
     } else {
       texColor1 = texture2D(uTextures[1], texUv1) * vec4(uColors[1], 1.0);
     }

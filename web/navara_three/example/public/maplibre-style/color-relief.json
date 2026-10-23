@@ -1,0 +1,103 @@
+{
+    "version": 8,
+    "name": "Color Relief Test",
+    "projection": {
+        "type": "globe"
+      },
+    "center": [138.73, 35.27],
+    "zoom": 9,
+    "pitch": 60,
+    "sources": {
+        "osm": {
+            "type": "raster",
+            "tiles": ["https://tile.openstreetmap.org/{z}/{x}/{y}.png"],
+            "tileSize": 256,
+            "maxzoom": 19
+        },
+        "terrain-1": {
+            "type": "raster-dem",
+            "tiles": [
+                "https://tiles.mapterhorn.com/{z}/{x}/{y}.webp"
+            ],
+            "tileSize": 512,
+            "encoding": "terrarium"
+        },
+        "terrain-2": {
+            "type": "raster-dem",
+            "tiles": [
+                "https://tiles.mapterhorn.com/{z}/{x}/{y}.webp"
+            ],
+            "tileSize": 512,
+            "encoding": "terrarium"
+        }
+    },
+    "layers": [
+        {
+            "id": "osm-basemap",
+            "type": "raster",
+            "source": "osm",
+            "paint": {
+                "raster-opacity": 1.0
+            }
+        },
+        {
+            "id": "color-relief1",
+            "type": "color-relief",
+            "source": "terrain-1",
+            "paint": {
+                "color-relief-opacity": 0.5,
+                "color-relief-color": [
+                    "interpolate",
+                    ["linear"],
+                    ["elevation"],
+                    0, "#000000",
+                    500, "#000022",
+                    1000, "#000044",
+                    1500, "#000066",
+                    2000, "#000088",
+                    2500, "#0000AA",
+                    3000, "#0000CC",
+                    3500, "#0000EE",
+                    4000, "#0000FF"
+                ],
+                "resampling": "linear"
+            },
+            "layout": {
+                "visibility": "visible"
+            }
+        },
+        {
+            "id": "color-relief2",
+            "type": "color-relief",
+            "source": "terrain-2",
+            "paint": {
+                "color-relief-opacity": 0.5,
+                "color-relief-color": [
+                    "interpolate",
+                    ["linear"],
+                    ["elevation"],
+                    0, "#000000",
+                    500, "#4664da",
+                    1000, "#35abf8",
+                    1500, "#18ddc2",
+                    2000, "#b1f936",
+                    2500, "#f9781e",
+                    3000, "#8e0a01"
+                ],
+                "resampling": "linear"
+            },
+            "layout": {
+                "visibility": "visible"
+            }
+        },
+        {
+            "id": "hillshade",
+            "type": "hillshade",
+            "source": "terrain-1"
+        }
+    ],
+    "terrain": {
+        "source": "terrain-1",
+        "exaggeration": 1.5
+    }
+}

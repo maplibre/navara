@@ -1,6 +1,5 @@
 import type {
   Color as CoreColor,
-  ColorMap,
   EventHandler,
   EventManager,
 } from "@navaramap/core";
@@ -21,6 +20,7 @@ import type { Texture } from "three";
 
 import type { ViewEvents } from "..";
 import type { ThreeViewCamera } from "../camera";
+import type { ColorMapAtlas } from "../colorMapAtlas";
 import type { ViewContext } from "../core";
 import type { DeclutterManager } from "../declutter";
 import type { LayersManager } from "../layersManager";
@@ -144,7 +144,6 @@ export type GlobeHandler = {
   getUseNormal: () => boolean | undefined;
   getOpacity: () => number | undefined;
   getWireframe: () => boolean | undefined;
-  getElevationColormap: () => Float32Array | undefined;
   setTransparent: (value: boolean) => void;
   setMaxSse: (value: number) => void;
   setSegments: (value: number) => void;
@@ -153,7 +152,6 @@ export type GlobeHandler = {
   setUseNormal: (value: boolean) => void;
   setOpacity: (value: number) => void;
   setWireframe: (value: boolean) => void;
-  setElevationColormap: (value: ColorMap) => void;
 };
 
 export type FeatureHandler = {
@@ -228,6 +226,7 @@ type EventContextArgs = {
   tileMeshToFragmentIds?: Map<TileMesh, Set<string>>;
   hillshadeContext?: HillshadeContext;
   declutter?: DeclutterManager;
+  colorMapAtlas?: ColorMapAtlas;
 };
 
 /**
@@ -266,6 +265,8 @@ export class EventContext {
   /** Shared screen-space label declutterer; text/sprite meshes register as
    *  participants on creation. Optional so headless contexts can skip it. */
   readonly declutter?: DeclutterManager;
+  /** ColorMap atlas for elevation heatmap layers. */
+  readonly colorMapAtlas?: ColorMapAtlas;
 
   updatedAt = 0;
 
@@ -300,5 +301,6 @@ export class EventContext {
     this.tileMeshToFragmentIds = args.tileMeshToFragmentIds;
     this.hillshadeContext = args.hillshadeContext;
     this.declutter = args.declutter;
+    this.colorMapAtlas = args.colorMapAtlas;
   }
 }

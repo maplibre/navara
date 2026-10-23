@@ -3,7 +3,10 @@ import {
   fetchFontStyleOverrides,
 } from "@navaramap/maplibre-style";
 import ThreeView from "@navaramap/three";
-import { type DefaultDescriptions } from "@navaramap/three-default-plugin";
+import {
+  DefaultPlugin,
+  type DefaultDescriptions,
+} from "@navaramap/three-default-plugin";
 import { Pane } from "tweakpane";
 
 import {
@@ -21,6 +24,7 @@ export type CustomDescriptions = DefaultDescriptions;
  */
 export async function run() {
   const view = new ThreeView<CustomDescriptions>({});
+  view.addPlugin(new DefaultPlugin());
 
   // Add the MapLibre Style plugin with font overrides
   const fontOverrides = await fetchFontStyleOverrides(
@@ -40,6 +44,8 @@ export async function run() {
 
   // Initialize the view
   await view.init();
+
+  view.addLight({ ambient: {} });
 
   // Add ellipsoid terrain as the base surface for vector features
   view.addLayer({ type: "terrain", ellipsoid: {} });

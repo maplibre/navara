@@ -350,6 +350,17 @@ export class TileMesh
     const layerUvScale: Vector2[] = ud.layerUvScale?.value ?? [];
     const isHillshades: boolean[] = ud.isHillshades?.value ?? [];
     const isElevationHeatmaps: boolean[] = ud.isElevationHeatmaps?.value ?? [];
+    const elevationHeatmapUsesBilinear: boolean[] =
+      ud.elevationHeatmapUsesBilinear?.value ?? [];
+    const colorMapRowIndices: number[] = ud.colorMapRowIndices?.value ?? [];
+    const elevationMinHeights: number[] = ud.elevationMinHeights?.value ?? [];
+    const elevationMaxHeights: number[] = ud.elevationMaxHeights?.value ?? [];
+    const elevationLogBoundaries: number[] =
+      ud.elevationLogBoundaries?.value ?? [];
+    const elevationRGBScalersAndBoundaries: Vector4[] =
+      ud.elevationRGBScalersAndBoundaries?.value ?? [];
+    const elevationDecoderOffsets: Vector4[] =
+      ud.elevationDecoderOffsets?.value ?? [];
     const waters: boolean[] = ud.waters?.value ?? [];
     const boundary = this.texturizedSceneIndexFrom;
 
@@ -381,6 +392,13 @@ export class TileMesh
           region === "vector" ? this.vectorDrape : this.rasterDrape
         ).slotReproject(absSlot);
         if (isElevationHeatmaps[absSlot]) {
+          const usesBilinear = elevationHeatmapUsesBilinear[absSlot] ?? true;
+          const colorMapRowIndex = colorMapRowIndices[absSlot] ?? 0.5;
+          const minHeight = elevationMinHeights[absSlot] ?? 0;
+          const maxHeight = elevationMaxHeights[absSlot] ?? minHeight + 1;
+          const logBoundary = elevationLogBoundaries[absSlot] ?? 0;
+          const logarithmic = logBoundary > 0;
+
           layers.push({
             kind: "elevationHeatmap",
             region,
@@ -390,6 +408,15 @@ export class TileMesh
             uvScale,
             opacity: opacities[absSlot] ?? 1,
             reproject: slotReproject,
+            filter: usesBilinear ? "linear" : "nearest",
+            colorMapRowIndex,
+            minHeight,
+            maxHeight,
+            logarithmic,
+            logBase: logarithmic ? Math.log(logBoundary) : 0,
+            logBoundary,
+            rgbScalersAndBoundary: elevationRGBScalersAndBoundaries[absSlot],
+            decoderOffsets: elevationDecoderOffsets[absSlot],
           });
         } else {
           layers.push({
@@ -408,18 +435,28 @@ export class TileMesh
       }
     }
 
+    // Compute global min/max height across all elevation heatmap layers
+    // This is used for shared normalization to match MapLibre's behavior where
+    // all color-relief layers on the same source share the elevation range
+    let globalMinHeight = Infinity;
+    let globalMaxHeight = -Infinity;
+    for (let i = 0; i < this.maxTextures; i++) {
+      if (shows[i] === 1 && isElevationHeatmaps[i]) {
+        const minH = elevationMinHeights[i] ?? 0;
+        const maxH = elevationMaxHeights[i] ?? minH + 1;
+        globalMinHeight = Math.min(globalMinHeight, minH);
+        globalMaxHeight = Math.max(globalMaxHeight, maxH);
+      }
+    }
+    // If no elevation heatmap layers, use defaults
+    if (!isFinite(globalMinHeight)) globalMinHeight = 0;
+    if (!isFinite(globalMaxHeight)) globalMaxHeight = globalMinHeight + 1;
+
     const globals: CompositeGlobals = {
       hillshadeExaggeration: ud.hillshadeExaggeration?.value ?? 1,
       watermask: this.userData.watermask?.texture ?? null,
       colorMapTexture: this.ctx.uniforms.colorMapTexture.value ?? null,
-      elevationRGBScaler: ud.elevationRGBScaler?.value ?? new Vector3(),
-      elevationMinMaxHeightAndBoundary:
-        ud.elevationMinMaxHeightAndBoundary?.value ?? new Vector3(),
-      elevationMinMaxOffsetAndEpsilonAndOffset:
-        ud.elevationMinMaxOffsetAndEpsilonAndOffset?.value ?? new Vector4(),
-      logarithmic: ud.logarithmic?.value ?? false,
-      logBase: ud.logBase?.value ?? 10,
-      logBoundary: ud.logBoundary?.value ?? 10,
+      globalMinMaxHeight: new Vector2(globalMinHeight, globalMaxHeight),
     };
 
     return { layers, globals };
@@ -1243,34 +1280,51 @@ ${generateTileCommonInjection(maxTextures)}
         value: [...new Array(maxTextures)].fill(false),
       };
     }
-    if (!m.userData.elevationRGBScaler) {
-      m.userData.elevationRGBScaler = {
-        value: new Vector3(0, 0, 0),
+    // Elevation Heatmap texture filters (true = use bilinear, false = use nearest)
+    // Default to false (nearest) for testing
+    if (!m.userData.elevationHeatmapUsesBilinear) {
+      m.userData.elevationHeatmapUsesBilinear = {
+        value: [...new Array(maxTextures)].fill(false),
       };
     }
-    if (!m.userData.elevationMinMaxHeightAndBoundary) {
-      m.userData.elevationMinMaxHeightAndBoundary = {
-        value: new Vector3(0, 0, 0), // minHeight, maxHeight, boundary
+    // ColorMap row indices for 2D atlas (0.5 default = single row compatibility)
+    if (!m.userData.colorMapRowIndices) {
+      m.userData.colorMapRowIndices = {
+        value: [...new Array(maxTextures)].fill(0.5),
       };
     }
-    if (!m.userData.elevationMinMaxOffsetAndEpsilonAndOffset) {
-      m.userData.elevationMinMaxOffsetAndEpsilonAndOffset = {
-        value: new Vector4(0, 0, 0, 0), // minOffset, maxOffset, epsilon, offset
+    // Per-layer elevation min/max heights for normalization
+    if (!m.userData.elevationMinHeights) {
+      m.userData.elevationMinHeights = {
+        value: [...new Array(maxTextures)].fill(0),
       };
     }
-    if (!m.userData.logarithmic) {
-      m.userData.logarithmic = {
-        value: false,
+    if (!m.userData.elevationMaxHeights) {
+      m.userData.elevationMaxHeights = {
+        value: [...new Array(maxTextures)].fill(1),
       };
     }
-    if (!m.userData.logBase) {
-      m.userData.logBase = {
-        value: 10,
+    // Per-layer logarithmic scaling (0 = off, >0 = on with boundary value)
+    if (!m.userData.elevationLogBoundaries) {
+      m.userData.elevationLogBoundaries = {
+        value: [...new Array(maxTextures)].fill(0),
       };
     }
-    if (!m.userData.logBoundary) {
-      m.userData.logBoundary = {
-        value: 10,
+    // Per-layer DEM decoder parameters
+    if (!m.userData.elevationRGBScalersAndBoundaries) {
+      m.userData.elevationRGBScalersAndBoundaries = {
+        value: Array.from(
+          { length: maxTextures },
+          () => new Vector4(0, 0, 0, 0),
+        ),
+      };
+    }
+    if (!m.userData.elevationDecoderOffsets) {
+      m.userData.elevationDecoderOffsets = {
+        value: Array.from(
+          { length: maxTextures },
+          () => new Vector4(0, 0, 1, 0),
+        ),
       };
     }
 
@@ -1302,6 +1356,8 @@ ${generateTileCommonInjection(maxTextures)}
       m.userData.colors.value[i] = new Color();
       m.userData.opacities.value[i] = 1;
       m.userData.isElevationHeatmaps.value[i] = false; // Reset elevation heatmap flags
+      m.userData.elevationHeatmapUsesBilinear.value[i] = true;
+      m.userData.colorMapRowIndices.value[i] = 0.5; // Reset colorMap row index
       m.userData.isHillshades.value[i] = false; // Reset hillshade flags
     }
 
@@ -1324,6 +1380,60 @@ ${generateTileCommonInjection(maxTextures)}
       ) {
         m.userData.isElevationHeatmaps.value[i] =
           mat.isElevationHeatmaps[i] !== 0;
+
+        // Apply per-layer filter to elevation heatmap slots
+        if (mat.isElevationHeatmaps[i] !== 0 && mat.elevationHeatmapFilters) {
+          const filter = mat.elevationHeatmapFilters[i] || "linear";
+          m.userData.elevationHeatmapUsesBilinear.value[i] =
+            filter !== "nearest";
+        }
+
+        // Set per-layer min/max heights
+        if (mat.elevationMinHeights) {
+          m.userData.elevationMinHeights.value[i] =
+            mat.elevationMinHeights[i] ?? 0;
+        }
+        if (mat.elevationMaxHeights) {
+          const minH = m.userData.elevationMinHeights.value[i] ?? 0;
+          m.userData.elevationMaxHeights.value[i] =
+            mat.elevationMaxHeights[i] ?? minH + 1;
+        }
+
+        // Set per-layer logarithmic boundary (0 = off, >0 = on with boundary value)
+        if (mat.logarithmics && mat.logBoundaries) {
+          const logarithmic = (mat.logarithmics[i] ?? 0) !== 0;
+          const logBoundary = mat.logBoundaries[i] ?? 10;
+          m.userData.elevationLogBoundaries.value[i] = logarithmic
+            ? logBoundary
+            : 0;
+        }
+
+        // Set per-layer DEM decoder parameters
+        m.userData.elevationRGBScalersAndBoundaries.value[i].set(
+          mat.elevationRScalers?.[i] ?? 0,
+          mat.elevationGScalers?.[i] ?? 0,
+          mat.elevationBScalers?.[i] ?? 0,
+          mat.elevationBoundaries?.[i] ?? 0,
+        );
+        m.userData.elevationDecoderOffsets.value[i].set(
+          mat.elevationMinOffsets?.[i] ?? 0,
+          mat.elevationMaxOffsets?.[i] ?? 0,
+          mat.elevationEpsilons?.[i] ?? 1,
+          mat.elevationOffsets?.[i] ?? 0,
+        );
+      }
+    }
+
+    // Populate colorMapRowIndices from layer_ids using colorMapAtlas
+    if (mat.layerIds && mat.layerIds.length > 0 && this.ctx.colorMapAtlas) {
+      for (let i = 0; i < Math.min(mat.layerIds.length, maxTextures); i++) {
+        const layerId = mat.layerIds[i];
+        if (layerId) {
+          const rowIndex = this.ctx.colorMapAtlas.getRowIndex(layerId);
+          if (rowIndex !== undefined) {
+            m.userData.colorMapRowIndices.value[i] = rowIndex;
+          }
+        }
       }
     }
 
@@ -1336,29 +1446,6 @@ ${generateTileCommonInjection(maxTextures)}
 
     // Hillshade exaggeration (applied during normal map sampling in shader)
     m.userData.hillshadeExaggeration.value = mat.hillshadeExaggeration;
-
-    m.userData.elevationRGBScaler.value.set(
-      mat.elevationRScaler,
-      mat.elevationGScaler,
-      mat.elevationBScaler,
-    );
-
-    m.userData.elevationMinMaxHeightAndBoundary.value.set(
-      mat.elevationMinHeight,
-      mat.elevationMaxHeight,
-      mat.elevationBoundary,
-    );
-
-    m.userData.elevationMinMaxOffsetAndEpsilonAndOffset.value.set(
-      mat.elevationMinOffset,
-      mat.elevationMaxOffset,
-      mat.elevationEpsilon,
-      mat.elevationOffset,
-    );
-
-    m.userData.logarithmic.value = mat.logarithmic;
-    m.userData.logBase.value = Math.log(mat.logBoundary);
-    m.userData.logBoundary.value = mat.logBoundary;
 
     const prevHillshade = m.userData.defines.USE_HILLSHADE;
     const newHillshade = m.userData.isHillshades.value.some(
@@ -1546,14 +1633,20 @@ ${generateTileCommonInjection(maxTextures)}
         }
 
         if (isElevationHeatmap) {
-          // Elevation DEM textures: use NearestFilter to prevent decoding artifacts
-          // RGB-encoded heights must not be interpolated before decoding
-          if (t.minFilter !== NearestFilter) {
-            t.minFilter = NearestFilter;
+          // Elevation heatmap textures: filter mode is configurable per-layer via elevationHeatmapFilters
+          // - "nearest": NearestFilter (no interpolation, shows pixel blocks)
+          // - "linear": LinearFilter (hardware bilinear, smoother but relies on shader for correct DEM handling)
+          // The shader uses sampleElevationBilinear/sampleElevationNearest to properly decode RGB heights
+          const filter = mat.elevationHeatmapFilters?.[i] ?? "linear";
+          const useNearest = filter === "nearest";
+          const targetFilter = useNearest ? NearestFilter : LinearFilter;
+
+          if (t.minFilter !== targetFilter) {
+            t.minFilter = targetFilter;
             t.needsUpdate = true;
           }
-          if (t.magFilter !== NearestFilter) {
-            t.magFilter = NearestFilter;
+          if (t.magFilter !== targetFilter) {
+            t.magFilter = targetFilter;
             t.needsUpdate = true;
           }
         }

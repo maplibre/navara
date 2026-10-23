@@ -46,11 +46,6 @@ pub struct Globe {
     /// Used by RasterMaterial and TerrainMaterial.
     pub wireframe: bool,
 
-    /// Color map lookup table for elevation heatmap rendering.
-    /// Flattened RGB array: [r0,g0,b0, r1,g1,b1, ...].
-    /// Used by elevation heatmap layers.
-    pub elevation_colormap: Vec<f32>,
-
     /// Tiling scheme for the quadtree.
     /// `WebMercator` (default): single root (0,0,0), WM extents.
     /// `Geographic`: two roots (0,0,0) and (1,0,0), equal-degree extents.
@@ -68,7 +63,6 @@ impl Default for Globe {
             transparent: false,
             opacity: 1.0,
             wireframe: false,
-            elevation_colormap: Vec::new(),
             tiling_scheme: TilingScheme::WebMercator { tms: false },
         }
     }

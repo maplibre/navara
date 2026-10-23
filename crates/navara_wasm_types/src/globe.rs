@@ -36,11 +36,6 @@ pub struct Globe {
     /// Whether to render materials in wireframe mode.
     pub wireframe: bool,
 
-    /// Color map lookup table for elevation heatmap rendering.
-    /// Flattened RGB array: [r0,g0,b0, r1,g1,b1, ...].
-    #[wasm_bindgen(js_name = elevationColormap, getter_with_clone)]
-    pub elevation_colormap: Vec<f32>,
-
     /// Whether the globe tiles with the Geographic scheme (quantized-mesh
     /// terrain) rather than the default WebMercator. Engine-set output — the
     /// web renderer selects its raster drape pipeline (baked vs direct) from
@@ -64,7 +59,6 @@ impl Globe {
         transparent: bool,
         opacity: f32,
         wireframe: bool,
-        elevation_colormap: Vec<f32>,
     ) -> Self {
         Self {
             max_sse,
@@ -75,7 +69,6 @@ impl Globe {
             transparent,
             opacity,
             wireframe,
-            elevation_colormap,
             is_geographic_tiling: false,
         }
     }
@@ -92,7 +85,6 @@ impl From<&navara_globe::Globe> for Globe {
             transparent: val.transparent,
             opacity: val.opacity,
             wireframe: val.wireframe,
-            elevation_colormap: val.elevation_colormap.clone(),
             is_geographic_tiling: val.tiling_scheme.is_geographic(),
         }
     }
@@ -115,7 +107,6 @@ impl From<&Globe> for navara_globe::Globe {
             transparent: val.transparent,
             opacity: val.opacity,
             wireframe: val.wireframe,
-            elevation_colormap: val.elevation_colormap.clone(),
             tiling_scheme: Default::default(),
         }
     }

@@ -25,6 +25,24 @@ vi.mock("@navaramap/three", () => ({
     setStyle(_style: string) {
       return this;
     }
+    toArray() {
+      return [this.r, this.g, this.b];
+    }
+  },
+  ColorMap: class ColorMap {
+    constructor(
+      public type: string,
+      public name: string,
+      public colors: number[][],
+    ) {}
+    flatten() {
+      // Mock flatten: return a flat Float32Array of RGB values
+      const flat: number[] = [];
+      for (const color of this.colors) {
+        flat.push(...color);
+      }
+      return new Float32Array(flat);
+    }
   },
 }));
 
@@ -166,6 +184,45 @@ describe("toLayerDescription", () => {
         type: "raster",
         source: mockSource,
         hillshade: {}, // Paint properties are handled during evaluation, not in layer description
+      });
+    });
+
+    it("should convert color-relief layer with interpolate expression", () => {
+      const layer: StyleLayer = {
+        id: "color-relief-layer",
+        type: "color-relief",
+        source: "test-dem",
+        paint: {
+          "color-relief-color": [
+            "interpolate",
+            ["linear"],
+            ["elevation"],
+            0,
+            "#0000ff",
+            3000,
+            "#ff0000",
+          ],
+          "color-relief-opacity": 0.8,
+          resampling: "nearest",
+        },
+      };
+
+      const result = toLayerDescription(mockSource, layer);
+
+      expect(result).not.toBeNull();
+      expect(result?.type).toBe("raster");
+      expect(result).toMatchObject({
+        type: "raster",
+        source: mockSource,
+        elevationHeatmap: {
+          minHeight: 0,
+          maxHeight: 3000,
+          logarithmic: false,
+          filter: "nearest",
+        },
+        raster: {
+          opacity: 0.8,
+        },
       });
     });
   });

@@ -1,4 +1,4 @@
-import { Uniform, Vector3, Vector4, type Texture } from "three";
+import { Uniform, Vector2, Vector4, type Texture } from "three";
 
 import type {
   CompositeGlobals,
@@ -22,47 +22,84 @@ export type ElevationMutates = {
  */
 export function createElevationMutates(): ElevationMutates {
   const refs = {
-    uIsElevationHeatmaps: new Uniform<boolean[]>([]),
+    // Packed params: (isHeatmap, usesBilinear, colorMapRowIndex, logBoundary)
+    uElevationHeatmapParams: new Uniform<Vector4[]>([]),
+    uElevationMinMaxHeights: new Uniform<Vector2[]>([]),
     uColorMapTexture: new Uniform<Texture | null>(null),
-    uElevationRGBScaler: new Uniform(new Vector3()),
-    uElevationMinMaxHeightAndBoundary: new Uniform(new Vector3()),
-    uElevationMinMaxOffsetAndEpsilonAndOffset: new Uniform(new Vector4()),
-    uLogarithmic: new Uniform(false),
-    uLogBase: new Uniform(10),
-    uLogBoundary: new Uniform(10),
+    uElevationRGBScalersAndBoundaries: new Uniform<Vector4[]>([]), // Per-layer (r, g, b, boundary)
+    uElevationDecoderOffsets: new Uniform<Vector4[]>([]), // Per-layer (minOffset, maxOffset, epsilon, offset)
+    uGlobalMinMaxHeight: new Uniform(new Vector2(0, 1)),
   };
   return {
     attachUniforms: (target, numTextures, placeholder) => {
-      refs.uIsElevationHeatmaps.value = new Array<boolean>(numTextures).fill(
-        false,
+      // Initialize packed params: (isHeatmap, usesBilinear, colorMapRowIndex, logBoundary)
+      refs.uElevationHeatmapParams.value = Array.from(
+        { length: numTextures },
+        () => new Vector4(0, 1, 0.5, 0), // defaults: not heatmap, bilinear, row 0.5, log off
+      );
+      refs.uElevationMinMaxHeights.value = Array.from(
+        { length: numTextures },
+        () => new Vector2(0, 1),
+      );
+      refs.uElevationRGBScalersAndBoundaries.value = Array.from(
+        { length: numTextures },
+        () => new Vector4(0, 0, 0, 0),
+      );
+      refs.uElevationDecoderOffsets.value = Array.from(
+        { length: numTextures },
+        () => new Vector4(0, 0, 1, 0), // epsilon defaults to 1
       );
       refs.uColorMapTexture.value = placeholder;
-      target.uIsElevationHeatmaps = refs.uIsElevationHeatmaps;
+      target.uElevationHeatmapParams = refs.uElevationHeatmapParams;
+      target.uElevationMinMaxHeights = refs.uElevationMinMaxHeights;
       target.uColorMapTexture = refs.uColorMapTexture;
-      target.uElevationRGBScaler = refs.uElevationRGBScaler;
-      target.uElevationMinMaxHeightAndBoundary =
-        refs.uElevationMinMaxHeightAndBoundary;
-      target.uElevationMinMaxOffsetAndEpsilonAndOffset =
-        refs.uElevationMinMaxOffsetAndEpsilonAndOffset;
-      target.uLogarithmic = refs.uLogarithmic;
-      target.uLogBase = refs.uLogBase;
-      target.uLogBoundary = refs.uLogBoundary;
+      target.uElevationRGBScalersAndBoundaries =
+        refs.uElevationRGBScalersAndBoundaries;
+      target.uElevationDecoderOffsets = refs.uElevationDecoderOffsets;
+      target.uGlobalMinMaxHeight = refs.uGlobalMinMaxHeight;
     },
     bindSlot: (k, layer) => {
-      refs.uIsElevationHeatmaps.value[k] = layer?.kind === "elevationHeatmap";
+      const isHeatmap = layer?.kind === "elevationHeatmap";
+      if (isHeatmap) {
+        // Pack params into vec4: (isHeatmap, usesBilinear, colorMapRowIndex, logBoundary)
+        const usesBilinear = layer.filter !== "nearest" ? 1 : 0;
+        const colorMapRowIndex = layer.colorMapRowIndex ?? 0.5;
+        const logBoundary =
+          (layer.logarithmic ?? false) ? (layer.logBoundary ?? 10) : 0;
+        refs.uElevationHeatmapParams.value[k].set(
+          1,
+          usesBilinear,
+          colorMapRowIndex,
+          logBoundary,
+        );
+
+        // Set per-layer min/max heights
+        const minH = layer.minHeight ?? 0;
+        refs.uElevationMinMaxHeights.value[k].set(
+          minH,
+          layer.maxHeight ?? minH + 1,
+        );
+
+        // Set per-layer decoder parameters
+        if (layer.rgbScalersAndBoundary) {
+          refs.uElevationRGBScalersAndBoundaries.value[k].copy(
+            layer.rgbScalersAndBoundary,
+          );
+        }
+        if (layer.decoderOffsets) {
+          refs.uElevationDecoderOffsets.value[k].copy(layer.decoderOffsets);
+        }
+      } else {
+        // Reset to defaults: (isHeatmap=0, usesBilinear=1, colorMapRowIndex=0.5, logBoundary=0)
+        refs.uElevationHeatmapParams.value[k].set(0, 1, 0.5, 0);
+        refs.uElevationMinMaxHeights.value[k].set(0, 1);
+        refs.uElevationRGBScalersAndBoundaries.value[k].set(0, 0, 0, 0);
+        refs.uElevationDecoderOffsets.value[k].set(0, 0, 1, 0);
+      }
     },
     bindGlobal: (globals) => {
       refs.uColorMapTexture.value = globals.colorMapTexture;
-      refs.uElevationRGBScaler.value.copy(globals.elevationRGBScaler);
-      refs.uElevationMinMaxHeightAndBoundary.value.copy(
-        globals.elevationMinMaxHeightAndBoundary,
-      );
-      refs.uElevationMinMaxOffsetAndEpsilonAndOffset.value.copy(
-        globals.elevationMinMaxOffsetAndEpsilonAndOffset,
-      );
-      refs.uLogarithmic.value = globals.logarithmic;
-      refs.uLogBase.value = globals.logBase;
-      refs.uLogBoundary.value = globals.logBoundary;
+      refs.uGlobalMinMaxHeight.value.copy(globals.globalMinMaxHeight);
     },
   };
 }

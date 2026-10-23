@@ -1948,47 +1948,59 @@ pub struct RasterTileInternalMaterial {
     #[wasm_bindgen(js_name = showBoundingBox)]
     #[serde(rename = "showBoundingBox")]
     pub show_bounding_box: Option<bool>,
+    /// Per-slot layer IDs for mapping slots to layers (for colorMap atlas lookup)
+    #[wasm_bindgen(getter_with_clone, js_name = layerIds)]
+    #[serde(rename = "layerIds")]
+    pub layer_ids: Vec<String>,
 
     // Elevation Heatmap fields
     #[wasm_bindgen(getter_with_clone, js_name = isElevationHeatmaps)]
     #[serde(rename = "isElevationHeatmaps")]
     pub is_elevation_heatmaps: Vec<u8>,
-    // Shared elevation heatmap configuration (all heatmap layers use the same settings)
-    #[wasm_bindgen(js_name = elevationMinHeight)]
-    #[serde(rename = "elevationMinHeight")]
-    pub elevation_min_height: f64,
-    #[wasm_bindgen(js_name = elevationMaxHeight)]
-    #[serde(rename = "elevationMaxHeight")]
-    pub elevation_max_height: f64,
-    #[wasm_bindgen(js_name = elevationRScaler)]
-    #[serde(rename = "elevationRScaler")]
-    pub elevation_r_scaler: f64,
-    #[wasm_bindgen(js_name = elevationGScaler)]
-    #[serde(rename = "elevationGScaler")]
-    pub elevation_g_scaler: f64,
-    #[wasm_bindgen(js_name = elevationBScaler)]
-    #[serde(rename = "elevationBScaler")]
-    pub elevation_b_scaler: f64,
-    #[wasm_bindgen(js_name = elevationBoundary)]
-    #[serde(rename = "elevationBoundary")]
-    pub elevation_boundary: f64,
-    #[wasm_bindgen(js_name = elevationMaxOffset)]
-    #[serde(rename = "elevationMaxOffset")]
-    pub elevation_max_offset: f64,
-    #[wasm_bindgen(js_name = elevationMinOffset)]
-    #[serde(rename = "elevationMinOffset")]
-    pub elevation_min_offset: f64,
-    #[wasm_bindgen(js_name = elevationEpsilon)]
-    #[serde(rename = "elevationEpsilon")]
-    pub elevation_epsilon: f64,
-    #[wasm_bindgen(js_name = elevationOffset)]
-    #[serde(rename = "elevationOffset")]
-    pub elevation_offset: f64,
-
-    pub logarithmic: bool,
-    #[wasm_bindgen(js_name = logBoundary)]
-    #[serde(rename = "logBoundary")]
-    pub log_boundary: f64,
+    /// Per-layer minimum heights for elevation normalization
+    #[wasm_bindgen(getter_with_clone, js_name = elevationMinHeights)]
+    #[serde(rename = "elevationMinHeights")]
+    pub elevation_min_heights: Vec<f64>,
+    /// Per-layer maximum heights for elevation normalization
+    #[wasm_bindgen(getter_with_clone, js_name = elevationMaxHeights)]
+    #[serde(rename = "elevationMaxHeights")]
+    pub elevation_max_heights: Vec<f64>,
+    /// Per-layer filter modes: "linear" or "nearest"
+    #[wasm_bindgen(getter_with_clone, js_name = elevationHeatmapFilters)]
+    #[serde(rename = "elevationHeatmapFilters")]
+    pub elevation_heatmap_filters: Vec<String>,
+    /// Per-layer DEM decoder parameters
+    #[wasm_bindgen(getter_with_clone, js_name = elevationRScalers)]
+    #[serde(rename = "elevationRScalers")]
+    pub elevation_r_scalers: Vec<f64>,
+    #[wasm_bindgen(getter_with_clone, js_name = elevationGScalers)]
+    #[serde(rename = "elevationGScalers")]
+    pub elevation_g_scalers: Vec<f64>,
+    #[wasm_bindgen(getter_with_clone, js_name = elevationBScalers)]
+    #[serde(rename = "elevationBScalers")]
+    pub elevation_b_scalers: Vec<f64>,
+    #[wasm_bindgen(getter_with_clone, js_name = elevationBoundaries)]
+    #[serde(rename = "elevationBoundaries")]
+    pub elevation_boundaries: Vec<f64>,
+    #[wasm_bindgen(getter_with_clone, js_name = elevationMaxOffsets)]
+    #[serde(rename = "elevationMaxOffsets")]
+    pub elevation_max_offsets: Vec<f64>,
+    #[wasm_bindgen(getter_with_clone, js_name = elevationMinOffsets)]
+    #[serde(rename = "elevationMinOffsets")]
+    pub elevation_min_offsets: Vec<f64>,
+    #[wasm_bindgen(getter_with_clone, js_name = elevationEpsilons)]
+    #[serde(rename = "elevationEpsilons")]
+    pub elevation_epsilons: Vec<f64>,
+    #[wasm_bindgen(getter_with_clone, js_name = elevationOffsets)]
+    #[serde(rename = "elevationOffsets")]
+    pub elevation_offsets: Vec<f64>,
+    /// Per-layer logarithmic scaling flags
+    #[wasm_bindgen(getter_with_clone)]
+    pub logarithmics: Vec<u8>,
+    /// Per-layer logarithmic boundaries
+    #[wasm_bindgen(getter_with_clone, js_name = logBoundaries)]
+    #[serde(rename = "logBoundaries")]
+    pub log_boundaries: Vec<f64>,
 
     // Hillshade fields
     #[wasm_bindgen(getter_with_clone, js_name = isHillshades)]
@@ -2081,68 +2093,108 @@ impl<'a> From<&'a navara_material::RasterTileInternalMaterial> for RasterTileInt
             show_bounding_box: m.show_bounding_box,
 
             // Elevation Heatmap fields
-            is_elevation_heatmaps: m.is_elevation_heatmaps.iter().map(|b| b.to_u8()).collect(),
-            elevation_min_height: m
-                .elevation_heatmap_config
-                .as_ref()
-                .map(|c| c.min_height)
-                .unwrap_or(0.0),
-            elevation_max_height: m
-                .elevation_heatmap_config
-                .as_ref()
-                .map(|c| c.max_height)
-                .unwrap_or(1000.0),
-            elevation_r_scaler: m
-                .heatmap_elevation_decoder
-                .as_ref()
-                .map(|d| d.r_scaler)
-                .unwrap_or(0.0),
-            elevation_g_scaler: m
-                .heatmap_elevation_decoder
-                .as_ref()
-                .map(|d| d.g_scaler)
-                .unwrap_or(0.0),
-            elevation_b_scaler: m
-                .heatmap_elevation_decoder
-                .as_ref()
-                .map(|d| d.b_scaler)
-                .unwrap_or(0.0),
-            elevation_boundary: m
-                .heatmap_elevation_decoder
-                .as_ref()
-                .map(|d| d.boundary)
-                .unwrap_or(0.0),
-            elevation_max_offset: m
-                .heatmap_elevation_decoder
-                .as_ref()
-                .map(|d| d.max_offset)
-                .unwrap_or(0.0),
-            elevation_min_offset: m
-                .heatmap_elevation_decoder
-                .as_ref()
-                .map(|d| d.min_offset)
-                .unwrap_or(0.0),
-            elevation_epsilon: m
-                .heatmap_elevation_decoder
-                .as_ref()
-                .map(|d| d.epsilon)
-                .unwrap_or(1.0),
-            elevation_offset: m
-                .heatmap_elevation_decoder
-                .as_ref()
-                .map(|d| d.offset)
-                .unwrap_or(0.0),
+            layer_ids: m
+                .elevation_heatmap_layers
+                .iter()
+                .map(|layer| {
+                    layer
+                        .as_ref()
+                        .map(|l| l.layer_id.clone())
+                        .unwrap_or_else(String::new)
+                })
+                .collect(),
+            is_elevation_heatmaps: m
+                .elevation_heatmap_layers
+                .iter()
+                .map(|layer| if layer.is_some() { 1 } else { 0 })
+                .collect(),
+            elevation_min_heights: m
+                .elevation_heatmap_layers
+                .iter()
+                .map(|layer| layer.as_ref().map(|l| l.config.min_height).unwrap_or(0.0))
+                .collect(),
+            elevation_max_heights: m
+                .elevation_heatmap_layers
+                .iter()
+                .map(|layer| {
+                    layer
+                        .as_ref()
+                        .map(|l| l.config.max_height)
+                        .unwrap_or(1000.0)
+                })
+                .collect(),
+            elevation_heatmap_filters: m
+                .elevation_heatmap_layers
+                .iter()
+                .map(|layer| {
+                    layer
+                        .as_ref()
+                        .map(|l| l.config.filter.clone())
+                        .unwrap_or_else(|| "linear".to_string())
+                })
+                .collect(),
+            // Per-layer DEM decoder parameters
+            elevation_r_scalers: m
+                .elevation_heatmap_layers
+                .iter()
+                .map(|layer| layer.as_ref().map(|l| l.decoder.r_scaler).unwrap_or(0.0))
+                .collect(),
+            elevation_g_scalers: m
+                .elevation_heatmap_layers
+                .iter()
+                .map(|layer| layer.as_ref().map(|l| l.decoder.g_scaler).unwrap_or(0.0))
+                .collect(),
+            elevation_b_scalers: m
+                .elevation_heatmap_layers
+                .iter()
+                .map(|layer| layer.as_ref().map(|l| l.decoder.b_scaler).unwrap_or(0.0))
+                .collect(),
+            elevation_boundaries: m
+                .elevation_heatmap_layers
+                .iter()
+                .map(|layer| layer.as_ref().map(|l| l.decoder.boundary).unwrap_or(0.0))
+                .collect(),
+            elevation_max_offsets: m
+                .elevation_heatmap_layers
+                .iter()
+                .map(|layer| layer.as_ref().map(|l| l.decoder.max_offset).unwrap_or(0.0))
+                .collect(),
+            elevation_min_offsets: m
+                .elevation_heatmap_layers
+                .iter()
+                .map(|layer| layer.as_ref().map(|l| l.decoder.min_offset).unwrap_or(0.0))
+                .collect(),
+            elevation_epsilons: m
+                .elevation_heatmap_layers
+                .iter()
+                .map(|layer| layer.as_ref().map(|l| l.decoder.epsilon).unwrap_or(1.0))
+                .collect(),
+            elevation_offsets: m
+                .elevation_heatmap_layers
+                .iter()
+                .map(|layer| layer.as_ref().map(|l| l.decoder.offset).unwrap_or(0.0))
+                .collect(),
 
-            logarithmic: m
-                .elevation_heatmap_config
-                .as_ref()
-                .map(|c| c.logarithmic)
-                .unwrap_or(false),
-            log_boundary: m
-                .elevation_heatmap_config
-                .as_ref()
-                .map(|c| c.log_boundary)
-                .unwrap_or(10.0),
+            logarithmics: m
+                .elevation_heatmap_layers
+                .iter()
+                .map(|layer| {
+                    layer
+                        .as_ref()
+                        .map(|l| if l.config.logarithmic { 1 } else { 0 })
+                        .unwrap_or(0)
+                })
+                .collect(),
+            log_boundaries: m
+                .elevation_heatmap_layers
+                .iter()
+                .map(|layer| {
+                    layer
+                        .as_ref()
+                        .map(|l| l.config.log_boundary)
+                        .unwrap_or(10.0)
+                })
+                .collect(),
 
             // Hillshade fields
             is_hillshades: m.is_hillshades.iter().map(|b| b.to_u8()).collect(),
@@ -2290,6 +2342,15 @@ pub struct ElevationHeatmapMaterial {
     #[wasm_bindgen(js_name = logBoundary)]
     #[serde(rename = "logBoundary")]
     pub log_boundary: Option<f64>,
+    #[wasm_bindgen(getter_with_clone)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub filter: Option<String>,
+    /// Color map lookup table for this layer's elevation heatmap rendering.
+    /// Flattened RGB array: [r0,g0,b0, r1,g1,b1, ...].
+    /// When None, the layer will not apply color mapping.
+    #[wasm_bindgen(js_name = colorMap, getter_with_clone)]
+    #[serde(rename = "colorMap", skip_serializing_if = "Option::is_none")]
+    pub color_map: Option<Vec<f32>>,
 }
 
 /// Hillshade render options for a `raster` layer. The elevation decoder is taken

@@ -187,7 +187,7 @@ A 1-pixel high Canvas element representing the color map
 
 ### flatten()
 
-Converts the color map to a `Float32Array` for WASM/GPU use. Used internally when setting `globe.elevationColormap`.
+Converts the color map to a `Float32Array` for GPU use. Use this when setting the `colorMap` property on elevation heatmap layers.
 
 **Syntax:**
 
@@ -231,10 +231,7 @@ const spectralColorMap = new ColorMap("diverging", "Spectral", [
   new Color().setStyle("#5e4fa2"),
 ]);
 
-// Set the color map on the Globe
-view.globe.elevationColormap = spectralColorMap;
-
-// Add an elevation heatmap layer
+// Add an elevation heatmap layer with the color map
 const heatmapSource = view.addSource({
   type: "raster-dem",
   url: "https://example.com/terrain/{z}/{x}/{y}.png",
@@ -245,6 +242,7 @@ view.addLayer({
   type: "raster",
   source: heatmapSource,
   elevationHeatmap: {
+    colorMap: spectralColorMap.flatten(),
     maxHeight: 3000,
     minHeight: 0,
   },
@@ -254,7 +252,7 @@ view.addLayer({
 ### Dynamic Color Map Switching
 
 ```typescript
-import ThreeView, { ColorMap, Color } from "@navaramap/three";
+import ThreeView, { ColorMap, Color, TERRARIUM_ELEVATION_DECODER, type LayerDescription } from "@navaramap/three";
 
 const view = new ThreeView();
 await view.init();
@@ -305,9 +303,31 @@ const colorMaps = {
   ]),
 };
 
+const heatmapSource = view.addSource({
+  type: "raster-dem",
+  url: "https://example.com/terrain/{z}/{x}/{y}.png",
+  elevationDecoder: TERRARIUM_ELEVATION_DECODER(),
+  maxZoom: 15,
+});
+
+const layerDef: LayerDescription = {
+  type: "raster",
+  source: heatmapSource.id,
+  elevationHeatmap: {
+    colorMap: colorMaps.rdYlGn.flatten(),
+    maxHeight: 3000,
+    minHeight: 0,
+  },
+};
+
+const layer = view.addLayer(layerDef);
+
 // Function to switch color maps
 function setColorMap(name: keyof typeof colorMaps) {
-  view.globe.elevationColormap = colorMaps[name];
+  if (layerDef.elevationHeatmap) {
+    layerDef.elevationHeatmap.colorMap = colorMaps[name].flatten();
+    view.updateLayerById(layer.id, layerDef);
+  }
 }
 
 // Usage example
@@ -317,5 +337,5 @@ setColorMap("rdYlGn");
 ## See Also
 
 - [Color Class](../../../three/api/color/) - A class for representing colors
-- [Globe Class](../../../three/api/globe/) - `elevationColormap` property
+- [ElevationHeatmapMaterial](../../../three/material/elevation-heatmap-material/) - Using color maps with elevation heatmap layers
 - [ElevationHeatmapMaterial](../../../three/material/elevation-heatmap-material/) - Elevation heatmap material

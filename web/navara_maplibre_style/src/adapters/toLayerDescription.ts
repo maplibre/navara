@@ -3,12 +3,15 @@
  */
 
 import {
+  ColorMap,
+  type ColorTuple,
   type LayerDescription,
   type Source,
   type SourceGeometryType,
   type VectorLayer,
 } from "@navaramap/three";
 
+import { PAINT_SPECS_BY_TYPE } from "../engine/paintSpecs";
 import type { StyleEngine } from "../engine/StyleEngine";
 import { type StyleLayer, type ValueExpression } from "../engine/types";
 import {
@@ -298,6 +301,102 @@ function createHillshadeLayer(source: Source): LayerDescription {
     source,
     hillshade: {},
   };
+}
+
+/**
+ * Create layer description for color-relief layer.
+ * Converts MapLibre color-relief to Navara elevation heatmap.
+ */
+function createColorReliefLayer(
+  source: Source,
+  styleLayer: StyleLayer,
+): LayerDescription | null {
+  if (styleLayer.type !== "color-relief") return null;
+
+  const paint = styleLayer.paint || {};
+  const colorExpression = paint["color-relief-color"];
+
+  // Get default values from paint spec
+  const colorReliefSpec = PAINT_SPECS_BY_TYPE["color-relief"];
+  const defaultOpacity = colorReliefSpec["color-relief-opacity"]
+    .default as number;
+  const defaultResampling = colorReliefSpec.resampling.default as string;
+
+  const opacity =
+    typeof paint["color-relief-opacity"] === "number"
+      ? paint["color-relief-opacity"]
+      : defaultOpacity;
+  const resampling = paint.resampling || defaultResampling;
+
+  // Parse color-relief-color expression to extract color stops.
+  // Expected format: ["interpolate", ["linear"], ["elevation"], stop1, color1, stop2, color2, ...]
+  let colorMap: ColorMap | undefined;
+  let minHeight: number | undefined;
+  let maxHeight: number | undefined;
+
+  if (Array.isArray(colorExpression) && colorExpression.length >= 3) {
+    // Validate expression structure
+    if (
+      colorExpression[0] !== "interpolate" ||
+      !Array.isArray(colorExpression[1])
+    ) {
+      console.warn(
+        `Color-relief layer "${styleLayer.id}": color-relief-color must be an interpolate expression. ` +
+          `Expected: ["interpolate", [...], ["elevation"], ...]`,
+      );
+    } else {
+      const colors: ColorTuple[] = [];
+      const stops: number[] = [];
+
+      // Skip first 3 elements: ["interpolate", ["linear"], ["elevation"]]
+      for (let i = 3; i < colorExpression.length; i += 2) {
+        const elevation = colorExpression[i];
+        const colorStr = colorExpression[i + 1];
+
+        if (typeof elevation === "number" && typeof colorStr === "string") {
+          stops.push(elevation);
+          // Parse color string to RGB
+          const colorObj = toNavaraColor(colorStr);
+          if (colorObj) {
+            colors.push(colorObj.color.toArray());
+          }
+        }
+      }
+
+      if (colors.length > 0 && stops.length > 0) {
+        minHeight = Math.min(...stops);
+        maxHeight = Math.max(...stops);
+        colorMap = new ColorMap("sequential", "Relief", colors);
+      }
+    }
+  }
+
+  // Validate that we successfully parsed the expression
+  if (minHeight === undefined || maxHeight === undefined) {
+    console.warn(
+      `Color-relief layer "${styleLayer.id}": Failed to parse color-relief-color expression. ` +
+        `Expected format: ["interpolate", ["linear"], ["elevation"], stop1, color1, stop2, color2, ...]`,
+    );
+    return null;
+  }
+
+  const layerDesc: LayerDescription = {
+    type: "raster",
+    source,
+    elevationHeatmap: {
+      minHeight,
+      maxHeight,
+      logarithmic: false,
+      filter: resampling,
+      // Per-layer color mapping: flatten colorMap to Float32Array
+      colorMap: colorMap ? colorMap.flatten() : undefined,
+    },
+    raster: {
+      opacity,
+    },
+  };
+
+  return layerDesc;
 }
 
 /**
@@ -594,6 +693,8 @@ export function toLayerDescription(
       return createRasterLayer(source);
     case "hillshade":
       return createHillshadeLayer(source);
+    case "color-relief":
+      return createColorReliefLayer(source, styleLayer);
     case "symbol":
       return createSymbolLayer(source, styleLayer, fontFamily, engine, zoom);
     default:

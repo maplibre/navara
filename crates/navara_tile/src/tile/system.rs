@@ -10,7 +10,7 @@ use navara_geometry::{
     TileUvTransform, add_pole_extension, add_skirt_separate, calculate_skirt_height,
     make_wgs84_down_dir_fn, tile_triangles_flat, uv_transform,
 };
-use navara_material::RasterTileInternalMaterial;
+use navara_material::{ElevationHeatmapLayerData, RasterTileInternalMaterial};
 use navara_math::{FloatType, Transform};
 use navara_memory::{
     GPU_GEOMETRY_RESIDENCY_FACTOR, MemoryLedger, ReserveEstimates, ReserveKey, RetainedEntry,
@@ -576,10 +576,7 @@ pub fn transfer_mesh(
         let mut colors = Vec::with_capacity(tile_layers_len);
 
         // Elevation Heatmap fields
-        let mut is_elevation_heatmaps = Vec::with_capacity(tile_layers_len);
-        let mut shared_heatmap_config = None;
-        // DEM decoder is fetch config: read live from the source, not the layer.
-        let mut shared_heatmap_decoder = None;
+        let mut elevation_heatmap_layers = Vec::with_capacity(tile_layers_len);
 
         // Hillshade fields
         let mut is_hillshades = Vec::with_capacity(tile_layers_len);
@@ -616,16 +613,19 @@ pub fn transfer_mesh(
             colors.push(a.color);
             tile_show_bounding_box = tile_show_bounding_box || a.show_bounding_box;
 
-            // Mark whether this layer is an elevation heatmap
+            // Collect elevation heatmap layer data
             if let Some(heatmap_config) = &l.elevation_heatmap_config {
-                is_elevation_heatmaps.push(true);
-                // Use the first heatmap config as shared configuration
-                if shared_heatmap_config.is_none() {
-                    shared_heatmap_config = Some(heatmap_config);
-                    shared_heatmap_decoder = layer_decoder(l);
+                if let Some(decoder) = layer_decoder(l) {
+                    elevation_heatmap_layers.push(Some(ElevationHeatmapLayerData {
+                        layer_id: l.layer_id.clone(),
+                        config: heatmap_config.clone(),
+                        decoder,
+                    }));
+                } else {
+                    elevation_heatmap_layers.push(None);
                 }
             } else {
-                is_elevation_heatmaps.push(false);
+                elevation_heatmap_layers.push(None);
             }
 
             // Mark whether this layer is a hillshade
@@ -676,9 +676,7 @@ pub fn transfer_mesh(
             show_bounding_box: Some(tile_show_bounding_box || terrain_show_bounding_box),
 
             // Elevation Heatmap fields
-            is_elevation_heatmaps,
-            elevation_heatmap_config: shared_heatmap_config.cloned(),
-            heatmap_elevation_decoder: shared_heatmap_decoder,
+            elevation_heatmap_layers,
 
             // Hillshade fields
             is_hillshades,
@@ -1665,15 +1663,12 @@ pub fn update_mesh_material(
         let mut shows = Vec::with_capacity(max_slots);
         let mut opacities = Vec::with_capacity(max_slots);
         let mut colors = Vec::with_capacity(max_slots);
-        let mut is_elevation_heatmaps = Vec::with_capacity(max_slots);
+        let mut elevation_heatmap_layers = Vec::with_capacity(max_slots);
         let mut is_hillshades = Vec::with_capacity(max_slots);
         let mut layer_fragments: Vec<Option<Entity>> = Vec::with_capacity(max_slots);
         let mut layer_uv_transforms: Vec<Option<TileUvTransform>> = Vec::with_capacity(max_slots);
         let mut layer_reproject = Vec::with_capacity(max_slots);
-        let mut elevation_heatmap_config = None;
         let mut hillshade_config = None;
-        // DEM decoder is fetch config: read live from the source, not the layer.
-        let mut heatmap_elevation_decoder = None;
         let mut hillshade_elevation_decoder = None;
 
         // Resolve a raster layer's DEM decoder live from its referenced source.
@@ -1718,7 +1713,7 @@ pub fn update_mesh_material(
                 shows.push(ready && a.show);
                 opacities.push(a.opacity.clamp(0., 1.));
                 colors.push(a.color);
-                is_elevation_heatmaps.push(false);
+                elevation_heatmap_layers.push(None);
                 is_hillshades.push(true);
                 layer_fragments.push(entity);
                 layer_uv_transforms.push(uv);
@@ -1750,15 +1745,25 @@ pub fn update_mesh_material(
                 shows.push(a.show);
                 opacities.push(a.opacity.clamp(0., 1.));
                 colors.push(a.color);
-                is_elevation_heatmaps.push(is_heatmap);
                 is_hillshades.push(false);
                 layer_fragments.push(None);
                 layer_uv_transforms.push(None);
                 layer_reproject.push(true);
-
-                if is_heatmap && elevation_heatmap_config.is_none() {
-                    elevation_heatmap_config = l.elevation_heatmap_config.clone();
-                    heatmap_elevation_decoder = layer_decoder(l);
+                // Collect elevation heatmap layer data (config + decoder + layer_id)
+                if is_heatmap {
+                    if let (Some(config), Some(decoder)) =
+                        (&l.elevation_heatmap_config, layer_decoder(l))
+                    {
+                        elevation_heatmap_layers.push(Some(ElevationHeatmapLayerData {
+                            layer_id: l.layer_id.clone(),
+                            config: config.clone(),
+                            decoder,
+                        }));
+                    } else {
+                        elevation_heatmap_layers.push(None);
+                    }
+                } else {
+                    elevation_heatmap_layers.push(None);
                 }
             } else {
                 // WebMercator terrain (the Geographic case is the baked branch
@@ -1786,16 +1791,28 @@ pub fn update_mesh_material(
                     shows.push(a.show);
                     opacities.push(a.opacity.clamp(0., 1.));
                     colors.push(a.color);
-                    is_elevation_heatmaps.push(is_heatmap);
                     is_hillshades.push(false);
                     layer_fragments.push(Some(r.entity));
                     layer_uv_transforms.push(Some(r.uv_transform));
                     layer_reproject.push(false);
-                }
-
-                if is_heatmap && elevation_heatmap_config.is_none() {
-                    elevation_heatmap_config = l.elevation_heatmap_config.clone();
-                    heatmap_elevation_decoder = layer_decoder(l);
+                    // Collect elevation heatmap layer data (config + decoder + layer_id)
+                    if is_heatmap {
+                        if let (Some(config), Some(decoder)) =
+                            (&l.elevation_heatmap_config, layer_decoder(l))
+                        {
+                            elevation_heatmap_layers.push(Some(ElevationHeatmapLayerData {
+                                layer_id: l.layer_id.clone(),
+                                config: config.clone(),
+                                decoder,
+                            }));
+                        } else {
+                            elevation_heatmap_layers.push(None);
+                        }
+                    } else {
+                        elevation_heatmap_layers.push(None);
+                    }
+                } else {
+                    elevation_heatmap_layers.push(None);
                 }
             }
         }
@@ -1813,14 +1830,12 @@ pub fn update_mesh_material(
             || appearance.shows != shows
             || appearance.opacities != opacities
             || appearance.colors != colors
-            || appearance.is_elevation_heatmaps != is_elevation_heatmaps
             || appearance.is_hillshades != is_hillshades
             || appearance.layer_uv_transforms != layer_uv_transforms
             || appearance.layer_reproject != layer_reproject
             || appearance.terrain_lat_range != terrain_lat_range
-            || appearance.elevation_heatmap_config != elevation_heatmap_config
+            || appearance.elevation_heatmap_layers != elevation_heatmap_layers
             || appearance.hillshade_config != hillshade_config
-            || appearance.heatmap_elevation_decoder != heatmap_elevation_decoder
             || appearance.hillshade_elevation_decoder != hillshade_elevation_decoder;
 
         if !needs_update {
@@ -1841,9 +1856,7 @@ pub fn update_mesh_material(
         appearance.shows = shows;
         appearance.opacities = opacities;
         appearance.colors = colors;
-        appearance.is_elevation_heatmaps = is_elevation_heatmaps;
-        appearance.elevation_heatmap_config = elevation_heatmap_config;
-        appearance.heatmap_elevation_decoder = heatmap_elevation_decoder;
+        appearance.elevation_heatmap_layers = elevation_heatmap_layers;
         appearance.is_hillshades = is_hillshades;
         appearance.hillshade_config = hillshade_config;
         appearance.hillshade_elevation_decoder = hillshade_elevation_decoder;

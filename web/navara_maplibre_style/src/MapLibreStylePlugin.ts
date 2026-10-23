@@ -715,6 +715,7 @@ export class MapLibreStylePlugin extends Plugin<ThreeView, ViewContext> {
     "symbol",
     "raster",
     "hillshade",
+    "color-relief",
     "background",
   ]);
 
@@ -724,6 +725,12 @@ export class MapLibreStylePlugin extends Plugin<ThreeView, ViewContext> {
   private addStyleLayer(view: ThreeView, styleLayer: StyleLayer): void {
     if (!this.parsedStyle) {
       throw new Error("Style not parsed yet");
+    }
+
+    // Check visibility (layout property supported by all layer types)
+    // Skip layers with visibility: "none"
+    if (styleLayer.layout?.visibility === "none") {
+      return;
     }
 
     // Check if layer has a source
