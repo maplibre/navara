@@ -146,8 +146,16 @@ pub trait Tile {
         fog_comp: &Fog,
         dynamic_sse: DynamicSseTerm,
     ) -> FloatType {
-        let max_geometric_error =
+        let mut max_geometric_error =
             self.get_level_maximum_geometric_error(ellipsoid, height_map_width);
+
+        if matches!(self.tiling_scheme(), TilingScheme::WebMercator { .. }) {
+            let extent = self.extent();
+            // Mercator's ground scale is largest at the edge nearest the equator.
+            // Use the original extent: polar caps add no detail on subdivision.
+            let latitude = extent.south.val().max(0.).max(-extent.north.val());
+            max_geometric_error *= latitude.cos();
+        }
 
         let mut error = (max_geometric_error * window.height)
             / (distance_from_camera * frustum.sse_denominator);
@@ -234,5 +242,59 @@ pub trait Tile {
                 .set_children(new_children.clone());
         }
         Some(new_children)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{RasterTile, TerrainTile, VectorTile};
+    use navara_core::WGS84_64;
+
+    fn sse(tile: &impl Tile) -> f64 {
+        tile.calc_sse(
+            &CameraFrustum::new(&Transform::default(), 1., 1e8, 1., 1.),
+            &Window {
+                width: 1000.,
+                height: 1000.,
+                pixel_ratio: 1.,
+            },
+            &WGS84_64,
+            65.,
+            100_000.,
+            &Fog::disabled(),
+            DynamicSseTerm::NONE,
+        )
+    }
+
+    fn check_mercator_polar_lod<T: Tile<CoordUnit = usize>>() {
+        let scheme = TilingScheme::WebMercator { tms: false };
+        let equator = T::new_child((128, 128, 8), 0., 0., scheme.clone());
+        let north = T::new_child((128, 0, 8), 0., 0., scheme.clone());
+        let south = T::new_child((128, 255, 8), 0., 0., scheme);
+        // At the same distance the old equatorial error refined all three;
+        // the compressed polar tiles already meet the 2 px threshold.
+        assert!(sse(&equator) > 2.);
+        assert!(sse(&north) < 2.);
+        assert!(sse(&south) < 2.);
+        approx::assert_abs_diff_eq!(sse(&north), sse(&south), epsilon = 1e-12);
+        let unscaled = equator.get_level_maximum_geometric_error(&WGS84_64, 65.) * 1000.
+            / (100_000. * 2. * (0.5_f64).tan());
+        approx::assert_abs_diff_eq!(sse(&equator), unscaled, epsilon = 1e-12);
+    }
+
+    #[test]
+    fn mercator_polar_tiles_stop_refining_at_their_ground_resolution() {
+        check_mercator_polar_lod::<TerrainTile>();
+        check_mercator_polar_lod::<RasterTile>();
+        check_mercator_polar_lod::<VectorTile>();
+    }
+
+    #[test]
+    fn geographic_tiles_keep_their_existing_error() {
+        let scheme = TilingScheme::Geographic { tms: false };
+        let equator = TerrainTile::new_child((128, 128, 8), 0., 0., scheme.clone());
+        let pole = TerrainTile::new_child((128, 0, 8), 0., 0., scheme);
+        approx::assert_abs_diff_eq!(sse(&equator), sse(&pole), epsilon = 1e-12);
     }
 }
