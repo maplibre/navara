@@ -10,7 +10,6 @@ use crate::geometry::TransferableGeometry;
 #[wasm_bindgen]
 #[derive(Clone, Debug, Serialize)]
 pub struct ConstructTerrainMeshParameters {
-    #[wasm_bindgen(getter_with_clone)]
     pub tile_size: u32,
     pub bytes_handle: Handle,
     pub tile_handle: TileHandle,

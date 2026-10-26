@@ -1,4 +1,3 @@
-import type { TileHandle } from "@navaramap/core";
 import {
   PolygonMesh as NavaraPolygonMesh,
   PolygonMaterial,
@@ -26,12 +25,14 @@ import type { EventContext } from "../event/context";
 import { applyLitOption, createShadowDepthMaterial } from "../material";
 import type { PolygonMaterialProps } from "../material/enhancer/polygon";
 import { createPolygonMaterialEnhancer } from "../material/enhancer/polygon/polygonMaterialEnhancer";
+import type { DrapeBakedMesh } from "../tileTexture/types";
 
 import {
   BatchedFeatureMesh,
   type BatchedFeatureAttributes,
 } from "./batchedFeature";
 import { GEOMETRY_TYPES } from "./constants";
+import { DepthPrePassMesh } from "./depthPrePass";
 import { releaseGeometryArraysAfterUpload } from "./releaseGeometryArrays";
 import { setupRTECallback } from "./rtcRteHelper";
 
@@ -47,11 +48,13 @@ type Attributes = BatchedFeatureAttributes<{
   attrBatchId: BufferAttribute;
 }>;
 
-export class PolygonMesh extends BatchedFeatureMesh<
-  BufferGeometry<Attributes>,
-  MeshLambertMaterial
-> {
+export class PolygonMesh
+  extends BatchedFeatureMesh<BufferGeometry<Attributes>, MeshLambertMaterial>
+  implements DrapeBakedMesh
+{
   outline?: PolygonOutlineMesh;
+  /** See {@link DrapeBakedMesh}. */
+  drapeTransparent = false;
 
   private _baseBoundingSphere?: {
     surfaceCenter: Vector3; // Center point on ellipsoid surface (without height)
@@ -74,6 +77,9 @@ export class PolygonMesh extends BatchedFeatureMesh<
   /** Enhanced material with encapsulated state */
   private _enhancedMaterial?: ReturnType<typeof createPolygonMaterialEnhancer>;
 
+  /** Present while `depthPrePass` applies. */
+  private _depthPrePass?: DepthPrePassMesh;
+
   constructor(ctx: EventContext, layerId: string) {
     super(new BufferGeometry<Attributes>(), new MeshLambertMaterial());
 
@@ -90,7 +96,7 @@ export class PolygonMesh extends BatchedFeatureMesh<
    */
   readonly geometryType = GEOMETRY_TYPES.Polygon;
 
-  init(mesh: NavaraPolygonMesh, tileHandle: TileHandle | undefined) {
+  init(mesh: NavaraPolygonMesh) {
     this.batchLength = mesh.batch_length;
     // Register cleanup listener first (before any potential early returns)
     // This ensures dispose() is called even if geometry initialization fails
@@ -103,7 +109,7 @@ export class PolygonMesh extends BatchedFeatureMesh<
       console.warn("PolygonMesh.init: geometry initialization failed");
       return this;
     }
-    this.initMaterial(mesh, tileHandle, useRTE);
+    this.initMaterial(mesh, useRTE);
     this.initDepthMaterial();
 
     if (mesh.bounding_sphere) {
@@ -274,11 +280,7 @@ export class PolygonMesh extends BatchedFeatureMesh<
     }
   }
 
-  private initMaterial(
-    mesh: NavaraPolygonMesh,
-    tileHandle: TileHandle | undefined,
-    useRTE: boolean,
-  ) {
+  private initMaterial(mesh: NavaraPolygonMesh, useRTE: boolean) {
     const uniforms = this.ctx.uniforms;
     const meshMaterial = mesh.material;
     const mcolor = meshMaterial.color;
@@ -287,9 +289,7 @@ export class PolygonMesh extends BatchedFeatureMesh<
     this.receiveShadow = !!meshMaterial.receiveShadow;
     applyLitOption(this.material, meshMaterial.lit);
 
-    // This mesh is texturized if it has a tile handle (terrain attachment).
-    // `!= null`, not truthiness: the root vector tile's handle is 0.
-    const isTexturized = tileHandle != null;
+    const isTexturized = mesh.should_be_texturized;
     const material = this.material;
 
     material.vertexColors = false;
@@ -316,6 +316,7 @@ export class PolygonMesh extends BatchedFeatureMesh<
         transparent: meshMaterial.transparent,
         wireframe: meshMaterial.wireframe,
         minMaxHeight,
+        shadeSidesAsSurface: meshMaterial.shadeSidesAsSurface,
         clampToGround: meshMaterial.clampToGround,
         isTexturized,
         reflectivity: meshMaterial.reflectivity,
@@ -398,6 +399,7 @@ export class PolygonMesh extends BatchedFeatureMesh<
     }
     this.castShadow = !!material.castShadow;
     this.receiveShadow = !!material.receiveShadow;
+    this.drapeTransparent = !!material.transparent;
     applyLitOption(this.material, material.lit);
 
     const { base } = enhancer.states();
@@ -416,6 +418,7 @@ export class PolygonMesh extends BatchedFeatureMesh<
           minMaxHeights !== undefined
             ? [minMaxHeights[0], minMaxHeights[1]]
             : undefined,
+        shadeSidesAsSurface: !!material.shadeSidesAsSurface,
         clampToGround: !!material.clampToGround,
         isTexturized,
         reflectivity: material.reflectivity,
@@ -444,7 +447,22 @@ export class PolygonMesh extends BatchedFeatureMesh<
 
     // Post-update actions
     this.enableWater();
+    this._updateDepthPrePass(
+      !isTexturized && !!material.transparent && !!material.depthPrePass,
+    );
     this._recalculateBoundingSphere();
+  }
+
+  private _updateDepthPrePass(enabled: boolean) {
+    if (enabled === !!this._depthPrePass) return;
+    if (this._depthPrePass) {
+      this.remove(this._depthPrePass);
+      this._depthPrePass.dispose();
+      this._depthPrePass = undefined;
+      return;
+    }
+    this._depthPrePass = new DepthPrePassMesh(this);
+    this.add(this._depthPrePass);
   }
 
   private _recalculateBoundingSphere() {
@@ -652,6 +670,8 @@ export class PolygonMesh extends BatchedFeatureMesh<
       this.remove(this._debugBoundingSphereMesh);
       this._debugBoundingSphereMesh = undefined;
     }
+
+    this._updateDepthPrePass(false);
 
     this.ctx.viewContext.removeShadowMaterial(this.material);
     this.customDepthMaterial?.dispose();

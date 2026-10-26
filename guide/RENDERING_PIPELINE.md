@@ -97,7 +97,21 @@ Per frame, in order:
    against the globe works; draped meshes render via stencil testing in
    between.
 5. **MRT scene** — meshes render into the G-buffer (blended meshes included —
-   see the A-channel invariant below).
+   see the A-channel invariant below). A polygon with `depthPrePass` adds a
+   depth-only child (`colorWrite: false`) that three.js draws in the opaque
+   list at `DEPTH_PRE_PASS_RENDER_ORDER`, after every other opaque mesh and
+   before any blended one, so the blended pass keeps only the nearest face.
+   The child (`DepthPrePassMesh`) needs no depth bias: its program differs
+   from the owner's only in fragment-side defines, so both write the same
+   depth. Its depth also hides every blended mesh behind it, other layers
+   included, and any opaque mesh behind it whose `renderOrder` is higher.
+   Faces at that nearest depth (a feature in two neighboring tiles' buffers,
+   coplanar features) would all still pass `LEQUAL`, so while the child exists
+   the owner also draws with stencil `NotEqual 1` / `Replace` on depth pass,
+   once per pixel; the child itself writes no stencil. One ref serves every
+   layer: all pre-passed depth is written before any of them blends, so the
+   stencil only breaks ties at that depth. The stencil is cleared right before
+   this scene, after the draped meshes are done with it.
 6. **Copy** — `RenderTargetCopyPass` copies G-buffer color (+ depth via
    `gl_FragDepth`) into the composer's input buffer.
 7. **Opaque scene** — rendered directly into the composer input (no G-buffer

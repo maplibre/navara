@@ -5,6 +5,7 @@ import {
   polygonGroundVolume,
   createPolygonMaterialEnhancer,
   createShadowDepthMaterial,
+  DepthPrePassMesh,
   setDrapeGroundNormals,
   setupRTECallback,
   type CustomObject3DEventMap,
@@ -101,6 +102,12 @@ function usesGroundNormals(
   return isClampedToGround(style) && (style.useGroundNormals ?? true);
 }
 
+function usesDepthPrePass(style: PolygonMeshStyle): boolean {
+  return (
+    !isClampedToGround(style) && !!style.transparent && !!style.depthPrePass
+  );
+}
+
 /**
  * A single polygon outside the layer/source pipeline, built with the layer's
  * geometry builder and material. `update()` rebuilds it from positions without
@@ -120,6 +127,7 @@ export class PolygonMeshDesc extends MeshDescWithSelectiveEffect<
   /** The transform the current geometry was built with. */
   private bakedTransform = new Matrix4();
   private enhancer?: PolygonEnhancer;
+  private depthPrePass?: DepthPrePassMesh;
   private readonly ground = new GroundVolumeWatch(
     this.view,
     polygonGroundVolume,
@@ -197,6 +205,8 @@ export class PolygonMeshDesc extends MeshDescWithSelectiveEffect<
       this.ctx.registerPickableMesh(this.id, mesh);
     }
 
+    this.setDepthPrePass(mesh, usesDepthPrePass(style));
+
     return mesh;
   }
 
@@ -254,6 +264,22 @@ export class PolygonMeshDesc extends MeshDescWithSelectiveEffect<
     mesh.onBeforeShadow = onBeforeRender;
   }
 
+  /**
+   * Adds or removes the depth pre-pass. It holds the mesh's geometry and
+   * material from its creation, so replacing either rebuilds it.
+   */
+  private setDepthPrePass(mesh: PolygonMeshInstance, enabled: boolean) {
+    if (this.depthPrePass && !enabled) {
+      mesh.remove(this.depthPrePass);
+      this.depthPrePass.dispose();
+      this.depthPrePass = undefined;
+    }
+    if (enabled && !this.depthPrePass) {
+      this.depthPrePass = new DepthPrePassMesh(mesh);
+      mesh.add(this.depthPrePass);
+    }
+  }
+
   /** Water enhancer props derived from the style, shared by mount and update. */
   private waterProps(style: PolygonMeshStyle) {
     return {
@@ -275,6 +301,7 @@ export class PolygonMeshDesc extends MeshDescWithSelectiveEffect<
       opacity: style.opacity,
       transparent: style.transparent,
       wireframe: style.wireframe,
+      shadeSidesAsSurface: style.shadeSidesAsSurface,
       // The enhancer leaves a clamped polygon unlit for textures the terrain
       // shades; a stencil drape is shaded at the ground instead.
       clampToGround: false,
@@ -338,6 +365,8 @@ export class PolygonMeshDesc extends MeshDescWithSelectiveEffect<
     if (!this._instance) return;
     this._instance.geometry.dispose();
     this._instance.geometry = built.geometry;
+    this.setDepthPrePass(this._instance, false);
+    this.setDepthPrePass(this._instance, usesDepthPrePass(this.style));
     this.ground.watch(isClampedToGround(this.style) ? built.extent : undefined);
   }
 
@@ -433,6 +462,8 @@ export class PolygonMeshDesc extends MeshDescWithSelectiveEffect<
           createShadowDepthMaterial(material);
         this.wireRte(this._instance, enhancer);
         this.applyLit();
+        this.setDepthPrePass(this._instance, false);
+        this.setDepthPrePass(this._instance, usesDepthPrePass(style));
       } else {
         setDrapeGroundNormals(
           this._instance.material,
@@ -442,6 +473,7 @@ export class PolygonMeshDesc extends MeshDescWithSelectiveEffect<
           base: this.baseProps(style),
           water: this.waterProps(style),
         });
+        this.setDepthPrePass(this._instance, usesDepthPrePass(style));
       }
       // A clamp toggle changes the pass, which emits this itself.
       if (
@@ -488,6 +520,7 @@ export class PolygonMeshDesc extends MeshDescWithSelectiveEffect<
       this._instance.geometry.dispose();
       releaseFeatureMaterial(this.ctx, this._instance.material);
       this._instance.customDepthMaterial?.dispose();
+      this.setDepthPrePass(this._instance, false);
     }
   }
 

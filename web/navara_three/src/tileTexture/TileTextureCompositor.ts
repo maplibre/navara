@@ -2,7 +2,9 @@ import { type TileHandle } from "@navaramap/core";
 import {
   Color,
   DataTexture,
+  EqualStencilFunc,
   GLSL3,
+  GreaterStencilFunc,
   LinearFilter,
   Mesh,
   MeshBasicMaterial,
@@ -11,6 +13,8 @@ import {
   NoColorSpace,
   OrthographicCamera,
   PlaneGeometry,
+  type Object3D,
+  ReplaceStencilOp,
   RGBAFormat,
   Scene,
   ShaderMaterial,
@@ -32,7 +36,10 @@ import {
   type CompositeUniformTarget,
   type CoreUniformMutates,
 } from "../material/enhancer/tileComposite";
-import { type TexturizedSceneByTileCoordinates } from "../scene";
+import {
+  type TexturizedSceneByTileCoordinates,
+  type TileScene,
+} from "../scene";
 
 import type { SlotPlan } from "./SlotPlanner";
 import { TileTextureCache } from "./TileTextureCache";
@@ -46,6 +53,10 @@ import type {
 } from "./types";
 
 const PREV_CLEAR_COLOR = new Color();
+
+/** Stencil value of the first source drawn into a vector bake; each later
+ * source takes the next lower value (see `renderVectorScenes`). */
+const FIRST_SOURCE_STENCIL_REF = 0xff;
 
 /** MSAA sample count for the shared vector-drape bake target. The flat bake
  * shaders have no analytic edge AA, so geometric edges (fill borders, stroke
@@ -196,6 +207,18 @@ export class TileTextureCompositor {
   // renderbuffer contents persist across the per-render resolves — and the
   // resolved image is then copied into the slot target once.
   private msaaBakeTarget: WebGLRenderTarget | null = null;
+  // Claims a vector source's tile frame in the bake stencil: one quad over the
+  // source's [-1, 1] frame, passing only where no source drawn before it
+  // (stencil 0, or a higher ref) has claimed the texel.
+  private readonly stencilClaimScene = new Scene();
+  private readonly stencilClaimMaterial = new MeshBasicMaterial({
+    colorWrite: false,
+    depthTest: false,
+    depthWrite: false,
+    stencilWrite: true,
+    stencilFunc: GreaterStencilFunc,
+    stencilZPass: ReplaceStencilOp,
+  });
   // Resolve copy into the slot target: the MSAA resolve averages covered and
   // transparent samples, i.e. it premultiplies color by coverage — but the
   // composite blends slots as STRAIGHT alpha, so the copy divides it back
@@ -252,6 +275,9 @@ export class TileTextureCompositor {
     this.rasterBakeScene.add(
       new Mesh(this.quadMesh.geometry, this.rasterBakeMaterial),
     );
+    this.stencilClaimScene.add(
+      new Mesh(this.quadMesh.geometry, this.stencilClaimMaterial),
+    );
   }
 
   // ---------------------------------------------------------------------
@@ -297,7 +323,14 @@ export class TileTextureCompositor {
    * same-tile drape, WebMercator terrain) maps a single source to the full RT.
    *
    * The mosaic target is cleared once, then each source is drawn additively
-   * (autoClear off) so the sources mosaic instead of overwriting one another. A
+   * (autoClear off) so the sources mosaic instead of overwriting one another.
+   * Sources overlap, though: an MVT tile carries a buffer of its neighbors'
+   * features past its edge, and a coarser ancestor backing one region spans
+   * finer sources too. Drawing both copies would blend a translucent layer
+   * twice along every tile seam, so for a layer with a `transparent` mesh
+   * each source first claims its own tile frame in the stencil, minus what
+   * earlier sources claimed, and draws only there. Finer sources go first, so
+   * an ancestor fills only the gaps. A
    * source whose scene hasn't reached the cache yet is skipped; its sub-rect stays
    * transparent until it arrives (no flashing — coarser ancestors back the gaps
    * via the Rust scene-ready walk-up). The caller owns the dirty gate and only
@@ -327,7 +360,7 @@ export class TileTextureCompositor {
       renderTargets,
       (slot) => {
         const sources: {
-          scene: Scene;
+          scene: TileScene;
           uvOffset: [number, number];
           uvScale: [number, number];
         }[] = [];
@@ -345,40 +378,67 @@ export class TileTextureCompositor {
         }
         if (!sources.length) return null;
 
+        // An opaque layer draws a duplicate over an identical texel, so only
+        // a translucent one is clipped. Only the MSAA target has a stencil
+        // buffer; pick bakes draw unclipped, which only repeats the same ids.
+        const clip =
+          antialias && sources.some((s) => s.scene.hasTransparentMesh);
+        if (clip) {
+          // A finer source frames the terrain tile with a larger `uvScale`.
+          sources.sort(
+            (a, b) => b.uvScale[0] * b.uvScale[1] - a.uvScale[0] * a.uvScale[1],
+          );
+        }
+
         // The framed camera works for both paths: it draws each source into
         // its sub-rect of whichever target is bound (the MSAA intermediate or
         // the slot target directly).
         return () => {
-          for (const s of sources) {
-            this.renderer.render(
-              s.scene,
-              this.frameBakeCamera(s.uvOffset, s.uvScale),
-            );
-          }
+          sources.forEach((s, i) => {
+            const camera = this.frameBakeCamera(s.uvOffset, s.uvScale);
+            if (!clip) {
+              this.renderer.render(s.scene, camera);
+              return;
+            }
+            const ref = FIRST_SOURCE_STENCIL_REF - i;
+            this.stencilClaimMaterial.stencilRef = ref;
+            this.renderer.render(this.stencilClaimScene, camera);
+            setStencilRef(s.scene, ref);
+            this.renderer.render(s.scene, camera);
+            setStencilRef(s.scene, null);
+          });
         };
       },
       antialias ? () => this.acquireMsaaBakeTarget() : undefined,
     );
   }
 
-  /** The shared multisampled vector-bake target, allocated on first use. No
-   * depth/stencil: every bake material draws with depth test/write off. */
+  /** The shared multisampled vector-bake target, allocated on first use.
+   * Every bake material (draped polygons and polylines, the stencil claim)
+   * draws with depth test/write off; the depth buffer is there only because
+   * WebGL attaches stencil as a packed depth-stencil buffer, and the stencil
+   * clips overlapping sources (see {@link renderVectorScenes}). Only color
+   * is resolved: nothing reads the depth or stencil back. */
   private acquireMsaaBakeTarget(): WebGLRenderTarget {
     this.msaaBakeTarget ??= new WebGLRenderTarget(this.size, this.size, {
       format: RGBAFormat,
       samples: DRAPE_BAKE_SAMPLES,
-      depthBuffer: false,
-      stencilBuffer: false,
+      depthBuffer: true,
+      stencilBuffer: true,
+      resolveDepthBuffer: false,
+      resolveStencilBuffer: false,
     });
     return this.msaaBakeTarget;
   }
 
-  /** GPU bytes of the shared MSAA bake target (multisample renderbuffer +
-   * resolve texture), for the fixed-footprint report — a single allocation
-   * the per-tile drape accounting cannot see. Zero until first use. */
+  /** GPU bytes of the shared MSAA bake target (multisample color and
+   * depth-stencil renderbuffers, resolve texture and the depth-stencil
+   * renderbuffer three attaches beside it), for the fixed-footprint report —
+   * a single allocation the per-tile drape accounting cannot see. Zero until
+   * first use. */
   fixedGpuBytes(): number {
     return this.msaaBakeTarget
-      ? this.size * this.size * 4 * (DRAPE_BAKE_SAMPLES + 1)
+      ? this.size * this.size * 4 * (2 * DRAPE_BAKE_SAMPLES + 2)
       : 0;
   }
 
@@ -747,6 +807,7 @@ export class TileTextureCompositor {
     // Also frees the raster-bake quad, which shares this geometry.
     this.quadMesh.geometry.dispose();
     this.rasterBakeMaterial.dispose();
+    this.stencilClaimMaterial.dispose();
     this.msaaResolveMaterial.dispose();
     this.msaaBakeTarget?.dispose();
     this.msaaBakeTarget = null;
@@ -754,3 +815,18 @@ export class TileTextureCompositor {
     this.demNoDataTexture = null;
   }
 }
+
+/** Clip a vector scene's draws to the texels whose stencil equals `ref`, or
+ * lift the clip with `null`. */
+const setStencilRef = (scene: Object3D, ref: number | null) => {
+  scene.traverse((object) => {
+    const material = (object as Partial<Mesh>).material;
+    if (!material) return;
+    for (const m of Array.isArray(material) ? material : [material]) {
+      m.stencilWrite = ref !== null;
+      if (ref === null) continue;
+      m.stencilFunc = EqualStencilFunc;
+      m.stencilRef = ref;
+    }
+  });
+};

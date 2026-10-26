@@ -743,6 +743,8 @@ pub struct PolygonMaterial {
     pub apply_water_normal: bool,
     pub specular: bool,
     pub ior: f32,
+    pub shade_sides_as_surface: bool,
+    pub depth_pre_pass: bool,
     // post effect
     pub effect_ids: Option<Vec<String>>,
     pub emissive_intensity: Option<f32>,
@@ -783,6 +785,8 @@ impl Default for PolygonMaterial {
             apply_water_normal: false,
             specular: false,
             ior: 1.33333,
+            shade_sides_as_surface: false,
+            depth_pre_pass: false,
 
             // post effect
             effect_ids: None,

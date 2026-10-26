@@ -299,6 +299,13 @@ export const PMTILES_DATASETS = {
  * 3D Tiles datasets (PLATEAU)
  */
 export const TILES_3D_DATASETS = {
+  // Global LOD1 buildings from Overture Maps, based on Re:Earth Terrain heights
+  // (pair with TERRAIN_DATASETS.reearthQuantizedMesh so bases meet the ground).
+  reearthBuildings: {
+    url: "https://buildings.reearth.land/tileset.json",
+    attributionHtml:
+      '<a href="https://buildings.reearth.land/">Re:Earth Buildings</a> — Buildings © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap contributors</a>, <a href="https://overturemaps.org/">Overture Maps Foundation</a> (ODbL)',
+  },
   plateauChiyoda: {
     url: "https://assets.cms.plateau.reearth.io/assets/db/070026-aa27-431b-8d53-7cc6b03244f8/13101_chiyoda-ku_pref_2023_citygml_1_op_bldg_3dtiles_13101_chiyoda-ku_lod2_no_texture/tileset.json",
     attribution:
@@ -446,6 +453,15 @@ export const LOCAL_DATASETS = {
       "Processed and created from the National Land Numerical Information (inter-airport flow volume data) - MLIT",
     attributionUrl:
       "https://nlftp.mlit.go.jp/ksj/gml/datalist/KsjTmplt-S10b-2014.html",
+  },
+  // PLATEAU time-series flood simulation (Arakawa, breach point BP002) as
+  // per-cell MVT; built by scripts/build-flood-pmtiles.ts from
+  // https://assets.cms.plateau.reearth.io/assets/c3/2822c1-a99f-46d0-9d73-766b685e2126/11100_saitama-shi_city_2024_flood-simulation_saitama-BP002.czml
+  saitamaFloodBp002: {
+    url: withBase("pmtiles/saitama-flood-bp002.pmtiles"),
+    attribution:
+      "PLATEAU 3D Visualization of Time-Series Flood Simulation by Levee Break Point (Arakawa River System)",
+    attributionUrl: "https://www.mlit.go.jp/plateau/use-case/uc22-026/",
   },
   tokyoFlood: {
     url: "https://assets.cms.reearth.io/assets/11/55daed-a75e-4e8d-b021-c7fd0666e839/tokyo-flood.geojson",

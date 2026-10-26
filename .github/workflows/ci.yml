@@ -29,7 +29,7 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # 2026-03-27
         with:
-          toolchain: 1.98.0
+          toolchain: 1.99.1
           targets: wasm32-unknown-unknown
           components: clippy, rustfmt, rust-src
 
@@ -48,7 +48,7 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           cache: "pnpm"
-          node-version: '24.20.0'
+          node-version: '24.22.1'
 
       - name: Install Tools (wasm-bindgen-cli, cargo-make)
         uses: taiki-e/install-action@1168f6810a3cb30a3514bf5756a3b7f0422c6df8 # v2.87.28
@@ -92,7 +92,7 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # 2026-03-27
         with:
-          toolchain: 1.98.0
+          toolchain: 1.99.1
 
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:

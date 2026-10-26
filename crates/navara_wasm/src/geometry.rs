@@ -98,7 +98,6 @@ pub struct TransferablePolylineGeometry {
     pub batch_ids: Option<TransferableFloatAttribute>,
     #[wasm_bindgen(getter_with_clone)]
     pub batch_index: Option<TransferableUintAttribute>,
-    #[wasm_bindgen(getter_with_clone)]
     pub indices: Handle,
     #[wasm_bindgen(getter_with_clone)]
     pub line_segments: Option<TransferableFloatAttribute>,
@@ -227,7 +226,6 @@ pub struct TransferablePolygonGeometry {
     pub batch_ids: Option<TransferableFloatAttribute>,
     #[wasm_bindgen(getter_with_clone)]
     pub batch_index: Option<TransferableUintAttribute>,
-    #[wasm_bindgen(getter_with_clone)]
     pub indices: Handle,
 }
 
@@ -304,7 +302,6 @@ pub struct TransferablePolygonOutlineGeometry {
     pub position_3d_low: Option<TransferableFloatAttribute>,
     #[wasm_bindgen(getter_with_clone)]
     pub scale_normal_and_cap: Option<TransferableFloatAttribute>,
-    #[wasm_bindgen(getter_with_clone)]
     pub skip_indices: Option<Handle>,
     #[wasm_bindgen(getter_with_clone)]
     pub batch_index: Option<TransferableFloatAttribute>,

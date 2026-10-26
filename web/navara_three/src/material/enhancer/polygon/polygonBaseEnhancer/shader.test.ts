@@ -20,6 +20,13 @@ testShaderCompatibility(
         useRTE: false,
       },
     },
+    {
+      name: "Sides shaded as the surface",
+      props: {
+        useRTE: true,
+        shadeSidesAsSurface: true,
+      },
+    },
   ],
   POLYGON_BASE_SHADER_MARKERS,
 );

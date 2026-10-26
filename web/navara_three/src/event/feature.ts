@@ -1,4 +1,3 @@
-import type { TileHandle } from "@navaramap/core";
 import { generate_id_from_entity } from "@navaramap/core";
 import {
   type RenderableFeatureAddedEvent,
@@ -70,7 +69,6 @@ function overlayScene(
 export function renderFeature(
   ctx: EventContext,
   f: RenderableFeature,
-  tileHandle: TileHandle | undefined,
   layerId: string,
 ): Promise<Mesh | Sprite | Object3D | undefined> | undefined {
   if (f.point) {
@@ -86,7 +84,7 @@ export function renderFeature(
     return renderPolyline(ctx, f.polyline);
   }
   if (f.polygon) {
-    return renderPolygon(ctx, f.polygon, tileHandle, layerId);
+    return renderPolygon(ctx, f.polygon, layerId);
   }
   if (f.text) {
     return renderText(ctx, f.text, layerId);
@@ -135,12 +133,7 @@ export async function processRenderableFeatureAdded(
             ? "polygon"
             : undefined;
 
-  const obj = await renderFeature(
-    ctx,
-    feature,
-    tileHandle,
-    featureLayerId,
-  )?.then((r) => {
+  const obj = await renderFeature(ctx, feature, featureLayerId)?.then((r) => {
     // The glTF/Draco decode happened on the JS side, so report the actual
     // decoded GPU size back to the ledger (its compressed-payload estimate
     // undercounts Draco content). Draco decode inflates geometry markedly.
@@ -369,7 +362,7 @@ export async function processRenderableFeatureChanged(
     processPolylineChanged(obj, polyline, active);
   }
   if (obj instanceof PolygonMesh && polygon) {
-    processPolygonChanged(obj, polygon, active, tileHandle);
+    processPolygonChanged(obj, polygon, active);
 
     if (obj.outline) {
       processPolygonOutlineChanged(obj.outline, polygon, active);

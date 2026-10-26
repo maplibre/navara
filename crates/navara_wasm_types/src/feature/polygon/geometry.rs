@@ -81,7 +81,6 @@ pub struct ConstructedPolygonGeometry {
     /// RTC (Relative-To-Center) translation vector
     /// Contains the tile center in world-space ECEF coordinates
     /// Used to position the mesh while keeping vertex positions in local space
-    #[wasm_bindgen(getter_with_clone)]
     pub rtc_translation: Option<Vec3>,
     outline: Option<ConstructedPolygonOutlineGeometry>,
 }

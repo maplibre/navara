@@ -26,8 +26,12 @@ export const updateMaterialProps = (
   // the drape target, while blended content and MSAA coverage land
   // premultiplied — and the bake's resolve divide assumes premultiplied
   // everywhere (see TileTextureCompositor's msaaResolveMaterial).
+  // Bakes stack sources by draw order, not depth, while the bake target
+  // carries a depth buffer for its stencil.
   if (isTexturized) {
     material.transparent = true;
+    material.depthTest = false;
+    material.depthWrite = false;
   } else if (props.transparent !== undefined) {
     material.transparent = props.transparent;
   }

@@ -17,6 +17,7 @@ export type PolygonBaseProps = {
   minMaxHeight?: [number, number];
   addExtrudedHeight?: number;
   addHeight?: number;
+  shadeSidesAsSurface?: boolean;
 
   // Clamp to ground
   clampToGround?: boolean;
@@ -62,6 +63,7 @@ export type PolygonBaseState = Readonly<{
   minMaxHeight: [number, number] | undefined;
   addExtrudedHeight: number;
   addHeight: number;
+  shadeSidesAsSurface: boolean;
   reflectivity: number;
   roughness: number;
   // Batch texture state - when true, material.color is white and colors come from batch texture

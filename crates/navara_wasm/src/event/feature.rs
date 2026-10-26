@@ -76,7 +76,8 @@ pub struct PolygonMesh {
     pub outline_geometry: Option<TransferablePolygonOutlineGeometry>,
     pub transform: Transform,
     pub active: bool,
-    #[wasm_bindgen(getter_with_clone)]
+    /// Whether the polygon should be rendered as a texturized draped feature
+    pub should_be_texturized: bool,
     pub bounding_sphere: Option<BoundingSphere>,
     pub batch_length: u32,
 }
@@ -191,6 +192,7 @@ impl<'a> From<&'a navara_feature_component::render::RenderableFeature> for Rende
                 outline_geometry,
                 transform,
                 active,
+                render_info,
                 bounding_sphere,
                 batch_length,
                 ..
@@ -201,6 +203,7 @@ impl<'a> From<&'a navara_feature_component::render::RenderableFeature> for Rende
                     outline_geometry: outline_geometry.as_ref().map(|og| og.into()),
                     transform: transform.into(),
                     active: *active,
+                    should_be_texturized: render_info.should_be_texturized,
                     bounding_sphere: bounding_sphere.as_ref().map(|bs| (*bs).into()),
                     batch_length: *batch_length,
                 }),

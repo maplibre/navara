@@ -83,6 +83,26 @@ import { Color } from "@navaramap/three";
 }
 ```
 
+### depthPrePass
+
+**Type:** `boolean | undefined`
+
+**Description:** 透明なメッシュを描画する前にポリゴンの深度を書き込み、`transparent` のポリゴンが最も手前の面だけをブレンドするようにします。無効の場合は手前の面の奥にある面も透けて重なり、押し出したポリゴンの側面など、重なった部分が濃く見えます。隣り合うタイルの両方に含まれる地物など、同じ深度で重なる面は1回だけブレンドされます。書き込んだ深度はポリゴンの奥にある他の透明なメッシュも隠すため、奥にある半透明のレイヤーやパーティクルは透けて見えなくなります。`transparent` が `true` かつ `clampToGround` が `false` のときに有効です。
+
+**Default:** `undefined`
+
+**Example:**
+
+```typescript
+{
+  polygon: {
+    transparent: true,
+    opacity: 0.8,
+    depthPrePass: true
+  }
+}
+```
+
 ### effectIds
 
 **Type:** `string[] | undefined`
@@ -371,6 +391,25 @@ import { Color } from "@navaramap/three";
 {
   polygon: {
     roughness: 0.2
+  }
+}
+```
+
+### shadeSidesAsSurface
+
+**Type:** `boolean | undefined`
+
+**Description:** 押し出したポリゴンの側面を、側面自身の法線ではなく面の上向きの法線で陰影付けし、上面と同じ明るさにします。押し出しが立体ではなく連続した面を表す場合に使います。たとえばセルごとの水位で、側面が隣り合うセルとの段差を埋める場合です。`clampToGround` が `false` のときに有効です。
+
+**Default:** `undefined`
+
+**Example:**
+
+```typescript
+{
+  polygon: {
+    extrudedHeight: 2,
+    shadeSidesAsSurface: true
   }
 }
 ```

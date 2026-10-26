@@ -5,9 +5,9 @@
   "description": "",
   "engines": {
     "node": ">=24",
-    "pnpm": "11.22.0"
+    "pnpm": "11.28.6"
   },
-  "packageManager": "pnpm@11.22.0",
+  "packageManager": "pnpm@11.28.6",
   "scripts": {
     "navara_three": "pnpm -C web/navara_three",
     "integration-tests": "pnpm -filter './web/integration-tests/**'",

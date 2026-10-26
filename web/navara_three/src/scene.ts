@@ -1,5 +1,15 @@
 import type { TileHandle } from "@navaramap/core";
-import { OrthographicCamera, Scene, WebGLRenderer, Mesh, Group } from "three";
+import {
+  type BufferGeometry,
+  OrthographicCamera,
+  type Material,
+  Scene,
+  WebGLRenderer,
+  Mesh,
+  Group,
+} from "three";
+
+import type { DrapeBakedMesh } from "./tileTexture/types";
 
 export type Scenes = {
   // Render light in all scenes.
@@ -24,11 +34,37 @@ export class TileScene extends Scene {
   layerIndex: number;
   removed = false;
   revision = 0;
+  private transparentRevision = -1;
+  private transparent = false;
 
   constructor(layerId: string, layerIndex: number) {
     super();
     this.layerId = layerId;
     this.layerIndex = layerIndex;
+  }
+
+  /**
+   * Whether a visible mesh of this scene can draw a translucent texel: it
+   * asked for `transparent` (see {@link DrapeBakedMesh}), has a sub-1
+   * opacity, or takes per-feature opacity from its batch texture. Every
+   * mesh, material, batch or visibility change bumps `revision`, so the
+   * meshes are scanned again only after one.
+   */
+  get hasTransparentMesh(): boolean {
+    if (this.transparentRevision !== this.revision) {
+      this.transparentRevision = this.revision;
+      this.transparent = this.children.some((object) => {
+        if (!object.visible) return false;
+        const mesh = object as Mesh<BufferGeometry, Material> &
+          Partial<DrapeBakedMesh>;
+        return (
+          !!mesh.drapeTransparent ||
+          mesh.material.opacity < 1 ||
+          !!mesh.material.userData.defines?.USE_BATCH_SHOW_OPACITY
+        );
+      });
+    }
+    return this.transparent;
   }
 }
 

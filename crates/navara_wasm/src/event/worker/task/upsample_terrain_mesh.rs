@@ -10,10 +10,8 @@ use crate::geometry::TransferableGeometry;
 #[wasm_bindgen]
 #[derive(Clone, Debug, Serialize)]
 pub struct UpsampleTerrainMeshParameters {
-    #[wasm_bindgen(getter_with_clone)]
     pub tile_handle: TileHandle,
     /// The ancestor tile whose mesh is clipped down to `tile_handle`.
-    #[wasm_bindgen(getter_with_clone)]
     pub source_tile_handle: TileHandle,
     /// DEM tile width in pixels (raster DEM only).
     pub tile_size: u32,

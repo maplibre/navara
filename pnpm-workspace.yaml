@@ -2,6 +2,8 @@ packages:
   - web/**
   - debug_tile_server
   - docs
+# navara_three <-> navara_three_react depend on each other via devDependencies.
+ignoreWorkspaceCycles: true
 allowBuilds:
   '@swc/core': false
   canvas: true

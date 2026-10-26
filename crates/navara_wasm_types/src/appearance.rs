@@ -1273,6 +1273,14 @@ pub struct PolygonMaterial {
     /// Enabling this value allows using `shininess` and `specular_strength`.
     pub specular: Option<bool>,
     pub ior: Option<f32>,
+    /// Shade the extruded sides with the surface normal instead of their own.
+    #[wasm_bindgen(js_name = shadeSidesAsSurface)]
+    #[serde(rename = "shadeSidesAsSurface")]
+    pub shade_sides_as_surface: Option<bool>,
+    /// Write depth before blending so a transparent layer blends only its nearest surface.
+    #[wasm_bindgen(js_name = depthPrePass)]
+    #[serde(rename = "depthPrePass")]
+    pub depth_pre_pass: Option<bool>,
     // SelectiveEffect
     /// IDs of selective effects to apply (e.g., "bloom", "outline")
     #[wasm_bindgen(getter_with_clone, js_name = effectIds)]
@@ -1340,6 +1348,8 @@ impl PolygonMaterial {
             apply_water_normal: None,
             specular: None,
             ior: None,
+            shade_sides_as_surface: None,
+            depth_pre_pass: None,
             effect_ids: None,
             emissive_intensity: None,
             emissive_color: None,
@@ -1390,6 +1400,10 @@ impl PolygonMaterial {
             apply_water_normal: self.apply_water_normal.unwrap_or(other.apply_water_normal),
             specular: self.specular.unwrap_or(other.specular),
             ior: self.ior.unwrap_or(other.ior),
+            shade_sides_as_surface: self
+                .shade_sides_as_surface
+                .unwrap_or(other.shade_sides_as_surface),
+            depth_pre_pass: self.depth_pre_pass.unwrap_or(other.depth_pre_pass),
             effect_ids: self.effect_ids.clone().or_else(|| other.effect_ids.clone()),
             emissive_intensity: self.emissive_intensity.or(other.emissive_intensity),
             emissive_color: self.emissive_color.or(other.emissive_color),
@@ -1436,6 +1450,10 @@ impl From<PolygonMaterial> for navara_material::PolygonMaterial {
             apply_water_normal: val.apply_water_normal.unwrap_or(default.apply_water_normal),
             specular: val.specular.unwrap_or(default.specular),
             ior: val.ior.unwrap_or(default.ior),
+            shade_sides_as_surface: val
+                .shade_sides_as_surface
+                .unwrap_or(default.shade_sides_as_surface),
+            depth_pre_pass: val.depth_pre_pass.unwrap_or(default.depth_pre_pass),
             effect_ids: val.effect_ids.or(default.effect_ids),
             emissive_intensity: val.emissive_intensity.or(default.emissive_intensity),
             emissive_color: val.emissive_color.or(default.emissive_color),
@@ -1476,6 +1494,8 @@ impl<'a> From<&'a navara_material::PolygonMaterial> for PolygonMaterial {
             apply_water_normal: Some(value.apply_water_normal),
             specular: Some(value.specular),
             ior: Some(value.ior),
+            shade_sides_as_surface: Some(value.shade_sides_as_surface),
+            depth_pre_pass: Some(value.depth_pre_pass),
             effect_ids: value.effect_ids.clone(),
             emissive_intensity: value.emissive_intensity,
             emissive_color: value.emissive_color,
@@ -1516,6 +1536,8 @@ impl From<navara_material::PolygonMaterial> for PolygonMaterial {
             apply_water_normal: Some(value.apply_water_normal),
             specular: Some(value.specular),
             ior: Some(value.ior),
+            shade_sides_as_surface: Some(value.shade_sides_as_surface),
+            depth_pre_pass: Some(value.depth_pre_pass),
             effect_ids: value.effect_ids.clone(),
             emissive_intensity: value.emissive_intensity,
             emissive_color: value.emissive_color,
@@ -1788,13 +1810,13 @@ impl ModelMaterial {
 #[wasm_bindgen]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ModelInternalMaterial {
-    #[wasm_bindgen(getter_with_clone, js_name = pointCloud)]
+    #[wasm_bindgen(js_name = pointCloud)]
     #[serde(rename = "pointCloud")]
     pub point_cloud: bool,
     #[wasm_bindgen(getter_with_clone, js_name = dracoAttributes)]
     #[serde(rename = "dracoAttributes")]
     pub draco_attributes: Option<Vec<DracoAttributeId>>,
-    #[wasm_bindgen(getter_with_clone, js_name = pointCloudGeodeticNormal)]
+    #[wasm_bindgen(js_name = pointCloudGeodeticNormal)]
     #[serde(rename = "pointCloudGeodeticNormal")]
     pub point_cloud_geodetic_normal: WasmVec3,
 }

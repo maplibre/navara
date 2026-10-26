@@ -45,6 +45,7 @@ describe("polygonBaseEnhancer", () => {
         isTexturized: true,
         clampToGround: false,
         useRTE: true,
+        shadeSidesAsSurface: true,
       });
 
       const cacheKey = enhancer.programCacheKey();
@@ -54,6 +55,7 @@ describe("polygonBaseEnhancer", () => {
         isTexturized: true,
         clampToGround: false,
         useRTE: true,
+        shadeSidesAsSurface: true,
       });
     });
 
@@ -77,6 +79,19 @@ describe("polygonBaseEnhancer", () => {
       const cacheKey2 = enhancer2.programCacheKey();
 
       expect(cacheKey1).toBe(cacheKey2);
+    });
+
+    it("should recompile the material only when a shader-affecting state changes", () => {
+      const material = new MeshLambertMaterial();
+      const subject = createPolygonBaseEnhancer(material);
+      subject.mount({});
+      const version = material.version;
+
+      subject.update({ opacity: 0.5 });
+      expect(material.version).toBe(version);
+
+      subject.update({ shadeSidesAsSurface: true });
+      expect(material.version).toBe(version + 1);
     });
   });
 });
