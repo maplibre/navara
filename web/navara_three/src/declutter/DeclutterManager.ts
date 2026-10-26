@@ -80,9 +80,21 @@ export class DeclutterManager {
   private _view16 = new Float64Array(16);
   private _proj16 = new Float64Array(16);
 
-  /** @param _kernel the placement kernel — the Rust-backed
-   *  `wasmDeclutterKernel` in production, a stub in unit tests. */
-  constructor(private readonly _kernel: DeclutterKernel) {}
+  /** True while `update()` runs, which consumes the dirty flag itself. */
+  private _updating = false;
+
+  /**
+   * @param _kernel the placement kernel — the Rust-backed
+   *  `wasmDeclutterKernel` in production, a stub in unit tests.
+   * @param _requestFrame asks the view for a frame. Meshes mark the pass dirty
+   *  from async work (a material update lands after the frame that delivered
+   *  it), and the view renders only on request, so without a frame the pass
+   *  would wait for the next camera move.
+   */
+  constructor(
+    private readonly _kernel: DeclutterKernel,
+    private readonly _requestFrame: () => void = () => {},
+  ) {}
 
   /** Milliseconds until the throttle window since the last placement pass
    *  elapses, clamped to `[0, MIN_INTERVAL_MS]`. Callers use this to schedule
@@ -113,6 +125,7 @@ export class DeclutterManager {
   markDirty(immediate = false): void {
     this._dirty = true;
     if (immediate) this._lastRunAt = Number.NEGATIVE_INFINITY;
+    if (!this._updating) this._requestFrame();
   }
 
   /**
@@ -157,7 +170,21 @@ export class DeclutterManager {
     horizonMinHeight: number,
   ): DeclutterUpdateResult {
     if (this._participants.size === 0) return "idle";
+    this._updating = true;
+    try {
+      return this._update(camera, widthPx, heightPx, nowMs, horizonMinHeight);
+    } finally {
+      this._updating = false;
+    }
+  }
 
+  private _update(
+    camera: PerspectiveCamera,
+    widthPx: number,
+    heightPx: number,
+    nowMs: number,
+    horizonMinHeight: number,
+  ): DeclutterUpdateResult {
     let ran = false;
     let throttled = false;
     if (
@@ -252,6 +279,9 @@ export class DeclutterManager {
       input[o + 19] = c.pair?.featureIndex ?? 0;
       input[o + 20] = c.pair ? PAIR_ROLE_CODES[c.pair.role] : 0;
       input[o + 21] = c.standalone ? 1 : 0;
+      input[o + 22] = c.orientation?.flatFacing ? 1 : 0;
+      input[o + 23] = (c.orientation?.rotateWithCamera ?? true) ? 1 : 0;
+      input[o + 24] = c.orientation?.rotation ?? 0;
     }
 
     // The pass may run before the renderer refreshed matrixWorldInverse, so

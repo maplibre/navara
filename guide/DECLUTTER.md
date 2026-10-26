@@ -156,17 +156,23 @@ export type DeclutterCandidate = {
   padding: readonly number[]; // screen px: top, right, bottom, left
   pair?: { group: number; featureIndex: number; role: "label" | "billboard" };
   standalone: boolean; // may show while its pair partner is hidden
+  orientation?: { flatFacing; rotateWithCamera; rotation }; // point quads only
   owner: DeclutterParticipant;
   handle: number;      // label slot (text) or instance index (sprites)
   contentKey?: string; // label text; feeds the tile-swap handoff
 };
 ```
 
-The local box is anchor-relative, +Y up. For a point label it is the
-unrotated block. For an along-line candidate it is the screen-axis box of the
-turned label or quad, as step 0 resolved it, in the same units. The kernel
-projects and scales both the same way. A text label created since the last
-pass has no line box yet and falls back to its unrotated block.
+The local box is anchor-relative, +Y up. For a point label or sprite it is
+the unrotated block, sent with the quad's effective `orientation` (facing,
+`rotateWithCamera`, `rotation`, per-feature overrides included); the kernel
+turns it with `quad_screen_basis` and `basis_box` from `line_label.rs`, the CPU
+mirror of the shaders' `nvr_quadBasis`, so a rotated, flat, or map-aligned
+quad claims the box it is drawn over. For an along-line candidate it is the
+screen-axis box of the turned label or quad, as step 0 resolved it, in the
+same units, with no orientation. The kernel projects and scales both the same
+way. A text label created since the last pass has no line box yet and falls
+back to its unrotated block.
 
 Any mesh type that wants to participate — batched SDF text, instanced sprites
 — implements `DeclutterParticipant` (`declutter/types.ts`):
@@ -190,11 +196,12 @@ starts granted rather than fading in from hidden. Without that, every swap
 would blink the tile's labels out for a pass plus a fade.
 
 Once collected, each candidate is flattened into the kernel's packed input: a
-`Float64Array` with `CANDIDATE_STRIDE = 22` values per candidate
+`Float64Array` with `CANDIDATE_STRIDE = 25` values per candidate
 (`declutter/kernel.ts`), in the field order the Rust side reads — anchor (3),
 `addHeight`, the four box edges, `sizeInMeters`, `priority`, `isShown`,
 `overlap`, `ignorePlacement`, `rank`, `padding` (4), `pairGroup`,
-`featureIndex`, `pairRole`, `standalone`. Booleans become `0.0`/`1.0`; `overlap` becomes
+`featureIndex`, `pairRole`, `standalone`, `flatFacing`, `rotateWithCamera`,
+`rotation`. Booleans become `0.0`/`1.0`; `overlap` becomes
 `0`/`1`/`2` (never/always/cooperative, `OVERLAP_CODES`). The buffer is reused across passes and grown only when the
 label count rises. The kernel returns a `Uint8Array` of `hidden` flags, one per
 candidate in input order, which the manager feeds straight back to
@@ -347,7 +354,7 @@ leave it out of collection altogether, exactly like `declutter: false`
 
 MapLibre places a symbol's text and icon as one. A Navara layer that has both
 `text` and `billboard` does the same: a label and the billboard of the same
-feature at the same anchor form a pair. Each candidate carries a `pair` —
+feature at the same anchor form a pair, unless both are `standalone`. Each candidate carries a `pair` —
 the pair group (a hash of layer id and tile handle, `declutterPairGroup`,
 computed in `event/feature.ts` and handed to both meshes), the feature's batch
 index, and its role — and `pair_partners` in `declutter.rs` matches label to
@@ -359,10 +366,11 @@ At the first member's turn in the sorted walk, both members are tested
 against the grid before either claims space, so they never collide with each
 other. Then each one shows only if its own test passed and its partner's did
 too, unless it is `standalone`; only members that show claim their boxes.
-`standalone` defaults to `true` on both materials, which places them
-independently as before. The MapLibre plugin sets the label's `standalone`
-from `icon-optional` and the billboard's from `text-optional`, so MapLibre's
-defaults (`false`) pair them fully.
+`standalone` defaults to `true` on both materials. With both `standalone` there
+is no pair: the label and billboard are placed independently and, like any
+two candidates, block each other where they overlap. The MapLibre plugin sets
+the label's `standalone` from `icon-optional` and the billboard's from
+`text-optional`, so MapLibre's defaults (`false`) pair them fully.
 
 ## Hysteresis: why labels don't flicker
 
@@ -560,6 +568,13 @@ tick can observe it. So `_scheduleDeclutterFrame(delayMs)` instead arms a
   the rest of the throttle window, not a full `MIN_INTERVAL_MS` from now.
 - An `"animating"` result schedules a retry after `16ms` — roughly one frame,
   to keep the fade animating smoothly.
+- `markDirty()` outside a pass schedules one after `0ms` (the manager's
+  `requestFrame` callback). Meshes mark the pass dirty from async work — a
+  `layer.update()` reaches each mesh through awaited feature-change events,
+  mostly after the frame that delivered it has rendered — and without a frame
+  the pass would sit dirty, showing the old placement, until the camera
+  moved. Inside `update()` the pass consumes the flag itself, so no frame is
+  requested.
 - A pending timer is only replaced by a **shorter** one
   (`if (delayMs >= this._declutterRetryDelay) return;`) — a fade's tight 16ms
   cadence must never be starved by a 150ms throttle retry that got scheduled

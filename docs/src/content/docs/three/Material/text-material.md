@@ -868,7 +868,7 @@ Can also be set per feature from a [feature evaluator](../../api/feature-evaluat
 
 **Type:** `boolean | undefined`
 
-**Description:** Whether the label may show while the layer's billboard at the same anchor is hidden. A layer's labels and billboards are placed in pairs (same feature, same anchor), tested together so they never block each other. With `false`, the label is hidden whenever its billboard loses its spot, so `false` on both means both show or neither does. Only meaningful when [`declutter`](#declutter) is enabled. MapLibre's `icon-optional` (inverted: `icon-optional: true` means `standalone: true` on the label).
+**Description:** Whether the label may show while the layer's billboard at the same anchor is hidden. Unless both are `standalone`, a layer's label and billboard of the same feature and anchor are placed as a pair, tested together so they never block each other. With `false`, the label is hidden whenever its billboard loses its spot, so `false` on both means both show or neither does. With `true` on both, they are placed independently and block each other where they overlap. Only meaningful when [`declutter`](#declutter) is enabled. MapLibre's `icon-optional` (inverted: `icon-optional: true` means `standalone: true` on the label).
 
 **Default:** `true`
 

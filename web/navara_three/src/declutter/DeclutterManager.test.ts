@@ -98,6 +98,23 @@ function label(
 }
 
 describe("DeclutterManager", () => {
+  it("requests a frame when marked dirty outside a pass", () => {
+    let frames = 0;
+    const manager = new DeclutterManager(new StubKernel(), () => frames++);
+    const p = new FakeParticipant([label({ handle: 0 })]);
+    manager.register(p);
+    manager.markDirty();
+    expect(frames).toBe(1);
+
+    // A participant marking the pass dirty while it runs needs no frame.
+    p.collectDeclutterCandidates = (out) => {
+      manager.markDirty();
+      FakeParticipant.prototype.collectDeclutterCandidates.call(p, out);
+    };
+    expect(manager.update(makeCamera(), 800, 600, 0, 0)).toBe("ran");
+    expect(frames).toBe(1);
+  });
+
   it("packs candidates for the kernel and applies the returned hidden flags", () => {
     const kernel = new StubKernel();
     // Return the second candidate hidden.
@@ -120,6 +137,11 @@ describe("DeclutterManager", () => {
         padding: [1, 2, 3, 4],
         pair: { group: 9, featureIndex: 5, role: "billboard" },
         standalone: false,
+        orientation: {
+          flatFacing: true,
+          rotateWithCamera: false,
+          rotation: 0.5,
+        },
       }),
       label({ handle: 1, priority: 1 }),
     ]);
@@ -145,8 +167,15 @@ describe("DeclutterManager", () => {
     expect(Array.from(candidates.subarray(14, 18))).toEqual([1, 2, 3, 4]); // padding
     // pairGroup, featureIndex, pairRole (billboard), standalone
     expect(Array.from(candidates.subarray(18, 22))).toEqual([9, 5, 2, 0]);
-    // An unpaired candidate packs role 0.
+    // flatFacing, rotateWithCamera, rotation
+    expect(Array.from(candidates.subarray(22, 25))).toEqual([1, 0, 0.5]);
+    // An unpaired candidate packs role 0, and no orientation as screen-aligned.
     expect(candidates[CANDIDATE_STRIDE + 20]).toBe(0);
+    expect(
+      Array.from(
+        candidates.subarray(CANDIDATE_STRIDE + 22, CANDIDATE_STRIDE + 25),
+      ),
+    ).toEqual([0, 1, 0]);
     expect(candidates[CANDIDATE_STRIDE + 11]).toBe(0); // overlap: never -> 0
   });
 

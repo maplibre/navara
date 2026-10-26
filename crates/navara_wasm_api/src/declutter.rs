@@ -30,14 +30,19 @@
 //! | 19     | featureIndex | feature within the pair group |
 //! | 20     | pairRole | `0.0` = unpaired, `1.0` = label, `2.0` = billboard |
 //! | 21     | standalone | non-zero = may show while its partner is hidden |
+//! | 22     | flatFacing | non-zero = the quad lies on the globe surface |
+//! | 23     | rotateWithCamera | non-zero = the quad reads left to right on screen |
+//! | 24     | rotation | radians, clockwise from the front |
 
 use std::collections::HashMap;
 
 use navara_material::Overlap;
 use wasm_bindgen::prelude::*;
 
+use crate::line_label::{basis_box, quad_screen_basis};
+
 /// Number of `f64` values per candidate in the packed input slice.
-pub const CANDIDATE_STRIDE: usize = 22;
+pub const CANDIDATE_STRIDE: usize = 25;
 
 /// Decode the packed `overlap` field.
 fn overlap_from_code(code: f64) -> Overlap {
@@ -113,6 +118,9 @@ fn is_beyond_horizon(
 
 /// Project a candidate's local box to a screen-pixel AABB, mirroring the
 /// billboard vertex shaders (sdfText.vert.glsl / instancedSprite.vert.glsl).
+/// A quad that is turned, flat, or aligned with the map claims the box it is
+/// drawn over, as `nvr_quadBasis` lays it out; along-line candidates arrive
+/// with their box already turned and no orientation.
 /// Writes `[minX, minY, maxX, maxY]` (y-down) into `out` and returns true; returns
 /// false without writing when the anchor is behind the near plane.
 fn project_candidate(c: &[f64], ctx: &ProjectionContext, out: &mut [f64; 4]) -> bool {
@@ -160,10 +168,13 @@ fn project_candidate(c: &[f64], ctx: &ProjectionContext, out: &mut [f64; 4]) -> 
         1.0
     };
 
-    let min_x = c[4];
-    let max_x = c[5];
-    let min_y = c[6];
-    let max_y = c[7];
+    let (flat, follow, rotation) = (c[22] != 0.0, c[23] != 0.0, c[24]);
+    let (min_x, max_x, min_y, max_y) = if !flat && follow && rotation == 0.0 {
+        (c[4], c[5], c[6], c[7])
+    } else {
+        let (right, up) = quad_screen_basis(c, ctx.view, flat, follow, rotation);
+        basis_box(c[4], c[5], c[6], c[7], right, up)
+    };
     out[0] = sx + min_x * k;
     out[1] = sy - max_y * k;
     out[2] = sx + max_x * k;
@@ -525,9 +536,10 @@ struct Judged {
 }
 
 /// Pair each label with the billboard of the same feature at the same anchor,
-/// as MapLibre places a symbol's text and icon as one. Both are derived from
-/// the same geometry, so their anchors match bit for bit. Returns each
-/// candidate's partner, if it has one.
+/// as MapLibre places a symbol's text and icon as one, unless both are
+/// standalone: those are placed independently and may block each other. Both
+/// are derived from the same geometry, so their anchors match bit for bit.
+/// Returns each candidate's partner, if it has one.
 fn pair_partners(candidates: &[f64]) -> Vec<Option<usize>> {
     let n = candidates.len() / CANDIDATE_STRIDE;
     let mut slots: HashMap<[u64; 5], [Option<usize>; 2]> = HashMap::new();
@@ -541,8 +553,11 @@ fn pair_partners(candidates: &[f64]) -> Vec<Option<usize>> {
         slots.entry(key).or_default()[role - 1].get_or_insert(i);
     }
     let mut partners = vec![None; n];
+    let standalone = |i: usize| candidates[i * CANDIDATE_STRIDE + 21] != 0.0;
     for [label, billboard] in slots.into_values() {
-        if let (Some(l), Some(b)) = (label, billboard) {
+        if let (Some(l), Some(b)) = (label, billboard)
+            && !(standalone(l) && standalone(b))
+        {
             partners[l] = Some(b);
             partners[b] = Some(l);
         }
@@ -650,6 +665,9 @@ mod tests {
             0.0, // featureIndex
             0.0, // pairRole: unpaired
             1.0, // standalone
+            0.0, // flatFacing
+            1.0, // rotateWithCamera
+            0.0, // rotation
         ]
     }
 
@@ -777,6 +795,28 @@ mod tests {
         later[4] = -55.0;
         later[5] = -35.0;
         assert_eq!(place(&[blocker, text, icon, later]), vec![0, 1, 1, 0]);
+    }
+
+    #[test]
+    fn a_turned_label_claims_the_box_it_is_drawn_over() {
+        // A wide label and a small one boxed above it on the same anchor: clear
+        // while the wide one reads left to right, overlapping once it turns a
+        // quarter.
+        let mut wide = label(R, 0.0, 0.0, 1.0, false);
+        wide[4..8].copy_from_slice(&[-50.0, 50.0, -5.0, 5.0]);
+        let mut above = label(R, 0.0, 0.0, 0.0, false);
+        above[6] = 30.0;
+        above[7] = 50.0;
+        assert_eq!(place(&[wide, above]), vec![0, 0]);
+        wide[24] = std::f64::consts::FRAC_PI_2;
+        assert_eq!(place(&[wide, above]), vec![0, 1]);
+    }
+
+    #[test]
+    fn a_standalone_label_and_billboard_block_each_other() {
+        let text = paired(label(R, 0.0, 0.0, 1.0, false), 7.0, 3.0, LABEL, true);
+        let icon = paired(label(R, 0.0, 0.0, 0.0, false), 7.0, 3.0, BILLBOARD, true);
+        assert_eq!(place(&[text, icon]), vec![0, 1]);
     }
 
     #[test]
@@ -943,30 +983,13 @@ mod tests {
         max_y: f64,
         size_in_meters: bool,
     ) -> [f64; CANDIDATE_STRIDE] {
-        [
-            0.0,
-            0.0,
-            anchor_z,
-            add_height,
-            min_x,
-            max_x,
-            min_y,
-            max_y,
-            if size_in_meters { 1.0 } else { 0.0 },
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-        ]
+        let mut c = [0.0; CANDIDATE_STRIDE];
+        c[2] = anchor_z;
+        c[3] = add_height;
+        c[4..8].copy_from_slice(&[min_x, max_x, min_y, max_y]);
+        c[8] = if size_in_meters { 1.0 } else { 0.0 };
+        c[23] = 1.0; // rotateWithCamera: screen-aligned
+        c
     }
 
     #[test]

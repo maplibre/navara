@@ -532,7 +532,7 @@ pub fn line_anchor_place(
 /// Screen axes of an anchored quad's local +x and +y: `nvr_quadBasis` in
 /// `shaders/glsl/chunks/quad_orientation.glsl`, kept as view-space x/y like
 /// [`enu_screen_axes`]. `row` starts with the anchor.
-fn quad_screen_basis(
+pub(crate) fn quad_screen_basis(
     row: &[f64],
     view: &[f64],
     flat: bool,
@@ -808,7 +808,7 @@ fn should_flip(sx: f64, sy: f64, currently_flipped: bool) -> bool {
 
 /// Screen-space AABB of a local box laid out along `right` (its +x) and `up`
 /// (its +y).
-fn basis_box(
+pub(crate) fn basis_box(
     min_x: f64,
     max_x: f64,
     min_y: f64,

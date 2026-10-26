@@ -47,6 +47,17 @@ export type DeclutterCandidate = {
   pair?: { group: number; featureIndex: number; role: "label" | "billboard" };
   /** Whether it may show while its paired partner is hidden. */
   standalone: boolean;
+  /**
+   * How the quad is turned, as the vertex shader lays it out (`rotation` in
+   * radians, clockwise from the front); the kernel turns the box to match.
+   * Omitted, the box is already as drawn: screen-aligned, or turned by line
+   * placement.
+   */
+  orientation?: {
+    flatFacing: boolean;
+    rotateWithCamera: boolean;
+    rotation: number;
+  };
   /** Whether the label is currently shown (its fade target is "visible").
    *  Feeds placement hysteresis: shown labels win equal-priority ties and
    *  tolerate marginal overlaps, so slow camera drift doesn't make near-tied

@@ -553,7 +553,9 @@ export default class ThreeView<
     animation: false,
   };
   /** Shared screen-space label declutterer for text/sprite features. */
-  private _declutter = new DeclutterManager(wasmDeclutterKernel);
+  private _declutter = new DeclutterManager(wasmDeclutterKernel, () =>
+    this._scheduleDeclutterFrame(0),
+  );
   /** Reusable Vector2 for the declutter pass's per-frame viewport query. */
   private _declutterSize = new Vector2();
   /** Pending follow-up frame for a throttled declutter pass or an active

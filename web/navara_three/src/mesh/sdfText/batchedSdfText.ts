@@ -1359,6 +1359,7 @@ export class BatchedSdfTextMesh
     const cy = Math.min(Math.max(state.center[1], -0.5), 0.5);
 
     const boxes = this._lineBoxes;
+    const defaults = this._orientationDefaults();
     for (const record of this._labels) {
       if (!record.show || record.widthEm <= 0) continue;
       const size = record.fontSize;
@@ -1370,17 +1371,17 @@ export class BatchedSdfTextMesh
       const w = record.widthEm;
       const h = record.heightEm;
       // Line labels are turned to follow their road, so the placement pass
-      // hands back the box they actually cover; everything else is a
-      // screen-aligned block around its anchor.
+      // hands back the box they actually cover; everything else is its block
+      // around the anchor, which the kernel turns as the shader does.
       //
       // A label created since the last pass has no box yet. Falling back to the
       // unrotated block matters: reading past the array would put `undefined`
       // — and then NaN — into the packed candidate, and a NaN box never
       // registers a collision, so the label would silently overlap everything.
-      // A plain point in a line batch is screen-aligned like any other label.
+      // A plain point in a line batch is a block like any other point label.
       const b = record.slot * 4;
-      const hasBox =
-        boxes !== null && b + 3 < boxes.length && this._isAlongLine(record);
+      const alongLine = this._isAlongLine(record);
+      const hasBox = boxes !== null && b + 3 < boxes.length && alongLine;
       out.push({
         anchorX: record.anchor[0],
         anchorY: record.anchor[1],
@@ -1405,6 +1406,15 @@ export class BatchedSdfTextMesh
             }
           : undefined,
         standalone: this._standalone,
+        orientation: alongLine
+          ? undefined
+          : {
+              ...this._resolveOrientation(record.batchIndex, defaults),
+              rotation: this._resolveRotation(
+                record.batchIndex,
+                defaults.rotation,
+              ),
+            },
         owner: this,
         handle: record.slot,
         contentKey: record.text,

@@ -454,8 +454,14 @@ export class InstancedSpriteMesh
 
       // Mirror of instancedSprite.vert.glsl — the quad spans
       // (position.xy - center) * vec2(aspect, 1) * size around the anchor,
-      // turned as `placeLineLabels` resolved for an along-line anchor.
+      // turned as `placeLineLabels` resolved for an along-line anchor, and by
+      // the kernel from the feature's own orientation otherwise.
       const p = i * LINE_ANCHOR_RESULT_STRIDE;
+      const packed = placed
+        ? undefined
+        : readBatchScalar(material, batchIndex, "orientation");
+      const orientation =
+        packed === undefined ? state : unpackOrientation(packed);
       out.push({
         anchorX: anchors[i * 3],
         anchorY: anchors[i * 3 + 1],
@@ -481,6 +487,15 @@ export class InstancedSpriteMesh
             }
           : undefined,
         standalone: this._standalone,
+        orientation: placed
+          ? undefined
+          : {
+              flatFacing: orientation.flatFacing,
+              rotateWithCamera: orientation.rotateWithCamera,
+              rotation:
+                readBatchScalar(material, batchIndex, "rotation") ??
+                state.rotation,
+            },
         owner: this,
         handle: i,
       });
