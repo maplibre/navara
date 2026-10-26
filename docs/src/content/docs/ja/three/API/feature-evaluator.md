@@ -149,7 +149,7 @@ evaluate(
 | `size` | `number` | ポイント/テキストサイズ（メートルまたはピクセル、ポイント/テキスト地物用） |
 | `letterSpacing` | `number` | 文字間に追加する間隔（em 単位、テキスト地物用）。マテリアルの [`letterSpacing`](../../../three/material/text-material/#letterspacing) を上書きします |
 | `opacity` | `number` | 地物の不透明度、範囲 0.0-1.0（ポリゴン/ポイント/ビルボード/モデル/テキスト用） |
-| `declutterPriority` | `number` | デクラッターの配置優先度。値が大きいほど重なりの競合に勝ちます（[`declutter`](../../../three/material/text-material/#declutter) が有効なポイント/ビルボード/テキスト用）。レイヤーの `declutterPriority` を上書きします |
+| `declutterPriority` | `number` | デクラッターの配置優先度。値が大きいほど重なりの競合に勝ちます（[`declutter`](../../../three/material/text-material/#declutter) が有効なポイント/ビルボード/テキスト用）。レイヤーの `declutterPriority` を上書きしますが、先に比較されるマテリアルの [`declutterRank`](../../../three/material/text-material/#declutterrank) は上書きしません |
 | `image` | `string \| null` | 画像の URL（ビルボード地物用）。個別の URL ごとに一度だけ読み込まれ、レイヤーのテクスチャアトラスにパックされます。`null` を返すと以前に設定した地物ごとの画像がクリアされ、ビルボードマテリアルのデフォルト `url` に戻ります（マテリアルに `url` がない場合、その地物は非表示になります） |
 | `facing` | `"upright" \| "flat"` | ポイント、ビルボード、ラベルを画面と同じ平面に表示する（`"upright"`）か、地球表面に寝かせる（`"flat"`）か（ポイント/ビルボード/テキスト用）。マテリアルの `pointFacing`/`billboardFacing`/`textFacing` から決まる値を上書きします |
 | `rotateWithCamera` | `boolean` | ポイント、ビルボード、ラベルをカメラに合わせて回転させる（`true`）か、地図に合わせて回転させる（`false`）か（ポイント/ビルボード/テキスト用）。ライン沿いでは、`false` でラベルがラインに沿い、`true` で `spreadGlyphs` を指定しない限りまっすぐ描かれます。マテリアルの `rotateWithCamera` から決まる値を上書きします |

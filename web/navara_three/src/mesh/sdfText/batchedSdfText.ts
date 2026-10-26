@@ -321,6 +321,7 @@ export class BatchedSdfTextMesh
 
   /** Layer-level declutter settings, mirrored from the material. */
   private _declutter: boolean;
+  private _declutterRank: number;
   private _declutterPriority: number;
   private _overlap: DeclutterOverlap;
   private _ignorePlacement: boolean;
@@ -363,6 +364,7 @@ export class BatchedSdfTextMesh
     this._spreadGlyphs = material.spreadGlyphs ?? false;
     const declutter = resolveDeclutterSettings(material);
     this._declutter = declutter.participates;
+    this._declutterRank = declutter.rank;
     this._declutterPriority = declutter.priority;
     this._overlap = declutter.overlap;
     this._ignorePlacement = declutter.ignorePlacement;
@@ -1382,6 +1384,7 @@ export class BatchedSdfTextMesh
         minY: hasBox ? boxes[b + 2] : (record.minYEm - cy * h) * size,
         maxY: hasBox ? boxes[b + 3] : (record.maxYEm - cy * h) * size,
         sizeInMeters: state.sizeInMeters,
+        rank: this._declutterRank,
         priority: record.priorityOverride ?? this._declutterPriority,
         isShown: record.declutterTarget === 0,
         overlap: this._overlap,
@@ -1711,6 +1714,7 @@ export class BatchedSdfTextMesh
       }
     }
     this._declutter = declutter.participates;
+    this._declutterRank = declutter.rank;
     this._declutterPriority = declutter.priority;
     this._overlap = declutter.overlap;
     this._ignorePlacement = declutter.ignorePlacement;

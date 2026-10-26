@@ -123,6 +123,24 @@ import { Color } from "@navaramap/three";
 }
 ```
 
+### declutterRank
+
+**Type:** `number | undefined`
+
+**Description:** デクラッターの大まかな配置順で、[`declutterPriority`](#declutterpriority) より先に比較されます。ランクの高いマテリアルのポイントは、優先度にかかわらず、ランクの低いラベルやスプライトより先に配置されます。そのため、地物ごとの `declutterPriority` は同じランクのラベルやスプライトの順序だけを入れ替えます。[`declutter`](#declutter) が有効な場合にのみ意味を持ちます。
+
+**Default:** `0.0`
+
+**Example:**
+
+```typescript
+{
+  point: {
+    declutterRank: 1
+  }
+}
+```
+
 ### depthTest
 
 **Type:** `boolean | undefined`
@@ -292,7 +310,7 @@ import { Color } from "@navaramap/three";
 
 **Type:** `"never" | "always" | "cooperative" | undefined`
 
-**Description:** 先に配置されたラベルやスプライトの上にこのポイントを重ねて描画できるかを指定します（[`declutterPriority`](#declutterpriority) が大きいものから配置されます）。`"never"` はいずれかと衝突すると非表示にします。`"always"` は非表示にしません。そのボックスは、[`ignorePlacement`](#ignoreplacement) を設定しない限り、後から配置される `"never"` のものを遠ざけます。`"cooperative"` は `"never"` のものと衝突した場合にのみ非表示にします。[`declutter`](#declutter) が有効な場合にのみ意味を持ちます。
+**Description:** 先に配置されたラベルやスプライトの上にこのポイントを重ねて描画できるかを指定します（[`declutterRank`](#declutterrank)、次に [`declutterPriority`](#declutterpriority) が大きいものから配置されます）。`"never"` はいずれかと衝突すると非表示にします。`"always"` は非表示にしません。そのボックスは、[`ignorePlacement`](#ignoreplacement) を設定しない限り、後から配置される `"never"` のものを遠ざけます。`"cooperative"` は `"never"` のものと衝突した場合にのみ非表示にします。[`declutter`](#declutter) が有効な場合にのみ意味を持ちます。
 
 **Default:** `"never"`
 

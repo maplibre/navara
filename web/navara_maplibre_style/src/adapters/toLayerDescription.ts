@@ -361,6 +361,7 @@ function createSymbolLayer(
   fontFamily?: string,
   engine?: StyleEngine,
   zoom = CONSTRUCTION_ZOOM,
+  rank = 0,
 ): LayerDescription | null {
   const layout = styleLayer.layout;
 
@@ -434,6 +435,7 @@ function createSymbolLayer(
         placement,
         ...orientation.icon,
         declutter: true,
+        declutterRank: rank,
         ...resolveOverlap(engine, styleLayer, "icon", zoom),
         ...(geometryTypes && { geometryTypes }),
         ...(alongLine && { spacing: orientation.spacing }),
@@ -471,6 +473,7 @@ function createSymbolLayer(
       Object.assign(layerDesc.text, {
         placement,
         ...orientation.text,
+        declutterRank: rank,
         ...resolveOverlap(engine, styleLayer, "text", zoom),
         // MapLibre never wraps or justifies labels placed along a line.
         maxWidth: alongLine
@@ -569,6 +572,8 @@ function createSymbolLayer(
  * @param zoom - Zoom to evaluate the layer-level symbol properties that can
  *   follow it at (see {@link symbolLayerFollowsZoom}); defaults to
  *   {@link CONSTRUCTION_ZOOM}
+ * @param rank - Symbol placement rank: the layer's index in the style, as
+ *   MapLibre places symbols from the top-most layer down
  * @returns Navara layer description, or null if the layer cannot be processed
  *
  * Note: Returns null for unsupported/misconfigured layers instead of throwing,
@@ -583,6 +588,7 @@ export function toLayerDescription(
   fontFamily?: string,
   engine?: StyleEngine,
   zoom?: number,
+  rank?: number,
 ): LayerDescription | null {
   switch (styleLayer.type) {
     case "fill":
@@ -598,7 +604,14 @@ export function toLayerDescription(
     case "hillshade":
       return createHillshadeLayer(source);
     case "symbol":
-      return createSymbolLayer(source, styleLayer, fontFamily, engine, zoom);
+      return createSymbolLayer(
+        source,
+        styleLayer,
+        fontFamily,
+        engine,
+        zoom,
+        rank,
+      );
     default:
       // Warn but don't throw - allows loading third-party styles with unsupported layers
       // TypeScript exhaustively narrows styleLayer to never, but we handle unknown types at runtime

@@ -123,6 +123,24 @@ import { Color } from "@navaramap/three";
 }
 ```
 
+### declutterRank
+
+**Type:** `number | undefined`
+
+**Description:** Coarse placement order for decluttering, compared before [`declutterPriority`](#declutterpriority): every point of a material with a higher rank is placed before any label or sprite with a lower one, whatever their priorities. A per-feature `declutterPriority` therefore only reorders labels and sprites of the same rank. Only meaningful when [`declutter`](#declutter) is enabled.
+
+**Default:** `0.0`
+
+**Example:**
+
+```typescript
+{
+  point: {
+    declutterRank: 1
+  }
+}
+```
+
 ### depthTest
 
 **Type:** `boolean | undefined`
@@ -292,7 +310,7 @@ import { Color } from "@navaramap/three";
 
 **Type:** `"never" | "always" | "cooperative" | undefined`
 
-**Description:** Whether the point may be drawn over labels and sprites placed before it (higher [`declutterPriority`](#declutterpriority) places first). `"never"` hides it on any collision. `"always"` never hides it, and its box still keeps later `"never"` ones away unless [`ignorePlacement`](#ignoreplacement) is set. `"cooperative"` hides it only when it collides with a `"never"` one. Only meaningful when [`declutter`](#declutter) is enabled.
+**Description:** Whether the point may be drawn over labels and sprites placed before it (higher [`declutterRank`](#declutterrank), then higher [`declutterPriority`](#declutterpriority), places first). `"never"` hides it on any collision. `"always"` never hides it, and its box still keeps later `"never"` ones away unless [`ignorePlacement`](#ignoreplacement) is set. `"cooperative"` hides it only when it collides with a `"never"` one. Only meaningful when [`declutter`](#declutter) is enabled.
 
 **Default:** `"never"`
 

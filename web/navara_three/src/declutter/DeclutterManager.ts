@@ -245,6 +245,7 @@ export class DeclutterManager {
       input[o + 10] = c.isShown ? 1 : 0;
       input[o + 11] = OVERLAP_CODES[c.overlap];
       input[o + 12] = c.ignorePlacement ? 1 : 0;
+      input[o + 13] = c.rank;
     }
 
     // The pass may run before the renderer refreshed matrixWorldInverse, so

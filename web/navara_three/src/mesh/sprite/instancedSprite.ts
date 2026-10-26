@@ -224,7 +224,8 @@ export class InstancedSpriteMesh
   private _anchors: Float64Array | null = null;
   /** Whether this mesh's instances participate in screen-space decluttering. */
   private _declutter = false;
-  /** Layer-level placement priority from the material. */
+  /** Layer-level placement rank and priority from the material. */
+  private _declutterRank = 0;
   private _declutterPriority = 0;
   private _overlap: DeclutterOverlap = "never";
   private _ignorePlacement = false;
@@ -458,6 +459,7 @@ export class InstancedSpriteMesh
         minY: placed ? placed[p + 3] : (-0.5 - cy) * size,
         maxY: placed ? placed[p + 4] : (0.5 - cy) * size,
         sizeInMeters: state.sizeInMeters,
+        rank: this._declutterRank,
         // NaN-safe: an unset override falls back to the layer priority.
         priority: Number.isNaN(override) ? this._declutterPriority : override,
         isShown: targets ? targets[i] === 0 : true,
@@ -512,6 +514,7 @@ export class InstancedSpriteMesh
       this._clearDeclutterHidden();
     }
     this._declutter = settings.participates;
+    this._declutterRank = settings.rank;
     this._declutterPriority = settings.priority;
     this._overlap = settings.overlap;
     this._ignorePlacement = settings.ignorePlacement;

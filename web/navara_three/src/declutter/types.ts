@@ -24,6 +24,8 @@ export type DeclutterCandidate = {
   maxY: number;
   /** Unit of the local box, mirroring the material's `sizeInMeters`. */
   sizeInMeters: boolean;
+  /** Compared before `priority`: a higher rank places first. */
+  rank: number;
   /** Placement priority: higher wins an overlap. */
   priority: number;
   /** Which earlier candidates this one may overlap (MapLibre's `*-overlap`). */
@@ -63,6 +65,7 @@ export type DeclutterSettings = {
    *  `always` label that ignores placement can neither lose nor block, so it
    *  stays out like a `declutter: false` one. */
   participates: boolean;
+  rank: number;
   priority: number;
   overlap: DeclutterOverlap;
   ignorePlacement: boolean;
@@ -70,6 +73,7 @@ export type DeclutterSettings = {
 
 export function resolveDeclutterSettings(material: {
   declutter?: boolean;
+  declutterRank?: number;
   declutterPriority?: number;
   overlap?: string;
   ignorePlacement?: boolean;
@@ -80,6 +84,7 @@ export function resolveDeclutterSettings(material: {
     participates:
       (material.declutter ?? true) &&
       !(overlap === "always" && ignorePlacement),
+    rank: material.declutterRank ?? 0,
     priority: material.declutterPriority ?? 0,
     overlap,
     ignorePlacement,

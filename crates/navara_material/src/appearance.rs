@@ -308,6 +308,10 @@ pub struct PointMaterial {
     /// on screen, lower-priority ones are hidden. Enabled by default; set to
     /// `false` to draw every label unconditionally.
     pub declutter: bool,
+    /// Coarse placement order for decluttering, compared before
+    /// `declutter_priority`: every label with a higher rank is placed before
+    /// any label with a lower one. Only meaningful when `declutter` is enabled.
+    pub declutter_rank: f32,
     /// Placement priority for decluttering; higher wins. Only meaningful when
     /// `declutter` is enabled.
     pub declutter_priority: f32,
@@ -350,6 +354,7 @@ impl Default for PointMaterial {
             transparent: true,
             opacity: 1.0,
             declutter: true,
+            declutter_rank: 0.0,
             declutter_priority: 0.0,
             overlap: Overlap::Never,
             ignore_placement: false,
@@ -415,6 +420,10 @@ pub struct BillboardMaterial {
     /// on screen, lower-priority ones are hidden. Enabled by default; set to
     /// `false` to draw every label unconditionally.
     pub declutter: bool,
+    /// Coarse placement order for decluttering, compared before
+    /// `declutter_priority`: every label with a higher rank is placed before
+    /// any label with a lower one. Only meaningful when `declutter` is enabled.
+    pub declutter_rank: f32,
     /// Placement priority for decluttering; higher wins. Only meaningful when
     /// `declutter` is enabled.
     pub declutter_priority: f32,
@@ -460,6 +469,7 @@ impl Default for BillboardMaterial {
             opacity: 1.0,
             alpha_test: 0.1,
             declutter: true,
+            declutter_rank: 0.0,
             declutter_priority: 0.0,
             overlap: Overlap::Never,
             ignore_placement: false,
@@ -604,6 +614,10 @@ pub struct TextMaterial {
     /// on screen, lower-priority ones are hidden. Enabled by default; set to
     /// `false` to draw every label unconditionally.
     pub declutter: bool,
+    /// Coarse placement order for decluttering, compared before
+    /// `declutter_priority`: every label with a higher rank is placed before
+    /// any label with a lower one. Only meaningful when `declutter` is enabled.
+    pub declutter_rank: f32,
     /// Placement priority for decluttering; higher wins. Only meaningful when
     /// `declutter` is enabled.
     pub declutter_priority: f32,
@@ -671,6 +685,7 @@ impl Default for TextMaterial {
             letter_spacing: 0.0,
 
             declutter: true,
+            declutter_rank: 0.0,
             declutter_priority: 0.0,
             overlap: Overlap::Never,
             ignore_placement: false,

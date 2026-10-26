@@ -24,12 +24,13 @@
 //! | 10     | isShown | `0.0` = hidden, non-zero = currently shown (feeds hysteresis) |
 //! | 11     | overlap | `0.0` = never, `1.0` = always, `2.0` = cooperative |
 //! | 12     | ignorePlacement | non-zero = the box is never claimed, so later candidates may overlap it |
+//! | 13     | rank | compared before priority; higher places first |
 
 use navara_material::Overlap;
 use wasm_bindgen::prelude::*;
 
 /// Number of `f64` values per candidate in the packed input slice.
-pub const CANDIDATE_STRIDE: usize = 13;
+pub const CANDIDATE_STRIDE: usize = 14;
 
 /// Decode the packed `overlap` field.
 fn overlap_from_code(code: f64) -> Overlap {
@@ -382,14 +383,21 @@ pub fn declutter_place(
         }
     }
 
-    // Priority order with hysteresis: among equal priorities, currently-shown
-    // labels place first (incumbents win ties). The final camera-independent
-    // tiebreak (anchor position, then index) keeps fresh ties deterministic —
-    // array order would reshuffle as tiles load and make labels flicker.
+    // Rank, then priority order with hysteresis: among equal priorities,
+    // currently-shown labels place first (incumbents win ties). The final
+    // camera-independent tiebreak (anchor position, then index) keeps fresh ties
+    // deterministic — array order would reshuffle as tiles load and make labels
+    // flicker.
     let mut order: Vec<usize> = (0..n).collect();
     order.sort_by(|&a, &b| {
         let ca = &candidates[a * CANDIDATE_STRIDE..];
         let cb = &candidates[b * CANDIDATE_STRIDE..];
+        // rank desc
+        let ra = ca[13];
+        let rb = cb[13];
+        if ra != rb {
+            return rb.partial_cmp(&ra).unwrap_or(std::cmp::Ordering::Equal);
+        }
         // priority desc
         let pa = ca[9];
         let pb = cb[9];
@@ -550,6 +558,7 @@ mod tests {
             if is_shown { 1.0 } else { 0.0 },
             0.0, // overlap: never
             0.0, // ignorePlacement
+            0.0, // rank
         ]
     }
 
@@ -598,6 +607,14 @@ mod tests {
         assert_eq!(hidden[1], 0, "highest priority shown");
         assert_eq!(hidden[0], 1, "lower priority hidden");
         assert_eq!(hidden[2], 0, "far-away label shown");
+    }
+
+    #[test]
+    fn higher_rank_wins_whatever_the_priority() {
+        let mut ranked = label(R, 0.0, 0.0, -5.0, false);
+        ranked[13] = 1.0;
+        let hidden = place(&[label(R, 0.0, 0.0, 5.0, true), ranked]);
+        assert_eq!(hidden, vec![1, 0]);
     }
 
     #[test]
@@ -748,6 +765,7 @@ mod tests {
             min_y,
             max_y,
             if size_in_meters { 1.0 } else { 0.0 },
+            0.0,
             0.0,
             0.0,
             0.0,

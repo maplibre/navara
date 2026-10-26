@@ -178,6 +178,13 @@ pub struct PointMaterial {
     /// on screen, lower-priority ones are hidden. Defaults to `true`; set to
     /// `false` to draw every label unconditionally.
     pub declutter: Option<bool>,
+    /// Coarse placement order for decluttering, compared before
+    /// `declutterPriority`: every label with a higher rank is placed before any
+    /// label with a lower one, whatever their priorities. Only meaningful when
+    /// `declutter` is enabled. Defaults to `0.0`.
+    #[wasm_bindgen(js_name = declutterRank)]
+    #[serde(rename = "declutterRank")]
+    pub declutter_rank: Option<f32>,
     /// Placement priority for decluttering; higher wins. Only meaningful when
     /// `declutter` is enabled. Defaults to `0.0`.
     #[wasm_bindgen(js_name = declutterPriority)]
@@ -239,6 +246,7 @@ impl From<PointMaterial> for navara_material::PointMaterial {
             transparent: val.transparent.unwrap_or(default.transparent),
             opacity: val.opacity.unwrap_or(default.opacity),
             declutter: val.declutter.unwrap_or(default.declutter),
+            declutter_rank: val.declutter_rank.unwrap_or(default.declutter_rank),
             declutter_priority: val.declutter_priority.unwrap_or(default.declutter_priority),
             overlap: parse_overlap(&val.overlap).unwrap_or(default.overlap),
             ignore_placement: val.ignore_placement.unwrap_or(default.ignore_placement),
@@ -272,6 +280,7 @@ impl<'a> From<&'a navara_material::PointMaterial> for PointMaterial {
             transparent: Some(value.transparent),
             opacity: Some(value.opacity),
             declutter: Some(value.declutter),
+            declutter_rank: Some(value.declutter_rank),
             declutter_priority: Some(value.declutter_priority),
             overlap: Some(value.overlap.as_str().to_string()),
             ignore_placement: Some(value.ignore_placement),
@@ -305,6 +314,7 @@ impl PointMaterial {
             transparent: self.transparent.unwrap_or(other.transparent),
             opacity: self.opacity.unwrap_or(other.opacity),
             declutter: self.declutter.unwrap_or(other.declutter),
+            declutter_rank: self.declutter_rank.unwrap_or(other.declutter_rank),
             declutter_priority: self.declutter_priority.unwrap_or(other.declutter_priority),
             overlap: parse_overlap(&self.overlap).unwrap_or(other.overlap),
             ignore_placement: self.ignore_placement.unwrap_or(other.ignore_placement),
@@ -413,6 +423,13 @@ pub struct BillboardMaterial {
     /// on screen, lower-priority ones are hidden. Defaults to `true`; set to
     /// `false` to draw every label unconditionally.
     pub declutter: Option<bool>,
+    /// Coarse placement order for decluttering, compared before
+    /// `declutterPriority`: every label with a higher rank is placed before any
+    /// label with a lower one, whatever their priorities. Only meaningful when
+    /// `declutter` is enabled. Defaults to `0.0`.
+    #[wasm_bindgen(js_name = declutterRank)]
+    #[serde(rename = "declutterRank")]
+    pub declutter_rank: Option<f32>,
     /// Placement priority for decluttering; higher wins. Only meaningful when
     /// `declutter` is enabled. Defaults to `0.0`.
     #[wasm_bindgen(js_name = declutterPriority)]
@@ -477,6 +494,7 @@ impl From<BillboardMaterial> for navara_material::BillboardMaterial {
             opacity: val.opacity.unwrap_or(default.opacity),
             alpha_test: val.alpha_test.unwrap_or(default.alpha_test),
             declutter: val.declutter.unwrap_or(default.declutter),
+            declutter_rank: val.declutter_rank.unwrap_or(default.declutter_rank),
             declutter_priority: val.declutter_priority.unwrap_or(default.declutter_priority),
             overlap: parse_overlap(&val.overlap).unwrap_or(default.overlap),
             ignore_placement: val.ignore_placement.unwrap_or(default.ignore_placement),
@@ -512,6 +530,7 @@ impl<'a> From<&'a navara_material::BillboardMaterial> for BillboardMaterial {
             opacity: Some(value.opacity),
             alpha_test: Some(value.alpha_test),
             declutter: Some(value.declutter),
+            declutter_rank: Some(value.declutter_rank),
             declutter_priority: Some(value.declutter_priority),
             overlap: Some(value.overlap.as_str().to_string()),
             ignore_placement: Some(value.ignore_placement),
@@ -551,6 +570,7 @@ impl BillboardMaterial {
             opacity: self.opacity.unwrap_or(other.opacity),
             alpha_test: self.alpha_test.unwrap_or(other.alpha_test),
             declutter: self.declutter.unwrap_or(other.declutter),
+            declutter_rank: self.declutter_rank.unwrap_or(other.declutter_rank),
             declutter_priority: self.declutter_priority.unwrap_or(other.declutter_priority),
             overlap: parse_overlap(&self.overlap).unwrap_or(other.overlap),
             ignore_placement: self.ignore_placement.unwrap_or(other.ignore_placement),
@@ -767,6 +787,13 @@ pub struct TextMaterial {
     /// on screen, lower-priority ones are hidden. Defaults to `true`; set to
     /// `false` to draw every label unconditionally.
     pub declutter: Option<bool>,
+    /// Coarse placement order for decluttering, compared before
+    /// `declutterPriority`: every label with a higher rank is placed before any
+    /// label with a lower one, whatever their priorities. Only meaningful when
+    /// `declutter` is enabled. Defaults to `0.0`.
+    #[wasm_bindgen(js_name = declutterRank)]
+    #[serde(rename = "declutterRank")]
+    pub declutter_rank: Option<f32>,
     /// Placement priority for decluttering; higher wins. Only meaningful when
     /// `declutter` is enabled. Defaults to `0.0`.
     #[wasm_bindgen(js_name = declutterPriority)]
@@ -856,6 +883,7 @@ impl From<TextMaterial> for navara_material::TextMaterial {
             letter_spacing: val.letter_spacing.unwrap_or(default.letter_spacing),
 
             declutter: val.declutter.unwrap_or(default.declutter),
+            declutter_rank: val.declutter_rank.unwrap_or(default.declutter_rank),
             declutter_priority: val.declutter_priority.unwrap_or(default.declutter_priority),
             overlap: parse_overlap(&val.overlap).unwrap_or(default.overlap),
             ignore_placement: val.ignore_placement.unwrap_or(default.ignore_placement),
@@ -913,6 +941,7 @@ impl<'a> From<&'a navara_material::TextMaterial> for TextMaterial {
             letter_spacing: Some(value.letter_spacing),
 
             declutter: Some(value.declutter),
+            declutter_rank: Some(value.declutter_rank),
             declutter_priority: Some(value.declutter_priority),
             overlap: Some(value.overlap.as_str().to_string()),
             ignore_placement: Some(value.ignore_placement),
@@ -973,6 +1002,7 @@ impl TextMaterial {
             letter_spacing: self.letter_spacing.unwrap_or(other.letter_spacing),
 
             declutter: self.declutter.unwrap_or(other.declutter),
+            declutter_rank: self.declutter_rank.unwrap_or(other.declutter_rank),
             declutter_priority: self.declutter_priority.unwrap_or(other.declutter_priority),
             overlap: parse_overlap(&self.overlap).unwrap_or(other.overlap),
             ignore_placement: self.ignore_placement.unwrap_or(other.ignore_placement),

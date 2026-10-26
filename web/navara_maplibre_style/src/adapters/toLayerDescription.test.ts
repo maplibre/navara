@@ -1,4 +1,4 @@
-import type { Source } from "@navaramap/three";
+import type { Source, VectorLayer } from "@navaramap/three";
 import { describe, it, expect, vi } from "vitest";
 
 import { JsStyleEngine } from "../engine/JsStyleEngine";
@@ -556,6 +556,19 @@ describe("toLayerDescription", () => {
         ignorePlacement: true,
       });
       expect(overlap.billboard?.overlap).toBe("always");
+    });
+
+    it("ranks text and icons by the layer's index in the style", () => {
+      const { text, billboard } = toLayerDescription(
+        mockSource,
+        symbolLayer({ "text-field": "{name}", "icon-image": "marker" }),
+        "Font",
+        engine,
+        undefined,
+        7,
+      ) as VectorLayer;
+      expect(text?.declutterRank).toBe(7);
+      expect(billboard?.declutterRank).toBe(7);
     });
 
     it("maps an explicit icon-anchor to the sprite center", () => {

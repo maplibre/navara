@@ -23,7 +23,8 @@ is the `DeclutterManager`, one shared TypeScript instance per `ThreeView`
 lives in Rust: `declutterPlace` in `crates/navara_wasm_api/src/declutter.rs`,
 exposed to TypeScript through the `@navaramap/engine-api` WASM bindings. Rust
 also carries the per-material config fields — `declutter: bool`,
-`declutter_priority: f32`, `overlap: Overlap` and `ignore_placement: bool`
+`declutter_rank: f32`, `declutter_priority: f32`, `overlap: Overlap` and
+`ignore_placement: bool`
 (`crates/navara_material/src/appearance.rs`) — through to the bindings. Along-line labels and sprites go through a second kernel,
 `crates/navara_wasm_api/src/line_label.rs`, which participants call at the
 start of each pass (see [step 0](#0-line-placement)).
@@ -147,6 +148,7 @@ export type DeclutterCandidate = {
   addHeight: number;               // surface-normal height offset (meters)
   minX: number; maxX: number; minY: number; maxY: number; // local box, px or meters
   sizeInMeters: boolean;
+  rank: number;        // compared before priority; higher places first
   priority: number;    // higher wins an overlap
   isShown: boolean;    // currently visible — feeds hysteresis
   overlap: "never" | "always" | "cooperative"; // see Overlap modes
@@ -185,10 +187,10 @@ starts granted rather than fading in from hidden. Without that, every swap
 would blink the tile's labels out for a pass plus a fade.
 
 Once collected, each candidate is flattened into the kernel's packed input: a
-`Float64Array` with `CANDIDATE_STRIDE = 13` values per candidate
+`Float64Array` with `CANDIDATE_STRIDE = 14` values per candidate
 (`declutter/kernel.ts`), in the field order the Rust side reads — anchor (3),
 `addHeight`, the four box edges, `sizeInMeters`, `priority`, `isShown`,
-`overlap`, `ignorePlacement`. Booleans become `0.0`/`1.0`; `overlap` becomes
+`overlap`, `ignorePlacement`, `rank`. Booleans become `0.0`/`1.0`; `overlap` becomes
 `0`/`1`/`2` (never/always/cooperative, `OVERLAP_CODES`). The buffer is reused across passes and grown only when the
 label count rises. The kernel returns a `Uint8Array` of `hidden` flags, one per
 candidate in input order, which the manager feeds straight back to
@@ -240,18 +242,25 @@ for why that direction matters.
 
 Before placement, `declutterPlace` sorts the candidate indices by:
 
-1. **`priority` descending** — the layer's `declutterPriority` (or a
-   per-feature override). Higher always wins an overlap.
-2. **`isShown` — currently-shown labels sort first** on an exact priority tie.
+1. **`rank` descending** — the material's `declutterRank`. A coarse order
+   above priority: every candidate of a higher rank places before any of a
+   lower one, so a per-feature priority can never lift a label past a
+   higher-ranked layer. The MapLibre plugin sets it to the style layer's index,
+   since MapLibre places symbols from the top-most layer down and confines
+   `symbol-sort-key` to its own layer. Defaults to `0`, so it changes nothing
+   unless set.
+2. **`priority` descending** — the layer's `declutterPriority` (or a
+   per-feature override). Higher always wins an overlap within a rank.
+3. **`isShown` — currently-shown labels sort first** on an exact priority tie.
    This is the first half of hysteresis: an "incumbent" label keeps its claim
    over a brand-new competitor at equal priority, instead of losing a coin
    flip every frame.
-3. **Anchor position** (`anchorX`, then `anchorY`, then `anchorZ`) — a
+4. **Anchor position** (`anchorX`, then `anchorY`, then `anchorZ`) — a
    deterministic, **camera-independent** tiebreak for genuinely fresh ties.
    Without this, ties would resolve by array order, which reshuffles as tiles
    load asynchronously — an easy way to make labels flicker for a completely
    different reason than the one hysteresis targets.
-4. **Candidate index** — a final fallback, never actually reached in practice
+5. **Candidate index** — a final fallback, never actually reached in practice
    since anchors are distinct.
 
 ## 4. Placing greedily: the collision grid
@@ -530,7 +539,7 @@ tick can observe it. So `_scheduleDeclutterFrame(delayMs)` instead arms a
 
 ## Public API
 
-Three material types carry the four config fields consumed by this pass —
+Three material types carry the five config fields consumed by this pass —
 `text`, `point`, and `billboard` — generated via wasm-bindgen from
 `PointMaterial` / `BillboardMaterial` / `TextMaterial`
 (`crates/navara_wasm_types/src/appearance.rs`):
@@ -538,6 +547,7 @@ Three material types carry the four config fields consumed by this pass —
 | Field | Type | Default | Meaning |
 | --- | --- | --- | --- |
 | `declutter` | `boolean` | `true` | participate in the shared placement pass; set `false` to draw this label/sprite unconditionally |
+| `declutterRank` | `number` | `0` | layer-level order compared before priority; higher places first |
 | `declutterPriority` | `number` | `0` | layer-level priority; higher wins an overlap |
 | `overlap` | `"never" \| "always" \| "cooperative"` | `"never"` | which earlier boxes may hide this one ([Overlap modes](#overlap-modes)) |
 | `ignorePlacement` | `boolean` | `false` | leave this box out of the grid so later labels may overlap it |
@@ -598,5 +608,5 @@ confidence-driven priority, at real-world label density).
 | `web/navara_three/src/declutter/types.ts` | `DeclutterCandidate`, `DeclutterParticipant`, `DECLUTTER_FADE_MS` |
 | `web/navara_three/src/mesh/sdfText/batchedSdfText.ts`, `web/navara_three/src/mesh/sprite/instancedSprite.ts` | The two participants, including their `placeLineLabels` |
 | `web/navara_three/src/index.ts` | Registers the shared `DeclutterManager` (wired with `wasmDeclutterKernel`), drives `update()` from `_render()`, `_scheduleDeclutterFrame` / `forceUpdate` scheduling |
-| `crates/navara_material/src/appearance.rs` | `declutter` / `declutter_priority` / `overlap` / `ignore_placement` fields on `PointMaterial` / `BillboardMaterial` / `TextMaterial` |
+| `crates/navara_material/src/appearance.rs` | `declutter` / `declutter_rank` / `declutter_priority` / `overlap` / `ignore_placement` fields on `PointMaterial` / `BillboardMaterial` / `TextMaterial` |
 | `crates/navara_wasm_types/src/appearance.rs` | wasm-bindgen mirrors exposed to TypeScript |

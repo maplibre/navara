@@ -85,6 +85,7 @@ function label(
     minY: -10,
     maxY: 10,
     sizeInMeters: false,
+    rank: 0,
     priority: 0,
     isShown: false,
     overlap: "never",
@@ -113,6 +114,7 @@ describe("DeclutterManager", () => {
         sizeInMeters: true,
         overlap: "cooperative",
         ignorePlacement: true,
+        rank: 4,
       }),
       label({ handle: 1, priority: 1 }),
     ]);
@@ -134,6 +136,7 @@ describe("DeclutterManager", () => {
     expect(candidates[10]).toBe(1); // isShown -> 1
     expect(candidates[11]).toBe(2); // overlap: cooperative -> 2
     expect(candidates[12]).toBe(1); // ignorePlacement -> 1
+    expect(candidates[13]).toBe(4); // rank
     expect(candidates[CANDIDATE_STRIDE + 11]).toBe(0); // overlap: never -> 0
   });
 
