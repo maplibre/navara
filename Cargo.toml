@@ -15,12 +15,12 @@ license = "MIT/Apache-2.0"
 # --- Bevy ---
 # default-features = false drops bevy_reflect (unused in this workspace) and
 # backtrace (useless on wasm) from every WASM module.
-bevy_app = { version = "=0.19.1", default-features = false, features = ["std"] }
-bevy_ecs = { version = "=0.19.1", default-features = false, features = ["std", "async_executor"] }
-bevy_input = { version = "=0.19.1", default-features = false, features = ["std", "mouse", "keyboard", "smol_str"] }
-bevy_log = "=0.19.1"
-bevy_math = "=0.19.1"
-bevy_transform = { version = "=0.19.1", default-features = false, features = ["std", "bevy-support", "async_executor"] }
+bevy_app = { version = "=0.20.0", default-features = false, features = ["std"] }
+bevy_ecs = { version = "=0.20.0", default-features = false, features = ["std", "async_executor"] }
+bevy_input = { version = "=0.20.0", default-features = false, features = ["std", "mouse", "keyboard", "smol_str"] }
+bevy_log = "=0.20.0"
+bevy_math = "=0.20.0"
+bevy_transform = { version = "=0.20.0", default-features = false, features = ["std", "bevy-support", "async_executor"] }
 
 # --- Serialization ---
 serde = { version = "=1.0.229", features = ["derive"] }
@@ -43,7 +43,7 @@ regex = "=1.13.1"
 geo-types = "=0.7.20"
 geojson_lib = { package = "geojson", version = "=1.0.0" }
 earcutr = "=0.5.0"
-maplibre-expr = "=0.3.2"
+maplibre-expr = "=0.5.4"
 # geozero = { version = "0.15.1", default-features = false, features = ["with-mvt", "with-geo"] }
 # TODO: Replace to original later
 geozero = { git = "https://github.com/keiya01/geozero.git", branch = "fix/ccw-mvt", default-features = false, features = ["with-mvt", "with-geo"] }
@@ -78,13 +78,13 @@ fontdue = "=0.9.4"
 sdf_glyph_renderer = "=1.1.0"
 guillotiere = "=0.7.0"
 wuff = "=0.2.8"
-skrifa = "=0.46.2"
+skrifa = "=0.48.0"
 tiny-skia = { version = "=0.12.0", default-features = false, features = ["std", "simd"] }
 # MSDF generation (multi-channel SDF, used as a higher-quality alternative to sdf_glyph_renderer)
 fdsm = "=0.8.0"
 fdsm-ttf-parser = "=0.2.0"
 ttf-parser = "=0.25.1"
-nalgebra = "=0.34.2"
+nalgebra = "=0.35.0"
 
 # --- Testing ---
 wasm-bindgen-test = "=0.3.77"
