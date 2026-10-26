@@ -233,6 +233,24 @@ import { Color } from "@navaramap/three";
 }
 ```
 
+### ignorePlacement
+
+**Type:** `boolean | undefined`
+
+**Description:** Keeps this point's box out of the collision check, so labels and sprites placed after it can overlap it. The point itself still hides when it collides with one placed before it, unless [`overlap`](#overlap) allows it. Only meaningful when [`declutter`](#declutter) is enabled.
+
+**Default:** `false`
+
+**Example:**
+
+```typescript
+{
+  point: {
+    ignorePlacement: true
+  }
+}
+```
+
 ### offsetDepth
 
 **Type:** `boolean | undefined`
@@ -266,6 +284,24 @@ import { Color } from "@navaramap/three";
   point: {
     transparent: true,
     opacity: 0.5 // 50% opacity
+  }
+}
+```
+
+### overlap
+
+**Type:** `"never" | "always" | "cooperative" | undefined`
+
+**Description:** Whether the point may be drawn over labels and sprites placed before it (higher [`declutterPriority`](#declutterpriority) places first). `"never"` hides it on any collision. `"always"` never hides it, and its box still keeps later `"never"` ones away unless [`ignorePlacement`](#ignoreplacement) is set. `"cooperative"` hides it only when it collides with a `"never"` one. Only meaningful when [`declutter`](#declutter) is enabled.
+
+**Default:** `"never"`
+
+**Example:**
+
+```typescript
+{
+  point: {
+    overlap: "always"
   }
 }
 ```

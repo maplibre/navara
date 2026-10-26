@@ -251,6 +251,24 @@ import { Color } from "@navaramap/three";
 }
 ```
 
+### ignorePlacement
+
+**Type:** `boolean | undefined`
+
+**Description:** Keeps this sprite's box out of the collision check, so labels and sprites placed after it can overlap it. The sprite itself still hides when it collides with one placed before it, unless [`overlap`](#overlap) allows it. Only meaningful when [`declutter`](#declutter) is enabled. MapLibre's `icon-ignore-placement`.
+
+**Default:** `false`
+
+**Example:**
+
+```typescript
+{
+  billboard: {
+    ignorePlacement: true
+  }
+}
+```
+
 ### offsetDepth
 
 **Type:** `boolean | undefined`
@@ -284,6 +302,24 @@ import { Color } from "@navaramap/three";
   billboard: {
     transparent: true,
     opacity: 0.5 // 50% opacity
+  }
+}
+```
+
+### overlap
+
+**Type:** `"never" | "always" | "cooperative" | undefined`
+
+**Description:** Whether the sprite may be drawn over labels and sprites placed before it (higher [`declutterPriority`](#declutterpriority) places first). `"never"` hides it on any collision. `"always"` never hides it, and its box still keeps later `"never"` ones away unless [`ignorePlacement`](#ignoreplacement) is set. `"cooperative"` hides it only when it collides with a `"never"` one. Only meaningful when [`declutter`](#declutter) is enabled. MapLibre's `icon-overlap`.
+
+**Default:** `"never"`
+
+**Example:**
+
+```typescript
+{
+  billboard: {
+    overlap: "always"
   }
 }
 ```

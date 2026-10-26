@@ -514,15 +514,33 @@ describe("toLayerDescription", () => {
       });
     });
 
-    it("maps overlap properties to declutter", () => {
+    it("maps overlap properties", () => {
+      const defaults = buildSymbol({
+        "text-field": "{name}",
+        "icon-image": "marker",
+      });
+      for (const desc of [defaults.text, defaults.billboard]) {
+        expect(desc).toMatchObject({
+          overlap: "never",
+          ignorePlacement: false,
+        });
+      }
+
       const allow = buildSymbol({
         "text-field": "{name}",
         "icon-image": "marker",
         "text-allow-overlap": true,
         "icon-allow-overlap": true,
+        "icon-ignore-placement": true,
       });
-      expect(allow.text?.declutter).toBe(false);
-      expect(allow.billboard?.declutter).toBe(false);
+      expect(allow.text).toMatchObject({
+        overlap: "always",
+        ignorePlacement: false,
+      });
+      expect(allow.billboard).toMatchObject({
+        overlap: "always",
+        ignorePlacement: true,
+      });
 
       // `*-overlap` takes precedence over `*-allow-overlap`.
       const overlap = buildSymbol({
@@ -530,10 +548,14 @@ describe("toLayerDescription", () => {
         "icon-image": "marker",
         "text-allow-overlap": true,
         "text-overlap": "cooperative",
+        "text-ignore-placement": true,
         "icon-overlap": "always",
       });
-      expect(overlap.text?.declutter).toBe(true);
-      expect(overlap.billboard?.declutter).toBe(false);
+      expect(overlap.text).toMatchObject({
+        overlap: "cooperative",
+        ignorePlacement: true,
+      });
+      expect(overlap.billboard?.overlap).toBe("always");
     });
 
     it("maps an explicit icon-anchor to the sprite center", () => {

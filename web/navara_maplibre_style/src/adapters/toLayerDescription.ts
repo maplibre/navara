@@ -43,6 +43,8 @@ const ZOOM_FOLLOWING_SYMBOL_PROPERTIES = {
     "icon-allow-overlap",
     "text-overlap",
     "icon-overlap",
+    "text-ignore-placement",
+    "icon-ignore-placement",
   ],
   paint: ["text-halo-color", "text-halo-width"],
 } as const;
@@ -145,33 +147,33 @@ function getSymbolGeometryTypes(
 }
 
 /**
- * Navara's `declutter: false` neither hides on collision nor blocks others,
- * so it stands in for `*-allow-overlap` (and `*-overlap: "always"`).
- * `cooperative` is treated like `never`.
+ * Resolve `*-overlap` — falling back to `*-allow-overlap` when it is unset,
+ * as MapLibre does — and `*-ignore-placement`.
  */
-function allowsOverlap(
+function resolveOverlap(
   engine: StyleEngine,
   styleLayer: StyleLayer,
   prefix: "text" | "icon",
   zoom: number,
-): boolean {
-  const overlap = evaluateLayerProperty(
-    engine,
-    styleLayer,
-    "layout",
-    `${prefix}-overlap`,
-    zoom,
-  );
-  if (overlap !== undefined) return overlap === "always";
-  return (
+): { overlap: string; ignorePlacement: boolean } {
+  const evaluate = (key: string) =>
     evaluateLayerProperty(
       engine,
       styleLayer,
       "layout",
-      `${prefix}-allow-overlap`,
+      `${prefix}-${key}`,
       zoom,
-    ) === true
-  );
+    );
+  const overlap = evaluate("overlap");
+  return {
+    overlap:
+      typeof overlap === "string"
+        ? overlap
+        : evaluate("allow-overlap") === true
+          ? "always"
+          : "never",
+    ignorePlacement: evaluate("ignore-placement") === true,
+  };
 }
 
 /**
@@ -431,7 +433,8 @@ function createSymbolLayer(
       Object.assign(layerDesc.billboard, {
         placement,
         ...orientation.icon,
-        declutter: !allowsOverlap(engine, styleLayer, "icon", zoom),
+        declutter: true,
+        ...resolveOverlap(engine, styleLayer, "icon", zoom),
         ...(geometryTypes && { geometryTypes }),
         ...(alongLine && { spacing: orientation.spacing }),
       } satisfies Partial<BillboardDescription>);
@@ -468,7 +471,7 @@ function createSymbolLayer(
       Object.assign(layerDesc.text, {
         placement,
         ...orientation.text,
-        declutter: !allowsOverlap(engine, styleLayer, "text", zoom),
+        ...resolveOverlap(engine, styleLayer, "text", zoom),
         // MapLibre never wraps or justifies labels placed along a line.
         maxWidth: alongLine
           ? 0

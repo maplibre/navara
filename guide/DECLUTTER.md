@@ -22,9 +22,9 @@ is the `DeclutterManager`, one shared TypeScript instance per `ThreeView`
 — projecting anchors to screen space, sorting, and the greedy grid placement —
 lives in Rust: `declutterPlace` in `crates/navara_wasm_api/src/declutter.rs`,
 exposed to TypeScript through the `@navaramap/engine-api` WASM bindings. Rust
-also carries the two per-material config fields — `declutter: bool` and
-`declutter_priority: f32` (`crates/navara_material/src/appearance.rs`) — through
-to the bindings. Along-line labels and sprites go through a second kernel,
+also carries the per-material config fields — `declutter: bool`,
+`declutter_priority: f32`, `overlap: Overlap` and `ignore_placement: bool`
+(`crates/navara_material/src/appearance.rs`) — through to the bindings. Along-line labels and sprites go through a second kernel,
 `crates/navara_wasm_api/src/line_label.rs`, which participants call at the
 start of each pass (see [step 0](#0-line-placement)).
 
@@ -129,7 +129,8 @@ order, with the camera the pass will use:
 
 Both participants are registered whether or not the layer declutters, so line
 placement runs for a `declutter: false` layer too; only candidate collection is
-gated by `declutter`. Text batches call `lineLabelFit` then `lineLabelPlace`;
+gated by `declutter` (see [Overlap modes](#overlap-modes) for the one other
+setting that keeps a layer out). Text batches call `lineLabelFit` then `lineLabelPlace`;
 sprites call `lineAnchorPlace`, which only picks the level and the box. The
 mechanics (nested levels, scale bands, the two-phase kernel, flip hysteresis,
 level handoff) are in
@@ -148,6 +149,8 @@ export type DeclutterCandidate = {
   sizeInMeters: boolean;
   priority: number;    // higher wins an overlap
   isShown: boolean;    // currently visible — feeds hysteresis
+  overlap: "never" | "always" | "cooperative"; // see Overlap modes
+  ignorePlacement: boolean; // test, but leave the box out of the grid
   owner: DeclutterParticipant;
   handle: number;      // label slot (text) or instance index (sprites)
   contentKey?: string; // label text; feeds the tile-swap handoff
@@ -182,10 +185,11 @@ starts granted rather than fading in from hidden. Without that, every swap
 would blink the tile's labels out for a pass plus a fade.
 
 Once collected, each candidate is flattened into the kernel's packed input: a
-`Float64Array` with `CANDIDATE_STRIDE = 11` values per candidate
+`Float64Array` with `CANDIDATE_STRIDE = 13` values per candidate
 (`declutter/kernel.ts`), in the field order the Rust side reads — anchor (3),
-`addHeight`, the four box edges, `sizeInMeters`, `priority`, `isShown`. Booleans
-become `0.0`/`1.0`. The buffer is reused across passes and grown only when the
+`addHeight`, the four box edges, `sizeInMeters`, `priority`, `isShown`,
+`overlap`, `ignorePlacement`. Booleans become `0.0`/`1.0`; `overlap` becomes
+`0`/`1`/`2` (never/always/cooperative, `OVERLAP_CODES`). The buffer is reused across passes and grown only when the
 label count rises. The kernel returns a `Uint8Array` of `hidden` flags, one per
 candidate in input order, which the manager feeds straight back to
 `applyDeclutter`.
@@ -274,11 +278,13 @@ Screen (CSS px), divided into 64px cells, plus a 128px margin ring:
 
 - Each cell holds a list of indices into a flat `boxes` array (4 numbers per
   box: `minX, minY, maxX, maxY`).
-- `try_claim(minX, minY, maxX, maxY, testShrinkPx)` is the one operation
-  placement needs: test the box against every box already registered in the
-  cells it spans; if nothing overlaps, register it into those same cells and
-  return `Claim::Claimed`; otherwise return `Claim::Blocked` (collision, don't
-  claim) and leave the grid untouched.
+- `try_claim(minX, minY, maxX, maxY, testShrinkPx, overlap, claimSpace)` is
+  the one operation placement needs: test the box against every box already
+  registered in the cells it spans; if nothing it may not overlap is hit,
+  register it into those same cells (unless `claimSpace` is false) and return
+  `Claim::Claimed`; otherwise return `Claim::Blocked` (collision, don't claim)
+  and leave the grid untouched. Each registered box remembers the `overlap`
+  mode it was claimed with — see [Overlap modes](#overlap-modes).
 - Boxes are tested with **strict inequalities**, so two boxes that exactly
   touch edges do not count as colliding.
 - A box entirely outside `viewport ± margin` returns `Claim::OutsideArea`
@@ -295,6 +301,31 @@ Screen (CSS px), divided into 64px cells, plus a 128px margin ring:
 Each candidate's box is padded by `PADDING_PX = 2` on every side before the
 test (the manager passes the constant into the kernel), so two placed labels
 never end up sitting pixel-adjacent.
+
+### Overlap modes
+
+Two material fields refine what a candidate does at its turn in the sorted
+walk, mirroring MapLibre's `*-overlap` and `*-ignore-placement`. They are
+independent: `overlap` decides what the candidate *tests* against, and
+`ignorePlacement` whether it *registers* its box afterwards.
+
+| `overlap` | Blocked by an earlier box claimed with |
+| --- | --- |
+| `never` (default) | any mode |
+| `cooperative` | `never` only |
+| `always` | nothing — the test is skipped |
+
+`ignorePlacement: true` runs the test as usual but never registers the box, so
+later candidates can overlap it. An `always` candidate without it still
+registers its box: it is drawn over earlier labels yet keeps later `never`
+labels away, which is what MapLibre's `*-allow-overlap` means.
+
+Because an `always` candidate can never lose, the kernel reports it shown even
+where it claims nothing — beyond the horizon or outside the tracked area —
+instead of applying [hidden by default](#hidden-by-default-why-panning-doesnt-reveal-clutter).
+`always` with `ignorePlacement` can neither lose nor block, so participants
+leave it out of collection altogether, exactly like `declutter: false`
+(`resolveDeclutterSettings` in `declutter/types.ts`).
 
 ## Hysteresis: why labels don't flicker
 
@@ -327,6 +358,8 @@ let claim = grid.try_claim(
     boxes[o] - pad, boxes[o + 1] - pad,
     boxes[o + 2] + pad, boxes[o + 3] + pad,
     if is_shown { hysteresis_px } else { 0.0 },
+    overlap,
+    c[12] == 0.0, // claim space unless ignorePlacement
 );
 ```
 
@@ -383,7 +416,8 @@ had a claim to that space.
 
 So the kernel is **hidden by default**: `hidden[i] = 0` only when
 `try_claim` returns `Claim::Claimed`. Both `Blocked` and `OutsideArea`, and
-every non-placeable candidate, come back hidden. The invariant is
+every non-placeable candidate, come back hidden — except an `overlap: "always"`
+candidate, which cannot lose and so is always shown. The invariant is
 *a label fades in only after it has actually won screen space*.
 
 This makes the two guards in [the frame loop](#running-in-the-frame-loop) work
@@ -496,7 +530,7 @@ tick can observe it. So `_scheduleDeclutterFrame(delayMs)` instead arms a
 
 ## Public API
 
-Three material types carry the two config fields consumed by this pass —
+Three material types carry the four config fields consumed by this pass —
 `text`, `point`, and `billboard` — generated via wasm-bindgen from
 `PointMaterial` / `BillboardMaterial` / `TextMaterial`
 (`crates/navara_wasm_types/src/appearance.rs`):
@@ -505,6 +539,8 @@ Three material types carry the two config fields consumed by this pass —
 | --- | --- | --- | --- |
 | `declutter` | `boolean` | `true` | participate in the shared placement pass; set `false` to draw this label/sprite unconditionally |
 | `declutterPriority` | `number` | `0` | layer-level priority; higher wins an overlap |
+| `overlap` | `"never" \| "always" \| "cooperative"` | `"never"` | which earlier boxes may hide this one ([Overlap modes](#overlap-modes)) |
+| `ignorePlacement` | `boolean` | `false` | leave this box out of the grid so later labels may overlap it |
 
 ```ts
 const source = view.addSource({
@@ -562,5 +598,5 @@ confidence-driven priority, at real-world label density).
 | `web/navara_three/src/declutter/types.ts` | `DeclutterCandidate`, `DeclutterParticipant`, `DECLUTTER_FADE_MS` |
 | `web/navara_three/src/mesh/sdfText/batchedSdfText.ts`, `web/navara_three/src/mesh/sprite/instancedSprite.ts` | The two participants, including their `placeLineLabels` |
 | `web/navara_three/src/index.ts` | Registers the shared `DeclutterManager` (wired with `wasmDeclutterKernel`), drives `update()` from `_render()`, `_scheduleDeclutterFrame` / `forceUpdate` scheduling |
-| `crates/navara_material/src/appearance.rs` | `declutter` / `declutter_priority` fields on `PointMaterial` / `BillboardMaterial` / `TextMaterial` |
+| `crates/navara_material/src/appearance.rs` | `declutter` / `declutter_priority` / `overlap` / `ignore_placement` fields on `PointMaterial` / `BillboardMaterial` / `TextMaterial` |
 | `crates/navara_wasm_types/src/appearance.rs` | wasm-bindgen mirrors exposed to TypeScript |

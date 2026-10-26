@@ -29,7 +29,9 @@ import {
 } from "../../batchTexture";
 import {
   DECLUTTER_FADE_MS,
+  resolveDeclutterSettings,
   type DeclutterCandidate,
+  type DeclutterOverlap,
   type DeclutterParticipant,
 } from "../../declutter/types";
 import type { EventContext } from "../../event/context";
@@ -320,6 +322,8 @@ export class BatchedSdfTextMesh
   /** Layer-level declutter settings, mirrored from the material. */
   private _declutter: boolean;
   private _declutterPriority: number;
+  private _overlap: DeclutterOverlap;
+  private _ignorePlacement: boolean;
   /** Skips the per-frame fade walk entirely once everything has settled. */
   private _declutterAnimating = false;
 
@@ -357,8 +361,11 @@ export class BatchedSdfTextMesh
     this._lineHeight = material.lineHeight ?? 1.0;
     this._textAlign = ALIGN_FACTORS[material.textAlign ?? "center"] ?? 0.5;
     this._spreadGlyphs = material.spreadGlyphs ?? false;
-    this._declutter = material.declutter ?? true;
-    this._declutterPriority = material.declutterPriority ?? 0;
+    const declutter = resolveDeclutterSettings(material);
+    this._declutter = declutter.participates;
+    this._declutterPriority = declutter.priority;
+    this._overlap = declutter.overlap;
+    this._ignorePlacement = declutter.ignorePlacement;
 
     this._positions = this.extractPositions(m);
     this._path = takeLinePath(this._positions);
@@ -1377,6 +1384,8 @@ export class BatchedSdfTextMesh
         sizeInMeters: state.sizeInMeters,
         priority: record.priorityOverride ?? this._declutterPriority,
         isShown: record.declutterTarget === 0,
+        overlap: this._overlap,
+        ignorePlacement: this._ignorePlacement,
         owner: this,
         handle: record.slot,
         contentKey: record.text,
@@ -1692,8 +1701,8 @@ export class BatchedSdfTextMesh
 
     // Read before applying visibility: the declutter pass consults these even
     // while other style state is skipped for hidden labels.
-    const nextDeclutter = material.declutter ?? true;
-    if (this._declutter && !nextDeclutter) {
+    const declutter = resolveDeclutterSettings(material);
+    if (this._declutter && !declutter.participates) {
       // Leaving declutter mode: clear any hide the pass applied — the batch
       // stops producing candidates, so nothing else would ever re-show it.
       for (const record of this._labels) {
@@ -1701,8 +1710,10 @@ export class BatchedSdfTextMesh
         if (record.declutterHide !== 0) this._declutterAnimating = true;
       }
     }
-    this._declutter = nextDeclutter;
-    this._declutterPriority = material.declutterPriority ?? 0;
+    this._declutter = declutter.participates;
+    this._declutterPriority = declutter.priority;
+    this._overlap = declutter.overlap;
+    this._ignorePlacement = declutter.ignorePlacement;
 
     this._enhancer.update({
       base: {

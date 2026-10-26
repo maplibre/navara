@@ -1,3 +1,5 @@
+import type { DeclutterOverlap } from "./types";
+
 /**
  * The pure numeric placement kernel used by {@link DeclutterManager}.
  *
@@ -44,6 +46,14 @@ export type DeclutterKernel = {
  * sync with `CANDIDATE_STRIDE` in `crates/navara_wasm_api/src/declutter.rs`.
  *
  * Layout: `[anchorX, anchorY, anchorZ, addHeight, minX, maxX, minY, maxY,
- * sizeInMeters, priority, isShown]`.
+ * sizeInMeters, priority, isShown, overlap, ignorePlacement]`, with `overlap`
+ * coded by {@link OVERLAP_CODES}.
  */
-export const CANDIDATE_STRIDE = 11;
+export const CANDIDATE_STRIDE = 13;
+
+/** Kernel codes for {@link DeclutterOverlap}. */
+export const OVERLAP_CODES: Record<DeclutterOverlap, number> = {
+  never: 0,
+  always: 1,
+  cooperative: 2,
+};

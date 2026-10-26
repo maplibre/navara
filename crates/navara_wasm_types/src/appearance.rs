@@ -80,6 +80,21 @@ fn parse_placement(value: &Option<String>) -> Option<navara_material::Placement>
     }
 }
 
+/// Parse a JS-facing overlap name, warning on an unknown value so the caller
+/// keeps the material's current value.
+fn parse_overlap(value: &Option<String>) -> Option<navara_material::Overlap> {
+    let name = value.as_ref()?;
+    match navara_material::Overlap::parse(name) {
+        Some(o) => Some(o),
+        None => {
+            bevy_log::warn!(
+                "overlap: unknown value {name:?} (expected \"never\", \"always\" or \"cooperative\")"
+            );
+            None
+        }
+    }
+}
+
 #[wasm_bindgen]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PointMaterial {
@@ -168,6 +183,18 @@ pub struct PointMaterial {
     #[wasm_bindgen(js_name = declutterPriority)]
     #[serde(rename = "declutterPriority")]
     pub declutter_priority: Option<f32>,
+    /// Whether the label may be drawn over symbols placed before it:
+    /// `"never"` (the default) hides it on any collision, `"always"` never
+    /// does, `"cooperative"` hides it only when it collides with a `"never"`
+    /// symbol. Only meaningful when `declutter` is enabled.
+    #[wasm_bindgen(getter_with_clone)]
+    pub overlap: Option<String>,
+    /// Leave this label's box out of the collision grid, so symbols placed
+    /// after it may overlap it. Only meaningful when `declutter` is enabled.
+    /// Defaults to `false`.
+    #[wasm_bindgen(js_name = ignorePlacement)]
+    #[serde(rename = "ignorePlacement")]
+    pub ignore_placement: Option<bool>,
     /// Source geometry types this appearance consumes: `"point"`, `"line"`,
     /// `"polygon"`. Defaults to `["point"]`; adding `"line"`/`"polygon"` also
     /// emits a point per line-string / polygon-ring vertex.
@@ -213,6 +240,8 @@ impl From<PointMaterial> for navara_material::PointMaterial {
             opacity: val.opacity.unwrap_or(default.opacity),
             declutter: val.declutter.unwrap_or(default.declutter),
             declutter_priority: val.declutter_priority.unwrap_or(default.declutter_priority),
+            overlap: parse_overlap(&val.overlap).unwrap_or(default.overlap),
+            ignore_placement: val.ignore_placement.unwrap_or(default.ignore_placement),
             geometry_types: parse_geometry_types(&val.geometry_types)
                 .unwrap_or(default.geometry_types),
             effect_ids: val.effect_ids.or(default.effect_ids),
@@ -244,6 +273,8 @@ impl<'a> From<&'a navara_material::PointMaterial> for PointMaterial {
             opacity: Some(value.opacity),
             declutter: Some(value.declutter),
             declutter_priority: Some(value.declutter_priority),
+            overlap: Some(value.overlap.as_str().to_string()),
+            ignore_placement: Some(value.ignore_placement),
             geometry_types: Some(geometry_type_names(&value.geometry_types)),
             effect_ids: value.effect_ids.clone(),
             emissive_intensity: value.emissive_intensity,
@@ -275,6 +306,8 @@ impl PointMaterial {
             opacity: self.opacity.unwrap_or(other.opacity),
             declutter: self.declutter.unwrap_or(other.declutter),
             declutter_priority: self.declutter_priority.unwrap_or(other.declutter_priority),
+            overlap: parse_overlap(&self.overlap).unwrap_or(other.overlap),
+            ignore_placement: self.ignore_placement.unwrap_or(other.ignore_placement),
             geometry_types: parse_geometry_types(&self.geometry_types)
                 .unwrap_or_else(|| other.geometry_types.clone()),
             effect_ids: self.effect_ids.clone().or_else(|| other.effect_ids.clone()),
@@ -385,6 +418,18 @@ pub struct BillboardMaterial {
     #[wasm_bindgen(js_name = declutterPriority)]
     #[serde(rename = "declutterPriority")]
     pub declutter_priority: Option<f32>,
+    /// Whether the label may be drawn over symbols placed before it:
+    /// `"never"` (the default) hides it on any collision, `"always"` never
+    /// does, `"cooperative"` hides it only when it collides with a `"never"`
+    /// symbol. Only meaningful when `declutter` is enabled.
+    #[wasm_bindgen(getter_with_clone)]
+    pub overlap: Option<String>,
+    /// Leave this label's box out of the collision grid, so symbols placed
+    /// after it may overlap it. Only meaningful when `declutter` is enabled.
+    /// Defaults to `false`.
+    #[wasm_bindgen(js_name = ignorePlacement)]
+    #[serde(rename = "ignorePlacement")]
+    pub ignore_placement: Option<bool>,
     /// Source geometry types this appearance consumes: `"point"`, `"line"`,
     /// `"polygon"`. Defaults to `["point"]`; adding `"line"` also emits a
     /// billboard per line string, at its first vertex, and `"polygon"` one per
@@ -433,6 +478,8 @@ impl From<BillboardMaterial> for navara_material::BillboardMaterial {
             alpha_test: val.alpha_test.unwrap_or(default.alpha_test),
             declutter: val.declutter.unwrap_or(default.declutter),
             declutter_priority: val.declutter_priority.unwrap_or(default.declutter_priority),
+            overlap: parse_overlap(&val.overlap).unwrap_or(default.overlap),
+            ignore_placement: val.ignore_placement.unwrap_or(default.ignore_placement),
             geometry_types: parse_geometry_types(&val.geometry_types)
                 .unwrap_or(default.geometry_types),
             effect_ids: val.effect_ids.or(default.effect_ids),
@@ -466,6 +513,8 @@ impl<'a> From<&'a navara_material::BillboardMaterial> for BillboardMaterial {
             alpha_test: Some(value.alpha_test),
             declutter: Some(value.declutter),
             declutter_priority: Some(value.declutter_priority),
+            overlap: Some(value.overlap.as_str().to_string()),
+            ignore_placement: Some(value.ignore_placement),
             geometry_types: Some(geometry_type_names(&value.geometry_types)),
             effect_ids: value.effect_ids.clone(),
             emissive_intensity: value.emissive_intensity,
@@ -503,6 +552,8 @@ impl BillboardMaterial {
             alpha_test: self.alpha_test.unwrap_or(other.alpha_test),
             declutter: self.declutter.unwrap_or(other.declutter),
             declutter_priority: self.declutter_priority.unwrap_or(other.declutter_priority),
+            overlap: parse_overlap(&self.overlap).unwrap_or(other.overlap),
+            ignore_placement: self.ignore_placement.unwrap_or(other.ignore_placement),
             geometry_types: parse_geometry_types(&self.geometry_types)
                 .unwrap_or_else(|| other.geometry_types.clone()),
             effect_ids: self.effect_ids.clone().or_else(|| other.effect_ids.clone()),
@@ -721,6 +772,18 @@ pub struct TextMaterial {
     #[wasm_bindgen(js_name = declutterPriority)]
     #[serde(rename = "declutterPriority")]
     pub declutter_priority: Option<f32>,
+    /// Whether the label may be drawn over symbols placed before it:
+    /// `"never"` (the default) hides it on any collision, `"always"` never
+    /// does, `"cooperative"` hides it only when it collides with a `"never"`
+    /// symbol. Only meaningful when `declutter` is enabled.
+    #[wasm_bindgen(getter_with_clone)]
+    pub overlap: Option<String>,
+    /// Leave this label's box out of the collision grid, so symbols placed
+    /// after it may overlap it. Only meaningful when `declutter` is enabled.
+    /// Defaults to `false`.
+    #[wasm_bindgen(js_name = ignorePlacement)]
+    #[serde(rename = "ignorePlacement")]
+    pub ignore_placement: Option<bool>,
     /// Source geometry types this appearance consumes: `"point"`, `"line"`,
     /// `"polygon"`. Defaults to `["point"]`; adding `"line"` also emits a
     /// label per line string, at its first vertex, and `"polygon"` one per
@@ -794,6 +857,8 @@ impl From<TextMaterial> for navara_material::TextMaterial {
 
             declutter: val.declutter.unwrap_or(default.declutter),
             declutter_priority: val.declutter_priority.unwrap_or(default.declutter_priority),
+            overlap: parse_overlap(&val.overlap).unwrap_or(default.overlap),
+            ignore_placement: val.ignore_placement.unwrap_or(default.ignore_placement),
             geometry_types: parse_geometry_types(&val.geometry_types)
                 .unwrap_or(default.geometry_types),
             effect_ids: val.effect_ids.or(default.effect_ids),
@@ -849,6 +914,8 @@ impl<'a> From<&'a navara_material::TextMaterial> for TextMaterial {
 
             declutter: Some(value.declutter),
             declutter_priority: Some(value.declutter_priority),
+            overlap: Some(value.overlap.as_str().to_string()),
+            ignore_placement: Some(value.ignore_placement),
             geometry_types: Some(geometry_type_names(&value.geometry_types)),
             effect_ids: value.effect_ids.clone(),
             emissive_intensity: value.emissive_intensity,
@@ -907,6 +974,8 @@ impl TextMaterial {
 
             declutter: self.declutter.unwrap_or(other.declutter),
             declutter_priority: self.declutter_priority.unwrap_or(other.declutter_priority),
+            overlap: parse_overlap(&self.overlap).unwrap_or(other.overlap),
+            ignore_placement: self.ignore_placement.unwrap_or(other.ignore_placement),
             geometry_types: parse_geometry_types(&self.geometry_types)
                 .unwrap_or_else(|| other.geometry_types.clone()),
             effect_ids: self.effect_ids.clone().or_else(|| other.effect_ids.clone()),

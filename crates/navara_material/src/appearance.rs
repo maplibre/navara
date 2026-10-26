@@ -180,6 +180,40 @@ impl Placement {
     }
 }
 
+/// Whether a decluttered label or sprite may be drawn over symbols placed
+/// before it (MapLibre's `*-overlap`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Overlap {
+    /// Hidden when it collides with any symbol placed before it.
+    #[default]
+    Never,
+    /// Shown whatever it collides with.
+    Always,
+    /// Hidden only when it collides with a symbol placed with [`Overlap::Never`].
+    Cooperative,
+}
+
+impl Overlap {
+    /// Parse the JS-facing name (`"never" | "always" | "cooperative"`).
+    pub fn parse(value: &str) -> Option<Self> {
+        match value {
+            "never" => Some(Self::Never),
+            "always" => Some(Self::Always),
+            "cooperative" => Some(Self::Cooperative),
+            _ => None,
+        }
+    }
+
+    /// JS-facing name of this overlap mode.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Never => "never",
+            Self::Always => "always",
+            Self::Cooperative => "cooperative",
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum Appearance {
     Point(PointMaterial),
@@ -277,6 +311,13 @@ pub struct PointMaterial {
     /// Placement priority for decluttering; higher wins. Only meaningful when
     /// `declutter` is enabled.
     pub declutter_priority: f32,
+    /// Whether the label may be drawn over symbols placed before it. Only
+    /// meaningful when `declutter` is enabled. Default [`Overlap::Never`].
+    pub overlap: Overlap,
+    /// Leave this label's box out of the collision grid, so symbols placed
+    /// after it may overlap it. Only meaningful when `declutter` is enabled.
+    /// Default `false`.
+    pub ignore_placement: bool,
     /// Source geometry types this appearance consumes. Defaults to the native
     /// geometry only; opting in `Line`/`Polygon` also emits a point per
     /// line-string / polygon-ring vertex, or along them with `placement`.
@@ -310,6 +351,8 @@ impl Default for PointMaterial {
             opacity: 1.0,
             declutter: true,
             declutter_priority: 0.0,
+            overlap: Overlap::Never,
+            ignore_placement: false,
             geometry_types: vec![SourceGeometryType::Point],
             // post effect
             effect_ids: None,
@@ -375,6 +418,13 @@ pub struct BillboardMaterial {
     /// Placement priority for decluttering; higher wins. Only meaningful when
     /// `declutter` is enabled.
     pub declutter_priority: f32,
+    /// Whether the label may be drawn over symbols placed before it. Only
+    /// meaningful when `declutter` is enabled. Default [`Overlap::Never`].
+    pub overlap: Overlap,
+    /// Leave this label's box out of the collision grid, so symbols placed
+    /// after it may overlap it. Only meaningful when `declutter` is enabled.
+    /// Default `false`.
+    pub ignore_placement: bool,
     /// Source geometry types this appearance consumes. Defaults to the native
     /// geometry only; opting in `Line` also emits a billboard per line string,
     /// at its first vertex, and `Polygon` one per polygon — or along either
@@ -411,6 +461,8 @@ impl Default for BillboardMaterial {
             alpha_test: 0.1,
             declutter: true,
             declutter_priority: 0.0,
+            overlap: Overlap::Never,
+            ignore_placement: false,
             geometry_types: vec![SourceGeometryType::Point],
             // post effect
             effect_ids: None,
@@ -555,6 +607,13 @@ pub struct TextMaterial {
     /// Placement priority for decluttering; higher wins. Only meaningful when
     /// `declutter` is enabled.
     pub declutter_priority: f32,
+    /// Whether the label may be drawn over symbols placed before it. Only
+    /// meaningful when `declutter` is enabled. Default [`Overlap::Never`].
+    pub overlap: Overlap,
+    /// Leave this label's box out of the collision grid, so symbols placed
+    /// after it may overlap it. Only meaningful when `declutter` is enabled.
+    /// Default `false`.
+    pub ignore_placement: bool,
     /// Source geometry types this appearance consumes. Defaults to the native
     /// geometry only; opting in `Line` also emits a label per line string, at
     /// its first vertex, and `Polygon` one per polygon — or along either with
@@ -613,6 +672,8 @@ impl Default for TextMaterial {
 
             declutter: true,
             declutter_priority: 0.0,
+            overlap: Overlap::Never,
+            ignore_placement: false,
             geometry_types: vec![SourceGeometryType::Point],
             // post effect
             effect_ids: None,

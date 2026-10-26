@@ -334,6 +334,24 @@ view.addFontFamily({
 }
 ```
 
+### ignorePlacement
+
+**Type:** `boolean | undefined`
+
+**Description:** このラベルのボックスを衝突判定から外し、後から配置されるラベルやスプライトが重なれるようにします。このラベル自体は、[`overlap`](#overlap) で許可しない限り、先に配置されたものと衝突すると非表示になります。[`declutter`](#declutter) が有効な場合にのみ意味を持ちます。MapLibre の `text-ignore-placement` に相当します。
+
+**Default:** `false`
+
+**Example:**
+
+```typescript
+{
+  text: {
+    ignorePlacement: true
+  }
+}
+```
+
 ### keepUpright
 
 **Type:** `boolean | undefined`
@@ -556,6 +574,24 @@ import { Color } from "@navaramap/three";
 {
   text: {
     outlineWidth: 2
+  }
+}
+```
+
+### overlap
+
+**Type:** `"never" | "always" | "cooperative" | undefined`
+
+**Description:** 先に配置されたラベルやスプライトの上にこのラベルを重ねて描画できるかを指定します（[`declutterPriority`](#declutterpriority) が大きいものから配置されます）。`"never"` はいずれかと衝突すると非表示にします。`"always"` は非表示にしません。そのボックスは、[`ignorePlacement`](#ignoreplacement) を設定しない限り、後から配置される `"never"` のものを遠ざけます。`"cooperative"` は `"never"` のものと衝突した場合にのみ非表示にします。[`declutter`](#declutter) が有効な場合にのみ意味を持ちます。MapLibre の `text-overlap` に相当します。
+
+**Default:** `"never"`
+
+**Example:**
+
+```typescript
+{
+  text: {
+    overlap: "always"
   }
 }
 ```

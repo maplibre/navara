@@ -87,6 +87,8 @@ function label(
     sizeInMeters: false,
     priority: 0,
     isShown: false,
+    overlap: "never",
+    ignorePlacement: false,
     handle: 0,
     ...partial,
   };
@@ -109,6 +111,8 @@ describe("DeclutterManager", () => {
         isShown: true,
         minX: -4,
         sizeInMeters: true,
+        overlap: "cooperative",
+        ignorePlacement: true,
       }),
       label({ handle: 1, priority: 1 }),
     ]);
@@ -128,6 +132,9 @@ describe("DeclutterManager", () => {
     expect(candidates[8]).toBe(1); // sizeInMeters -> 1
     expect(candidates[9]).toBe(3); // priority
     expect(candidates[10]).toBe(1); // isShown -> 1
+    expect(candidates[11]).toBe(2); // overlap: cooperative -> 2
+    expect(candidates[12]).toBe(1); // ignorePlacement -> 1
+    expect(candidates[CANDIDATE_STRIDE + 11]).toBe(0); // overlap: never -> 0
   });
 
   it("throttles re-runs and reports them so the caller can schedule a frame", () => {

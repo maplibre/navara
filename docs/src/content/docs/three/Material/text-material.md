@@ -334,6 +334,24 @@ view.addFontFamily({
 }
 ```
 
+### ignorePlacement
+
+**Type:** `boolean | undefined`
+
+**Description:** Keeps this label's box out of the collision check, so labels and sprites placed after it can overlap it. The label itself still hides when it collides with one placed before it, unless [`overlap`](#overlap) allows it. Only meaningful when [`declutter`](#declutter) is enabled. MapLibre's `text-ignore-placement`.
+
+**Default:** `false`
+
+**Example:**
+
+```typescript
+{
+  text: {
+    ignorePlacement: true
+  }
+}
+```
+
 ### keepUpright
 
 **Type:** `boolean | undefined`
@@ -556,6 +574,24 @@ import { Color } from "@navaramap/three";
 {
   text: {
     outlineWidth: 2
+  }
+}
+```
+
+### overlap
+
+**Type:** `"never" | "always" | "cooperative" | undefined`
+
+**Description:** Whether the label may be drawn over labels and sprites placed before it (higher [`declutterPriority`](#declutterpriority) places first). `"never"` hides it on any collision. `"always"` never hides it, and its box still keeps later `"never"` ones away unless [`ignorePlacement`](#ignoreplacement) is set. `"cooperative"` hides it only when it collides with a `"never"` one. Only meaningful when [`declutter`](#declutter) is enabled. MapLibre's `text-overlap`.
+
+**Default:** `"never"`
+
+**Example:**
+
+```typescript
+{
+  text: {
+    overlap: "always"
   }
 }
 ```

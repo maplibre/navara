@@ -253,22 +253,22 @@
           "status": "⚠️ On-screen icons turn by ground bearing on lines"
         },
         "text-allow-overlap": {
-          "status": "⚠️ Also lets other symbols overlap the text"
+          "status": "✅"
         },
         "icon-allow-overlap": {
-          "status": "⚠️ Also lets other symbols overlap the icon"
+          "status": "✅"
         },
         "text-overlap": {
-          "status": "⚠️ cooperative is treated as never"
+          "status": "✅"
         },
         "icon-overlap": {
-          "status": "⚠️ cooperative is treated as never"
+          "status": "✅"
         },
         "text-ignore-placement": {
-          "status": "❌"
+          "status": "✅"
         },
         "icon-ignore-placement": {
-          "status": "❌"
+          "status": "✅"
         },
         "text-line-height": {
           "status": "❌"

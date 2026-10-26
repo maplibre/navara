@@ -26,6 +26,11 @@ export type DeclutterCandidate = {
   sizeInMeters: boolean;
   /** Placement priority: higher wins an overlap. */
   priority: number;
+  /** Which earlier candidates this one may overlap (MapLibre's `*-overlap`). */
+  overlap: DeclutterOverlap;
+  /** Leave the box out of the collision grid, so later candidates may overlap
+   *  it (MapLibre's `*-ignore-placement`). */
+  ignorePlacement: boolean;
   /** Whether the label is currently shown (its fade target is "visible").
    *  Feeds placement hysteresis: shown labels win equal-priority ties and
    *  tolerate marginal overlaps, so slow camera drift doesn't make near-tied
@@ -47,6 +52,39 @@ export type DeclutterCandidate = {
 
 /** Duration of the show/hide fade applied to placement results (ms). */
 export const DECLUTTER_FADE_MS = 300;
+
+/** A material's `overlap`: `never` hides on any collision, `always` never
+ *  does, `cooperative` only on a collision with a `never` candidate. */
+export type DeclutterOverlap = "never" | "always" | "cooperative";
+
+/** The declutter fields a participant mirrors from its material. */
+export type DeclutterSettings = {
+  /** Whether the material's labels take part in the pass at all. An
+   *  `always` label that ignores placement can neither lose nor block, so it
+   *  stays out like a `declutter: false` one. */
+  participates: boolean;
+  priority: number;
+  overlap: DeclutterOverlap;
+  ignorePlacement: boolean;
+};
+
+export function resolveDeclutterSettings(material: {
+  declutter?: boolean;
+  declutterPriority?: number;
+  overlap?: string;
+  ignorePlacement?: boolean;
+}): DeclutterSettings {
+  const overlap = (material.overlap ?? "never") as DeclutterOverlap;
+  const ignorePlacement = material.ignorePlacement ?? false;
+  return {
+    participates:
+      (material.declutter ?? true) &&
+      !(overlap === "always" && ignorePlacement),
+    priority: material.declutterPriority ?? 0,
+    overlap,
+    ignorePlacement,
+  };
+}
 
 /** A mesh that contributes label candidates to the shared declutter pass. */
 export type DeclutterParticipant = {

@@ -34,7 +34,9 @@ import {
 } from "../../batchTexture";
 import {
   DECLUTTER_FADE_MS,
+  resolveDeclutterSettings,
   type DeclutterCandidate,
+  type DeclutterOverlap,
   type DeclutterParticipant,
 } from "../../declutter/types";
 import type { EventContext } from "../../event/context";
@@ -224,6 +226,8 @@ export class InstancedSpriteMesh
   private _declutter = false;
   /** Layer-level placement priority from the material. */
   private _declutterPriority = 0;
+  private _overlap: DeclutterOverlap = "never";
+  private _ignorePlacement = false;
   /** Per-instance priorities set through the evaluator (NaN = no override,
    *  fall back to the layer value). Lazily allocated on first use. */
   private _declutterPriorityOverrides: Float32Array | null = null;
@@ -457,6 +461,8 @@ export class InstancedSpriteMesh
         // NaN-safe: an unset override falls back to the layer priority.
         priority: Number.isNaN(override) ? this._declutterPriority : override,
         isShown: targets ? targets[i] === 0 : true,
+        overlap: this._overlap,
+        ignorePlacement: this._ignorePlacement,
         owner: this,
         handle: i,
       });
@@ -499,14 +505,16 @@ export class InstancedSpriteMesh
   }
 
   private _cacheDeclutterState(m: NavaraPointMesh | NavaraBillboardMesh) {
-    const nextDeclutter = m.material.declutter ?? true;
-    if (this._declutter && !nextDeclutter) {
+    const settings = resolveDeclutterSettings(m.material);
+    if (this._declutter && !settings.participates) {
       // Leaving declutter mode: clear hides the pass applied — the mesh stops
       // producing candidates, so nothing else would ever re-show them.
       this._clearDeclutterHidden();
     }
-    this._declutter = nextDeclutter;
-    this._declutterPriority = m.material.declutterPriority ?? 0;
+    this._declutter = settings.participates;
+    this._declutterPriority = settings.priority;
+    this._overlap = settings.overlap;
+    this._ignorePlacement = settings.ignorePlacement;
   }
 
   private _clearDeclutterHidden(): void {

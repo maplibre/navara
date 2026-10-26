@@ -233,6 +233,24 @@ import { Color } from "@navaramap/three";
 }
 ```
 
+### ignorePlacement
+
+**Type:** `boolean | undefined`
+
+**Description:** このポイントのボックスを衝突判定から外し、後から配置されるラベルやスプライトが重なれるようにします。このポイント自体は、[`overlap`](#overlap) で許可しない限り、先に配置されたものと衝突すると非表示になります。[`declutter`](#declutter) が有効な場合にのみ意味を持ちます。
+
+**Default:** `false`
+
+**Example:**
+
+```typescript
+{
+  point: {
+    ignorePlacement: true
+  }
+}
+```
+
 ### offsetDepth
 
 **Type:** `boolean | undefined`
@@ -266,6 +284,24 @@ import { Color } from "@navaramap/three";
   point: {
     transparent: true,
     opacity: 0.5 // 50%の不透明度
+  }
+}
+```
+
+### overlap
+
+**Type:** `"never" | "always" | "cooperative" | undefined`
+
+**Description:** 先に配置されたラベルやスプライトの上にこのポイントを重ねて描画できるかを指定します（[`declutterPriority`](#declutterpriority) が大きいものから配置されます）。`"never"` はいずれかと衝突すると非表示にします。`"always"` は非表示にしません。そのボックスは、[`ignorePlacement`](#ignoreplacement) を設定しない限り、後から配置される `"never"` のものを遠ざけます。`"cooperative"` は `"never"` のものと衝突した場合にのみ非表示にします。[`declutter`](#declutter) が有効な場合にのみ意味を持ちます。
+
+**Default:** `"never"`
+
+**Example:**
+
+```typescript
+{
+  point: {
+    overlap: "always"
   }
 }
 ```
