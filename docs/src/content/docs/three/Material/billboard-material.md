@@ -573,6 +573,24 @@ This option applies when the layer's geometry is built. `layer.update()` does no
 }
 ```
 
+### standalone
+
+**Type:** `boolean | undefined`
+
+**Description:** Whether the billboard may show while the layer's label at the same anchor is hidden. A layer's labels and billboards are placed in pairs (same feature, same anchor), tested together so they never block each other. With `false`, the billboard is hidden whenever its label loses its spot, so `false` on both means both show or neither does. Only meaningful when [`declutter`](#declutter) is enabled. MapLibre's `text-optional` (inverted: `text-optional: true` means `standalone: true` on the billboard).
+
+**Default:** `true`
+
+**Example:**
+
+```typescript
+{
+  billboard: {
+    standalone: false
+  }
+}
+```
+
 ### transparent
 
 **Type:** `boolean | undefined`

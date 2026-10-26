@@ -573,6 +573,24 @@ MapLibre の `symbol-spacing` と同様に、ラインに沿った長さが `spa
 }
 ```
 
+### standalone
+
+**Type:** `boolean | undefined`
+
+**Description:** 同じアンカーにあるレイヤーのラベルが非表示のときに、このビルボードを表示できるかを指定します。レイヤーのラベルとビルボードは（同じ地物・同じアンカーで）ペアとして一緒に判定され、互いに重なりの競合をしません。`false` の場合、ラベルが配置できないとビルボードも非表示になるため、両方を `false` にすると両方が表示されるか、どちらも表示されないかのどちらかになります。[`declutter`](#declutter) が有効な場合にのみ意味を持ちます。MapLibre の `text-optional` に相当します（`text-optional: true` がビルボードの `standalone: true` に対応します）。
+
+**Default:** `true`
+
+**Example:**
+
+```typescript
+{
+  billboard: {
+    standalone: false
+  }
+}
+```
+
 ### transparent
 
 **Type:** `boolean | undefined`

@@ -7,6 +7,7 @@ import type { EventContext } from "../context";
 export async function renderBillboard(
   ctx: EventContext,
   m: NavaraBillboardMesh,
+  pairGroup?: number,
 ) {
   // No `url` check: a billboard layer may carry no material-level image and
   // get every image per-feature from a FeatureEvaluator (`{ image }`). The
@@ -16,6 +17,7 @@ export async function renderBillboard(
     renderOrder: FEATURE_RENDER_ORDER,
     ctx,
     geometryType: "billboard",
+    pairGroup,
   });
   await mesh._init(m);
   mesh.setActive(m.active);

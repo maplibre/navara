@@ -91,6 +91,7 @@ function label(
     overlap: "never",
     ignorePlacement: false,
     padding: [2, 2, 2, 2],
+    standalone: true,
     handle: 0,
     ...partial,
   };
@@ -117,6 +118,8 @@ describe("DeclutterManager", () => {
         ignorePlacement: true,
         rank: 4,
         padding: [1, 2, 3, 4],
+        pair: { group: 9, featureIndex: 5, role: "billboard" },
+        standalone: false,
       }),
       label({ handle: 1, priority: 1 }),
     ]);
@@ -140,6 +143,10 @@ describe("DeclutterManager", () => {
     expect(candidates[12]).toBe(1); // ignorePlacement -> 1
     expect(candidates[13]).toBe(4); // rank
     expect(Array.from(candidates.subarray(14, 18))).toEqual([1, 2, 3, 4]); // padding
+    // pairGroup, featureIndex, pairRole (billboard), standalone
+    expect(Array.from(candidates.subarray(18, 22))).toEqual([9, 5, 2, 0]);
+    // An unpaired candidate packs role 0.
+    expect(candidates[CANDIDATE_STRIDE + 20]).toBe(0);
     expect(candidates[CANDIDATE_STRIDE + 11]).toBe(0); // overlap: never -> 0
   });
 

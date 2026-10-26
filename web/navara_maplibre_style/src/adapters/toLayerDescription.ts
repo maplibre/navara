@@ -48,6 +48,8 @@ const ZOOM_FOLLOWING_SYMBOL_PROPERTIES = {
     "icon-ignore-placement",
     "text-padding",
     "icon-padding",
+    "text-optional",
+    "icon-optional",
   ],
   paint: ["text-halo-color", "text-halo-width"],
 } as const;
@@ -198,6 +200,30 @@ function resolvePadding(
     zoom,
   );
   return typeof value === "number" ? [value] : (value as number[]);
+}
+
+/**
+ * Whether a symbol's icon or text may show while its `partner` is hidden:
+ * MapLibre places the two together unless the partner is `*-optional`, or the
+ * layer does not draw it at all.
+ */
+function placesAlone(
+  engine: StyleEngine,
+  styleLayer: StyleLayer,
+  partner: "text" | "icon",
+  partnerExists: boolean,
+  zoom: number,
+): boolean {
+  return (
+    !partnerExists ||
+    evaluateLayerProperty(
+      engine,
+      styleLayer,
+      "layout",
+      `${partner}-optional`,
+      zoom,
+    ) === true
+  );
 }
 
 /**
@@ -461,6 +487,13 @@ function createSymbolLayer(
         declutter: true,
         declutterRank: rank,
         declutterPadding: resolvePadding(engine, styleLayer, "icon", zoom),
+        standalone: placesAlone(
+          engine,
+          styleLayer,
+          "text",
+          hasTextField && fontFamily !== undefined,
+          zoom,
+        ),
         ...resolveOverlap(engine, styleLayer, "icon", zoom),
         ...(geometryTypes && { geometryTypes }),
         ...(alongLine && { spacing: orientation.spacing }),
@@ -500,6 +533,7 @@ function createSymbolLayer(
         ...orientation.text,
         declutterRank: rank,
         declutterPadding: resolvePadding(engine, styleLayer, "text", zoom),
+        standalone: placesAlone(engine, styleLayer, "icon", hasIconImage, zoom),
         ...resolveOverlap(engine, styleLayer, "text", zoom),
         // MapLibre never wraps or justifies labels placed along a line.
         maxWidth: alongLine

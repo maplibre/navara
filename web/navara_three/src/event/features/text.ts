@@ -8,6 +8,7 @@ export async function renderText(
   ctx: EventContext,
   m: NavaraTextMesh,
   layerId: string,
+  pairGroup?: number,
 ) {
   const { fontManager } = ctx;
   const fontUrl = m.material.font;
@@ -47,6 +48,7 @@ export async function renderText(
         {
           renderOrder: FEATURE_RENDER_ORDER,
           layerId,
+          pairGroup,
         },
         loadedFaceUrls,
       );

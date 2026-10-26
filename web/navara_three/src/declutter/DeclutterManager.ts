@@ -3,6 +3,7 @@ import { Matrix4, type PerspectiveCamera } from "three";
 import {
   CANDIDATE_STRIDE,
   OVERLAP_CODES,
+  PAIR_ROLE_CODES,
   type DeclutterKernel,
 } from "./kernel";
 import type { DeclutterCandidate, DeclutterParticipant } from "./types";
@@ -247,6 +248,10 @@ export class DeclutterManager {
       input[o + 15] = c.padding[1];
       input[o + 16] = c.padding[2];
       input[o + 17] = c.padding[3];
+      input[o + 18] = c.pair?.group ?? 0;
+      input[o + 19] = c.pair?.featureIndex ?? 0;
+      input[o + 20] = c.pair ? PAIR_ROLE_CODES[c.pair.role] : 0;
+      input[o + 21] = c.standalone ? 1 : 0;
     }
 
     // The pass may run before the renderer refreshed matrixWorldInverse, so

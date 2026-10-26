@@ -46,10 +46,14 @@ export type DeclutterKernel = {
  *
  * Layout: `[anchorX, anchorY, anchorZ, addHeight, minX, maxX, minY, maxY,
  * sizeInMeters, priority, isShown, overlap, ignorePlacement, rank, paddingTop,
- * paddingRight, paddingBottom, paddingLeft]`, with `overlap` coded by
- * {@link OVERLAP_CODES}.
+ * paddingRight, paddingBottom, paddingLeft, pairGroup, featureIndex, pairRole,
+ * standalone]`, with `overlap` coded by {@link OVERLAP_CODES} and `pairRole`
+ * by {@link PAIR_ROLE_CODES}.
  */
-export const CANDIDATE_STRIDE = 18;
+export const CANDIDATE_STRIDE = 22;
+
+/** Kernel codes for a candidate's pair role; `0` is unpaired. */
+export const PAIR_ROLE_CODES = { label: 1, billboard: 2 } as const;
 
 /** Kernel codes for {@link Overlap}. */
 export const OVERLAP_CODES: Record<Overlap, number> = {

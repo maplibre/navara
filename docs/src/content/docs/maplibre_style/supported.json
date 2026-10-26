@@ -276,6 +276,12 @@
         "icon-padding": {
           "status": "⚠️ Follows zoom, but is the same for every feature in the layer"
         },
+        "text-optional": {
+          "status": "✅"
+        },
+        "icon-optional": {
+          "status": "✅"
+        },
         "text-line-height": {
           "status": "❌"
         }

@@ -558,6 +558,31 @@ describe("toLayerDescription", () => {
       expect(overlap.billboard?.overlap).toBe("always");
     });
 
+    it("pairs text and icon unless the partner is optional or missing", () => {
+      const paired = buildSymbol({
+        "text-field": "{name}",
+        "icon-image": "marker",
+      });
+      expect(paired.text?.standalone).toBe(false);
+      expect(paired.billboard?.standalone).toBe(false);
+
+      // `text-optional` lets the icon show alone, and vice versa.
+      const optional = buildSymbol({
+        "text-field": "{name}",
+        "icon-image": "marker",
+        "text-optional": true,
+      });
+      expect(optional.text?.standalone).toBe(false);
+      expect(optional.billboard?.standalone).toBe(true);
+
+      expect(buildSymbol({ "text-field": "{name}" }).text?.standalone).toBe(
+        true,
+      );
+      expect(
+        buildSymbol({ "icon-image": "marker" }).billboard?.standalone,
+      ).toBe(true);
+    });
+
     it("maps text and icon padding", () => {
       const defaults = buildSymbol({
         "text-field": "{name}",

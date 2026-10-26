@@ -480,6 +480,12 @@ pub struct BillboardMaterial {
     #[wasm_bindgen(js_name = ignorePlacement)]
     #[serde(rename = "ignorePlacement")]
     pub ignore_placement: Option<bool>,
+    /// Whether this may show while its partner at the same anchor (the
+    /// layer's label for a billboard, its billboard for a label) is hidden.
+    /// With `false` on both, the two are placed together: both show or
+    /// neither does. Only meaningful when `declutter` is enabled. Defaults to
+    /// `true`.
+    pub standalone: Option<bool>,
     /// Source geometry types this appearance consumes: `"point"`, `"line"`,
     /// `"polygon"`. Defaults to `["point"]`; adding `"line"` also emits a
     /// billboard per line string, at its first vertex, and `"polygon"` one per
@@ -533,6 +539,7 @@ impl From<BillboardMaterial> for navara_material::BillboardMaterial {
                 .unwrap_or(default.declutter_padding),
             overlap: parse_overlap(&val.overlap).unwrap_or(default.overlap),
             ignore_placement: val.ignore_placement.unwrap_or(default.ignore_placement),
+            standalone: val.standalone.unwrap_or(default.standalone),
             geometry_types: parse_geometry_types(&val.geometry_types)
                 .unwrap_or(default.geometry_types),
             effect_ids: val.effect_ids.or(default.effect_ids),
@@ -570,6 +577,7 @@ impl<'a> From<&'a navara_material::BillboardMaterial> for BillboardMaterial {
             declutter_padding: Some(value.declutter_padding.to_vec()),
             overlap: Some(value.overlap.as_str().to_string()),
             ignore_placement: Some(value.ignore_placement),
+            standalone: Some(value.standalone),
             geometry_types: Some(geometry_type_names(&value.geometry_types)),
             effect_ids: value.effect_ids.clone(),
             emissive_intensity: value.emissive_intensity,
@@ -612,6 +620,7 @@ impl BillboardMaterial {
                 .unwrap_or(other.declutter_padding),
             overlap: parse_overlap(&self.overlap).unwrap_or(other.overlap),
             ignore_placement: self.ignore_placement.unwrap_or(other.ignore_placement),
+            standalone: self.standalone.unwrap_or(other.standalone),
             geometry_types: parse_geometry_types(&self.geometry_types)
                 .unwrap_or_else(|| other.geometry_types.clone()),
             effect_ids: self.effect_ids.clone().or_else(|| other.effect_ids.clone()),
@@ -855,6 +864,12 @@ pub struct TextMaterial {
     #[wasm_bindgen(js_name = ignorePlacement)]
     #[serde(rename = "ignorePlacement")]
     pub ignore_placement: Option<bool>,
+    /// Whether this may show while its partner at the same anchor (the
+    /// layer's label for a billboard, its billboard for a label) is hidden.
+    /// With `false` on both, the two are placed together: both show or
+    /// neither does. Only meaningful when `declutter` is enabled. Defaults to
+    /// `true`.
+    pub standalone: Option<bool>,
     /// Source geometry types this appearance consumes: `"point"`, `"line"`,
     /// `"polygon"`. Defaults to `["point"]`; adding `"line"` also emits a
     /// label per line string, at its first vertex, and `"polygon"` one per
@@ -933,6 +948,7 @@ impl From<TextMaterial> for navara_material::TextMaterial {
                 .unwrap_or(default.declutter_padding),
             overlap: parse_overlap(&val.overlap).unwrap_or(default.overlap),
             ignore_placement: val.ignore_placement.unwrap_or(default.ignore_placement),
+            standalone: val.standalone.unwrap_or(default.standalone),
             geometry_types: parse_geometry_types(&val.geometry_types)
                 .unwrap_or(default.geometry_types),
             effect_ids: val.effect_ids.or(default.effect_ids),
@@ -992,6 +1008,7 @@ impl<'a> From<&'a navara_material::TextMaterial> for TextMaterial {
             declutter_padding: Some(value.declutter_padding.to_vec()),
             overlap: Some(value.overlap.as_str().to_string()),
             ignore_placement: Some(value.ignore_placement),
+            standalone: Some(value.standalone),
             geometry_types: Some(geometry_type_names(&value.geometry_types)),
             effect_ids: value.effect_ids.clone(),
             emissive_intensity: value.emissive_intensity,
@@ -1055,6 +1072,7 @@ impl TextMaterial {
                 .unwrap_or(other.declutter_padding),
             overlap: parse_overlap(&self.overlap).unwrap_or(other.overlap),
             ignore_placement: self.ignore_placement.unwrap_or(other.ignore_placement),
+            standalone: self.standalone.unwrap_or(other.standalone),
             geometry_types: parse_geometry_types(&self.geometry_types)
                 .unwrap_or_else(|| other.geometry_types.clone()),
             effect_ids: self.effect_ids.clone().or_else(|| other.effect_ids.clone()),

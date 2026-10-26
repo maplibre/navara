@@ -326,6 +326,9 @@ export class BatchedSdfTextMesh
   private _overlap: Overlap;
   private _ignorePlacement: boolean;
   private _declutterPadding: readonly number[];
+  private _standalone: boolean;
+  /** Declutter pair group shared with the layer's billboards in this tile. */
+  private readonly _pairGroup: number | undefined;
   /** Skips the per-frame fade walk entirely once everything has settled. */
   private _declutterAnimating = false;
 
@@ -341,11 +344,12 @@ export class BatchedSdfTextMesh
     ctx: EventContext,
     m: NavaraTextMesh,
     fontIdentifier: string,
-    options: InstancedMeshOptions,
+    options: InstancedMeshOptions & { pairGroup?: number },
     loadedFaceUrls?: Set<string>,
   ) {
     super(options);
     this.ctx = ctx;
+    this._pairGroup = options.pairGroup;
     this._fontIdentifier = fontIdentifier;
     invariant(ctx.fontManager);
     this._fontManager = ctx.fontManager;
@@ -370,6 +374,7 @@ export class BatchedSdfTextMesh
     this._overlap = declutter.overlap;
     this._ignorePlacement = declutter.ignorePlacement;
     this._declutterPadding = declutter.padding;
+    this._standalone = declutter.standalone;
 
     this._positions = this.extractPositions(m);
     this._path = takeLinePath(this._positions);
@@ -1392,6 +1397,14 @@ export class BatchedSdfTextMesh
         overlap: this._overlap,
         ignorePlacement: this._ignorePlacement,
         padding: this._declutterPadding,
+        pair: this._pairGroup
+          ? {
+              group: this._pairGroup,
+              featureIndex: record.batchIndex,
+              role: "label",
+            }
+          : undefined,
+        standalone: this._standalone,
         owner: this,
         handle: record.slot,
         contentKey: record.text,
@@ -1722,6 +1735,7 @@ export class BatchedSdfTextMesh
     this._overlap = declutter.overlap;
     this._ignorePlacement = declutter.ignorePlacement;
     this._declutterPadding = declutter.padding;
+    this._standalone = declutter.standalone;
 
     this._enhancer.update({
       base: {

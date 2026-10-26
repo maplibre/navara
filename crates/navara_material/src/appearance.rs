@@ -443,6 +443,11 @@ pub struct BillboardMaterial {
     /// after it may overlap it. Only meaningful when `declutter` is enabled.
     /// Default `false`.
     pub ignore_placement: bool,
+    /// Whether the billboard may show while the layer's label at the same
+    /// anchor is hidden. With `false` on both, a billboard and the label of
+    /// the same feature and anchor are placed together. Only meaningful when
+    /// `declutter` is enabled. Default `true`.
+    pub standalone: bool,
     /// Source geometry types this appearance consumes. Defaults to the native
     /// geometry only; opting in `Line` also emits a billboard per line string,
     /// at its first vertex, and `Polygon` one per polygon — or along either
@@ -483,6 +488,7 @@ impl Default for BillboardMaterial {
             declutter_padding: [2.0; 4],
             overlap: Overlap::Never,
             ignore_placement: false,
+            standalone: true,
             geometry_types: vec![SourceGeometryType::Point],
             // post effect
             effect_ids: None,
@@ -642,6 +648,11 @@ pub struct TextMaterial {
     /// after it may overlap it. Only meaningful when `declutter` is enabled.
     /// Default `false`.
     pub ignore_placement: bool,
+    /// Whether the label may show while the layer's billboard at the same
+    /// anchor is hidden. With `false` on both, a label and the billboard of
+    /// the same feature and anchor are placed together. Only meaningful when
+    /// `declutter` is enabled. Default `true`.
+    pub standalone: bool,
     /// Source geometry types this appearance consumes. Defaults to the native
     /// geometry only; opting in `Line` also emits a label per line string, at
     /// its first vertex, and `Polygon` one per polygon — or along either with
@@ -704,6 +715,7 @@ impl Default for TextMaterial {
             declutter_padding: [2.0; 4],
             overlap: Overlap::Never,
             ignore_placement: false,
+            standalone: true,
             geometry_types: vec![SourceGeometryType::Point],
             // post effect
             effect_ids: None,

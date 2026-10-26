@@ -864,6 +864,24 @@ import { Color } from "@navaramap/three";
 }
 ```
 
+### standalone
+
+**Type:** `boolean | undefined`
+
+**Description:** 同じアンカーにあるレイヤーのビルボードが非表示のときに、このラベルを表示できるかを指定します。レイヤーのラベルとビルボードは（同じ地物・同じアンカーで）ペアとして一緒に判定され、互いに重なりの競合をしません。`false` の場合、ビルボードが配置できないとラベルも非表示になるため、両方を `false` にすると両方が表示されるか、どちらも表示されないかのどちらかになります。[`declutter`](#declutter) が有効な場合にのみ意味を持ちます。MapLibre の `icon-optional` に相当します（`icon-optional: true` がラベルの `standalone: true` に対応します）。
+
+**Default:** `true`
+
+**Example:**
+
+```typescript
+{
+  text: {
+    standalone: false
+  }
+}
+```
+
 ### text
 
 **Type:** `string | undefined`

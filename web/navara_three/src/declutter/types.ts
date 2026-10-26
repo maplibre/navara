@@ -38,6 +38,15 @@ export type DeclutterCandidate = {
   /** Screen pixels added around the box once projected, as
    *  `[top, right, bottom, left]` (MapLibre's `*-padding`). */
   padding: readonly number[];
+  /**
+   * Pairs a label with the billboard of the same feature at the same anchor,
+   * as MapLibre places a symbol's text and icon together: the layer and tile
+   * both belong to ({@link declutterPairGroup}), the feature's index there, and
+   * which of the two this is. Omitted, the candidate is never paired.
+   */
+  pair?: { group: number; featureIndex: number; role: "label" | "billboard" };
+  /** Whether it may show while its paired partner is hidden. */
+  standalone: boolean;
   /** Whether the label is currently shown (its fade target is "visible").
    *  Feeds placement hysteresis: shown labels win equal-priority ties and
    *  tolerate marginal overlaps, so slow camera drift doesn't make near-tied
@@ -62,15 +71,16 @@ export const DECLUTTER_FADE_MS = 300;
 
 /** The declutter fields a participant mirrors from its material. */
 export type DeclutterSettings = {
-  /** Whether the material's labels take part in the pass at all. An
-   *  `always` label that ignores placement can neither lose nor block, so it
-   *  stays out like a `declutter: false` one. */
+  /** Whether the material's labels take part in the pass at all. A
+   *  standalone `always` label that ignores placement can neither lose nor
+   *  block, so it stays out like a `declutter: false` one. */
   participates: boolean;
   rank: number;
   priority: number;
   overlap: Overlap;
   ignorePlacement: boolean;
   padding: readonly number[];
+  standalone: boolean;
 };
 
 const DEFAULT_PADDING = [2, 2, 2, 2];
@@ -82,13 +92,15 @@ export function resolveDeclutterSettings(material: {
   overlap?: string;
   ignorePlacement?: boolean;
   declutterPadding?: ArrayLike<number>;
+  standalone?: boolean;
 }): DeclutterSettings {
   const overlap = (material.overlap ?? "never") as Overlap;
   const ignorePlacement = material.ignorePlacement ?? false;
+  const standalone = material.standalone ?? true;
   return {
     participates:
       (material.declutter ?? true) &&
-      !(overlap === "always" && ignorePlacement),
+      !(overlap === "always" && ignorePlacement && standalone),
     rank: material.declutterRank ?? 0,
     priority: material.declutterPriority ?? 0,
     overlap,
@@ -96,7 +108,26 @@ export function resolveDeclutterSettings(material: {
     padding: material.declutterPadding
       ? Array.from(material.declutterPadding)
       : DEFAULT_PADDING,
+    standalone,
   };
+}
+
+/**
+ * The pair group of a layer's meshes in one tile: a label only pairs with a
+ * billboard of the same group. A hash, so two groups may rarely collide; a
+ * collision only matters for a label and billboard that also share a feature
+ * index and an anchor.
+ */
+export function declutterPairGroup(
+  layerId: string,
+  tileHandle: bigint | undefined,
+): number {
+  // 32-bit FNV-1a, exact in an f64, with 0 kept for "unpaired".
+  let hash = 0x811c9dc5;
+  for (const ch of `${layerId}:${tileHandle ?? ""}`) {
+    hash = Math.imul(hash ^ ch.charCodeAt(0), 0x01000193);
+  }
+  return hash >>> 0 || 1;
 }
 
 /** A mesh that contributes label candidates to the shared declutter pass. */

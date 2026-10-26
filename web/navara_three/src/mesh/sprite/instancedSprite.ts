@@ -59,6 +59,9 @@ export type InstancedSpriteOptions = {
   renderOrder?: number;
   ctx: EventContext;
   geometryType: SpriteGeometryType;
+  /** Declutter pair group shared with the layer's labels in this tile; set
+   *  for billboards only (see `declutterPairGroup`). */
+  pairGroup?: number;
 };
 
 type PositionsInfo = {
@@ -230,6 +233,8 @@ export class InstancedSpriteMesh
   private _overlap: Overlap = "never";
   private _ignorePlacement = false;
   private _declutterPadding: readonly number[] = [];
+  private _standalone = true;
+  private _pairGroup: number | undefined;
   /** Per-instance priorities set through the evaluator (NaN = no override,
    *  fall back to the layer value). Lazily allocated on first use. */
   private _declutterPriorityOverrides: Float32Array | null = null;
@@ -261,6 +266,7 @@ export class InstancedSpriteMesh
     this.renderOrder = options.renderOrder ?? this.renderOrder;
     this.ctx = options.ctx;
     this._geometryType = options.geometryType;
+    this._pairGroup = options.pairGroup;
     this.ctx.declutter?.register(this);
     // `processObjectRemoved` dispatches this for every removed mesh; it is the
     // reliable teardown signal (this class's dispose() is not called there).
@@ -467,6 +473,14 @@ export class InstancedSpriteMesh
         overlap: this._overlap,
         ignorePlacement: this._ignorePlacement,
         padding: this._declutterPadding,
+        pair: this._pairGroup
+          ? {
+              group: this._pairGroup,
+              featureIndex: batchIndex,
+              role: "billboard",
+            }
+          : undefined,
+        standalone: this._standalone,
         owner: this,
         handle: i,
       });
@@ -521,6 +535,7 @@ export class InstancedSpriteMesh
     this._overlap = settings.overlap;
     this._ignorePlacement = settings.ignorePlacement;
     this._declutterPadding = settings.padding;
+    this._standalone = settings.standalone;
   }
 
   private _clearDeclutterHidden(): void {

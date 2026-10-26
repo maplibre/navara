@@ -6,6 +6,7 @@ import {
 } from "@navaramap/engine";
 import { Mesh, Sprite, Object3D, Scene } from "three";
 
+import { declutterPairGroup } from "../declutter/types";
 import {
   BatchedSdfTextMesh,
   InstancedSpriteMesh,
@@ -70,12 +71,13 @@ export function renderFeature(
   ctx: EventContext,
   f: RenderableFeature,
   layerId: string,
+  pairGroup?: number,
 ): Promise<Mesh | Sprite | Object3D | undefined> | undefined {
   if (f.point) {
     return renderPoint(ctx, f.point);
   }
   if (f.billboard) {
-    return renderBillboard(ctx, f.billboard);
+    return renderBillboard(ctx, f.billboard, pairGroup);
   }
   if (f.model) {
     return renderModel(ctx, f.model);
@@ -87,7 +89,7 @@ export function renderFeature(
     return renderPolygon(ctx, f.polygon, layerId);
   }
   if (f.text) {
-    return renderText(ctx, f.text, layerId);
+    return renderText(ctx, f.text, layerId, pairGroup);
   }
 }
 
@@ -133,7 +135,15 @@ export async function processRenderableFeatureAdded(
             ? "polygon"
             : undefined;
 
-  const obj = await renderFeature(ctx, feature, featureLayerId)?.then((r) => {
+  // A layer's labels and billboards in one tile share a pair group, so the
+  // declutter pass can place each label with its billboard.
+  const pairGroup = declutterPairGroup(featureLayerId, tileHandle);
+  const obj = await renderFeature(
+    ctx,
+    feature,
+    featureLayerId,
+    pairGroup,
+  )?.then((r) => {
     // The glTF/Draco decode happened on the JS side, so report the actual
     // decoded GPU size back to the ledger (its compressed-payload estimate
     // undercounts Draco content). Draco decode inflates geometry markedly.

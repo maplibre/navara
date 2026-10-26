@@ -154,6 +154,8 @@ export type DeclutterCandidate = {
   overlap: "never" | "always" | "cooperative"; // see Overlap modes
   ignorePlacement: boolean; // test, but leave the box out of the grid
   padding: readonly number[]; // screen px: top, right, bottom, left
+  pair?: { group: number; featureIndex: number; role: "label" | "billboard" };
+  standalone: boolean; // may show while its pair partner is hidden
   owner: DeclutterParticipant;
   handle: number;      // label slot (text) or instance index (sprites)
   contentKey?: string; // label text; feeds the tile-swap handoff
@@ -188,10 +190,11 @@ starts granted rather than fading in from hidden. Without that, every swap
 would blink the tile's labels out for a pass plus a fade.
 
 Once collected, each candidate is flattened into the kernel's packed input: a
-`Float64Array` with `CANDIDATE_STRIDE = 18` values per candidate
+`Float64Array` with `CANDIDATE_STRIDE = 22` values per candidate
 (`declutter/kernel.ts`), in the field order the Rust side reads — anchor (3),
 `addHeight`, the four box edges, `sizeInMeters`, `priority`, `isShown`,
-`overlap`, `ignorePlacement`, `rank`, `padding` (4). Booleans become `0.0`/`1.0`; `overlap` becomes
+`overlap`, `ignorePlacement`, `rank`, `padding` (4), `pairGroup`,
+`featureIndex`, `pairRole`, `standalone`. Booleans become `0.0`/`1.0`; `overlap` becomes
 `0`/`1`/`2` (never/always/cooperative, `OVERLAP_CODES`). The buffer is reused across passes and grown only when the
 label count rises. The kernel returns a `Uint8Array` of `hidden` flags, one per
 candidate in input order, which the manager feeds straight back to
@@ -337,7 +340,29 @@ where it claims nothing — beyond the horizon or outside the tracked area —
 instead of applying [hidden by default](#hidden-by-default-why-panning-doesnt-reveal-clutter).
 `always` with `ignorePlacement` can neither lose nor block, so participants
 leave it out of collection altogether, exactly like `declutter: false`
-(`resolveDeclutterSettings` in `declutter/types.ts`).
+(`resolveDeclutterSettings` in `declutter/types.ts`) — unless it is not
+`standalone`, since then its partner can still hide it (see below).
+
+### Pairing labels with billboards
+
+MapLibre places a symbol's text and icon as one. A Navara layer that has both
+`text` and `billboard` does the same: a label and the billboard of the same
+feature at the same anchor form a pair. Each candidate carries a `pair` —
+the pair group (a hash of layer id and tile handle, `declutterPairGroup`,
+computed in `event/feature.ts` and handed to both meshes), the feature's batch
+index, and its role — and `pair_partners` in `declutter.rs` matches label to
+billboard on group, feature, and anchor. The anchors match bit for bit since
+both meshes derive them from the same geometry; instance indices do not
+(along-line text keeps more anchors than sprites).
+
+At the first member's turn in the sorted walk, both members are tested
+against the grid before either claims space, so they never collide with each
+other. Then each one shows only if its own test passed and its partner's did
+too, unless it is `standalone`; only members that show claim their boxes.
+`standalone` defaults to `true` on both materials, which places them
+independently as before. The MapLibre plugin sets the label's `standalone`
+from `icon-optional` and the billboard's from `text-optional`, so MapLibre's
+defaults (`false`) pair them fully.
 
 ## Hysteresis: why labels don't flicker
 
@@ -542,7 +567,7 @@ tick can observe it. So `_scheduleDeclutterFrame(delayMs)` instead arms a
 
 ## Public API
 
-Three material types carry the six config fields consumed by this pass —
+Three material types carry the config fields consumed by this pass —
 `text`, `point`, and `billboard` — generated via wasm-bindgen from
 `PointMaterial` / `BillboardMaterial` / `TextMaterial`
 (`crates/navara_wasm_types/src/appearance.rs`):
@@ -553,6 +578,7 @@ Three material types carry the six config fields consumed by this pass —
 | `declutterRank` | `number` | `0` | layer-level order compared before priority; higher places first |
 | `declutterPriority` | `number` | `0` | layer-level priority; higher wins an overlap |
 | `declutterPadding` | `number[]` | `[2]` | screen px around the box, one to four values like CSS padding |
+| `standalone` | `boolean` | `true` | text and billboard only: may show while its pair partner is hidden ([Pairing](#pairing-labels-with-billboards)) |
 | `overlap` | `"never" \| "always" \| "cooperative"` | `"never"` | which earlier boxes may hide this one ([Overlap modes](#overlap-modes)) |
 | `ignorePlacement` | `boolean` | `false` | leave this box out of the grid so later labels may overlap it |
 
@@ -589,10 +615,11 @@ A few things worth knowing before enabling it:
   features fetched, evaluated, or uploaded to the GPU. It's a screen-space
   visibility decision, not a data-volume optimization.
   (`example/pages/pmtiles-overture/run.ts:172`)
-- **An icon and its own name label should not both opt in** if they share an
-  anchor: the declutter pass has no notion that two candidates "belong"
-  together, so it can't guarantee they stay paired. Typically only the text
-  label sets `declutter: true`; the icon renders unconditionally.
+- **An icon and its own name label pair only within one layer.** Put them in
+  the same layer (`text` and `billboard`) and set `standalone: false` on both
+  to keep them together. Across separate layers the pass has no notion that
+  two candidates belong together, so there only the text label should set
+  `declutter: true` while the icon renders unconditionally.
   (`example/pages/pmtiles-overture/run.ts:561-563`)
 
 Working examples: `example/pages/styling/mvt-text` (basic per-feature-code
@@ -611,6 +638,7 @@ confidence-driven priority, at real-world label density).
 | `web/navara_three/src/declutter/wasmKernel.ts` | `wasmDeclutterKernel` — adapter binding the interface to `declutterPlace` from `@navaramap/engine-api` |
 | `web/navara_three/src/declutter/types.ts` | `DeclutterCandidate`, `DeclutterParticipant`, `DECLUTTER_FADE_MS` |
 | `web/navara_three/src/mesh/sdfText/batchedSdfText.ts`, `web/navara_three/src/mesh/sprite/instancedSprite.ts` | The two participants, including their `placeLineLabels` |
+| `web/navara_three/src/event/feature.ts` | Computes each feature mesh's pair group and hands it to text and billboard meshes |
 | `web/navara_three/src/index.ts` | Registers the shared `DeclutterManager` (wired with `wasmDeclutterKernel`), drives `update()` from `_render()`, `_scheduleDeclutterFrame` / `forceUpdate` scheduling |
-| `crates/navara_material/src/appearance.rs` | `declutter` / `declutter_rank` / `declutter_priority` / `declutter_padding` / `overlap` / `ignore_placement` fields on `PointMaterial` / `BillboardMaterial` / `TextMaterial` |
+| `crates/navara_material/src/appearance.rs` | `declutter` / `declutter_rank` / `declutter_priority` / `declutter_padding` / `overlap` / `ignore_placement` fields on `PointMaterial` / `BillboardMaterial` / `TextMaterial`, and `standalone` on the last two |
 | `crates/navara_wasm_types/src/appearance.rs` | wasm-bindgen mirrors exposed to TypeScript |
