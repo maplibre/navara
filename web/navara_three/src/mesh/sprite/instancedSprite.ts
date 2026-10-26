@@ -36,13 +36,13 @@ import {
   DECLUTTER_FADE_MS,
   resolveDeclutterSettings,
   type DeclutterCandidate,
-  type DeclutterOverlap,
   type DeclutterParticipant,
 } from "../../declutter/types";
 import type { EventContext } from "../../event/context";
 import { createInstancedSpriteMaterialEnhancer } from "../../material/enhancer";
 import { resolveOrientation } from "../../material/orientation";
 import type { CustomObject3DEventMap } from "../../object3DEvent";
+import type { Overlap } from "../../type";
 import { buildBatchIndexMap } from "../batchIndexMap";
 import { GEOMETRY_TYPES, type GeometryType } from "../constants";
 import { PickableMesh } from "../pickableMesh";
@@ -227,8 +227,9 @@ export class InstancedSpriteMesh
   /** Layer-level placement rank and priority from the material. */
   private _declutterRank = 0;
   private _declutterPriority = 0;
-  private _overlap: DeclutterOverlap = "never";
+  private _overlap: Overlap = "never";
   private _ignorePlacement = false;
+  private _declutterPadding: readonly number[] = [];
   /** Per-instance priorities set through the evaluator (NaN = no override,
    *  fall back to the layer value). Lazily allocated on first use. */
   private _declutterPriorityOverrides: Float32Array | null = null;
@@ -465,6 +466,7 @@ export class InstancedSpriteMesh
         isShown: targets ? targets[i] === 0 : true,
         overlap: this._overlap,
         ignorePlacement: this._ignorePlacement,
+        padding: this._declutterPadding,
         owner: this,
         handle: i,
       });
@@ -518,6 +520,7 @@ export class InstancedSpriteMesh
     this._declutterPriority = settings.priority;
     this._overlap = settings.overlap;
     this._ignorePlacement = settings.ignorePlacement;
+    this._declutterPadding = settings.padding;
   }
 
   private _clearDeclutterHidden(): void {

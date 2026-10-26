@@ -80,6 +80,22 @@ fn parse_placement(value: &Option<String>) -> Option<navara_material::Placement>
     }
 }
 
+/// Expand a JS-facing padding list of one to four values the CSS way into
+/// `[top, right, bottom, left]`, warning on any other length so the caller
+/// keeps the material's current value.
+fn parse_padding(value: &Option<Vec<f32>>) -> Option<[f32; 4]> {
+    match value.as_deref()? {
+        &[all] => Some([all; 4]),
+        &[vertical, horizontal] => Some([vertical, horizontal, vertical, horizontal]),
+        &[top, horizontal, bottom] => Some([top, horizontal, bottom, horizontal]),
+        &[top, right, bottom, left] => Some([top, right, bottom, left]),
+        list => {
+            bevy_log::warn!("declutterPadding: expected 1 to 4 values, got {list:?}");
+            None
+        }
+    }
+}
+
 /// Parse a JS-facing overlap name, warning on an unknown value so the caller
 /// keeps the material's current value.
 fn parse_overlap(value: &Option<String>) -> Option<navara_material::Overlap> {
@@ -190,6 +206,12 @@ pub struct PointMaterial {
     #[wasm_bindgen(js_name = declutterPriority)]
     #[serde(rename = "declutterPriority")]
     pub declutter_priority: Option<f32>,
+    /// Extra space around the collision box, in screen pixels: one to four
+    /// values, expanded like CSS padding (top, right, bottom, left). Only
+    /// meaningful when `declutter` is enabled. Defaults to `[2]`.
+    #[wasm_bindgen(getter_with_clone, js_name = declutterPadding)]
+    #[serde(rename = "declutterPadding")]
+    pub declutter_padding: Option<Vec<f32>>,
     /// Whether the label may be drawn over symbols placed before it:
     /// `"never"` (the default) hides it on any collision, `"always"` never
     /// does, `"cooperative"` hides it only when it collides with a `"never"`
@@ -248,6 +270,8 @@ impl From<PointMaterial> for navara_material::PointMaterial {
             declutter: val.declutter.unwrap_or(default.declutter),
             declutter_rank: val.declutter_rank.unwrap_or(default.declutter_rank),
             declutter_priority: val.declutter_priority.unwrap_or(default.declutter_priority),
+            declutter_padding: parse_padding(&val.declutter_padding)
+                .unwrap_or(default.declutter_padding),
             overlap: parse_overlap(&val.overlap).unwrap_or(default.overlap),
             ignore_placement: val.ignore_placement.unwrap_or(default.ignore_placement),
             geometry_types: parse_geometry_types(&val.geometry_types)
@@ -282,6 +306,7 @@ impl<'a> From<&'a navara_material::PointMaterial> for PointMaterial {
             declutter: Some(value.declutter),
             declutter_rank: Some(value.declutter_rank),
             declutter_priority: Some(value.declutter_priority),
+            declutter_padding: Some(value.declutter_padding.to_vec()),
             overlap: Some(value.overlap.as_str().to_string()),
             ignore_placement: Some(value.ignore_placement),
             geometry_types: Some(geometry_type_names(&value.geometry_types)),
@@ -316,6 +341,8 @@ impl PointMaterial {
             declutter: self.declutter.unwrap_or(other.declutter),
             declutter_rank: self.declutter_rank.unwrap_or(other.declutter_rank),
             declutter_priority: self.declutter_priority.unwrap_or(other.declutter_priority),
+            declutter_padding: parse_padding(&self.declutter_padding)
+                .unwrap_or(other.declutter_padding),
             overlap: parse_overlap(&self.overlap).unwrap_or(other.overlap),
             ignore_placement: self.ignore_placement.unwrap_or(other.ignore_placement),
             geometry_types: parse_geometry_types(&self.geometry_types)
@@ -435,6 +462,12 @@ pub struct BillboardMaterial {
     #[wasm_bindgen(js_name = declutterPriority)]
     #[serde(rename = "declutterPriority")]
     pub declutter_priority: Option<f32>,
+    /// Extra space around the collision box, in screen pixels: one to four
+    /// values, expanded like CSS padding (top, right, bottom, left). Only
+    /// meaningful when `declutter` is enabled. Defaults to `[2]`.
+    #[wasm_bindgen(getter_with_clone, js_name = declutterPadding)]
+    #[serde(rename = "declutterPadding")]
+    pub declutter_padding: Option<Vec<f32>>,
     /// Whether the label may be drawn over symbols placed before it:
     /// `"never"` (the default) hides it on any collision, `"always"` never
     /// does, `"cooperative"` hides it only when it collides with a `"never"`
@@ -496,6 +529,8 @@ impl From<BillboardMaterial> for navara_material::BillboardMaterial {
             declutter: val.declutter.unwrap_or(default.declutter),
             declutter_rank: val.declutter_rank.unwrap_or(default.declutter_rank),
             declutter_priority: val.declutter_priority.unwrap_or(default.declutter_priority),
+            declutter_padding: parse_padding(&val.declutter_padding)
+                .unwrap_or(default.declutter_padding),
             overlap: parse_overlap(&val.overlap).unwrap_or(default.overlap),
             ignore_placement: val.ignore_placement.unwrap_or(default.ignore_placement),
             geometry_types: parse_geometry_types(&val.geometry_types)
@@ -532,6 +567,7 @@ impl<'a> From<&'a navara_material::BillboardMaterial> for BillboardMaterial {
             declutter: Some(value.declutter),
             declutter_rank: Some(value.declutter_rank),
             declutter_priority: Some(value.declutter_priority),
+            declutter_padding: Some(value.declutter_padding.to_vec()),
             overlap: Some(value.overlap.as_str().to_string()),
             ignore_placement: Some(value.ignore_placement),
             geometry_types: Some(geometry_type_names(&value.geometry_types)),
@@ -572,6 +608,8 @@ impl BillboardMaterial {
             declutter: self.declutter.unwrap_or(other.declutter),
             declutter_rank: self.declutter_rank.unwrap_or(other.declutter_rank),
             declutter_priority: self.declutter_priority.unwrap_or(other.declutter_priority),
+            declutter_padding: parse_padding(&self.declutter_padding)
+                .unwrap_or(other.declutter_padding),
             overlap: parse_overlap(&self.overlap).unwrap_or(other.overlap),
             ignore_placement: self.ignore_placement.unwrap_or(other.ignore_placement),
             geometry_types: parse_geometry_types(&self.geometry_types)
@@ -799,6 +837,12 @@ pub struct TextMaterial {
     #[wasm_bindgen(js_name = declutterPriority)]
     #[serde(rename = "declutterPriority")]
     pub declutter_priority: Option<f32>,
+    /// Extra space around the collision box, in screen pixels: one to four
+    /// values, expanded like CSS padding (top, right, bottom, left). Only
+    /// meaningful when `declutter` is enabled. Defaults to `[2]`.
+    #[wasm_bindgen(getter_with_clone, js_name = declutterPadding)]
+    #[serde(rename = "declutterPadding")]
+    pub declutter_padding: Option<Vec<f32>>,
     /// Whether the label may be drawn over symbols placed before it:
     /// `"never"` (the default) hides it on any collision, `"always"` never
     /// does, `"cooperative"` hides it only when it collides with a `"never"`
@@ -885,6 +929,8 @@ impl From<TextMaterial> for navara_material::TextMaterial {
             declutter: val.declutter.unwrap_or(default.declutter),
             declutter_rank: val.declutter_rank.unwrap_or(default.declutter_rank),
             declutter_priority: val.declutter_priority.unwrap_or(default.declutter_priority),
+            declutter_padding: parse_padding(&val.declutter_padding)
+                .unwrap_or(default.declutter_padding),
             overlap: parse_overlap(&val.overlap).unwrap_or(default.overlap),
             ignore_placement: val.ignore_placement.unwrap_or(default.ignore_placement),
             geometry_types: parse_geometry_types(&val.geometry_types)
@@ -943,6 +989,7 @@ impl<'a> From<&'a navara_material::TextMaterial> for TextMaterial {
             declutter: Some(value.declutter),
             declutter_rank: Some(value.declutter_rank),
             declutter_priority: Some(value.declutter_priority),
+            declutter_padding: Some(value.declutter_padding.to_vec()),
             overlap: Some(value.overlap.as_str().to_string()),
             ignore_placement: Some(value.ignore_placement),
             geometry_types: Some(geometry_type_names(&value.geometry_types)),
@@ -1004,6 +1051,8 @@ impl TextMaterial {
             declutter: self.declutter.unwrap_or(other.declutter),
             declutter_rank: self.declutter_rank.unwrap_or(other.declutter_rank),
             declutter_priority: self.declutter_priority.unwrap_or(other.declutter_priority),
+            declutter_padding: parse_padding(&self.declutter_padding)
+                .unwrap_or(other.declutter_padding),
             overlap: parse_overlap(&self.overlap).unwrap_or(other.overlap),
             ignore_placement: self.ignore_placement.unwrap_or(other.ignore_placement),
             geometry_types: parse_geometry_types(&self.geometry_types)
@@ -2402,8 +2451,28 @@ pub struct HillshadeMaterial {
 
 #[cfg(test)]
 mod test {
-    use super::{TextMaterial, parse_facing, parse_geometry_types};
+    use super::{TextMaterial, parse_facing, parse_geometry_types, parse_padding};
     use navara_material::{Facing, SourceGeometryType};
+
+    #[test]
+    fn parse_padding_expands_like_css() {
+        assert_eq!(parse_padding(&None), None);
+        assert_eq!(parse_padding(&Some(vec![3.0])), Some([3.0; 4]));
+        assert_eq!(
+            parse_padding(&Some(vec![1.0, 2.0])),
+            Some([1.0, 2.0, 1.0, 2.0])
+        );
+        assert_eq!(
+            parse_padding(&Some(vec![1.0, 2.0, 3.0])),
+            Some([1.0, 2.0, 3.0, 2.0])
+        );
+        assert_eq!(
+            parse_padding(&Some(vec![1.0, 2.0, 3.0, 4.0])),
+            Some([1.0, 2.0, 3.0, 4.0])
+        );
+        assert_eq!(parse_padding(&Some(vec![])), None);
+        assert_eq!(parse_padding(&Some(vec![1.0; 5])), None);
+    }
 
     #[test]
     fn parse_geometry_types_keeps_valid_names() {

@@ -558,6 +558,33 @@ describe("toLayerDescription", () => {
       expect(overlap.billboard?.overlap).toBe("always");
     });
 
+    it("maps text and icon padding", () => {
+      const defaults = buildSymbol({
+        "text-field": "{name}",
+        "icon-image": "marker",
+      });
+      expect(defaults.text?.declutterPadding).toEqual([2]);
+      expect(defaults.billboard?.declutterPadding).toEqual([2]);
+
+      const padded = buildSymbol({
+        "text-field": "{name}",
+        "icon-image": "marker",
+        "text-padding": 0,
+        "icon-padding": [1, 4],
+      });
+      expect(padded.text?.declutterPadding).toEqual([0]);
+      expect(padded.billboard?.declutterPadding).toEqual([1, 4]);
+
+      expect(
+        symbolLayerFollowsZoom(
+          symbolLayer({
+            "text-field": "a",
+            "text-padding": ["interpolate", ["linear"], ["zoom"], 0, 0, 10, 8],
+          }),
+        ),
+      ).toBe(true);
+    });
+
     it("ranks text and icons by the layer's index in the style", () => {
       const { text, billboard } = toLayerDescription(
         mockSource,

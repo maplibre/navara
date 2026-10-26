@@ -25,12 +25,13 @@
 //! | 11     | overlap | `0.0` = never, `1.0` = always, `2.0` = cooperative |
 //! | 12     | ignorePlacement | non-zero = the box is never claimed, so later candidates may overlap it |
 //! | 13     | rank | compared before priority; higher places first |
+//! | 14..18 | padding | screen px added around the box: top, right, bottom, left |
 
 use navara_material::Overlap;
 use wasm_bindgen::prelude::*;
 
 /// Number of `f64` values per candidate in the packed input slice.
-pub const CANDIDATE_STRIDE: usize = 14;
+pub const CANDIDATE_STRIDE: usize = 18;
 
 /// Decode the packed `overlap` field.
 fn overlap_from_code(code: f64) -> Overlap {
@@ -312,19 +313,14 @@ impl ScreenCollisionGrid {
     }
 }
 
-/// Padding added around every collision box (px); two placed labels never sit
-/// closer than twice this. Matches `DeclutterManager.PADDING_PX`.
-const DEFAULT_PADDING_PX: f64 = 2.0;
-
 /// Run one placement pass. Returns a `hidden` flag (0 or 1) per candidate, in the
 /// same order as the input slice.
 ///
 /// `candidates` is a packed `f64` slice of `n * CANDIDATE_STRIDE` values (see the
 /// module docs); `view` and `proj` are column-major 4×4 matrices (16 values each).
 /// `horizon_min_height` is the renderer's `nvrHorizonMinHeight`, which the
-/// horizon test shrinks the ellipsoid by. `padding_px` pads every box;
-/// `hysteresis_px` is the collision-test shrink applied only to currently-shown
-/// labels.
+/// horizon test shrinks the ellipsoid by. `hysteresis_px` is the
+/// collision-test shrink applied only to currently-shown labels.
 ///
 /// The result is *hidden-by-default*: only a label that claimed space inside the
 /// tracked area (viewport + grid margin) comes back shown. Off-screen and
@@ -345,7 +341,6 @@ pub fn declutter_place(
     height_px: f64,
     fov_rad: f64,
     horizon_min_height: f64,
-    padding_px: f64,
     hysteresis_px: f64,
 ) -> Vec<u8> {
     let n = candidates.len() / CANDIDATE_STRIDE;
@@ -425,11 +420,6 @@ pub fn declutter_place(
         a.cmp(&b)
     });
 
-    let pad = if padding_px.is_finite() {
-        padding_px
-    } else {
-        DEFAULT_PADDING_PX
-    };
     let mut grid = ScreenCollisionGrid::new(width_px, height_px);
     let mut hidden = vec![0u8; n];
     // A label is shown only when it actually claimed space on (or just off)
@@ -453,10 +443,10 @@ pub fn declutter_place(
         // Shown labels get a shrunk collision test (sticky); hidden labels need
         // their full padded box free before they may appear.
         let claim = grid.try_claim(
-            boxes[o] - pad,
-            boxes[o + 1] - pad,
-            boxes[o + 2] + pad,
-            boxes[o + 3] + pad,
+            boxes[o] - c[17],
+            boxes[o + 1] - c[14],
+            boxes[o + 2] + c[15],
+            boxes[o + 3] + c[16],
             if is_shown { hysteresis_px } else { 0.0 },
             overlap,
             c[12] == 0.0,
@@ -559,6 +549,10 @@ mod tests {
             0.0, // overlap: never
             0.0, // ignorePlacement
             0.0, // rank
+            2.0, // padding top
+            2.0, // padding right
+            2.0, // padding bottom
+            2.0, // padding left
         ]
     }
 
@@ -579,21 +573,7 @@ mod tests {
     fn place(cands: &[[f64; CANDIDATE_STRIDE]]) -> Vec<u8> {
         let flat: Vec<f64> = cands.iter().flatten().copied().collect();
         let (view, proj, cx, cy, cz, near, w, h, fov) = camera();
-        declutter_place(
-            &flat,
-            &view,
-            &proj,
-            cx,
-            cy,
-            cz,
-            near,
-            w,
-            h,
-            fov,
-            0.0,
-            DEFAULT_PADDING_PX,
-            6.0,
-        )
+        declutter_place(&flat, &view, &proj, cx, cy, cz, near, w, h, fov, 0.0, 6.0)
     }
 
     #[test]
@@ -615,6 +595,25 @@ mod tests {
         ranked[13] = 1.0;
         let hidden = place(&[label(R, 0.0, 0.0, 5.0, true), ranked]);
         assert_eq!(hidden, vec![1, 0]);
+    }
+
+    #[test]
+    fn padding_is_added_in_screen_pixels_per_side() {
+        // Boxes 20px wide, 24px apart: clear with the default 2px padding.
+        let a = label(R, 0.0, 0.0, 1.0, false);
+        let b = label(R, 0.0, 0.0, 0.0, false);
+        let mut b_right = b;
+        b_right[4] = 34.0; // minX
+        b_right[5] = 54.0; // maxX
+        assert_eq!(place(&[a, b_right]), vec![0, 0]);
+        // 30px on the side facing the other label closes the gap...
+        let mut a_padded = a;
+        a_padded[15] = 30.0; // right
+        assert_eq!(place(&[a_padded, b_right]), vec![0, 1]);
+        // ...on the far side it does not.
+        let mut a_far = a;
+        a_far[17] = 30.0; // left
+        assert_eq!(place(&[a_far, b_right]), vec![0, 0]);
     }
 
     #[test]
@@ -765,6 +764,10 @@ mod tests {
             min_y,
             max_y,
             if size_in_meters { 1.0 } else { 0.0 },
+            0.0,
+            0.0,
+            0.0,
+            0.0,
             0.0,
             0.0,
             0.0,

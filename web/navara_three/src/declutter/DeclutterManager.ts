@@ -42,9 +42,6 @@ export type DeclutterUpdateResult =
 export class DeclutterManager {
   /** Minimum time between placement passes (ms). */
   static readonly MIN_INTERVAL_MS = 150;
-  /** Padding added around every collision box (px); two labels never sit
-   *  closer than twice this. */
-  static readonly PADDING_PX = 2;
   /** Largest single fade step (ms), so a frame after an idle gap doesn't
    *  swallow most of a fade in one jump. */
   static readonly MAX_FADE_STEP_MS = 50;
@@ -246,6 +243,10 @@ export class DeclutterManager {
       input[o + 11] = OVERLAP_CODES[c.overlap];
       input[o + 12] = c.ignorePlacement ? 1 : 0;
       input[o + 13] = c.rank;
+      input[o + 14] = c.padding[0];
+      input[o + 15] = c.padding[1];
+      input[o + 16] = c.padding[2];
+      input[o + 17] = c.padding[3];
     }
 
     // The pass may run before the renderer refreshed matrixWorldInverse, so
@@ -271,7 +272,6 @@ export class DeclutterManager {
       // is a WASM call whose result we'd only marshal straight back in.
       (camera.fov * Math.PI) / 180.0,
       horizonMinHeight,
-      DeclutterManager.PADDING_PX,
       DeclutterManager.HYSTERESIS_PX,
     );
 

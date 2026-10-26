@@ -122,6 +122,24 @@ import { Color } from "@navaramap/three";
 }
 ```
 
+### declutterPadding
+
+**Type:** `number[] | undefined`
+
+**Description:** スプライトの衝突判定ボックスの周囲に加える余白で、[`sizeInMeters`](#sizeinmeters) にかかわらず画面上のピクセル単位です。CSS の padding と同じく 1 〜 4 個の値で指定します（`[全辺]`、`[上下, 左右]`、`[上, 左右, 下]`、`[上, 右, 下, 左]`）。[`declutter`](#declutter) が有効な場合にのみ意味を持ちます。MapLibre の `icon-padding` に相当します。
+
+**Default:** `[2]`
+
+**Example:**
+
+```typescript
+{
+  billboard: {
+    declutterPadding: [4, 8]
+  }
+}
+```
+
 ### declutterPriority
 
 **Type:** `number | undefined`

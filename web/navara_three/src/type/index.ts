@@ -102,6 +102,14 @@ export type Facing = "upright" | "flat";
 export type TextFacing = Facing;
 
 /**
+ * Whether a decluttered label or sprite may be drawn over the ones placed
+ * before it — MapLibre's `*-overlap`. `"never"` hides it on any collision,
+ * `"always"` never does, `"cooperative"` hides it only when it collides with a
+ * `"never"` one. The value of `overlap` on text, billboard and point materials.
+ */
+export type Overlap = "never" | "always" | "cooperative";
+
+/**
  * Helper type to narrow the material fields that wasm-bindgen generates as
  * bare `string`s to their literal unions, and its typed arrays to the plain
  * arrays the layer description accepts. One recursive pass covers them all.
@@ -113,11 +121,13 @@ type ConvertStringUnionFields<T> = {
       ? Facing | Extract<T[K], undefined>
       : K extends "cap"
         ? LineCap | Extract<T[K], undefined>
-        : K extends "dashArray"
-          ? number[] | Extract<T[K], undefined>
-          : T[K] extends object | undefined
-            ? ConvertStringUnionFields<T[K]> | Extract<T[K], undefined>
-            : T[K];
+        : K extends "overlap"
+          ? Overlap | Extract<T[K], undefined>
+          : K extends "dashArray" | "declutterPadding"
+            ? number[] | Extract<T[K], undefined>
+            : T[K] extends object | undefined
+              ? ConvertStringUnionFields<T[K]> | Extract<T[K], undefined>
+              : T[K];
 };
 
 /**

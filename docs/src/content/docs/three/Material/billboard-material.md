@@ -122,6 +122,24 @@ import { Color } from "@navaramap/three";
 }
 ```
 
+### declutterPadding
+
+**Type:** `number[] | undefined`
+
+**Description:** Extra space around the sprite's collision box, in screen pixels whatever [`sizeInMeters`](#sizeinmeters) is. One to four values, expanded like CSS padding: `[all]`, `[vertical, horizontal]`, `[top, horizontal, bottom]` or `[top, right, bottom, left]`. Only meaningful when [`declutter`](#declutter) is enabled. MapLibre's `icon-padding`.
+
+**Default:** `[2]`
+
+**Example:**
+
+```typescript
+{
+  billboard: {
+    declutterPadding: [4, 8]
+  }
+}
+```
+
 ### declutterPriority
 
 **Type:** `number | undefined`

@@ -270,6 +270,12 @@
         "icon-ignore-placement": {
           "status": "✅"
         },
+        "text-padding": {
+          "status": "✅"
+        },
+        "icon-padding": {
+          "status": "⚠️ Follows zoom, but is the same for every feature in the layer"
+        },
         "text-line-height": {
           "status": "❌"
         }

@@ -31,7 +31,6 @@ import {
   DECLUTTER_FADE_MS,
   resolveDeclutterSettings,
   type DeclutterCandidate,
-  type DeclutterOverlap,
   type DeclutterParticipant,
 } from "../../declutter/types";
 import type { EventContext } from "../../event/context";
@@ -46,6 +45,7 @@ import {
   resolveOrientation,
   type ResolvedOrientation,
 } from "../../material/orientation";
+import type { Overlap } from "../../type";
 import { buildBatchIndexMap } from "../batchIndexMap";
 import { GEOMETRY_TYPES } from "../constants";
 import { InstancedMesh, type InstancedMeshOptions } from "../instanced";
@@ -323,8 +323,9 @@ export class BatchedSdfTextMesh
   private _declutter: boolean;
   private _declutterRank: number;
   private _declutterPriority: number;
-  private _overlap: DeclutterOverlap;
+  private _overlap: Overlap;
   private _ignorePlacement: boolean;
+  private _declutterPadding: readonly number[];
   /** Skips the per-frame fade walk entirely once everything has settled. */
   private _declutterAnimating = false;
 
@@ -368,6 +369,7 @@ export class BatchedSdfTextMesh
     this._declutterPriority = declutter.priority;
     this._overlap = declutter.overlap;
     this._ignorePlacement = declutter.ignorePlacement;
+    this._declutterPadding = declutter.padding;
 
     this._positions = this.extractPositions(m);
     this._path = takeLinePath(this._positions);
@@ -1389,6 +1391,7 @@ export class BatchedSdfTextMesh
         isShown: record.declutterTarget === 0,
         overlap: this._overlap,
         ignorePlacement: this._ignorePlacement,
+        padding: this._declutterPadding,
         owner: this,
         handle: record.slot,
         contentKey: record.text,
@@ -1718,6 +1721,7 @@ export class BatchedSdfTextMesh
     this._declutterPriority = declutter.priority;
     this._overlap = declutter.overlap;
     this._ignorePlacement = declutter.ignorePlacement;
+    this._declutterPadding = declutter.padding;
 
     this._enhancer.update({
       base: {

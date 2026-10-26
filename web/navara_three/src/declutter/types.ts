@@ -1,5 +1,7 @@
 import type { PerspectiveCamera } from "three";
 
+import type { Overlap } from "../type";
+
 /**
  * One label/sprite competing for screen space in a declutter pass.
  *
@@ -29,10 +31,13 @@ export type DeclutterCandidate = {
   /** Placement priority: higher wins an overlap. */
   priority: number;
   /** Which earlier candidates this one may overlap (MapLibre's `*-overlap`). */
-  overlap: DeclutterOverlap;
+  overlap: Overlap;
   /** Leave the box out of the collision grid, so later candidates may overlap
    *  it (MapLibre's `*-ignore-placement`). */
   ignorePlacement: boolean;
+  /** Screen pixels added around the box once projected, as
+   *  `[top, right, bottom, left]` (MapLibre's `*-padding`). */
+  padding: readonly number[];
   /** Whether the label is currently shown (its fade target is "visible").
    *  Feeds placement hysteresis: shown labels win equal-priority ties and
    *  tolerate marginal overlaps, so slow camera drift doesn't make near-tied
@@ -55,10 +60,6 @@ export type DeclutterCandidate = {
 /** Duration of the show/hide fade applied to placement results (ms). */
 export const DECLUTTER_FADE_MS = 300;
 
-/** A material's `overlap`: `never` hides on any collision, `always` never
- *  does, `cooperative` only on a collision with a `never` candidate. */
-export type DeclutterOverlap = "never" | "always" | "cooperative";
-
 /** The declutter fields a participant mirrors from its material. */
 export type DeclutterSettings = {
   /** Whether the material's labels take part in the pass at all. An
@@ -67,9 +68,12 @@ export type DeclutterSettings = {
   participates: boolean;
   rank: number;
   priority: number;
-  overlap: DeclutterOverlap;
+  overlap: Overlap;
   ignorePlacement: boolean;
+  padding: readonly number[];
 };
+
+const DEFAULT_PADDING = [2, 2, 2, 2];
 
 export function resolveDeclutterSettings(material: {
   declutter?: boolean;
@@ -77,8 +81,9 @@ export function resolveDeclutterSettings(material: {
   declutterPriority?: number;
   overlap?: string;
   ignorePlacement?: boolean;
+  declutterPadding?: ArrayLike<number>;
 }): DeclutterSettings {
-  const overlap = (material.overlap ?? "never") as DeclutterOverlap;
+  const overlap = (material.overlap ?? "never") as Overlap;
   const ignorePlacement = material.ignorePlacement ?? false;
   return {
     participates:
@@ -88,6 +93,9 @@ export function resolveDeclutterSettings(material: {
     priority: material.declutterPriority ?? 0,
     overlap,
     ignorePlacement,
+    padding: material.declutterPadding
+      ? Array.from(material.declutterPadding)
+      : DEFAULT_PADDING,
   };
 }
 

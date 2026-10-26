@@ -315,6 +315,10 @@ pub struct PointMaterial {
     /// Placement priority for decluttering; higher wins. Only meaningful when
     /// `declutter` is enabled.
     pub declutter_priority: f32,
+    /// Extra space around the collision box, in screen pixels, as
+    /// `[top, right, bottom, left]`. Only meaningful when `declutter` is
+    /// enabled. Default `2.0` on every side.
+    pub declutter_padding: [f32; 4],
     /// Whether the label may be drawn over symbols placed before it. Only
     /// meaningful when `declutter` is enabled. Default [`Overlap::Never`].
     pub overlap: Overlap,
@@ -356,6 +360,7 @@ impl Default for PointMaterial {
             declutter: true,
             declutter_rank: 0.0,
             declutter_priority: 0.0,
+            declutter_padding: [2.0; 4],
             overlap: Overlap::Never,
             ignore_placement: false,
             geometry_types: vec![SourceGeometryType::Point],
@@ -427,6 +432,10 @@ pub struct BillboardMaterial {
     /// Placement priority for decluttering; higher wins. Only meaningful when
     /// `declutter` is enabled.
     pub declutter_priority: f32,
+    /// Extra space around the collision box, in screen pixels, as
+    /// `[top, right, bottom, left]`. Only meaningful when `declutter` is
+    /// enabled. Default `2.0` on every side.
+    pub declutter_padding: [f32; 4],
     /// Whether the label may be drawn over symbols placed before it. Only
     /// meaningful when `declutter` is enabled. Default [`Overlap::Never`].
     pub overlap: Overlap,
@@ -471,6 +480,7 @@ impl Default for BillboardMaterial {
             declutter: true,
             declutter_rank: 0.0,
             declutter_priority: 0.0,
+            declutter_padding: [2.0; 4],
             overlap: Overlap::Never,
             ignore_placement: false,
             geometry_types: vec![SourceGeometryType::Point],
@@ -621,6 +631,10 @@ pub struct TextMaterial {
     /// Placement priority for decluttering; higher wins. Only meaningful when
     /// `declutter` is enabled.
     pub declutter_priority: f32,
+    /// Extra space around the collision box, in screen pixels, as
+    /// `[top, right, bottom, left]`. Only meaningful when `declutter` is
+    /// enabled. Default `2.0` on every side.
+    pub declutter_padding: [f32; 4],
     /// Whether the label may be drawn over symbols placed before it. Only
     /// meaningful when `declutter` is enabled. Default [`Overlap::Never`].
     pub overlap: Overlap,
@@ -687,6 +701,7 @@ impl Default for TextMaterial {
             declutter: true,
             declutter_rank: 0.0,
             declutter_priority: 0.0,
+            declutter_padding: [2.0; 4],
             overlap: Overlap::Never,
             ignore_placement: false,
             geometry_types: vec![SourceGeometryType::Point],

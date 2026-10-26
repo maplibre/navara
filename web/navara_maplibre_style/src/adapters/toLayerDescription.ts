@@ -4,6 +4,7 @@
 
 import {
   type LayerDescription,
+  type Overlap,
   type Source,
   type SourceGeometryType,
   type VectorLayer,
@@ -45,6 +46,8 @@ const ZOOM_FOLLOWING_SYMBOL_PROPERTIES = {
     "icon-overlap",
     "text-ignore-placement",
     "icon-ignore-placement",
+    "text-padding",
+    "icon-padding",
   ],
   paint: ["text-halo-color", "text-halo-width"],
 } as const;
@@ -155,7 +158,7 @@ function resolveOverlap(
   styleLayer: StyleLayer,
   prefix: "text" | "icon",
   zoom: number,
-): { overlap: string; ignorePlacement: boolean } {
+): { overlap: Overlap; ignorePlacement: boolean } {
   const evaluate = (key: string) =>
     evaluateLayerProperty(
       engine,
@@ -168,12 +171,33 @@ function resolveOverlap(
   return {
     overlap:
       typeof overlap === "string"
-        ? overlap
+        ? (overlap as Overlap)
         : evaluate("allow-overlap") === true
           ? "always"
           : "never",
     ignorePlacement: evaluate("ignore-placement") === true,
   };
+}
+
+/**
+ * Resolve `*-padding` as the one to four CSS-ordered values the material's
+ * `declutterPadding` takes. `text-padding` is a single number, `icon-padding`
+ * either form.
+ */
+function resolvePadding(
+  engine: StyleEngine,
+  styleLayer: StyleLayer,
+  prefix: "text" | "icon",
+  zoom: number,
+): number[] {
+  const value = evaluateLayerProperty(
+    engine,
+    styleLayer,
+    "layout",
+    `${prefix}-padding`,
+    zoom,
+  );
+  return typeof value === "number" ? [value] : (value as number[]);
 }
 
 /**
@@ -436,6 +460,7 @@ function createSymbolLayer(
         ...orientation.icon,
         declutter: true,
         declutterRank: rank,
+        declutterPadding: resolvePadding(engine, styleLayer, "icon", zoom),
         ...resolveOverlap(engine, styleLayer, "icon", zoom),
         ...(geometryTypes && { geometryTypes }),
         ...(alongLine && { spacing: orientation.spacing }),
@@ -474,6 +499,7 @@ function createSymbolLayer(
         placement,
         ...orientation.text,
         declutterRank: rank,
+        declutterPadding: resolvePadding(engine, styleLayer, "text", zoom),
         ...resolveOverlap(engine, styleLayer, "text", zoom),
         // MapLibre never wraps or justifies labels placed along a line.
         maxWidth: alongLine
