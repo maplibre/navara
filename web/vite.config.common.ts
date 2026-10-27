@@ -6,8 +6,33 @@ import { PluginOption, type UserConfig } from "vite";
 
 import tsconfig from "vite-tsconfig-paths";
 import wasm from "vite-plugin-wasm";
-import dts from "unplugin-dts/vite";
+import unpluginDts from "unplugin-dts/vite";
+import type { PluginOptions as DtsPluginOptions } from "unplugin-dts";
+import typescript6 from "@typescript/typescript6";
 import topLevelAwait from "vite-plugin-top-level-await";
+
+// TypeScript 7 ships no JS Compiler API and no lib.*.d.ts. unplugin-dts falls
+// back to @typescript/typescript6 for the API, but still hands API Extractor the
+// `typescript` package folder for the default libs, so even `Map` can't be
+// resolved when bundling types. Point it at TypeScript 6's compiler folder.
+const typescriptCompilerFolder = path.resolve(
+  typescript6.getDefaultLibFilePath({}),
+  "../..",
+);
+
+export function dts(options: DtsPluginOptions = {}): PluginOption {
+  const { bundleTypes } = options;
+  if (!bundleTypes) return unpluginDts(options);
+  const bundleOptions = bundleTypes === true ? {} : bundleTypes;
+  return unpluginDts({
+    ...options,
+    bundleTypes: {
+      ...bundleOptions,
+      invokeOptions: { typescriptCompilerFolder, ...bundleOptions.invokeOptions },
+    },
+  });
+}
+
 // This is necessary to watch shared packages.
 // Ref: https://github.com/vitejs/vite/issues/8619#issuecomment-2019967424
 function watchPackages(packageNames: string[]): PluginOption {

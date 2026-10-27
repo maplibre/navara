@@ -39,7 +39,7 @@
     "@navaramap/three": "workspace:*",
     "@navaramap/three-default-descs": "workspace:*",
     "@navaramap/three-default-plugin": "workspace:*",
-    "@types/three": "0.185.4",
-    "three": "0.185.1"
+    "@types/three": "0.186.0",
+    "three": "0.186.1"
   }
 }

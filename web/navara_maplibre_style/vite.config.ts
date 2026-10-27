@@ -1,9 +1,8 @@
-import dts from "unplugin-dts/vite";
 import { defineConfig } from "vite";
 import tsconfig from "vite-tsconfig-paths";
 import { configDefaults } from "vitest/config";
 
-import { commonConfig, composePlugins } from "../vite.config.common";
+import { commonConfig, composePlugins, dts } from "../vite.config.common";
 
 export default defineConfig((env) => {
   const common = commonConfig("NavaraMapLibreStyle", env);

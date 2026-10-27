@@ -35,5 +35,9 @@ jobs:
       - name: Install dependencies
         run: pnpm install --filter navara-developer-docs --frozen-lockfile
 
+      # rehype-mermaid renders diagrams in headless Chromium via Playwright.
+      - name: Install Playwright browser
+        run: pnpm -C docs exec playwright install --with-deps --only-shell chromium
+
       - name: Build docs
         run: pnpm build:docs

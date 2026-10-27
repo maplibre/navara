@@ -7,7 +7,7 @@ import {
   type ViewContext,
 } from "@navaramap/three";
 import type { SparkRenderer, SplatMesh } from "@sparkjsdev/spark";
-import { SRGBColorSpace, type Scene } from "three";
+import type { Scene } from "three";
 
 import {
   ORIGIN_KEY,
@@ -112,16 +112,11 @@ function acquireSparkRenderer(
     return { enableLod: existing.enableLod, controller: existing.controller };
   }
 
-  // Linear when the post-pp pipeline is linear, else the final sRGB pass double-encodes.
-  const encodeLinear =
-    ctx.getInputBuffer().texture.colorSpace !== SRGBColorSpace;
-
   const { SparkRenderer } = requireSpark();
   const listeners = new Set<() => void>([opts.onDirty]);
   const renderer = new SparkRenderer({
     renderer: ctx.getRenderer(),
     enableLod: opts.enableLod,
-    encodeLinear,
     // Fan out to every descriptor sharing this renderer.
     onDirty: () => listeners.forEach((fn) => fn()),
   });
