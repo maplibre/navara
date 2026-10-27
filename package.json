@@ -58,7 +58,7 @@
     "eslint": "10.8.1",
     "eslint-config-reearth": "0.4.0",
     "jsdom": "30.0.1",
-    "prettier": "3.9.6",
+    "prettier": "3.9.10",
     "react": "19.2.8",
     "react-dom": "19.2.8",
     "shadcn": "4.22.1",

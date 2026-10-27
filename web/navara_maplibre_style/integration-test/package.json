@@ -23,7 +23,7 @@
     "@navaramap/maplibre-style": "workspace:*",
     "@navaramap/three": "workspace:*",
     "@navaramap/three-default-plugin": "workspace:*",
-    "postprocessing": "6.39.4",
+    "postprocessing": "6.39.5",
     "three": "0.185.1"
   },
   "devDependencies": {
@@ -33,6 +33,6 @@
     "@types/three": "0.185.4",
     "pixelmatch": "8.0.0",
     "sharp": "0.35.5",
-    "tsx": "4.23.12"
+    "tsx": "4.23.15"
   }
 }
