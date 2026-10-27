@@ -52,6 +52,7 @@
     "@types/node": "26.2.0",
     "@types/react": "19.2.18",
     "@types/react-dom": "19.2.5",
+    "@typescript/typescript6": "6.0.2",
     "@typescript-eslint/utils": "8.67.0",
     "@vitejs/plugin-react": "6.0.3",
     "eslint": "10.8.1",

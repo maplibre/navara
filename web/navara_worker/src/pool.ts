@@ -136,7 +136,9 @@ export function queueTask<
         // `finally` doesn't work, so use `then()` and `catch()` to ensure that `manager.decrement()` is invoked.
         .then((p) => {
           manager.decrement();
-          return p;
+          // workerpool types the result as the task's raw return type, but it
+          // resolves with the awaited value.
+          return p as MethodReturnType<Task, Name>;
         })
         .catch((e) => {
           manager.decrement();
