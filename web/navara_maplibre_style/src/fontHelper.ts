@@ -146,7 +146,8 @@ export function parseUnicodeRanges(
  * Convert MapLibre Style font-faces to Navara FontFamily objects.
  * This is the inverse of fontFamilyToStyleOverrides.
  *
- * @param fontFaces - FontFacesSpecification from MapLibre style
+ * @param fontFaces - FontFacesSpecification from MapLibre style. A single
+ *   face object (not wrapped in an array) is also accepted leniently.
  * @returns Array of FontFamily objects ready to register with view
  *
  * @example
@@ -158,7 +159,7 @@ export function parseUnicodeRanges(
  * ```
  */
 export function convertFontFacesToFontFamilies(
-  fontFaces: FontFacesSpecification,
+  fontFaces: Record<string, string | MLFontFace | MLFontFace[]>,
 ): FontFamily[] {
   const fontFamilies: FontFamily[] = [];
 
@@ -284,9 +285,7 @@ export function fontFamilyToStyleOverrides(
     } else {
       // Multiple faces: use array format
       const faceArray = family.faces.map((face) => {
-        const faceObj: { url: string; "unicode-range"?: string[] } = {
-          url: face.url,
-        };
+        const faceObj: MLFontFace = { url: face.url };
         if (face.unicodeRanges.length > 0) {
           faceObj["unicode-range"] =
             face.unicodeRanges.map(unicodeRangeToString);
@@ -294,7 +293,7 @@ export function fontFamilyToStyleOverrides(
         return faceObj;
       });
 
-      fontFaces[family.family] = faceArray as unknown as MLFontFace;
+      fontFaces[family.family] = faceArray;
     }
   }
 
