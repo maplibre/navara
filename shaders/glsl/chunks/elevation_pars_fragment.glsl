@@ -27,24 +27,28 @@
   // Normalize raw height to [0, 1] range with optional logarithmic scaling
   // Takes per-layer min/max heights and logarithmic parameters
   float normalizeElevationHeight(float h, float minHeight, float maxHeight, bool logarithmic, float logBase, float logBoundary) {
-    // Apply logarithmic scaling if enabled
-    float normalizedMinHeight = nvr_branchFreeTernary(logarithmic, pseudoLog(minHeight, logBase, logBoundary), minHeight);
-    float normalizedMaxHeight = nvr_branchFreeTernary(logarithmic, pseudoLog(maxHeight, logBase, logBoundary), maxHeight);
-    float value = nvr_branchFreeTernary(logarithmic, pseudoLog(h, logBase, logBoundary), h);
+    float normalizedMinHeight = minHeight;
+    float normalizedMaxHeight = maxHeight;
+    float value = h;
+    // A real branch, not nvr_branchFreeTernary: with logarithmic off,
+    // logBoundary is 0 and pseudoLog(0.0, …) is 0/0 = NaN, which a branch-free
+    // select (NaN * 0) propagates on strict-IEEE backends such as SwiftShader.
+    if (logarithmic) {
+      normalizedMinHeight = pseudoLog(minHeight, logBase, logBoundary);
+      normalizedMaxHeight = pseudoLog(maxHeight, logBase, logBoundary);
+      value = pseudoLog(h, logBase, logBoundary);
+    }
 
-    return clamp(
-        (value - normalizedMinHeight) / (normalizedMaxHeight - normalizedMinHeight),
-        0.0,
-        1.0
-    );
+    // Guard min == max (e.g. a single color-relief stop) against division by zero.
+    float range = max(normalizedMaxHeight - normalizedMinHeight, 1e-6);
+    return clamp((value - normalizedMinHeight) / range, 0.0, 1.0);
   }
 
   // Sample elevation with bilinear interpolation in decoded height space.
   // texSize: actual texture size obtained via textureSize(demTexture, 0).
-  // `valid` reports whether the sample decoded to an actual elevation AND is within
-  // the layer's [minHeight, maxHeight] range. Out-of-range elevations are treated as
-  // invalid so the layer becomes transparent, matching MapLibre's behavior.
-  float sampleElevationBilinear(sampler2D demTexture, vec2 uv, ivec2 texSize, int slot, float minHeight, float maxHeight, bool logarithmic, float logBase, float logBoundary, out bool valid) {
+  // Returns the height in meters; `valid` reports whether the sample decoded to
+  // an actual elevation (0.0 is returned otherwise).
+  float sampleElevationBilinear(sampler2D demTexture, vec2 uv, ivec2 texSize, int slot, out bool valid) {
     // Prepare bilinear sampling data (pixel coordinates and interpolation weights)
     DEMBilinearData data = prepareDEMBilinear(texSize, uv);
 
@@ -62,18 +66,14 @@
     }
 
     valid = isValidHeight(h);
-    if (!valid) {
-      return 0.0;
-    }
-
-    // Normalize the interpolated height with per-layer min/max and logarithmic parameters
-    return normalizeElevationHeight(h, minHeight, maxHeight, logarithmic, logBase, logBoundary);
+    return valid ? h : 0.0;
   }
 
   // Sample elevation using nearest neighbor (no interpolation).
   // Directly samples the single closest texel without any interpolation.
   // Useful for color-relief layers that require sharp boundaries.
-  float sampleElevationNearest(sampler2D demTexture, vec2 uv, ivec2 texSize, int slot, float minHeight, float maxHeight, bool logarithmic, float logBase, float logBoundary, out bool valid) {
+  // Returns the height in meters (see sampleElevationBilinear).
+  float sampleElevationNearest(sampler2D demTexture, vec2 uv, ivec2 texSize, int slot, out bool valid) {
     // Convert UV to pixel coordinates and round to nearest
     vec2 pixelCoord = uv * vec2(texSize);
     ivec2 nearestPixel = ivec2(floor(pixelCoord + 0.5));
@@ -85,11 +85,36 @@
     float h = decodeRawHeightForElevation(texelFetch(demTexture, nearestPixel, 0), slot);
 
     valid = isValidHeight(h);
-    if (!valid) {
-      return 0.0;
-    }
+    return valid ? h : 0.0;
+  }
 
-    // Normalize the height with per-layer min/max and logarithmic parameters
-    return normalizeElevationHeight(h, minHeight, maxHeight, logarithmic, logBase, logBoundary);
+  // Look up a color ramp row of the colorMap atlas (see ColorMapAtlas): stop i
+  // is texel 2i (premultiplied color) and texel 2i+1 (position in .r).
+  // Binary-searches the stops bracketing `key`, interpolates in premultiplied
+  // space like MapLibre's color-relief, and returns straight alpha. Keys
+  // outside the stops clamp to the end colors.
+  vec4 sampleColorRamp(int row, int stopCount, float key) {
+    int l = 0;
+    int r = stopCount - 1;
+    float pl = texelFetch(uColorMapTexture, ivec2(1, row), 0).r;
+    float pr = texelFetch(uColorMapTexture, ivec2(r * 2 + 1, row), 0).r;
+    while (r - l > 1) {
+      int m = (l + r) / 2;
+      float pm = texelFetch(uColorMapTexture, ivec2(m * 2 + 1, row), 0).r;
+      if (key < pm) {
+        r = m;
+        pr = pm;
+      } else {
+        l = m;
+        pl = pm;
+      }
+    }
+    float t = pr > pl ? clamp((key - pl) / (pr - pl), 0.0, 1.0) : step(pr, key);
+    vec4 c = mix(
+      texelFetch(uColorMapTexture, ivec2(l * 2, row), 0),
+      texelFetch(uColorMapTexture, ivec2(r * 2, row), 0),
+      t
+    );
+    return c.a > 0.0 ? vec4(c.rgb / c.a, c.a) : vec4(0.0);
   }
 #endif

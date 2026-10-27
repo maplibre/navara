@@ -1,10 +1,18 @@
+import { readFileSync } from "fs";
+import { dirname, join } from "path";
+import { fileURLToPath } from "url";
+
+import { initSync } from "@navaramap/engine";
 import type { Source } from "@navaramap/three";
-import { describe, it, expect, vi } from "vitest";
+import { beforeAll, describe, it, expect, vi } from "vitest";
 
 import { JsStyleEngine } from "../engine/JsStyleEngine";
+import { RustStyleEngine } from "../engine/RustStyleEngine";
+import type { StyleEngine } from "../engine/StyleEngine";
 import type { StyleLayer } from "../engine/types";
 
 import {
+  colorReliefLayerFollowsZoom,
   getSymbolPlacement,
   symbolLayerFollowsZoom,
   toLayerDescription,
@@ -29,22 +37,72 @@ vi.mock("@navaramap/three", () => ({
       return [this.r, this.g, this.b];
     }
   },
-  ColorMap: class ColorMap {
-    constructor(
-      public type: string,
-      public name: string,
-      public colors: number[][],
-    ) {}
-    flatten() {
-      // Mock flatten: return a flat Float32Array of RGB values
-      const flat: number[] = [];
-      for (const color of this.colors) {
-        flat.push(...color);
-      }
-      return new Float32Array(flat);
-    }
-  },
 }));
+
+/**
+ * Color-relief cases that need the expression evaluated at each stop's
+ * elevation (MapLibre's _createColorRamp semantics), run against both engines.
+ */
+const elevationExpressionCases = (getEngine: () => StyleEngine) => {
+  const describeColors = (colorExpr: unknown) => {
+    const layer = {
+      id: "relief",
+      type: "color-relief",
+      source: "test-dem",
+      paint: { "color-relief-color": colorExpr },
+    } as unknown as StyleLayer;
+    const desc = toLayerDescription(
+      {} as Source,
+      layer,
+      undefined,
+      getEngine(),
+      10,
+    ) as {
+      elevationHeatmap: { colorMap: Float32Array; colorStops: Float32Array };
+    } | null;
+    return {
+      stops: Array.from(desc?.elevationHeatmap.colorStops ?? []),
+      colors: Array.from(desc?.elevationHeatmap.colorMap ?? []).map(
+        (v) => Math.round(v * 1000) / 1000,
+      ),
+    };
+  };
+
+  it("takes stop inputs as meters when the input is an elevation expression", () => {
+    // Feet input: like MapLibre, the stop values are used as meters and each
+    // color is the expression evaluated at that elevation.
+    expect(
+      describeColors([
+        "interpolate",
+        ["linear"],
+        ["*", ["elevation"], 3.28],
+        0,
+        "#000000",
+        328,
+        "#ffffff",
+      ]),
+    ).toEqual({ stops: [0, 328], colors: [0, 0, 0, 1, 1, 1, 1, 1] });
+  });
+
+  it("evaluates stop colors that read the elevation at the stop", () => {
+    expect(
+      describeColors([
+        "interpolate",
+        ["linear"],
+        ["elevation"],
+        0,
+        "#000000",
+        100,
+        ["rgb", ["/", ["elevation"], 2], 0, 0],
+        200,
+        "#0000ff",
+      ]),
+    ).toEqual({
+      stops: [0, 100, 200],
+      colors: [0, 0, 0, 1, 0.196, 0, 0, 1, 0, 0, 1, 1],
+    });
+  });
+};
 
 describe("toLayerDescription", () => {
   // Mock source object
@@ -224,6 +282,276 @@ describe("toLayerDescription", () => {
           opacity: 0.8,
         },
       });
+    });
+  });
+
+  describe("color-relief stops", () => {
+    const reliefLayer = (stops: (number | string)[]): StyleLayer => ({
+      id: "relief",
+      type: "color-relief",
+      source: "test-dem",
+      paint: {
+        "color-relief-color": [
+          "interpolate",
+          ["linear"],
+          ["elevation"],
+          ...stops,
+        ],
+      },
+    });
+
+    it("sorts stops and passes them as colorStops", () => {
+      const result = toLayerDescription(
+        mockSource,
+        reliefLayer([3000, "#ffffff", 0, "#000000", 100, "#ff0000"]),
+      );
+      expect(result).toMatchObject({
+        elevationHeatmap: { minHeight: 0, maxHeight: 3000 },
+      });
+      const { colorMap, colorStops } = (
+        result as {
+          elevationHeatmap: {
+            colorMap: Float32Array;
+            colorStops: Float32Array;
+          };
+        }
+      ).elevationHeatmap;
+      expect(colorMap.length).toBe(3 * 4);
+      expect(Array.from(colorStops)).toEqual([0, 100, 3000]);
+    });
+
+    it("accepts a single stop as a constant color without throwing", () => {
+      const result = toLayerDescription(
+        mockSource,
+        reliefLayer([500, "#00ff00"]),
+      );
+      expect(result).toMatchObject({
+        elevationHeatmap: { minHeight: 500, maxHeight: 501 },
+      });
+    });
+
+    describe("with a style engine", () => {
+      const engine = new JsStyleEngine();
+      elevationExpressionCases(() => engine);
+      const relief = (paint: Record<string, unknown>): StyleLayer =>
+        ({
+          id: "relief",
+          type: "color-relief",
+          source: "test-dem",
+          paint: {
+            "color-relief-color": [
+              "interpolate",
+              ["linear"],
+              ["elevation"],
+              0,
+              "#000000",
+              100,
+              "#ffffff",
+            ],
+            ...paint,
+          },
+        }) as StyleLayer;
+      type Desc = {
+        raster: { opacity: number };
+        elevationHeatmap: { filter: string; colorMap: Float32Array };
+      };
+      const describeAt = (layer: StyleLayer, zoom: number) =>
+        toLayerDescription(
+          mockSource,
+          layer,
+          undefined,
+          engine,
+          zoom,
+        ) as Desc | null;
+
+      it("evaluates a zoom expression for color-relief-opacity", () => {
+        const layer = relief({
+          "color-relief-opacity": [
+            "interpolate",
+            ["linear"],
+            ["zoom"],
+            5,
+            0,
+            10,
+            0.8,
+          ],
+        });
+        expect(describeAt(layer, 5)?.raster.opacity).toBeCloseTo(0);
+        expect(describeAt(layer, 7.5)?.raster.opacity).toBeCloseTo(0.4);
+        expect(describeAt(layer, 12)?.raster.opacity).toBeCloseTo(0.8);
+        expect(colorReliefLayerFollowsZoom(layer)).toBe(true);
+      });
+
+      it("evaluates zoom expressions and legacy functions for resampling", () => {
+        const step = relief({
+          resampling: ["step", ["zoom"], "linear", 15, "nearest"],
+        });
+        expect(describeAt(step, 14)?.elevationHeatmap.filter).toBe("linear");
+        expect(describeAt(step, 15)?.elevationHeatmap.filter).toBe("nearest");
+      });
+
+      it("evaluates a legacy zoom function for resampling after parseStyle", async () => {
+        // The plugin always parses the style first; migrate() turns legacy
+        // functions into expressions.
+        const parsed = await engine.parseStyle({
+          version: 8,
+          sources: {
+            "test-dem": {
+              type: "raster-dem",
+              tiles: ["https://example.com/{z}/{x}/{y}.png"],
+            },
+          },
+          layers: [
+            relief({
+              resampling: {
+                stops: [
+                  [14, "linear"],
+                  [15, "nearest"],
+                ],
+              },
+            }),
+          ],
+        });
+        const legacy = parsed.layers[0] as StyleLayer;
+        expect(describeAt(legacy, 14)?.elevationHeatmap.filter).toBe("linear");
+        expect(describeAt(legacy, 15)?.elevationHeatmap.filter).toBe("nearest");
+        expect(colorReliefLayerFollowsZoom(legacy)).toBe(true);
+      });
+
+      it("evaluates expression stop colors", () => {
+        const layer = relief({
+          "color-relief-color": [
+            "interpolate",
+            ["linear"],
+            ["elevation"],
+            0,
+            ["rgb", 255, 0, 0],
+            100,
+            ["to-color", "#0000ff"],
+          ],
+        });
+        expect(
+          Array.from(describeAt(layer, 10)?.elevationHeatmap.colorMap ?? []),
+        ).toEqual([1, 0, 0, 1, 0, 0, 1, 1]);
+      });
+
+      it("does not follow zoom for constant opacity and resampling", () => {
+        expect(
+          colorReliefLayerFollowsZoom(
+            relief({ "color-relief-opacity": 0.5, resampling: "nearest" }),
+          ),
+        ).toBe(false);
+      });
+    });
+
+    describe("with RustStyleEngine (the engine the plugin uses)", () => {
+      beforeAll(() => {
+        const wasmPath = join(
+          dirname(fileURLToPath(import.meta.url)),
+          "../../../wasm/navara_engine/navara_wasm_bg.wasm",
+        );
+        initSync({ module: readFileSync(wasmPath) });
+      });
+
+      elevationExpressionCases(() => new RustStyleEngine());
+
+      it("evaluates expression stop colors (straight alpha) like string stops", () => {
+        const engine = new RustStyleEngine();
+        const layer = {
+          id: "relief",
+          type: "color-relief",
+          source: "test-dem",
+          paint: {
+            "color-relief-opacity": [
+              "interpolate",
+              ["linear"],
+              ["zoom"],
+              8,
+              0.9,
+              12,
+              0.4,
+            ],
+            "color-relief-color": [
+              "interpolate",
+              ["linear"],
+              ["elevation"],
+              0,
+              ["rgb", 255, 0, 0],
+              100,
+              ["to-color", "#0000ff"],
+              200,
+              ["rgba", 0, 255, 0, 0.5],
+            ],
+            resampling: ["step", ["zoom"], "linear", 12, "nearest"],
+          },
+        } as unknown as StyleLayer;
+        const desc = toLayerDescription(
+          mockSource,
+          layer,
+          undefined,
+          engine,
+          12,
+        ) as {
+          raster: { opacity: number };
+          elevationHeatmap: {
+            filter: string;
+            colorMap: Float32Array;
+            colorStops: Float32Array;
+          };
+        } | null;
+        expect(Array.from(desc?.elevationHeatmap.colorStops ?? [])).toEqual([
+          0, 100, 200,
+        ]);
+        // Straight-alpha RGBA, with the half-transparent green kept as-is.
+        expect(Array.from(desc?.elevationHeatmap.colorMap ?? [])).toEqual([
+          1, 0, 0, 1, 0, 0, 1, 1, 0, 1, 0, 0.5,
+        ]);
+        expect(desc?.raster.opacity).toBeCloseTo(0.4);
+        expect(desc?.elevationHeatmap.filter).toBe("nearest");
+      });
+    });
+
+    it("falls back to linear resampling for an unusable value", () => {
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+      // An un-migrated legacy function (invalid StyleLayer typing on purpose).
+      const layer = {
+        id: "relief",
+        type: "color-relief",
+        source: "test-dem",
+        paint: {
+          "color-relief-color": [
+            "interpolate",
+            ["linear"],
+            ["elevation"],
+            0,
+            "#000",
+            100,
+            "#fff",
+          ],
+          resampling: { stops: [[14, "linear"]] },
+        },
+      } as unknown as StyleLayer;
+      // Without an engine the function object cannot be evaluated.
+      expect(toLayerDescription(mockSource, layer)).toMatchObject({
+        elevationHeatmap: { filter: "linear" },
+      });
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining("resampling"));
+      warn.mockRestore();
+    });
+
+    it("warns once and returns null for a non-elevation expression", () => {
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+      const layer: StyleLayer = {
+        id: "relief",
+        type: "color-relief",
+        source: "test-dem",
+        paint: {
+          "color-relief-color": ["step", ["elevation"], "#000", 100, "#fff"],
+        },
+      };
+      expect(toLayerDescription(mockSource, layer)).toBeNull();
+      expect(warn).toHaveBeenCalledTimes(1);
+      warn.mockRestore();
     });
   });
 

@@ -3,8 +3,7 @@ use navara_core::{CRS, ElevationDecoder, calc_transform};
 use navara_geometry::TileUvTransform;
 use navara_math::{Transform, Vec2, Vec3};
 
-/// Configuration for elevation heatmap rendering.
-/// Shared across all elevation heatmap layers in a tile.
+/// Configuration for elevation heatmap rendering (one per elevation heatmap layer).
 #[derive(Debug, Clone, PartialEq)]
 pub struct ElevationHeatmapConfig {
     pub max_height: f64,
@@ -16,9 +15,13 @@ pub struct ElevationHeatmapConfig {
     /// Texture filter mode: "linear" for bilinear interpolation, "nearest" for nearest neighbor
     pub filter: String,
 
-    /// Color map lookup table for this elevation heatmap layer.
-    /// Flattened RGB array: [r0,g0,b0, r1,g1,b1, ...].
-    pub color_map: Option<Vec<f32>>,
+    /// Hashes of the layer's `colorMap` / `colorStops`. The arrays themselves
+    /// live on the web side (ColorMapAtlas); Rust only tracks that they
+    /// changed, so a colorMap-only update still fails the per-tile material
+    /// comparison in `update_mesh_material` and re-composites exactly the
+    /// tiles that draw this layer.
+    pub color_map_hash: Option<u64>,
+    pub color_stops_hash: Option<u64>,
 }
 
 /// Complete data for one elevation heatmap layer.
@@ -26,7 +29,7 @@ pub struct ElevationHeatmapConfig {
 pub struct ElevationHeatmapLayerData {
     /// Layer ID used for colorMap atlas row lookup
     pub layer_id: String,
-    /// Heatmap configuration (min/max height, logarithmic scaling, filter mode, etc.)
+    /// Elevation heatmap configuration (min/max height, logarithmic scaling, filter mode, etc.)
     pub config: ElevationHeatmapConfig,
     /// DEM decoder resolved from this layer's source
     pub decoder: ElevationDecoder,
@@ -992,7 +995,7 @@ pub struct RasterTileInternalMaterial {
     pub show_bounding_box: Option<bool>,
 
     /// Per-layer elevation heatmap data. `Some` when the layer is an elevation heatmap
-    /// with a raster-dem source that has a decoder; `None` for non-heatmap layers.
+    /// with a raster-dem source that has a decoder; `None` for layers without an elevation heatmap.
     pub elevation_heatmap_layers: Vec<Option<ElevationHeatmapLayerData>>,
 
     // Hillshade fields

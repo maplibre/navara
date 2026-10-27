@@ -157,6 +157,7 @@ export class RustStyleEngine implements StyleEngine {
           propsToPass,
           ctx.zoom ?? 0, // Use tile zoom if available, otherwise 0 for non-tiled features
           featureGeometryType, // Pass geometry type for expressions that need it
+          ctx.elevation, // ["elevation"] (color-relief-color only)
         );
 
         if (result == null) {

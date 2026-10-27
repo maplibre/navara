@@ -261,6 +261,8 @@ export type FilterExpression = unknown[];
 export type EvaluationContext = {
   properties: Record<string, unknown> | undefined;
   zoom?: number;
+  /** Terrain elevation in meters for `["elevation"]` (color-relief-color). */
+  elevation?: number;
 };
 
 /**

@@ -23,7 +23,7 @@ DEM タイルをデコードするため、[`raster-dem`](../../../three/source/
 
 **デフォルト:** `undefined`
 
-**説明:** このレイヤー用のカラーマップルックアップテーブル。フラット化された RGB 配列 `[r0,g0,b0, r1,g1,b1, ...]` で、各色成分は [0, 1] の範囲です。ColorMap インスタンスをこの形式に変換するには `ColorMap.flatten()` を使用します。
+**説明:** このレイヤー用のカラーマップルックアップテーブル。フラット化された RGBA 配列 `[r0,g0,b0,a0, r1,g1,b1,a1, ...]` で、各成分は [0, 1] の範囲です。各エントリは `minHeight` から `maxHeight` まで等間隔に（`colorStops` を指定した場合はその標高に）対応し、アルファ値でその標高を半透明または透明にできます。ColorMap インスタンスをこの形式に変換するには `ColorMap.flatten()` を使用します（色は不透明になります）。省略した場合、標高は `minHeight` の黒から `maxHeight` の白までのグレースケールで表示されます。追加済みレイヤーのカラーマップを変更するには、新しいレイヤー定義を `view.updateLayerById()` に渡します。`colorMap` を含まない更新では現在のカラーマップが維持され、`colorMap: undefined` を指定するとグレースケールに戻ります。`layer.update()` ではカラーマップは更新されません。
 
 ```typescript
 import { ColorMap, Color } from "@navaramap/three";
@@ -48,13 +48,35 @@ const colorMap = new ColorMap("sequential", "YlGnBu", [
 }
 ```
 
+### colorStops
+
+**型:** `Float32Array | undefined`
+
+**デフォルト:** `undefined`
+
+**説明:** `colorMap` の各エントリの標高（メートル）を昇順で指定します。エントリ `i` は正確に `colorStops[i]` の標高に描画され、2 つのストップの間の標高は両者の色を補間します。そのため、間隔が不均等なストップ（たとえば 0 m の急な海岸線）も正確な位置に保たれます。最初のストップより低い標高は最初の色、最後のストップより高い標高は最後の色で表示されます。指定している間、`minHeight`、`maxHeight`、`logarithmic` は色に影響しません。`colorMap` のエントリ数と同じ数の値が必要で、そうでない場合は警告を出して無視され、色は等間隔に配置されます。`colorStops` を含まない更新では現在のストップが維持されます。
+
+```typescript
+{
+  elevationHeatmap: {
+    // 海面下は濃い青、海岸は緑、3000 m で白
+    colorMap: new Float32Array([
+      0, 0.1, 0.4, 1,
+      0, 0.6, 0.2, 1,
+      1, 1, 1, 1,
+    ]),
+    colorStops: new Float32Array([-1000, 1, 3000]),
+  }
+}
+```
+
 ### maxHeight
 
 **型:** `number | undefined`
 
 **デフォルト:** `1000`
 
-**説明:** カラーマップの最大標高（メートル）。これを超える標高はカラーマップの最大色で表示されます。
+**説明:** カラーマップの最大標高（メートル）。これを超える標高はカラーマップの最大色で表示されます。`colorStops` を指定している間は色に影響しません。
 
 ```typescript
 { elevationHeatmap: { maxHeight: 3000 } }
@@ -66,7 +88,7 @@ const colorMap = new ColorMap("sequential", "YlGnBu", [
 
 **デフォルト:** `0`
 
-**説明:** カラーマップの最小標高（メートル）。これ以下の標高はカラーマップの最小色で表示されます。
+**説明:** カラーマップの最小標高（メートル）。これ以下の標高はカラーマップの最小色で表示されます。`colorStops` を指定している間は色に影響しません。
 
 ```typescript
 { elevationHeatmap: { minHeight: 0 } }
@@ -88,12 +110,24 @@ const colorMap = new ColorMap("sequential", "YlGnBu", [
 
 **型:** `number | undefined`
 
-**デフォルト:** `0`
+**デフォルト:** `10`
 
-**説明:** `logarithmic` が有効なときに、対数計算の基準として使用される境界値。
+**説明:** `logarithmic` が有効なときに、対数計算の基準として使用される境界値。`-logBoundary` から `logBoundary` までの標高は線形に、それ以外は対数でスケーリングされます。1 より大きい値である必要があり、1 以下の値は `10` として扱われます。
 
 ```typescript
 { elevationHeatmap: { logBoundary: 1000 } }
+```
+
+### filter
+
+**型:** `string | undefined`
+
+**デフォルト:** `"linear"`
+
+**説明:** DEM のピクセル間の標高をどのようにサンプリングするかを `"linear"` または `"nearest"` で指定します。`"linear"` はデコードした標高を補間して色をなめらかに変化させ、`"nearest"` は最も近いピクセルを使うため、DEM の各ピクセルが単色のブロックとして表示されます。それ以外の値は `"linear"` として扱われます。
+
+```typescript
+{ elevationHeatmap: { filter: "nearest" } }
 ```
 
 ## 使用例

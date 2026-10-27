@@ -30,7 +30,7 @@ navara_three では、レイヤーは以下の 4 種類に分類されます：
 
 #### update()
 
-レイヤーの設定を更新します。
+レイヤーの設定を更新します。標高ヒートマップの `colorMap` や `colorStops` を変更する場合は、代わりに [`view.updateLayerById()`](../../../three/api/threeview-functions/#updatelayerbyid) を使用してください。`update()` では色は更新されません。
 
 **Syntax:**
 

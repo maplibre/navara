@@ -99,7 +99,12 @@ to a slot. What each source is, and how much prep it needs:
   surface normal; decoded during the bake (see [Hillshade](#hillshade-a-worked-example)).
   No prep as an input.
 - **Elevation DEM** — encoded heights. Decoded and mapped through the shared
-  colormap during the bake by the elevation heatmap enhancer. On Geographic
+  colormap during the bake by the elevation heatmap enhancer. The colormap is
+  an atlas of color ramps, one row per layer (`colorMapAtlas.ts`): each stop is
+  a premultiplied color texel plus a position texel, and the shader
+  binary-searches the positions (`sampleColorRamp`), so `colorStops` hit their
+  exact elevations; plain colorMaps use evenly spaced 0..1 positions matched
+  against the min/max-normalized height. On Geographic
   terrain it runs through the same raster mosaic first, copied
   value-preserving so the encoded texels survive.
 - **Watermask** — a single-channel land/water mask (quantized-mesh). A tile-wide

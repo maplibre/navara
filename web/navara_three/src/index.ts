@@ -519,6 +519,26 @@ export type ViewEvents = {
  * await view.init();
  * ```
  */
+
+/**
+ * An explicit `colorMap: undefined` / `colorStops: undefined` clears that
+ * array, but `undefined` is dropped when the description crosses into Rust,
+ * which would then keep the old hash and skip re-compositing. Forward the clear
+ * as an empty array instead (treated as "none" on both sides).
+ */
+function withExplicitColorRampClears(l: LayerDescription): LayerDescription {
+  if (l.type !== "raster" || !l.elevationHeatmap) return l;
+  const elevationHeatmap = { ...l.elevationHeatmap };
+  let changed = false;
+  for (const key of ["colorMap", "colorStops"] as const) {
+    if (key in elevationHeatmap && elevationHeatmap[key] === undefined) {
+      elevationHeatmap[key] = new Float32Array(0);
+      changed = true;
+    }
+  }
+  return changed ? { ...l, elevationHeatmap } : l;
+}
+
 export default class ThreeView<
   D extends Descriptions = EmptyDescriptions,
 > extends EventHandler<ViewEvents> {
@@ -1138,7 +1158,6 @@ export default class ThreeView<
       fov: { value: (this._camera.raw.fov * Math.PI) / 180 },
       screenHeightPx: { value: height },
       time: { value: 0 },
-      colorMapTexture: { value: null },
       waterTexture: { value: null },
       terrainExaggeration: { value: IDENTITY_TERRAIN_EXAGGERATION },
       // Set from the engine's first `terrain_exaggeration_updated` event.
@@ -1814,6 +1833,9 @@ export default class ThreeView<
     // Cleanup hillshade context (temp DEMs, generator, etc.)
     this._hillshadeContext.dispose();
 
+    // Elevation heatmap colorMap atlas texture and stored colorMaps
+    this._colorMapAtlas.dispose();
+
     // Drop declutter participants so the manager doesn't retain removed
     // meshes' GPU/font resources past this view's lifetime.
     this._declutter.dispose();
@@ -1963,14 +1985,60 @@ export default class ThreeView<
   }
 
   /**
-   * Updates the colorMap texture atlas uniform.
-   * Should be called after modifying the colorMap atlas (adding/removing layers).
+   * Syncs a layer's elevation heatmap colorMap / colorStops into the atlas.
+   * Tiles are not marked here: Rust keeps hashes of both arrays in the layer's
+   * elevation heatmap config, so a change fails the per-tile material comparison and
+   * re-composites exactly the tiles drawing this layer (see
+   * `updateLayerById` for how an explicit clear reaches Rust). Atlas rows may
+   * shift on add/remove, but composites resolve rows when they run and bake
+   * final colors, so other layers' tiles stay valid.
+   *
+   * Mirrors Rust's partial-update merge: `colorMap` and `colorStops` each keep
+   * their current value when an update omits them (or omits `elevationHeatmap`
+   * entirely). An explicit `undefined` clears that one: no `colorMap` means the
+   * default grayscale, no `colorStops` means evenly spaced colors. Deleting the
+   * layer (`l === undefined`) clears both.
    */
-  private _updateColorMapTexture() {
-    const texture = this._colorMapAtlas.getTexture();
-    if (this._uniforms.colorMapTexture) {
-      this._uniforms.colorMapTexture.value = texture;
+  private _syncColorMap(layerId: string, l: LayerDescription | undefined) {
+    // Elevation heatmap layers sample the shared colorMap atlas: reserve its
+    // texture unit for tiles created from now on.
+    if (l?.type === "raster" && l.elevationHeatmap) {
+      this._defaultTextureOptions.additionalTexturesInUse = {
+        ...this._defaultTextureOptions.additionalTexturesInUse,
+        colorMapTexture: true,
+      };
     }
+    let colorMap: Float32Array | undefined;
+    let colorStops: Float32Array | undefined;
+    if (l !== undefined) {
+      const elevationHeatmap =
+        l.type === "raster" ? l.elevationHeatmap : undefined;
+      const hasColorMap = !!elevationHeatmap && "colorMap" in elevationHeatmap;
+      const hasColorStops =
+        !!elevationHeatmap && "colorStops" in elevationHeatmap;
+      if (!hasColorMap && !hasColorStops) return; // keep the current ramp
+      const current = this._colorMapAtlas.get(layerId);
+      // Plain number arrays (JS callers, JSON-defined layers) are accepted
+      // too, as Rust accepts them.
+      // An empty array is how updateLayerById forwards an explicit clear.
+      const asArray = (v: unknown) => {
+        const array =
+          v instanceof Float32Array
+            ? v
+            : Array.isArray(v)
+              ? Float32Array.from(v as number[])
+              : undefined;
+        return array?.length ? array : undefined;
+      };
+      colorMap = hasColorMap
+        ? asArray(elevationHeatmap.colorMap)
+        : current?.colorMap;
+      colorStops = hasColorStops
+        ? asArray(elevationHeatmap.colorStops)
+        : current?.colorStops;
+    }
+    // The atlas texture is rebuilt lazily by the next tile composite.
+    this._colorMapAtlas.setColorMap(layerId, colorMap, colorStops);
   }
 
   /** Returns true if the scene was updated and needs to be rendered. */
@@ -2153,22 +2221,8 @@ export default class ThreeView<
     );
     this.layersManager.add(layer);
 
-    // Register colorMap for elevation heatmap layers (raster type only)
-    if (
-      l.type === "raster" &&
-      l.elevationHeatmap?.colorMap &&
-      l.elevationHeatmap.colorMap instanceof Float32Array
-    ) {
-      this._colorMapAtlas.setColorMap(layerId, l.elevationHeatmap.colorMap);
-      // Update the texture uniform
-      this._updateColorMapTexture();
-    }
-
-    // Clean up colorMap when layer is deleted
-    layer.on("deleted", () => {
-      this._colorMapAtlas.removeColorMap(layerId);
-      this._updateColorMapTexture();
-    });
+    this._syncColorMap(layerId, l);
+    layer.on("deleted", () => this._syncColorMap(layerId, undefined));
 
     return layer;
   }
@@ -2494,6 +2548,8 @@ export default class ThreeView<
   /**
    * Updates an existing resource layer's configuration by its ID.
    * Only works for resource layers added via `addLayer()`.
+   * Use this rather than `Layer.update()` to change an elevation heatmap's
+   * `colorMap`: the colorMap atlas lives on the view and is synced here.
    * @param id - The unique identifier of the layer to update
    * @param l - New layer configuration
    */
@@ -2501,17 +2557,8 @@ export default class ThreeView<
     invariant(this._core);
     const target = this.layersManager.get(id);
     if (!target || !(target instanceof Layer)) return;
-    target.update(l);
-
-    // Update colorMap if this is an elevation heatmap layer
-    if (
-      l.type === "raster" &&
-      l.elevationHeatmap?.colorMap &&
-      l.elevationHeatmap.colorMap instanceof Float32Array
-    ) {
-      this._colorMapAtlas.setColorMap(id, l.elevationHeatmap.colorMap);
-      this._updateColorMapTexture();
-    }
+    target.update(withExplicitColorRampClears(l));
+    this._syncColorMap(id, l);
   }
 
   /**

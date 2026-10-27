@@ -20,7 +20,8 @@
                 "https://tiles.mapterhorn.com/{z}/{x}/{y}.webp"
             ],
             "tileSize": 512,
-            "encoding": "terrarium"
+            "encoding": "terrarium",
+            "maxzoom": 10
         },
         "terrain-2": {
             "type": "raster-dem",
@@ -28,7 +29,8 @@
                 "https://tiles.mapterhorn.com/{z}/{x}/{y}.webp"
             ],
             "tileSize": 512,
-            "encoding": "terrarium"
+            "encoding": "terrarium",
+            "maxzoom": 10
         }
     },
     "layers": [
@@ -44,23 +46,36 @@
             "id": "color-relief1",
             "type": "color-relief",
             "source": "terrain-1",
+            "metadata": {
+                "test": [
+                    "interpolate-hcl with exponential interpolation (rendered linearly between stops, as in MapLibre)",
+                    "unevenly spaced stops: transparent sea, sharp coastline at 0-1 m, Mt. Fuji summit at 3776 m",
+                    "stop colors as hex with alpha, rgb()/hsl() strings, a color name, and rgb/rgba/to-color expressions",
+                    "color-relief-opacity zoom expression: 0.9 at z8 fading to 0.4 at z12",
+                    "resampling zoom step: linear below z12, nearest from z12"
+                ]
+            },
             "paint": {
-                "color-relief-opacity": 0.5,
-                "color-relief-color": [
+                "color-relief-opacity": [
                     "interpolate",
                     ["linear"],
-                    ["elevation"],
-                    0, "#000000",
-                    500, "#000022",
-                    1000, "#000044",
-                    1500, "#000066",
-                    2000, "#000088",
-                    2500, "#0000AA",
-                    3000, "#0000CC",
-                    3500, "#0000EE",
-                    4000, "#0000FF"
+                    ["zoom"],
+                    8, 0.9,
+                    12, 0.4
                 ],
-                "resampling": "linear"
+                "color-relief-color": [
+                    "interpolate-hcl",
+                    ["exponential", 1.5],
+                    ["elevation"],
+                    0, "#0000ff00",
+                    1, "rgb(0, 128, 64)",
+                    100, ["rgb", 120, 200, 80],
+                    500, "hsl(60, 80%, 55%)",
+                    1500, ["to-color", "#f9781e"],
+                    2500, ["rgba", 142, 10, 1, 0.9],
+                    3776, "white"
+                ],
+                "resampling": ["step", ["zoom"], "linear", 12, "nearest"]
             },
             "layout": {
                 "visibility": "visible"
@@ -70,21 +85,33 @@
             "id": "color-relief2",
             "type": "color-relief",
             "source": "terrain-2",
+            "metadata": {
+                "test": [
+                    "a second color-relief layer stacked on the first, with its own stops and range",
+                    "interpolate-lab with cubic-bezier interpolation",
+                    "contrasting colors so the overlay is easy to spot: transparent below 1000 m, translucent purple at 2000 m, opaque cyan from 3000 m",
+                    "input as an expression of elevation: [\"max\", [\"elevation\"], 0] (stop values are still meters)",
+                    "a stop color that reads the elevation: alpha = elevation / 3333.33, i.e. 0.6 at the 2000 m stop",
+                    "constant color-relief-opacity",
+                    "resampling as a legacy zoom function (converted by migrate)"
+                ]
+            },
             "paint": {
-                "color-relief-opacity": 0.5,
+                "color-relief-opacity": 0.8,
                 "color-relief-color": [
-                    "interpolate",
-                    ["linear"],
-                    ["elevation"],
-                    0, "#000000",
-                    500, "#4664da",
-                    1000, "#35abf8",
-                    1500, "#18ddc2",
-                    2000, "#b1f936",
-                    2500, "#f9781e",
-                    3000, "#8e0a01"
+                    "interpolate-lab",
+                    ["cubic-bezier", 0.4, 0, 0.6, 1],
+                    ["max", ["elevation"], 0],
+                    1000, "rgba(128, 0, 255, 0)",
+                    2000, ["rgba", 128, 0, 255, ["/", ["elevation"], 3333.33]],
+                    3000, "#00ffff"
                 ],
-                "resampling": "linear"
+                "resampling": {
+                    "stops": [
+                        [10, "linear"],
+                        [13, "nearest"]
+                    ]
+                }
             },
             "layout": {
                 "visibility": "visible"

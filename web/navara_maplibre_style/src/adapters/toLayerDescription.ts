@@ -3,8 +3,6 @@
  */
 
 import {
-  ColorMap,
-  type ColorTuple,
   type LayerDescription,
   type Source,
   type SourceGeometryType,
@@ -19,6 +17,7 @@ import {
   expressionUsesZoom,
 } from "../utils/expressionHelpers";
 
+import { parseColorReliefStops, toColorReliefRamp } from "./colorRelief";
 import { CONSTRUCTION_ZOOM, resolveSymbolOrientation } from "./symbolAlignment";
 import { toNavaraColor } from "./toEvaluatedValue";
 
@@ -62,6 +61,19 @@ export function symbolLayerFollowsZoom(styleLayer: StyleLayer): boolean {
       expressionUsesZoom(values?.[key]),
     );
   });
+}
+
+/**
+ * Whether a color-relief layer's opacity or resampling depends on zoom, so its
+ * description must be rebuilt as the zoom changes.
+ */
+export function colorReliefLayerFollowsZoom(styleLayer: StyleLayer): boolean {
+  if (styleLayer.type !== "color-relief") return false;
+  const paint = (styleLayer.paint ?? {}) as Record<string, unknown>;
+  return (
+    expressionUsesZoom(paint["color-relief-opacity"]) ||
+    expressionUsesZoom(paint.resampling)
+  );
 }
 
 /**
@@ -310,6 +322,8 @@ function createHillshadeLayer(source: Source): LayerDescription {
 function createColorReliefLayer(
   source: Source,
   styleLayer: StyleLayer,
+  engine?: StyleEngine,
+  zoom?: number,
 ): LayerDescription | null {
   if (styleLayer.type !== "color-relief") return null;
 
@@ -322,57 +336,65 @@ function createColorReliefLayer(
     .default as number;
   const defaultResampling = colorReliefSpec.resampling.default as string;
 
+  // Opacity and resampling may be zoom expressions (or legacy zoom
+  // functions): evaluate them at `zoom`. The plugin rebuilds the description
+  // as the zoom changes (see colorReliefLayerFollowsZoom).
+  const evaluate = (key: "color-relief-opacity" | "resampling") =>
+    engine
+      ? evaluateLayerProperty(engine, styleLayer, "paint", key, zoom)
+      : paint[key];
+  const opacityValue = evaluate("color-relief-opacity");
   const opacity =
-    typeof paint["color-relief-opacity"] === "number"
-      ? paint["color-relief-opacity"]
+    typeof opacityValue === "number"
+      ? Math.min(Math.max(opacityValue, 0), 1)
       : defaultOpacity;
-  const resampling = paint.resampling || defaultResampling;
+  const resamplingValue = evaluate("resampling") ?? defaultResampling;
+  let resampling = defaultResampling;
+  if (resamplingValue === "linear" || resamplingValue === "nearest") {
+    resampling = resamplingValue;
+  } else {
+    console.warn(
+      `Color-relief layer "${styleLayer.id}": resampling must evaluate to "linear" or "nearest". ` +
+        `Using "${defaultResampling}".`,
+    );
+  }
 
-  // Parse color-relief-color expression to extract color stops.
-  // Expected format: ["interpolate", ["linear"], ["elevation"], stop1, color1, stop2, color2, ...]
-  let colorMap: ColorMap | undefined;
-  let minHeight: number | undefined;
-  let maxHeight: number | undefined;
-
-  if (Array.isArray(colorExpression) && colorExpression.length >= 3) {
-    // Validate expression structure
-    if (
-      colorExpression[0] !== "interpolate" ||
-      !Array.isArray(colorExpression[1])
-    ) {
-      console.warn(
-        `Color-relief layer "${styleLayer.id}": color-relief-color must be an interpolate expression. ` +
-          `Expected: ["interpolate", [...], ["elevation"], ...]`,
+  // Evaluate the whole color expression at each stop's elevation, as MapLibre
+  // does (see parseColorReliefStops).
+  const colorSpec = engine?.getPaintSpec("color-relief", "color-relief-color");
+  let evaluateAt: ((elevation: number) => unknown) | undefined;
+  if (engine && colorSpec && colorExpression !== undefined) {
+    try {
+      const evaluateColor = engine.createValueFn(
+        colorExpression as ValueExpression,
+        colorSpec,
       );
-    } else {
-      const colors: ColorTuple[] = [];
-      const stops: number[] = [];
-
-      // Skip first 3 elements: ["interpolate", ["linear"], ["elevation"]]
-      for (let i = 3; i < colorExpression.length; i += 2) {
-        const elevation = colorExpression[i];
-        const colorStr = colorExpression[i + 1];
-
-        if (typeof elevation === "number" && typeof colorStr === "string") {
-          stops.push(elevation);
-          // Parse color string to RGB
-          const colorObj = toNavaraColor(colorStr);
-          if (colorObj) {
-            colors.push(colorObj.color.toArray());
-          }
-        }
-      }
-
-      if (colors.length > 0 && stops.length > 0) {
-        minHeight = Math.min(...stops);
-        maxHeight = Math.max(...stops);
-        colorMap = new ColorMap("sequential", "Relief", colors);
-      }
+      evaluateAt = (elevation) =>
+        evaluateColor({
+          properties: undefined,
+          zoom: zoom ?? CONSTRUCTION_ZOOM,
+          elevation,
+        });
+    } catch (err) {
+      console.warn(
+        `Color-relief layer "${styleLayer.id}": failed to compile color-relief-color:`,
+        err,
+      );
+      return null;
     }
   }
 
-  // Validate that we successfully parsed the expression
-  if (minHeight === undefined || maxHeight === undefined) {
+  // Expected format: ["interpolate", ["linear"], ["elevation"], stop1, color1, stop2, color2, ...]
+  const stops = parseColorReliefStops(colorExpression, evaluateAt);
+  if (stops === undefined && Array.isArray(colorExpression)) {
+    console.warn(
+      `Color-relief layer "${styleLayer.id}": color-relief-color must be an interpolate expression over ["elevation"]. ` +
+        `Expected: ["interpolate", [...], ["elevation"], ...]`,
+    );
+    return null;
+  }
+  const ramp = stops && toColorReliefRamp(stops);
+  if (!ramp) {
     console.warn(
       `Color-relief layer "${styleLayer.id}": Failed to parse color-relief-color expression. ` +
         `Expected format: ["interpolate", ["linear"], ["elevation"], stop1, color1, stop2, color2, ...]`,
@@ -384,12 +406,12 @@ function createColorReliefLayer(
     type: "raster",
     source,
     elevationHeatmap: {
-      minHeight,
-      maxHeight,
+      minHeight: ramp.minHeight,
+      maxHeight: ramp.maxHeight,
       logarithmic: false,
       filter: resampling,
-      // Per-layer color mapping: flatten colorMap to Float32Array
-      colorMap: colorMap ? colorMap.flatten() : undefined,
+      colorMap: ramp.colorMap,
+      colorStops: ramp.colorStops,
     },
     raster: {
       opacity,
@@ -694,7 +716,7 @@ export function toLayerDescription(
     case "hillshade":
       return createHillshadeLayer(source);
     case "color-relief":
-      return createColorReliefLayer(source, styleLayer);
+      return createColorReliefLayer(source, styleLayer, engine, zoom);
     case "symbol":
       return createSymbolLayer(source, styleLayer, fontFamily, engine, zoom);
     default:

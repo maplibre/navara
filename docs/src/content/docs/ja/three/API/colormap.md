@@ -197,7 +197,7 @@ flatten(): Float32Array
 
 **Returns:**
 
-フラット化された RGB 配列（長さ = LUT の色数 × 3）
+アルファ値をすべて 1 にした、フラット化された RGBA 配列（長さ = LUT の色数 × 4）
 
 ## 使用例
 
@@ -232,7 +232,7 @@ const spectralColorMap = new ColorMap("diverging", "Spectral", [
 ]);
 
 // カラーマップを使った標高ヒートマップレイヤーを追加
-const heatmapSource = view.addSource({
+const demSource = view.addSource({
   type: "raster-dem",
   url: "https://example.com/terrain/{z}/{x}/{y}.png",
   elevationDecoder: TERRARIUM_ELEVATION_DECODER(),
@@ -240,7 +240,7 @@ const heatmapSource = view.addSource({
 });
 view.addLayer({
   type: "raster",
-  source: heatmapSource,
+  source: demSource,
   elevationHeatmap: {
     colorMap: spectralColorMap.flatten(),
     maxHeight: 3000,
@@ -303,7 +303,7 @@ const colorMaps = {
   ]),
 };
 
-const heatmapSource = view.addSource({
+const demSource = view.addSource({
   type: "raster-dem",
   url: "https://example.com/terrain/{z}/{x}/{y}.png",
   elevationDecoder: TERRARIUM_ELEVATION_DECODER(),
@@ -312,7 +312,7 @@ const heatmapSource = view.addSource({
 
 const layerDef: LayerDescription = {
   type: "raster",
-  source: heatmapSource.id,
+  source: demSource.id,
   elevationHeatmap: {
     colorMap: colorMaps.rdYlGn.flatten(),
     maxHeight: 3000,

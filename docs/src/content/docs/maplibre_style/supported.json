@@ -58,6 +58,11 @@
         "fill-extrusion-vertical-gradient": {
           "status": "❌"
         }
+      },
+      "layout": {
+        "visibility": {
+          "status": "✅"
+        }
       }
     },
     "line": {
@@ -103,6 +108,9 @@
         },
         "line-round-limit": {
           "status": "❌"
+        },
+        "visibility": {
+          "status": "✅"
         }
       }
     },
@@ -141,6 +149,11 @@
         },
         "circle-pitch-alignment": {
           "status": "❌"
+        }
+      },
+      "layout": {
+        "visibility": {
+          "status": "✅"
         }
       }
     },
@@ -277,6 +290,9 @@
         },
         "text-line-height": {
           "status": "❌"
+        },
+        "visibility": {
+          "status": "✅"
         }
       }
     },
@@ -683,7 +699,7 @@
       "status": "❌"
     },
     "elevation": {
-      "status": "❌"
+      "status": "✅"
     },
     "is-supported-script": {
       "status": "✅"

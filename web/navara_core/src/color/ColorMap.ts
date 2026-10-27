@@ -71,15 +71,16 @@ export class ColorMap<T extends ColorMapType = ColorMapType> {
 
   /**
    * Flatten the color map LUT into a Float32Array for WASM/GPU usage.
-   * Each color tuple [r, g, b] is flattened into consecutive array elements.
-   * @returns A Float32Array with length = lut.length * 3
+   * Each color tuple [r, g, b] becomes [r, g, b, 1] (RGBA, fully opaque).
+   * @returns A Float32Array with length = lut.length * 4
    */
   flatten(): Float32Array {
-    const flatArray = new Float32Array(this.lut.length * 3);
+    const flatArray = new Float32Array(this.lut.length * 4);
     for (let i = 0; i < this.lut.length; i++) {
-      flatArray[i * 3] = this.lut[i][0];
-      flatArray[i * 3 + 1] = this.lut[i][1];
-      flatArray[i * 3 + 2] = this.lut[i][2];
+      flatArray[i * 4] = this.lut[i][0];
+      flatArray[i * 4 + 1] = this.lut[i][1];
+      flatArray[i * 4 + 2] = this.lut[i][2];
+      flatArray[i * 4 + 3] = 1;
     }
     return flatArray;
   }

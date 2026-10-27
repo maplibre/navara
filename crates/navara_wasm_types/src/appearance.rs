@@ -2324,11 +2324,21 @@ pub struct ElevationHeatmapMaterial {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub filter: Option<String>,
     /// Color map lookup table for this layer's elevation heatmap rendering.
-    /// Flattened RGB array: [r0,g0,b0, r1,g1,b1, ...].
-    /// When None, the layer will not apply color mapping.
+    /// Flattened RGBA array: [r0,g0,b0,a0, r1,g1,b1,a1, ...], evenly spaced over
+    /// [minHeight, maxHeight]. When None, the elevation renders as grayscale.
+    /// Managed on the web side (ColorMapAtlas); Rust only hashes it to detect
+    /// changes.
     #[wasm_bindgen(js_name = colorMap, getter_with_clone)]
     #[serde(rename = "colorMap", skip_serializing_if = "Option::is_none")]
     pub color_map: Option<Vec<f32>>,
+    /// Optional ascending stop elevations in meters, one per colorMap entry.
+    /// When set, colorMap entry i is placed at elevation colorStops[i] instead
+    /// of being evenly spaced over [minHeight, maxHeight].
+    /// Managed on the web side (ColorMapAtlas); Rust only hashes it to detect
+    /// changes.
+    #[wasm_bindgen(js_name = colorStops, getter_with_clone)]
+    #[serde(rename = "colorStops", skip_serializing_if = "Option::is_none")]
+    pub color_stops: Option<Vec<f32>>,
 }
 
 /// Hillshade render options for a `raster` layer. The elevation decoder is taken

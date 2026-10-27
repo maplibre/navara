@@ -2,7 +2,9 @@ use bevy_ecs::prelude::*;
 use bevy_ecs::system::SystemParam;
 use navara_buffer_store::{BufferStore, Handle};
 use navara_component::{Deleted, Order, OrderByDistance, Priority, Rendered};
-use navara_core::{Aabb, PoleSides, TileXYZ, TilingScheme, WGS84_64, vec3_to_xyz};
+use navara_core::{
+    Aabb, ElevationDecoder, PoleSides, TileXYZ, TilingScheme, WGS84_64, vec3_to_xyz,
+};
 use navara_data_requester::{DataManager, DataRequester, DataRequesterStatus};
 use navara_fog::{DynamicSse, Fog};
 use navara_frame::FrameManager;
@@ -130,7 +132,7 @@ pub fn init_globe_tiling(
             // The scheme gates whether raster layers drape via baked slots
             // (`snapshot_raster_bake_inputs` snapshots nothing on non-Geographic
             // globes): without a bump, a snapshot built under the old scheme
-            // would go stale and every raster/heatmap layer would resolve empty
+            // would go stale and every raster/elevation heatmap layer would resolve empty
             // (fully transparent) until some unrelated bump. Runs before the
             // snapshot system, so this is captured the same frame.
             raster_revision.bump();
@@ -590,7 +592,7 @@ pub fn transfer_mesh(
             l.source_id
                 .as_deref()
                 .and_then(|id| source_store.get(id))
-                .and_then(|s| s.elevation_decoder().copied())
+                .and_then(dem_decoder)
         };
 
         for (i, (l, _)) in sorted_layers.iter().enumerate() {
@@ -613,20 +615,7 @@ pub fn transfer_mesh(
             colors.push(a.color);
             tile_show_bounding_box = tile_show_bounding_box || a.show_bounding_box;
 
-            // Collect elevation heatmap layer data
-            if let Some(heatmap_config) = &l.elevation_heatmap_config {
-                if let Some(decoder) = layer_decoder(l) {
-                    elevation_heatmap_layers.push(Some(ElevationHeatmapLayerData {
-                        layer_id: l.layer_id.clone(),
-                        config: heatmap_config.clone(),
-                        decoder,
-                    }));
-                } else {
-                    elevation_heatmap_layers.push(None);
-                }
-            } else {
-                elevation_heatmap_layers.push(None);
-            }
+            elevation_heatmap_layers.push(elevation_heatmap_layer_data(l, layer_decoder));
 
             // Mark whether this layer is a hillshade
             if let Some(hillshade_config) = &l.hillshade_config {
@@ -1566,6 +1555,33 @@ pub fn sync_terrain_layer_changes(
     tc.force_update = true;
 }
 
+/// The DEM decoder of a layer's source, or `None` when the source carries no
+/// decodable DEM. `Source::elevation_decoder` panics for non-DEM sources (e.g. a
+/// `raster-tile` source referenced by a layer with `elevationHeatmap`), so only
+/// DEM-capable variants are asked.
+fn dem_decoder(source: &navara_source::Source) -> Option<ElevationDecoder> {
+    match source {
+        navara_source::Source::RasterDem(_) | navara_source::Source::QuantizedMesh(_) => {
+            source.elevation_decoder().copied()
+        }
+        _ => None,
+    }
+}
+
+/// Elevation heatmap slot data (config + decoder + layer_id) for one layer;
+/// `None` for layers without an elevation heatmap or when the layer's source has no DEM decoder.
+fn elevation_heatmap_layer_data(
+    l: &TilesLayer,
+    layer_decoder: impl Fn(&TilesLayer) -> Option<ElevationDecoder>,
+) -> Option<ElevationHeatmapLayerData> {
+    let config = l.elevation_heatmap_config.as_ref()?;
+    Some(ElevationHeatmapLayerData {
+        layer_id: l.layer_id.clone(),
+        config: config.clone(),
+        decoder: layer_decoder(l)?,
+    })
+}
+
 #[allow(clippy::too_many_arguments, clippy::type_complexity)]
 pub fn update_mesh_material(
     mut tc: ResMut<TileCacheManager>,
@@ -1676,12 +1692,11 @@ pub fn update_mesh_material(
             l.source_id
                 .as_deref()
                 .and_then(|id| source_store.get(id))
-                .and_then(|s| s.elevation_decoder().copied())
+                .and_then(dem_decoder)
         };
 
         for (i, (l, _)) in sorted_layers.iter().enumerate() {
             let a = l.appearance().unwrap();
-            let is_heatmap = l.elevation_heatmap_config.is_some();
 
             if l.hillshade_config.is_some() {
                 let own_entity = tile
@@ -1727,7 +1742,7 @@ pub fn update_mesh_material(
                 }
             } else if terrain_is_geographic {
                 // Baked drape (non-hillshade raster on Geographic terrain, elevation
-                // heatmaps included): the N:M overlapping WM tiles are baked into ONE
+                // elevation heatmaps included): the N:M overlapping WM tiles are baked into ONE
                 // render target per layer on the web side (resolved by
                 // `get_raster_tiles` — mirroring the texturized-vector drape), so the
                 // layer costs exactly one composite slot instead of one per
@@ -1738,7 +1753,7 @@ pub fn update_mesh_material(
                 // fragment None + identity UV: the web binds the baked render target
                 // (spanning the terrain tile's Mercator-projected extent) to this slot;
                 // `layer_reproject` with identity UV reprojects it by exactly the
-                // terrain `[south, north]` band, like a vector drape slot. Heatmap
+                // terrain `[south, north]` band, like a vector drape slot. Elevation heatmap
                 // slots reproject the same way — the bake copies the encoded DEM
                 // texels raw (nearest, no color conversion), so the composite decode
                 // stays valid.
@@ -1749,22 +1764,7 @@ pub fn update_mesh_material(
                 layer_fragments.push(None);
                 layer_uv_transforms.push(None);
                 layer_reproject.push(true);
-                // Collect elevation heatmap layer data (config + decoder + layer_id)
-                if is_heatmap {
-                    if let (Some(config), Some(decoder)) =
-                        (&l.elevation_heatmap_config, layer_decoder(l))
-                    {
-                        elevation_heatmap_layers.push(Some(ElevationHeatmapLayerData {
-                            layer_id: l.layer_id.clone(),
-                            config: config.clone(),
-                            decoder,
-                        }));
-                    } else {
-                        elevation_heatmap_layers.push(None);
-                    }
-                } else {
-                    elevation_heatmap_layers.push(None);
-                }
+                elevation_heatmap_layers.push(elevation_heatmap_layer_data(l, layer_decoder));
             } else {
                 // WebMercator terrain (the Geographic case is the baked branch
                 // above): the drape is same-scheme, so the resolve yields at
@@ -1795,24 +1795,7 @@ pub fn update_mesh_material(
                     layer_fragments.push(Some(r.entity));
                     layer_uv_transforms.push(Some(r.uv_transform));
                     layer_reproject.push(false);
-                    // Collect elevation heatmap layer data (config + decoder + layer_id)
-                    if is_heatmap {
-                        if let (Some(config), Some(decoder)) =
-                            (&l.elevation_heatmap_config, layer_decoder(l))
-                        {
-                            elevation_heatmap_layers.push(Some(ElevationHeatmapLayerData {
-                                layer_id: l.layer_id.clone(),
-                                config: config.clone(),
-                                decoder,
-                            }));
-                        } else {
-                            elevation_heatmap_layers.push(None);
-                        }
-                    } else {
-                        elevation_heatmap_layers.push(None);
-                    }
-                } else {
-                    elevation_heatmap_layers.push(None);
+                    elevation_heatmap_layers.push(elevation_heatmap_layer_data(l, layer_decoder));
                 }
             }
         }
@@ -5000,5 +4983,25 @@ mod remesh_tests {
                 .get::<RemeshPending>(setup.rendered_tile_entity)
                 .is_none()
         );
+    }
+}
+
+#[cfg(test)]
+mod dem_decoder_tests {
+    use super::dem_decoder;
+
+    #[test]
+    fn non_dem_sources_have_no_decoder_instead_of_panicking() {
+        // A raster-tile source referenced by an elevation heatmap layer must
+        // not reach Source::elevation_decoder's unreachable!().
+        let raster = navara_source::Source::RasterTile(navara_source::RasterTileSource {
+            source_id: "osm".to_string(),
+            url: String::new(),
+            tms: false,
+            min_zoom: 0,
+            max_zoom: 19,
+            overscaled_max_zoom: 19,
+        });
+        assert_eq!(dem_decoder(&raster), None);
     }
 }

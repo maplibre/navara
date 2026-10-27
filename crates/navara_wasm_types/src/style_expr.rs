@@ -55,6 +55,7 @@ impl CompiledExpression {
     /// * `properties_json` - Feature properties as JSON object
     /// * `zoom` - Current zoom level
     /// * `geometry_type` - Optional geometry type string (e.g., "Point", "Polygon")
+    /// * `elevation` - Optional terrain elevation in meters for `["elevation"]`
     ///
     /// # Returns
     /// Evaluated value as JsValue. Supported types:
@@ -70,6 +71,7 @@ impl CompiledExpression {
         properties_json: JsValue,
         zoom: f64,
         geometry_type: Option<String>,
+        elevation: Option<f64>,
     ) -> Result<JsValue, JsValue> {
         // 1. Deserialize properties from JSON
         let properties_json: JsonValue = serde_wasm_bindgen::from_value(properties_json)
@@ -86,9 +88,7 @@ impl CompiledExpression {
             state: BTreeMap::new(), // Interactive states (hover/selected) set by renderer
             geometry: Vec::new(),   // Coordinates for geometric expressions (distance, area)
         };
-        let context = EvaluationContext::new()
-            .with_zoom(zoom)
-            .with_feature(feature);
+        let context = expression_context(zoom, feature, elevation);
 
         // 4. Evaluate expression
         let result = evaluate(&self.expr, &context)
@@ -181,6 +181,16 @@ impl CompiledFilter {
 }
 
 // Helper functions to convert between JSON and maplibre-expr Value types
+
+/// Evaluation context for a compiled expression; `elevation` feeds
+/// `["elevation"]` (maplibre-expr has no builder for it).
+fn expression_context(zoom: f64, feature: Feature, elevation: Option<f64>) -> EvaluationContext {
+    let mut context = EvaluationContext::new()
+        .with_zoom(zoom)
+        .with_feature(feature);
+    context.elevation = elevation;
+    context
+}
 
 fn json_to_value_map(json: &JsonValue) -> Result<BTreeMap<String, Value>, JsValue> {
     match json {
@@ -478,6 +488,25 @@ mod tests {
 
         let result = evaluate(&expr, &context).expect("Failed to evaluate");
         assert!(matches!(result, Value::Number(n) if n == 5.0));
+    }
+
+    #[test]
+    fn test_elevation_is_passed_to_the_context() {
+        // A color-relief style expression: elevation in feet as the input.
+        let expr_json = json!(["*", ["elevation"], 3.28]);
+        let expr = parse(&expr_json).expect("Failed to parse");
+        let expr = typecheck(&expr, None, false).expect("Failed to typecheck");
+        let feature = Feature {
+            id: None,
+            properties: BTreeMap::new(),
+            geometry_type: None,
+            state: BTreeMap::new(),
+            geometry: Vec::new(),
+        };
+
+        let context = super::expression_context(0.0, feature, Some(100.0));
+        let result = evaluate(&expr, &context).expect("Failed to evaluate");
+        assert!(matches!(result, Value::Number(n) if (n - 328.0).abs() < 1e-9));
     }
 
     #[test]

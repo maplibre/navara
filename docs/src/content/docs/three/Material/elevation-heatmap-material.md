@@ -23,7 +23,7 @@ Because it decodes DEM tiles, it requires a [`raster-dem`](../../../three/source
 
 **Default:** `undefined`
 
-**Description:** Color map lookup table for this layer. A flattened RGB array `[r0,g0,b0, r1,g1,b1, ...]` where each color component is in the range [0, 1]. Use `ColorMap.flatten()` to convert a ColorMap instance to this format.
+**Description:** Color map lookup table for this layer. A flattened RGBA array `[r0,g0,b0,a0, r1,g1,b1,a1, ...]` where each component is in the range [0, 1]. Entries are evenly spaced from `minHeight` to `maxHeight` (or placed at `colorStops`), and the alpha makes those elevations translucent or transparent. Use `ColorMap.flatten()` to convert a ColorMap instance to this format (its colors are opaque). When omitted, the elevation is shown in grayscale, from black at `minHeight` to white at `maxHeight`. To change the color map of an added layer, pass the new layer description to `view.updateLayerById()`. An update that leaves out `colorMap` keeps the current one, and `colorMap: undefined` switches back to grayscale. `layer.update()` does not update the color map.
 
 ```typescript
 import { ColorMap, Color } from "@navaramap/three";
@@ -48,13 +48,35 @@ const colorMap = new ColorMap("sequential", "YlGnBu", [
 }
 ```
 
+### colorStops
+
+**Type:** `Float32Array | undefined`
+
+**Default:** `undefined`
+
+**Description:** Elevation in meters of each `colorMap` entry, in ascending order. Entry `i` is drawn exactly at `colorStops[i]`, and elevations between two stops blend their colors, so unevenly spaced stops (for example a sharp coastline at 0 m) keep their exact positions. Elevations below the first stop or above the last stop show the first or last color. While set, `minHeight`, `maxHeight`, and `logarithmic` do not affect the colors. It must have one value per `colorMap` entry. Otherwise it is ignored with a warning and the colors are evenly spaced. An update that leaves out `colorStops` keeps the current stops.
+
+```typescript
+{
+  elevationHeatmap: {
+    // deep blue below sea level, green at the coast, white at 3000 m
+    colorMap: new Float32Array([
+      0, 0.1, 0.4, 1,
+      0, 0.6, 0.2, 1,
+      1, 1, 1, 1,
+    ]),
+    colorStops: new Float32Array([-1000, 1, 3000]),
+  }
+}
+```
+
 ### maxHeight
 
 **Type:** `number | undefined`
 
 **Default:** `1000`
 
-**Description:** Maximum elevation (meters) for the colormap. Elevations above this show in the colormap's maximum color.
+**Description:** Maximum elevation (meters) for the colormap. Elevations above this show in the colormap's maximum color. Has no effect on the colors while `colorStops` is set.
 
 ```typescript
 { elevationHeatmap: { maxHeight: 3000 } }
@@ -66,7 +88,7 @@ const colorMap = new ColorMap("sequential", "YlGnBu", [
 
 **Default:** `0`
 
-**Description:** Minimum elevation (meters) for the colormap. Elevations at or below this show in the colormap's minimum color.
+**Description:** Minimum elevation (meters) for the colormap. Elevations at or below this show in the colormap's minimum color. Has no effect on the colors while `colorStops` is set.
 
 ```typescript
 { elevationHeatmap: { minHeight: 0 } }
@@ -88,12 +110,24 @@ const colorMap = new ColorMap("sequential", "YlGnBu", [
 
 **Type:** `number | undefined`
 
-**Default:** `0`
+**Default:** `10`
 
-**Description:** Boundary value used as the base for logarithmic calculations when `logarithmic` is enabled.
+**Description:** Boundary value used as the base for logarithmic calculations when `logarithmic` is enabled. Elevations between `-logBoundary` and `logBoundary` are scaled linearly and the rest logarithmically. It must be greater than 1. A value of 1 or less falls back to `10`.
 
 ```typescript
 { elevationHeatmap: { logBoundary: 1000 } }
+```
+
+### filter
+
+**Type:** `string | undefined`
+
+**Default:** `"linear"`
+
+**Description:** How elevations are sampled between DEM pixels: `"linear"` or `"nearest"`. `"linear"` interpolates the decoded heights for smooth color transitions, and `"nearest"` uses the closest pixel, so each DEM pixel shows as a solid block of color. Any other value is treated as `"linear"`.
+
+```typescript
+{ elevationHeatmap: { filter: "nearest" } }
 ```
 
 ## Usage Examples

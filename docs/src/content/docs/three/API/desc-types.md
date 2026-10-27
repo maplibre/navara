@@ -30,7 +30,7 @@ A handle class for controlling resource layers (imagery, terrain, GeoJSON, 3D Ti
 
 #### update()
 
-Updates the layer settings.
+Updates the layer settings. To change an elevation heatmap's `colorMap` or `colorStops`, use [`view.updateLayerById()`](../../../three/api/threeview-functions/#updatelayerbyid) instead, because `update()` does not update the colors.
 
 **Syntax:**
 

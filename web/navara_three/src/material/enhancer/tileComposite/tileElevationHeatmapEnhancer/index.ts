@@ -9,8 +9,10 @@ import {
 
 /**
  * Elevation heatmap layers decode a DEM raster to a height and colorize it
- * through the shared 1-D colormap. The decoder uniforms and colormap sampler
- * are slot-independent; the decoder chunk is inlined via `includes`.
+ * through their own row of the shared colorMap atlas (see `ColorMapAtlas`).
+ * Decoder params, height range and color ramp location are per-slot uniform
+ * arrays; only the atlas sampler is slot-independent. The decoder and ramp
+ * lookup chunk is inlined via `includes`.
  */
 export function createTileElevationHeatmapEnhancer(
   active: boolean,

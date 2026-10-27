@@ -197,7 +197,7 @@ flatten(): Float32Array
 
 **Returns:**
 
-A flattened RGB array (length = number of colors in LUT x 3)
+A flattened RGBA array with every alpha set to 1 (length = number of colors in LUT x 4)
 
 ## Usage Examples
 
@@ -232,7 +232,7 @@ const spectralColorMap = new ColorMap("diverging", "Spectral", [
 ]);
 
 // Add an elevation heatmap layer with the color map
-const heatmapSource = view.addSource({
+const demSource = view.addSource({
   type: "raster-dem",
   url: "https://example.com/terrain/{z}/{x}/{y}.png",
   elevationDecoder: TERRARIUM_ELEVATION_DECODER(),
@@ -240,7 +240,7 @@ const heatmapSource = view.addSource({
 });
 view.addLayer({
   type: "raster",
-  source: heatmapSource,
+  source: demSource,
   elevationHeatmap: {
     colorMap: spectralColorMap.flatten(),
     maxHeight: 3000,
@@ -303,7 +303,7 @@ const colorMaps = {
   ]),
 };
 
-const heatmapSource = view.addSource({
+const demSource = view.addSource({
   type: "raster-dem",
   url: "https://example.com/terrain/{z}/{x}/{y}.png",
   elevationDecoder: TERRARIUM_ELEVATION_DECODER(),
@@ -312,7 +312,7 @@ const heatmapSource = view.addSource({
 
 const layerDef: LayerDescription = {
   type: "raster",
-  source: heatmapSource.id,
+  source: demSource.id,
   elevationHeatmap: {
     colorMap: colorMaps.rdYlGn.flatten(),
     maxHeight: 3000,

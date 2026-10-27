@@ -7,6 +7,8 @@ import type {
   WebGLRenderTarget,
 } from "three";
 
+import type { ColorRampRow } from "../colorMapAtlas";
+
 /**
  * Why a tile's composite atlas needs to be re-rendered.
  * Aggregated per-handle so a single composite pass services multiple updates.
@@ -123,7 +125,7 @@ export type ElevationHeatmapCompositeLayer = CompositeLayerBase & {
   opacity: number;
   /**
    * Same Mercator latitude reprojection band as {@link RasterCompositeLayer}:
-   * the heatmap decode samples the reprojected per-slot UV, so a DEM draped on
+   * the elevation heatmap decode samples the reprojected per-slot UV, so a DEM draped on
    * Geographic terrain (baked or direct) remaps identically to color imagery.
    */
   reproject?: [number, number];
@@ -133,10 +135,10 @@ export type ElevationHeatmapCompositeLayer = CompositeLayerBase & {
    */
   filter?: "linear" | "nearest";
   /**
-   * Row index (normalized 0-1) in the 2D colorMap atlas texture.
-   * Each elevation heatmap layer uses a different row of the atlas.
+   * The layer's color ramp in the colorMap atlas (row, stop count, and whether
+   * the layer set `colorStops`). Each elevation heatmap layer has its own row.
    */
-  colorMapRowIndex?: number;
+  colorRamp?: ColorRampRow;
   /**
    * Minimum height for elevation normalization (meters).
    * Heights below this value map to the start of the colorMap.
@@ -153,11 +155,6 @@ export type ElevationHeatmapCompositeLayer = CompositeLayerBase & {
    */
   logarithmic?: boolean;
   /**
-   * Logarithmic base value for pseudo-logarithmic scaling.
-   * Only used when logarithmic is true. Higher values compress high elevations more.
-   */
-  logBase?: number;
-  /**
    * Boundary value for pseudo-logarithmic scaling.
    * Values between -logBoundary and +logBoundary are scaled linearly; values outside
    * this range use logarithmic scaling. Only used when logarithmic is true.
@@ -173,6 +170,13 @@ export type ElevationHeatmapCompositeLayer = CompositeLayerBase & {
    */
   decoderOffsets?: Vector4;
 };
+
+/**
+ * Pseudo-log boundary used when an elevation heatmap enables `logarithmic`
+ * without a usable `logBoundary` (matches Rust's default). The boundary must
+ * be > 1: the shader divides by ln(logBoundary).
+ */
+export const DEFAULT_ELEVATION_HEATMAP_LOG_BOUNDARY = 10;
 
 export type CompositeLayer =
   | RasterCompositeLayer
@@ -191,6 +195,4 @@ export type CompositeGlobals = {
   watermask: Texture | null;
   /** Elevation heatmap colormap ramp, or null. */
   colorMapTexture: Texture | null;
-  /** Global min/max height across all elevation heatmap layers for shared normalization */
-  globalMinMaxHeight: Vector2; // (min, max)
 };

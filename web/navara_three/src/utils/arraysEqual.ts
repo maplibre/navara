@@ -1,9 +1,11 @@
+/** Element-wise `===` equality of two arrays or typed arrays. */
 export function arraysEqual<T>(
-  a: T[] | undefined,
-  b: T[] | undefined,
+  a: ArrayLike<T> | undefined,
+  b: ArrayLike<T> | undefined,
 ): boolean {
   if (a === b) return true;
   if (!a || !b) return false;
   if (a.length !== b.length) return false;
-  return a.every((v, i) => v === b[i]);
+  for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
+  return true;
 }

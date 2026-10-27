@@ -242,6 +242,4 @@ view.globe.opacity = 0.8;
 ## 関連項目
 
 - [Color クラス](../../../three/api/color/) - 色を表現するクラス
-- [ColorMap クラス](../../../three/api/colormap/) - カラーグラデーションの定義
-- [ElevationHeatmapMaterial](../../../three/material/elevation-heatmap-material/) - 標高ヒートマップマテリアル
 - [ThreeView クラス](../../../three/api/threeview-class/) - メインビュークラス
