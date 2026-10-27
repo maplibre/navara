@@ -111,6 +111,7 @@ Under `example/helpers/`:
 - `button.ts` — `addButton(label, onClick?)` plain DOM buttons for gallery examples (see the gallery code layout section)
 - `initialize.ts` — `initializeExample(view)` example-harness bootstrap + `SCENE_LOADED_MESSAGE`, required in every gallery example; the detail page owns the loading overlay (see the gallery code layout section)
 - `keys.ts` — API keys (e.g. `GOOGLE_MAPS_API_KEY`)
+- `overture.ts` — `resolveOvertureDatasets()` resolves the current Overture release from its STAC catalog and returns the per-theme PMTiles `Dataset`s; never hardcode a dated `tiles.overturemaps.org` URL (releases expire after ~60 days)
 
 Dev/debug page UI is **Tweakpane** (`new Pane({ title })` + `.addBinding(...).on("change", ...)`); gallery example UI is plain DOM buttons from `button.ts`. The gallery/detail pages additionally use React + local shadcn/ui components (`example/components/ui`, imported via `@/components/ui/*`) — those are example-only, not part of the library.
 

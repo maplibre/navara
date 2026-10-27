@@ -253,52 +253,46 @@ export const PMTILES_DATASETS = {
     attribution: "© OpenStreetMap contributors, © Protomaps",
     attributionUrl: "https://protomaps.com",
   },
-  // Overture Maps publishes a worldwide PMTiles archive per theme with every
-  // release, served over HTTP range requests. Each theme is a single global
-  // `.pmtiles` file (no `{z}/{x}/{y}`, and ~200 GB for `base`), so it resolves
-  // through a PmtilesSource exactly like the Protomaps sample above — only the
-  // header directory plus the visible tiles are ever fetched.
-  // Ref: https://docs.overturemaps.org/examples/overture-tiles/
-  //
-  // `tiles.overturemaps.org` is Overture's canonical CloudFront endpoint in
-  // front of the release S3 bucket (edge-cached, HTTP/2 — same bytes, lower
-  // latency than hitting the us-west-2 origin directly).
-  //
-  // NOTE: releases have a 60-day retention window, so a dated path 404s ~2
-  // months after its release date (`2026-07-22.0` expires ~2026-09-20).
-  // Expiry is per-object, not per-release: when `2026-06-17.0` lapsed,
-  // `divisions`/`transportation` 404'd while `base`/`buildings`/`places` were
-  // still served — which looks like a broken layer (labels vanish, basemap
-  // draws) rather than a dead source. Check the specific file, not the prefix.
-  // When the fetches start failing, bump the date below to a live release —
-  // list them at:
-  //   https://overturemaps-extras-us-west-2.s3.us-west-2.amazonaws.com/?list-type=2&prefix=tiles/&delimiter=/
-  overtureBase: {
-    url: "https://tiles.overturemaps.org/2026-07-22.0/base.pmtiles",
-    attribution: "© OpenStreetMap contributors, © Overture Maps Foundation",
-    attributionUrl: "https://overturemaps.org",
-  },
-  overtureDivisions: {
-    url: "https://tiles.overturemaps.org/2026-07-22.0/divisions.pmtiles",
-    attribution: "© OpenStreetMap contributors, © Overture Maps Foundation",
-    attributionUrl: "https://overturemaps.org",
-  },
-  overtureBuildings: {
-    url: "https://tiles.overturemaps.org/2026-07-22.0/buildings.pmtiles",
-    attribution: "© OpenStreetMap contributors, © Overture Maps Foundation",
-    attributionUrl: "https://overturemaps.org",
-  },
-  overturePlaces: {
-    url: "https://tiles.overturemaps.org/2026-07-22.0/places.pmtiles",
-    attribution: "© Overture Maps Foundation",
-    attributionUrl: "https://overturemaps.org",
-  },
 } satisfies Record<string, Dataset>;
+
+/**
+ * Overture Maps PMTiles archives: one worldwide `.pmtiles` per theme (no
+ * `{z}/{x}/{y}`, ~190 GB for `base`), served over HTTP range requests so a
+ * PmtilesSource fetches only the header directory plus the visible tiles.
+ * Ref: https://docs.overturemaps.org/examples/overture-tiles/
+ *
+ * Paths are release-dated and each release is retained for ~60 days, after
+ * which its files return 410 Gone. Resolve `release` at page start with
+ * `resolveOvertureDatasets()` (helpers/overture.ts) rather than pinning it.
+ */
+export const overtureDatasets = (release: string) => {
+  const url = (theme: string) =>
+    `https://tiles.overturemaps.org/${release}/${theme}.pmtiles`;
+  const osm = "© OpenStreetMap contributors, © Overture Maps Foundation";
+  const attributionUrl = "https://overturemaps.org";
+  return {
+    base: { url: url("base"), attribution: osm, attributionUrl },
+    divisions: { url: url("divisions"), attribution: osm, attributionUrl },
+    buildings: { url: url("buildings"), attribution: osm, attributionUrl },
+    places: {
+      url: url("places"),
+      attribution: "© Overture Maps Foundation",
+      attributionUrl,
+    },
+  } satisfies Record<string, Dataset>;
+};
 
 /**
  * 3D Tiles datasets (PLATEAU)
  */
 export const TILES_3D_DATASETS = {
+  // Global LOD1 buildings from Overture Maps, based on Re:Earth Terrain heights
+  // (pair with TERRAIN_DATASETS.reearthQuantizedMesh so bases meet the ground).
+  reearthBuildings: {
+    url: "https://buildings.reearth.land/tileset.json",
+    attributionHtml:
+      '<a href="https://buildings.reearth.land/">Re:Earth Buildings</a> — Buildings © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap contributors</a>, <a href="https://overturemaps.org/">Overture Maps Foundation</a> (ODbL)',
+  },
   plateauChiyoda: {
     url: "https://assets.cms.plateau.reearth.io/assets/db/070026-aa27-431b-8d53-7cc6b03244f8/13101_chiyoda-ku_pref_2023_citygml_1_op_bldg_3dtiles_13101_chiyoda-ku_lod2_no_texture/tileset.json",
     attribution:
@@ -446,6 +440,15 @@ export const LOCAL_DATASETS = {
       "Processed and created from the National Land Numerical Information (inter-airport flow volume data) - MLIT",
     attributionUrl:
       "https://nlftp.mlit.go.jp/ksj/gml/datalist/KsjTmplt-S10b-2014.html",
+  },
+  // PLATEAU time-series flood simulation (Arakawa, breach point BP002) as
+  // per-cell MVT; built by scripts/build-flood-pmtiles.ts from
+  // https://assets.cms.plateau.reearth.io/assets/c3/2822c1-a99f-46d0-9d73-766b685e2126/11100_saitama-shi_city_2024_flood-simulation_saitama-BP002.czml
+  saitamaFloodBp002: {
+    url: withBase("pmtiles/saitama-flood-bp002.pmtiles"),
+    attribution:
+      "PLATEAU 3D Visualization of Time-Series Flood Simulation by Levee Break Point (Arakawa River System)",
+    attributionUrl: "https://www.mlit.go.jp/plateau/use-case/uc22-026/",
   },
   tokyoFlood: {
     url: "https://assets.cms.reearth.io/assets/11/55daed-a75e-4e8d-b021-c7fd0666e839/tokyo-flood.geojson",

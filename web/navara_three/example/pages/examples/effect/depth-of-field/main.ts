@@ -8,6 +8,7 @@ import { TileJsonPlugin } from "@navaramap/three-plugins";
 
 import { addSlider } from "../../../../helpers/button";
 import { initializeExample } from "../../../../helpers/initialize";
+import { resolveOvertureDatasets } from "../../../../helpers/overture";
 
 const METERS_PER_FLOOR = 3;
 const DEFAULT_BUILDING_HEIGHT = 6;
@@ -53,9 +54,10 @@ view.addLayer({ type: "raster", source: basemap });
 
 view.addLayer({ type: "terrain", ellipsoid: {} });
 
+const overture = await resolveOvertureDatasets();
 const buildings = view.addSource({
   type: "vector-tile",
-  url: "https://tiles.overturemaps.org/2026-07-22.0/buildings.pmtiles",
+  url: overture.buildings.url,
   maxZoom: 14,
 });
 
@@ -96,11 +98,6 @@ addSlider(
   },
 );
 
-view.attribution?.add([
-  {
-    attribution: "© OpenStreetMap contributors, © Overture Maps Foundation",
-    attributionUrl: "https://overturemaps.org",
-  },
-]);
+view.attribution?.add([overture.buildings]);
 
 initializeExample(view);

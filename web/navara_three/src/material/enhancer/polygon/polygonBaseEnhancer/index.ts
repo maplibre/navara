@@ -76,7 +76,11 @@ export function createPolygonBaseEnhancer(
 
     update: (props: PolygonBaseProps): void => {
       invariant(state && mutates, "mount() must be called before update");
+      const prevCacheKey = programCacheKey(state);
       state = updateState(props, state);
+      if (programCacheKey(state) !== prevCacheKey) {
+        material.needsUpdate = true;
+      }
       mutates.update(state);
       // Handle external refs that are passed through props
       if (props.batchDataTexture) {
@@ -97,15 +101,19 @@ export function createPolygonBaseEnhancer(
 
     programCacheKey: (): string => {
       invariant(state, "mount() must be called before programCacheKey");
-      // Return cache key based on state that affects shader defines.
-      return JSON.stringify({
-        isTexturized: state.isTexturized,
-        clampToGround: state.clampToGround,
-        useRTE: state.useRTE,
-      });
+      return programCacheKey(state);
     },
   };
 }
+
+/** Cache key of the state that affects shader defines. */
+const programCacheKey = (state: PolygonBaseState): string =>
+  JSON.stringify({
+    isTexturized: state.isTexturized,
+    clampToGround: state.clampToGround,
+    useRTE: state.useRTE,
+    shadeSidesAsSurface: state.shadeSidesAsSurface,
+  });
 
 // Re-export public types
 export type { PolygonBaseMutates, PolygonBaseProps, PolygonBaseState };

@@ -15,7 +15,7 @@ function createMockRenderer() {
   >[0];
 }
 
-function createMesh(): Mesh {
+function createMesh(): Mesh<BoxGeometry, MeshBasicMaterial> {
   return new Mesh(new BoxGeometry(1, 1, 1), new MeshBasicMaterial());
 }
 
@@ -160,5 +160,51 @@ describe("markDirty", () => {
     const ts = new TexturizedSceneByTileCoordinates(createMockRenderer());
 
     expect(() => ts.markDirty(999n, "nonexistent")).not.toThrow();
+  });
+});
+
+describe("hasTransparentMesh", () => {
+  it("follows the visible meshes' `drapeTransparent`, rescanned on a revision bump", () => {
+    const ts = new TexturizedSceneByTileCoordinates(createMockRenderer());
+    const handle = 1n;
+    const opaque = createMesh();
+    const transparent = Object.assign(createMesh(), {
+      drapeTransparent: false,
+    });
+
+    ts.add(handle, "layer-a", opaque, 0);
+    ts.add(handle, "layer-a", transparent, 0);
+    const scene = ts.findSceneByLayerId(handle, "layer-a");
+    expect(scene?.hasTransparentMesh).toBe(false);
+
+    // A material change reaches the scene through `markDirty`; until then
+    // the cached answer stands.
+    transparent.drapeTransparent = true;
+    expect(scene?.hasTransparentMesh).toBe(false);
+    ts.markDirty(handle, "layer-a");
+    expect(scene?.hasTransparentMesh).toBe(true);
+
+    // The bake skips an invisible mesh, so it doesn't count.
+    transparent.visible = false;
+    ts.markDirty(handle, "layer-a");
+    expect(scene?.hasTransparentMesh).toBe(false);
+  });
+
+  it("counts a sub-1 opacity or per-feature opacity without `drapeTransparent`", () => {
+    const ts = new TexturizedSceneByTileCoordinates(createMockRenderer());
+    const handle = 1n;
+    const mesh = createMesh();
+    ts.add(handle, "layer-a", mesh, 0);
+    const scene = ts.findSceneByLayerId(handle, "layer-a");
+    expect(scene?.hasTransparentMesh).toBe(false);
+
+    mesh.material.opacity = 0.5;
+    ts.markDirty(handle, "layer-a");
+    expect(scene?.hasTransparentMesh).toBe(true);
+
+    mesh.material.opacity = 1;
+    mesh.material.userData.defines = { USE_BATCH_SHOW_OPACITY: true };
+    ts.markDirty(handle, "layer-a");
+    expect(scene?.hasTransparentMesh).toBe(true);
   });
 });

@@ -114,8 +114,9 @@ The shaders need each fragment's distance along the line. The geometry builders
 A line's own ends take the cap; the ends a tile clipped it at do not.
 
 - **Flat: which ends are the line's own.** A drape bake draws several vector
-  tiles into one terrain tile without cutting each to its own square, so a
-  cap at a clip end would draw over the neighbor's line. Every vertex of a
+  tiles into one terrain tile, and the pick bake does not cut each to its own
+  square (the display bake clips it in the stencil), so a cap at a clip end
+  would draw over the neighbor's line. Every vertex of a
   flat line therefore carries the line's length and which of its ends are its
   own, in `line_distance_and_ends.zw`. A tile clips its lines on or outside
   its own square, `[-1, 1]` in the positions' units, so only an end strictly

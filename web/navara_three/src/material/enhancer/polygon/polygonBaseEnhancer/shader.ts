@@ -136,6 +136,16 @@ vViewPosition = -mvPosition.xyz;
 vPosition = (modelMatrix * vec4(transformed, 1.0)).xyz;
 `,
       !useRTE,
+    )
+    .replaceWithCondition(
+      "#include <beginnormal_vertex>",
+      // The extrusion direction is the surface's up vector, so the sides and
+      // both caps shade like the top.
+      `
+#include <beginnormal_vertex>
+objectNormal = scaleNormalAndCap.xyz;
+`,
+      state.shadeSidesAsSurface,
     ).source;
 
   // Transform fragment shader

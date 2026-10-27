@@ -1,4 +1,10 @@
-import { Mesh, BoxGeometry, MeshBasicMaterial } from "three";
+import {
+  Mesh,
+  BoxGeometry,
+  type Material,
+  MeshBasicMaterial,
+  type Scene,
+} from "three";
 import { describe, expect, it, vi } from "vitest";
 
 import { TexturizedSceneByTileCoordinates } from "../scene";
@@ -66,6 +72,11 @@ function mesh() {
   return new Mesh(new BoxGeometry(1, 1, 1), new MeshBasicMaterial());
 }
 
+/** A mesh whose layer asked for `transparent` (see `DrapeBakedMesh`). */
+function transparentMesh() {
+  return Object.assign(mesh(), { drapeTransparent: true });
+}
+
 describe("TileTextureCompositor.acquire/release", () => {
   it("acquire returns CompositeOutputs and dedupes by handle", () => {
     const { compositor } = setup();
@@ -100,23 +111,32 @@ describe("TileTextureCompositor.acquire/release", () => {
 describe("TileTextureCompositor.renderVectorScenes", () => {
   const fakeRT = (): unknown => ({ texture: { needsUpdate: false } });
 
-  /** Snapshot (target, camera window) at render time — the shared bake camera
-   * is reframed per render, so mock.calls references alone are stale. */
+  /** Snapshot (target, camera window, stencil) at render time — the shared
+   * bake camera is reframed per render and the stencil ref is set per source,
+   * so mock.calls references alone are stale. `claim` marks the stencil-claim
+   * quad (no color writes); `stencilRef` is the ref the draw tests or writes,
+   * or null when it draws unclipped. */
   function recordRenders(renderer: ReturnType<typeof makeRenderer>) {
     const calls: {
       target: unknown;
       camera: { left: number; right: number; bottom: number; top: number };
+      claim: boolean;
+      stencilRef: number | null;
     }[] = [];
-    renderer.render.mockImplementation((_scene, camera) => {
+    renderer.render.mockImplementation((scene, camera) => {
       const { left, right, bottom, top } = camera as {
         left: number;
         right: number;
         bottom: number;
         top: number;
       };
+      const first = (scene as Scene).children[0] as Mesh | undefined;
+      const material = first?.material as Material | undefined;
       calls.push({
         target: renderer.currentTarget,
         camera: { left, right, bottom, top },
+        claim: material?.colorWrite === false,
+        stencilRef: material?.stencilWrite ? material.stencilRef : null,
       });
     });
     return calls;
@@ -149,8 +169,12 @@ describe("TileTextureCompositor.renderVectorScenes", () => {
     // (the full-frame resolve overwrites the slot target).
     expect(calls.length).toBe(4);
     expect(renderer.clear).toHaveBeenCalledTimes(2);
-    const msaa = calls[0].target as { samples?: number };
+    const msaa = calls[0].target as {
+      samples?: number;
+      stencilBuffer?: boolean;
+    };
     expect(msaa.samples).toBe(DRAPE_BAKE_SAMPLES);
+    expect(msaa.stencilBuffer).toBe(true);
     expect(calls.map((c) => c.target)).toEqual([msaa, rt0, msaa, rt1]);
     expect(
       (rt0 as { texture: { needsUpdate: boolean } }).texture.needsUpdate,
@@ -183,13 +207,77 @@ describe("TileTextureCompositor.renderVectorScenes", () => {
 
     // Both sources framed into their halves of the MSAA target, which was
     // cleared exactly once so the second source mosaics with the first
-    // instead of wiping it, then one resolve copy. autoClear restored.
+    // instead of wiping it, then one resolve copy. autoClear restored. An
+    // opaque layer draws its overlaps unclipped: a duplicate covers an
+    // identical texel.
     expect(calls.length).toBe(3);
     expect(renderer.clear).toHaveBeenCalledTimes(1);
     expect(calls[0].camera).toEqual({ left: -1, right: 0, bottom: -1, top: 1 });
     expect(calls[1].camera).toEqual({ left: 0, right: 1, bottom: -1, top: 1 });
     expect(calls[0].target).toBe(calls[1].target);
+    expect(calls.map((c) => c.stencilRef)).toEqual([null, null, null]);
     expect(renderer.autoClear).toBe(true);
+  });
+
+  it("clips each source of a transparent layer to the texels it claimed in the stencil", () => {
+    const { compositor, renderer, texturizedScenes } = setup();
+    const m1 = transparentMesh();
+    const m2 = mesh();
+    texturizedScenes.add(1n, "layer-a", m1, 0);
+    texturizedScenes.add(2n, "layer-a", m2, 0);
+    const calls = recordRenders(renderer);
+
+    compositor.renderVectorScenes(
+      [
+        {
+          layerId: "layer-a",
+          sources: [
+            { tileHandle: 1n, uvOffset: [0, 0], uvScale: [0.5, 1] },
+            { tileHandle: 2n, uvOffset: [0.5, 0], uvScale: [0.5, 1] },
+          ],
+        },
+      ],
+      [fakeRT() as never],
+    );
+
+    // One transparent mesh clips the whole layer: each source claims its
+    // frame with its own ref, then draws only where the stencil holds it.
+    expect(
+      calls.slice(0, 4).map(({ claim, stencilRef }) => ({ claim, stencilRef })),
+    ).toEqual([
+      { claim: true, stencilRef: 0xff },
+      { claim: false, stencilRef: 0xff },
+      { claim: true, stencilRef: 0xfe },
+      { claim: false, stencilRef: 0xfe },
+    ]);
+    // The clip is lifted once the source is drawn.
+    expect(m1.material.stencilWrite).toBe(false);
+    expect(m2.material.stencilWrite).toBe(false);
+  });
+
+  it("draws a transparent layer's finer sources before a coarser ancestor, which fills only the rest", () => {
+    const { compositor, renderer, texturizedScenes } = setup();
+    texturizedScenes.add(1n, "layer-a", transparentMesh(), 0);
+    texturizedScenes.add(2n, "layer-a", transparentMesh(), 0);
+    const calls = recordRenders(renderer);
+
+    // Tile 1 is a coarser ancestor (the terrain tile frames a quarter of it);
+    // tile 2 is a finer source covering the terrain tile's west half.
+    compositor.renderVectorScenes(
+      [
+        {
+          layerId: "layer-a",
+          sources: [
+            { tileHandle: 1n, uvOffset: [0, 0], uvScale: [0.5, 0.5] },
+            { tileHandle: 2n, uvOffset: [0, 0], uvScale: [2, 1] },
+          ],
+        },
+      ],
+      [fakeRT() as never],
+    );
+
+    expect(calls[1].camera).toEqual({ left: -1, right: 3, bottom: -1, top: 1 });
+    expect(calls[3].camera).toEqual({ left: -1, right: 0, bottom: -1, top: 0 });
   });
 
   it("frames the terrain sub-rect when the source resolves to a coarser ancestor", () => {
@@ -220,7 +308,7 @@ describe("TileTextureCompositor.renderVectorScenes", () => {
 
   it("renders pick bakes (antialias: false) straight into the slot target with the framed camera", () => {
     const { compositor, renderer, texturizedScenes } = setup();
-    texturizedScenes.add(1n, "layer-a", mesh(), 0);
+    texturizedScenes.add(1n, "layer-a", transparentMesh(), 0);
     const calls = recordRenders(renderer);
 
     const rt = fakeRT();
@@ -239,9 +327,12 @@ describe("TileTextureCompositor.renderVectorScenes", () => {
 
     // No MSAA intermediate and no resolve copy: the MSAA resolve would
     // average id-encoded colors along feature edges into ids that don't
-    // exist. One direct render, camera-windowed like the pre-MSAA path.
+    // exist. One direct render, camera-windowed like the pre-MSAA path, and
+    // unclipped even for a transparent layer: the slot target has no stencil
+    // buffer.
     expect(calls.length).toBe(1);
     expect(calls[0].target).toBe(rt);
+    expect(calls[0].stencilRef).toBeNull();
     expect(calls[0].camera).toEqual({ left: -1, right: 0, bottom: 0, top: 1 });
     expect(renderer.clear).toHaveBeenCalledTimes(1);
   });

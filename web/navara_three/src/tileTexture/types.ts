@@ -10,6 +10,15 @@ import type {
 import type { ColorRampRow } from "../colorMapAtlas";
 
 /**
+ * A mesh drawn into a vector drape bake. A bake material always blends, so
+ * `drapeTransparent` keeps the material's `transparent` option, one of the
+ * signals `TileScene.hasTransparentMesh` reads: only a translucent layer
+ * needs its overlapping sources clipped (see
+ * `TileTextureCompositor.renderVectorScenes`).
+ */
+export type DrapeBakedMesh = { drapeTransparent: boolean };
+
+/**
  * Why a tile's composite atlas needs to be re-rendered.
  * Aggregated per-handle so a single composite pass services multiple updates.
  */

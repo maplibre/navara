@@ -477,6 +477,9 @@ export class CustomRenderPass extends RenderPass {
       renderer.clearDepth();
     }
 
+    // A polygon's `depthPrePass` marks the pixels it blends in the stencil.
+    renderer.clearStencil();
+
     // If globe can be transparent, need to render all scene in same scene to blend them.
     // Currently, blending is supported only with MRT scene.
     if (shouldBlend) {

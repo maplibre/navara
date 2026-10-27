@@ -1344,6 +1344,66 @@ describe("MapLibreStylePlugin", () => {
       expect(mockLayer.forceUpdate).not.toHaveBeenCalled();
     });
 
+    it("re-evaluates a layer with only minzoom/maxzoom when the zoom crosses its range", async () => {
+      const mockLayer = {
+        delete: vi.fn(),
+        on: vi.fn(),
+        forceUpdate: vi.fn(),
+      };
+      const plugin = new MapLibreStylePlugin({
+        version: 8,
+        sources: {
+          test: {
+            type: "geojson",
+            data: { type: "FeatureCollection", features: [] },
+          },
+        },
+        layers: [
+          {
+            id: "ranged",
+            type: "fill",
+            source: "test",
+            minzoom: 5,
+            maxzoom: 10,
+            paint: { "fill-color": "#ff0000" },
+          },
+        ],
+      });
+      const view = createMockView(3);
+      view.addLayer = vi.fn().mockReturnValue(mockLayer);
+
+      await plugin.init(view, mockViewContext);
+      const moveListener = (view.camera.on as any).mock.calls.find(
+        (call: any) => call[0] === "move",
+      )[1];
+
+      // First valid zoom: features may have been evaluated at zoom 0.
+      moveListener();
+      expect(mockLayer.forceUpdate).toHaveBeenCalledTimes(1);
+
+      // Below the range: nothing to re-evaluate.
+      setMockZoom(view, 4);
+      moveListener();
+      expect(mockLayer.forceUpdate).toHaveBeenCalledTimes(1);
+
+      // Into the range (minzoom is inclusive).
+      setMockZoom(view, 5);
+      moveListener();
+      expect(mockLayer.forceUpdate).toHaveBeenCalledTimes(2);
+
+      // Inside the range.
+      setMockZoom(view, 7);
+      moveListener();
+      setMockZoom(view, 9.5);
+      moveListener();
+      expect(mockLayer.forceUpdate).toHaveBeenCalledTimes(2);
+
+      // Out of the range (maxzoom is exclusive).
+      setMockZoom(view, 10);
+      moveListener();
+      expect(mockLayer.forceUpdate).toHaveBeenCalledTimes(3);
+    });
+
     const symbolStyle = (
       layout: Record<string, unknown>,
     ): StyleSpecification => ({

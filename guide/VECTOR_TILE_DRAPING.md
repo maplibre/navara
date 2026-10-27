@@ -196,7 +196,8 @@ invariants). Each source is framed by a **single fixed** `[-1, 1]` orthographic
 camera reframed to the source's Rust-supplied `uvOffset` / `uvScale` sub-rect —
 there is no per-tile camera transform or JS-side parent walk anymore, because
 the ancestor/descendant fallback is already baked into those affines. The
-sources accumulate additively, so the RT ends up spanning the terrain tile's
+sources accumulate additively (in a `transparent` layer, each clipped in the
+stencil to the part of its own square no finer source took), so the RT ends up spanning the terrain tile's
 extent. The composite pass then pastes it like a raster layer (identity UV in
 longitude, latitude reprojected).
 

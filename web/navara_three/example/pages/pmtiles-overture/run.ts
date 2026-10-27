@@ -12,8 +12,8 @@ import { SphericalHarmonics3 } from "three";
 import { Pane } from "tweakpane";
 
 import { withBase } from "../../helpers/base";
-import { PMTILES_DATASETS } from "../../helpers/constants";
 import { googleFontsCssUrl, notoSansStack } from "../../helpers/fonts";
+import { resolveOvertureDatasets } from "../../helpers/overture";
 import { SH_COEFFICIENTS } from "../../helpers/sh";
 
 export type CustomDescriptions = DefaultDescriptions;
@@ -245,6 +245,9 @@ export const run = async (view: ThreeView<CustomDescriptions>) => {
 
   const attribution = view.attribution;
 
+  // Kick off the release lookup so it overlaps engine init and font loading.
+  const overtureReady = resolveOvertureDatasets();
+
   await view.init();
 
   // The Google Fonts CSS API orders @font-face blocks alphabetically, so pass
@@ -283,29 +286,31 @@ export const run = async (view: ThreeView<CustomDescriptions>) => {
 
   view.addLayer({ type: "terrain", ellipsoid: {} });
 
+  const overture = await overtureReady;
+
   // One vector-tile source per `.pmtiles` archive (PMTiles is detected from the
   // URL extension); every layer references its archive's source and selects
   // which MVT sublayer to style via `sourceLayers`.
   const baseSource = view.addSource({
     type: "vector-tile",
-    url: PMTILES_DATASETS.overtureBase.url,
+    url: overture.base.url,
     maxZoom: 13,
   });
   const divisionsSource = view.addSource({
     type: "vector-tile",
-    url: PMTILES_DATASETS.overtureDivisions.url,
+    url: overture.divisions.url,
     // Finer admin features (governorate/district) exist only in higher-zoom
     // tiles, so fetch to z12 and let the altitude tiers keep the view uncluttered.
     maxZoom: 12,
   });
   const buildingsSource = view.addSource({
     type: "vector-tile",
-    url: PMTILES_DATASETS.overtureBuildings.url,
+    url: overture.buildings.url,
     maxZoom: 14,
   });
   const placesSource = view.addSource({
     type: "vector-tile",
-    url: PMTILES_DATASETS.overturePlaces.url,
+    url: overture.places.url,
     maxZoom: 14,
   });
 
@@ -770,9 +775,9 @@ export const run = async (view: ThreeView<CustomDescriptions>) => {
   // All four Overture sources are declared; base/divisions/buildings share one
   // credit, so the AttributionPlugin collapses them to a single rendered line.
   attribution?.add([
-    PMTILES_DATASETS.overtureBase,
-    PMTILES_DATASETS.overtureDivisions,
-    PMTILES_DATASETS.overtureBuildings,
-    PMTILES_DATASETS.overturePlaces,
+    overture.base,
+    overture.divisions,
+    overture.buildings,
+    overture.places,
   ]);
 };

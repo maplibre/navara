@@ -1,9 +1,69 @@
 import { describe, it, expect } from "vitest";
 
 import {
+  expressionUsesFeatureData,
   expressionUsesGeometryType,
   expressionUsesZoom,
 } from "./expressionHelpers";
+
+describe("expressionUsesFeatureData", () => {
+  it("is false for constants and zoom-only expressions", () => {
+    for (const expr of [
+      1,
+      "#ff0000",
+      ["literal", [1, 2]],
+      ["interpolate", ["linear"], ["zoom"], 2, 1, 6, 1.6],
+      ["step", ["zoom"], "viewport", 5, "map"],
+      {
+        stops: [
+          [2, 1],
+          [6, 2],
+        ],
+      },
+    ]) {
+      expect(expressionUsesFeatureData(expr)).toBe(false);
+    }
+  });
+
+  it("is true for any operator that reads the feature", () => {
+    for (const expr of [
+      ["get", "name"],
+      ["has", "name"],
+      ["properties"],
+      ["feature-state", "hover"],
+      ["geometry-type"],
+      ["id"],
+      ["global-state", "theme"],
+      ["line-progress"],
+    ]) {
+      expect(expressionUsesFeatureData(expr)).toBe(true);
+    }
+  });
+
+  it("finds feature reads nested in zoom expressions", () => {
+    expect(
+      expressionUsesFeatureData([
+        "step",
+        ["zoom"],
+        ["get", "abbrev"],
+        4,
+        ["to-string", ["get", "name"]],
+      ]),
+    ).toBe(true);
+  });
+
+  it("treats legacy property and composite functions as feature data", () => {
+    expect(
+      expressionUsesFeatureData({
+        property: "pop",
+        stops: [
+          [0, 1],
+          [10, 2],
+        ],
+      }),
+    ).toBe(true);
+  });
+});
 
 describe("expressionUsesGeometryType", () => {
   it("detects legacy $type and geometry-type expressions", () => {

@@ -26,6 +26,7 @@ import {
 } from "../lineDash";
 import { applyLitOption } from "../material";
 import { createPolylineMaterialEnhancer } from "../material/enhancer";
+import type { DrapeBakedMesh } from "../tileTexture/types";
 
 import {
   BatchedFeatureMesh,
@@ -92,11 +93,13 @@ function sameDashArray(
   return true;
 }
 
-export class PolylineMesh extends BatchedFeatureMesh<
-  BufferGeometry<Attributes>,
-  ShaderMaterial
-> {
+export class PolylineMesh
+  extends BatchedFeatureMesh<BufferGeometry<Attributes>, ShaderMaterial>
+  implements DrapeBakedMesh
+{
   readonly ctx: EventContext;
+  /** See {@link DrapeBakedMesh}. */
+  drapeTransparent = false;
   /** Material enhancer for managing shader state */
   private _enhancedMaterial?: ReturnType<typeof createPolylineMaterialEnhancer>;
   /** Flag indicating geometry initialization failed - mesh should never be visible */
@@ -551,6 +554,7 @@ export class PolylineMesh extends BatchedFeatureMesh<
     this.visible = enhancer.states().isTexturized ? shown : shown && active;
     this.castShadow = !!material.castShadow;
     this.receiveShadow = !!material.receiveShadow;
+    this.drapeTransparent = !!material.transparent;
     applyLitOption(this.material, material.lit);
 
     const base = enhancer.states();

@@ -13,3 +13,4 @@ export * from "./rtcRteHelper";
 export * from "./sprite";
 export * from "./sdfText";
 export * from "./DrapedMesh";
+export * from "./depthPrePass";

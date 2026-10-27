@@ -83,6 +83,26 @@ import { Color } from "@navaramap/three";
 }
 ```
 
+### depthPrePass
+
+**Type:** `boolean | undefined`
+
+**Description:** Writes the polygon's depth before any transparent mesh is drawn, so a `transparent` polygon blends only its nearest surface. Without it, faces behind that surface show through and add up, which darkens overlaps such as the sides of extruded polygons. Faces at the same depth, such as a feature that neighboring tiles both contain, are blended once. The written depth also hides any other transparent mesh behind the polygon, so a translucent layer or particle drawn behind it does not show through. Effective when `transparent` is `true` and `clampToGround` is `false`.
+
+**Default:** `undefined`
+
+**Example:**
+
+```typescript
+{
+  polygon: {
+    transparent: true,
+    opacity: 0.8,
+    depthPrePass: true
+  }
+}
+```
+
 ### effectIds
 
 **Type:** `string[] | undefined`
@@ -371,6 +391,25 @@ import { Color } from "@navaramap/three";
 {
   polygon: {
     roughness: 0.2
+  }
+}
+```
+
+### shadeSidesAsSurface
+
+**Type:** `boolean | undefined`
+
+**Description:** Shades the sides of an extruded polygon with the surface's upward normal instead of their own, so they light the same as the top. Use it when the extrusion stands for a continuous surface rather than a solid, for example per-cell water levels whose sides fill the steps between neighboring cells. Effective when `clampToGround` is `false`.
+
+**Default:** `undefined`
+
+**Example:**
+
+```typescript
+{
+  polygon: {
+    extrudedHeight: 2,
+    shadeSidesAsSurface: true
   }
 }
 ```

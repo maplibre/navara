@@ -144,6 +144,14 @@ next frame.
 
 ## Terrain traversal — strict LOD
 
+The shared `Tile::calc_sse` scales WebMercator geometric error by the cosine
+of the tile latitude nearest the equator. Mercator tiles shrink on the globe
+toward the poles; using the equatorial error there selects excessive detail
+in all three traversals (terrain, raster, vector). The equatorward edge gives
+the largest ground scale across the tile, keeping refinement conservative.
+Use the original tile extent, excluding polar caps. Geographic tiles retain
+their scheme-aware error without this Mercator correction.
+
 `traverse_terrain()` (`crates/navara_tile/src/tile/traverse.rs`) walks the terrain
 quadtree from each root and decides, recursively, whether a tile renders, its
 children render, or nothing renders yet. It is a screen-space-error (SSE)

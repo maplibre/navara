@@ -13,6 +13,7 @@ import {
   type StyleLayer,
   type ValueExpression,
 } from "../engine/types";
+import { expressionUsesFeatureData } from "../utils/expressionHelpers";
 
 type EvaluatedResult = {
   color?: Color;
@@ -96,6 +97,27 @@ function applyColorAndOpacity(
 }
 
 /**
+ * Memoize an evaluator by zoom when its expression reads no feature data, so
+ * a re-evaluation pass (every feature at one camera zoom) evaluates it once
+ * instead of once per feature. Data-driven expressions are returned as is.
+ */
+function cacheByZoom<T>(
+  expr: unknown,
+  evalFn: (ctx: EvaluationContext) => T,
+): (ctx: EvaluationContext) => T {
+  if (expressionUsesFeatureData(expr)) return evalFn;
+  let cachedZoom: number | undefined;
+  let cachedValue: T;
+  return (ctx) => {
+    if (ctx.zoom !== cachedZoom || cachedZoom === undefined) {
+      cachedValue = evalFn(ctx);
+      cachedZoom = ctx.zoom;
+    }
+    return cachedValue;
+  };
+}
+
+/**
  * Create evaluator functions for a style layer's paint properties.
  *
  * @param styleLayer - MapLibre layer definition
@@ -126,7 +148,10 @@ export function createPaintEvaluators(
     const expr = value ?? spec.default;
 
     try {
-      evaluators[key] = engine.createValueFn(expr, spec, featureGeometryType);
+      evaluators[key] = cacheByZoom(
+        expr,
+        engine.createValueFn(expr, spec, featureGeometryType),
+      );
     } catch (err) {
       console.error(`Failed to create evaluator for ${key}:`, err);
       // Fallback to spec.default to preserve MapLibre Style Spec behavior
@@ -171,14 +196,14 @@ export function createLayoutEvaluators(
     try {
       const evalFn = engine.createValueFn(expr, spec, featureGeometryType);
       // Wrap with try/catch to handle per-feature evaluation errors
-      return (ctx: EvaluationContext) => {
+      return cacheByZoom(expr, (ctx: EvaluationContext) => {
         try {
           return evalFn(ctx);
         } catch (_err) {
           // Return undefined on evaluation error (e.g., property missing, type mismatch)
           return undefined;
         }
-      };
+      });
     } catch (err) {
       console.error(`Failed to create layout evaluator for ${key}:`, err);
       // Return evaluator that always returns spec.default

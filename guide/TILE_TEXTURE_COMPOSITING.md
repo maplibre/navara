@@ -139,11 +139,11 @@ slot:
 - One `WebGLRenderTarget` (512×512) per vector slot, kept in the
   `VectorDrapeResolver`'s render-target pool (lazily sized to the draped-layer
   count). The bake accumulates each slot's sources into the compositor's ONE
-  shared multisampled target (`DRAPE_BAKE_SAMPLES`× MSAA, no depth/stencil —
-  the flat bake shaders have no analytic edge AA, so geometric edges are
-  resolved at bake time; multisample contents persist across the per-source
-  `render()` calls on WebGL2) and copies the resolved image into the slot's
-  plain RT. Setting `samples` on the per-tile targets instead quintupled
+  shared multisampled target (`DRAPE_BAKE_SAMPLES`× MSAA with a
+  depth-stencil buffer for the source clip below — the flat bake shaders have
+  no analytic edge AA, so geometric edges are resolved at bake time;
+  multisample contents persist across the per-source `render()` calls on
+  WebGL2) and copies the resolved image into the slot's plain RT. Setting `samples` on the per-tile targets instead quintupled
   every drape target's GPU footprint, starving the tile memory budget and
   stalling terrain refinement (the drape then stayed coarse however far the
   camera zoomed); the shared target is a single fixed allocation, reported to
@@ -159,10 +159,26 @@ slot:
     `NormalBlending + transparent: false` to no blending), a sub-1
     per-feature opacity would land STRAIGHT in the target and the divide
     would brighten it by 1/α.
+  - **A translucent layer's sources draw only inside the texels they
+    claimed.** Sources overlap: an MVT tile carries its neighbors' features
+    in a buffer past its edge, and a coarser ancestor backing one region
+    spans the finer sources too. Drawn twice, a translucent layer blends
+    twice along every tile seam; an opaque duplicate only covers an identical
+    texel. So in a layer with a `transparent` mesh
+    (`TileScene.hasTransparentMesh`, read from `DrapeBakedMesh.drapeTransparent`
+    since the bake material itself always blends, and cached until the
+    scene's `revision` moves), each source first draws a color-less quad over its own
+    `[-1, 1]` square that writes its stencil ref where no earlier source
+    wrote one, then draws its scene with the stencil test equal to that ref. Sources go finest
+    first with descending refs, so an ancestor fills only what the finer
+    sources left. A blend mode cannot replace this: it sees only the color
+    already in the target, not which source drew it, and an ancestor's
+    simplified outline doesn't match the finer copy anyway.
   - **Pick bakes bypass MSAA** (`antialias: false`, driven by
     `VectorDrapeResolver.setPickBake`): their fragments encode batch ids as
     colors, and averaging them along feature edges decodes to ids that don't
-    exist. They render straight into the slot RT, hard-edged.
+    exist. They render straight into the slot RT, hard-edged, and unclipped
+    since that RT has no stencil.
 
   Do NOT batch a slot's sources into a single `render()` by reparenting their
   scenes under one wrapper: `TileScene`s live as children of their
@@ -192,7 +208,7 @@ flowchart TD
   LOOP --> CLR["clear RT[i] once<br/>(autoClear off → accumulate)"]
   CLR --> SRC{"for each source"}
   SRC -->|"scene not in cache yet"| SKIP["skip → sub-rect stays transparent"]
-  SRC -->|"scene ready"| DRAW["render via one fixed [-1,1] camera<br/>reframed to the source's<br/>uvOffset/uvScale sub-rect"]
+  SRC -->|"scene ready<br/>(finest first)"| DRAW["transparent layer: claim the source's<br/>square in the stencil, then<br/>render via one fixed [-1,1] camera<br/>reframed to the source's<br/>uvOffset/uvScale sub-rect"]
   DRAW --> RT["RenderTarget[i].texture<br/>(spans the terrain tile's extent)"]
   SKIP --> RT
   RT --> BIND["bindSlots():<br/>textures[boundary+i], identity UV,<br/>copy representative mesh attrs"]

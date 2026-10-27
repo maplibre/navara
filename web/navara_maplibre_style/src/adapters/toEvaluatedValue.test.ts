@@ -54,6 +54,64 @@ vi.mock("@navaramap/three", () => ({
   },
 }));
 
+describe("zoom-only evaluator caching", () => {
+  const countingEngine = () => {
+    const engine = new JsStyleEngine();
+    let calls = 0;
+    const createValueFn = engine.createValueFn.bind(engine);
+    engine.createValueFn = ((...args: Parameters<typeof createValueFn>) => {
+      const fn = createValueFn(...args);
+      return (ctx: Parameters<typeof fn>[0]) => {
+        calls++;
+        return fn(ctx);
+      };
+    }) as typeof engine.createValueFn;
+    return { engine, calls: () => calls };
+  };
+
+  it("evaluates a zoom-only paint expression once per zoom", () => {
+    const { engine, calls } = countingEngine();
+    const width = createPaintEvaluators(
+      {
+        id: "lines",
+        type: "line",
+        source: "test",
+        paint: {
+          "line-width": ["interpolate", ["linear"], ["zoom"], 2, 1, 6, 3],
+        },
+      } as StyleLayer,
+      engine,
+      "LineString",
+    )["line-width"];
+
+    for (let i = 0; i < 100; i++) {
+      expect(width({ properties: { id: i }, zoom: 4 })).toBe(2);
+    }
+    expect(calls()).toBe(1);
+
+    expect(width({ properties: {}, zoom: 6 })).toBe(3);
+    expect(calls()).toBe(2);
+  });
+
+  it("evaluates data-driven expressions for every feature", () => {
+    const { engine, calls } = countingEngine();
+    const size = createLayoutEvaluators(
+      {
+        id: "labels",
+        type: "symbol",
+        source: "test",
+        layout: { "text-size": ["get", "size"] },
+      } as StyleLayer,
+      engine,
+      "Point",
+    )["text-size"];
+
+    expect(size({ properties: { size: 10 }, zoom: 4 })).toBe(10);
+    expect(size({ properties: { size: 20 }, zoom: 4 })).toBe(20);
+    expect(calls()).toBe(2);
+  });
+});
+
 describe("createPaintEvaluators", () => {
   const engine = new JsStyleEngine();
 
