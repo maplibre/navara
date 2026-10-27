@@ -22,7 +22,7 @@
     "@navaramap/three": "workspace:*",
     "@navaramap/three-default-descs": "workspace:*",
     "@navaramap/three-default-plugin": "workspace:*",
-    "postprocessing": "6.39.4",
+    "postprocessing": "6.39.5",
     "three": "0.185.1"
   },
   "devDependencies": {
