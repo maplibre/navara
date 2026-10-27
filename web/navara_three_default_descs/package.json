@@ -41,7 +41,7 @@
     "three": ">=0.183.0"
   },
   "dependencies": {
-    "@sparkjsdev/spark": "2.1.0",
+    "@sparkjsdev/spark": "2.4.0",
     "@takram/three-atmosphere": "0.19.1",
     "@takram/three-clouds": "0.7.6",
     "@takram/three-geospatial": "0.9.1",
@@ -54,9 +54,9 @@
     "@navaramap/three": "workspace:*",
     "@navaramap/three-csm": "workspace:*",
     "@types/geojson": "7946.0.16",
-    "@types/three": "0.185.4",
+    "@types/three": "0.186.0",
     "postprocessing": "6.39.5",
-    "three": "0.185.1",
+    "three": "0.186.1",
     "vite-plugin-glsl": "1.6.2"
   }
 }

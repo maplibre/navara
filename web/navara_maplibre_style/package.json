@@ -33,7 +33,7 @@
     "@navaramap/three": "workspace:*"
   },
   "dependencies": {
-    "@maplibre/maplibre-gl-style-spec": "26.2.1",
+    "@maplibre/maplibre-gl-style-spec": "26.4.4",
     "@navaramap/core": "workspace:*",
     "@navaramap/engine": "workspace:*",
     "@navaramap/three-plugins": "workspace:*",
