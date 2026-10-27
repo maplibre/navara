@@ -34,6 +34,13 @@ updates:
     versioning-strategy: auto
     commit-message:
       prefix: chore
+    ignore:
+      # fdsm 0.8 requires nalgebra ^0.34; a newer nalgebra links a second copy and
+      # breaks navara_wasm_font_worker. Remove once fdsm supports a newer nalgebra.
+      - dependency-name: nalgebra
+        update-types:
+          - version-update:semver-minor
+          - version-update:semver-major
     groups:
       cargo-patch:
         patterns: ["*"]
