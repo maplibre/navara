@@ -87,7 +87,7 @@
     "playwright": "1.62.1",
     "postcss": "8.5.26",
     "postprocessing": "6.39.4",
-    "sharp": "0.35.4",
+    "sharp": "0.35.5",
     "shiki": "4.4.3",
     "tailwind-merge": "3.6.0",
     "tailwindcss": "4.3.3",

@@ -15,7 +15,7 @@
     "@lucide/astro": "1.31.0",
     "astro": "7.2.8",
     "rehype-mermaid": "3.0.0",
-    "sharp": "0.35.4"
+    "sharp": "0.35.5"
   },
   "packageManager": "pnpm@11.28.6",
   "devDependencies": {
