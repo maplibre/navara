@@ -15,16 +15,16 @@ license = "MIT/Apache-2.0"
 # --- Bevy ---
 # default-features = false drops bevy_reflect (unused in this workspace) and
 # backtrace (useless on wasm) from every WASM module.
-bevy_app = { version = "=0.19.1", default-features = false, features = ["std"] }
-bevy_ecs = { version = "=0.19.1", default-features = false, features = ["std", "async_executor"] }
-bevy_input = { version = "=0.19.1", default-features = false, features = ["std", "mouse", "keyboard", "smol_str"] }
-bevy_log = "=0.19.1"
-bevy_math = "=0.19.1"
-bevy_transform = { version = "=0.19.1", default-features = false, features = ["std", "bevy-support", "async_executor"] }
+bevy_app = { version = "=0.20.0", default-features = false, features = ["std"] }
+bevy_ecs = { version = "=0.20.0", default-features = false, features = ["std", "async_executor"] }
+bevy_input = { version = "=0.20.0", default-features = false, features = ["std", "mouse", "keyboard", "smol_str"] }
+bevy_log = "=0.20.0"
+bevy_math = "=0.20.0"
+bevy_transform = { version = "=0.20.0", default-features = false, features = ["std", "bevy-support", "async_executor"] }
 
 # --- Serialization ---
 serde = { version = "=1.0.229", features = ["derive"] }
-serde_json = { version = "=1.0.151", features = ["alloc", "float_roundtrip", "indexmap"] }
+serde_json = { version = "=1.0.154", features = ["alloc", "float_roundtrip", "indexmap"] }
 serde_repr = "=0.1.21"
 serde-wasm-bindgen = "=0.6.5"
 binrw = { version = "=0.15.2", default-features = false }
@@ -32,7 +32,7 @@ binrw = { version = "=0.15.2", default-features = false }
 # --- Utility ---
 approx = "=0.5.1"
 url = "=2.5.8"
-cfg-if = "=1.0.4"
+cfg-if = "=1.0.5"
 radians = "=0.3.1"
 itertools = "=0.15.0"
 rustc-hash = "=2.1.3"
@@ -43,7 +43,7 @@ regex = "=1.13.1"
 geo-types = "=0.7.20"
 geojson_lib = { package = "geojson", version = "=1.0.0" }
 earcutr = "=0.5.0"
-maplibre-expr = "=0.3.2"
+maplibre-expr = "=0.5.4"
 # geozero = { version = "0.15.1", default-features = false, features = ["with-mvt", "with-geo"] }
 # TODO: Replace to original later
 geozero = { git = "https://github.com/keiya01/geozero.git", branch = "fix/ccw-mvt", default-features = false, features = ["with-mvt", "with-geo"] }
@@ -56,13 +56,13 @@ prost = "=0.14.4"
 # can't be used for that. `fast_hilbert` provides the one non-trivial bit (the
 # Hilbert tile-id curve); `flate2` provides gzip. Both are pure-Rust / wasm-safe.
 fast_hilbert = "=2.1.0"
-flate2 = "=1.1.9"
+flate2 = "=1.1.10"
 
 # --- Time ---
 instant = { version = "=0.1.13", features = ["wasm-bindgen", "inaccurate"] }
 
 # --- Random ---
-rand = "=0.10.2"
+rand = "=0.10.3"
 getrandom = { version = "=0.4.3", features = ["wasm_js"] }
 
 # --- WASM ---
@@ -74,11 +74,11 @@ console_error_panic_hook = "=0.1.7"
 
 # --- Font ---
 rustybuzz = "=0.20.1"
-fontdue = "=0.9.4"
+fontdue = "=0.9.5"
 sdf_glyph_renderer = "=1.1.0"
 guillotiere = "=0.7.0"
-wuff = "=0.2.8"
-skrifa = "=0.46.2"
+wuff = "=0.2.9"
+skrifa = "=0.48.0"
 tiny-skia = { version = "=0.12.0", default-features = false, features = ["std", "simd"] }
 # MSDF generation (multi-channel SDF, used as a higher-quality alternative to sdf_glyph_renderer)
 fdsm = "=0.8.0"

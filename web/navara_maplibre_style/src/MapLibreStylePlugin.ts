@@ -62,6 +62,17 @@ function serializeMaterials(layerDesc: LayerDescription): string {
     : "";
 }
 
+/** A layer's `minzoom` is inclusive and its `maxzoom` exclusive. */
+function inZoomRange(styleLayer: StyleLayer, zoom: number): boolean {
+  if ("minzoom" in styleLayer && styleLayer.minzoom !== undefined) {
+    if (zoom < styleLayer.minzoom) return false;
+  }
+  if ("maxzoom" in styleLayer && styleLayer.maxzoom !== undefined) {
+    if (zoom >= styleLayer.maxzoom) return false;
+  }
+  return true;
+}
+
 export class MapLibreStylePlugin extends Plugin<ThreeView, ViewContext> {
   private sources: Map<string, Source> = new Map<string, Source>();
   private layers: Layer[] = [];
@@ -123,6 +134,11 @@ export class MapLibreStylePlugin extends Plugin<ThreeView, ViewContext> {
    * Only these layers need to be updated when zoom changes.
    */
   private zoomDependentLayers = new Set<Layer>();
+  /**
+   * Layers whose only zoom dependency is `minzoom`/`maxzoom`. They are
+   * re-evaluated only when the zoom crosses into or out of their range.
+   */
+  private zoomRangeLayers = new Map<Layer, StyleLayer>();
   /**
    * Symbol layers with a layer-level property (alignment, halo, ...) that
    * follows zoom, with what is needed to rebuild their description and the
@@ -572,8 +588,13 @@ export class MapLibreStylePlugin extends Plugin<ThreeView, ViewContext> {
           this.backgroundHandler.apply(view, currentZoom);
         }
         this.refreshZoomFollowingSymbolLayers(currentZoom);
-        // On initial zoom, also update zoom-dependent features
+        // On initial zoom, also update zoom-dependent features. Range-only
+        // layers too: features evaluated before the camera was ready used
+        // zoom 0.
         for (const layer of this.zoomDependentLayers) {
+          layer.forceUpdate();
+        }
+        for (const layer of this.zoomRangeLayers.keys()) {
           layer.forceUpdate();
         }
         return;
@@ -583,7 +604,17 @@ export class MapLibreStylePlugin extends Plugin<ThreeView, ViewContext> {
 
       // If zoom changed significantly, trigger feature re-evaluation
       if (zoomDelta > MapLibreStylePlugin.ZOOM_CHANGE_THRESHOLD) {
+        const previousZoom = this.lastZoom;
         this.lastZoom = currentZoom;
+
+        for (const [layer, styleLayer] of this.zoomRangeLayers) {
+          if (
+            inZoomRange(styleLayer, previousZoom) !==
+            inZoomRange(styleLayer, currentZoom)
+          ) {
+            layer.forceUpdate();
+          }
+        }
 
         if (this.backgroundHandler?.needsZoomUpdate()) {
           this.backgroundHandler.apply(view, currentZoom);
@@ -817,13 +848,16 @@ export class MapLibreStylePlugin extends Plugin<ThreeView, ViewContext> {
    * This is where we bridge MapLibre expressions to Navara's evaluator API.
    */
   private setupFeatureEvaluation(layer: Layer, styleLayer: StyleLayer): void {
-    // Track if this layer has zoom-dependent expressions OR minzoom/maxzoom
+    // Zoom expressions need re-evaluation at every zoom step; minzoom/maxzoom
+    // alone only when the zoom crosses the range
     const hasMinMaxZoom =
       ("minzoom" in styleLayer && styleLayer.minzoom !== undefined) ||
       ("maxzoom" in styleLayer && styleLayer.maxzoom !== undefined);
 
-    if (MapLibreStylePlugin.layerUsesZoom(styleLayer) || hasMinMaxZoom) {
+    if (MapLibreStylePlugin.layerUsesZoom(styleLayer)) {
       this.zoomDependentLayers.add(layer);
+    } else if (hasMinMaxZoom) {
+      this.zoomRangeLayers.set(layer, styleLayer);
     }
 
     // Determine MapLibre feature geometry type for expression evaluation
@@ -866,15 +900,8 @@ export class MapLibreStylePlugin extends Plugin<ThreeView, ViewContext> {
       properties: Record<string, unknown> | undefined;
       zoom?: number;
     }) => {
-      const zoom = ctx.zoom ?? 0;
-
       // Check layer minzoom/maxzoom (controls entire layer visibility)
-      if ("minzoom" in styleLayer && styleLayer.minzoom !== undefined) {
-        if (zoom < styleLayer.minzoom) return false;
-      }
-      if ("maxzoom" in styleLayer && styleLayer.maxzoom !== undefined) {
-        if (zoom >= styleLayer.maxzoom) return false;
-      }
+      if (!inZoomRange(styleLayer, ctx.zoom ?? 0)) return false;
 
       // Then apply the style filter expression
       return baseFilterFn(ctx);
@@ -1107,6 +1134,7 @@ export class MapLibreStylePlugin extends Plugin<ThreeView, ViewContext> {
     this.warnedLayers.clear();
     this.warnedSources.clear();
     this.zoomDependentLayers.clear();
+    this.zoomRangeLayers.clear();
     this.zoomFollowingSymbolLayers.clear();
     this.backgroundHandler?.clearCache();
     this.backgroundHandler = undefined;

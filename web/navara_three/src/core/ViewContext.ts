@@ -214,6 +214,14 @@ export class ViewContext extends EventHandler<ViewContextEvents> {
     return this._commonUniforms.tSkyEnvMap;
   }
 
+  /**
+   * Uniform ref to the shared water normal map. Its value is `null` unless
+   * the view is created with `waterTexture.enabled`.
+   */
+  getWaterTextureUniform(): RefThree<Texture> {
+    return this._commonUniforms.waterTexture;
+  }
+
   /** Uniform ref to `[width, height, pixelRatio]` of the viewport in CSS pixels. */
   getViewportAndPixelRatioUniform(): RefThree<[number, number, number]> {
     return this._commonUniforms.viewportAndPixelRatio;

@@ -80,3 +80,44 @@ export function expressionUsesGeometryType(expr: unknown): boolean {
   if (!Array.isArray(expr)) return false;
   return expr[0] === "geometry-type" || expr.some(expressionUsesGeometryType);
 }
+
+/**
+ * Operators whose result can differ between features (or change without the
+ * zoom changing), after MapLibre's `isFeatureConstant`. `global-state` and the
+ * per-vertex/per-pixel inputs are included conservatively.
+ */
+const FEATURE_DATA_OPERATORS = new Set([
+  "get",
+  "has",
+  "properties",
+  "feature-state",
+  "geometry-type",
+  "id",
+  "within",
+  "distance",
+  "global-state",
+  "line-progress",
+  "accumulated",
+  "heatmap-density",
+  "elevation",
+]);
+
+/**
+ * Check if an expression may read feature data. When it does not, its value
+ * depends on zoom alone and is the same for every feature. Errs towards
+ * `true`: an operator name inside a literal only costs caching.
+ */
+export function expressionUsesFeatureData(expr: unknown): boolean {
+  if (Array.isArray(expr)) {
+    return (
+      (typeof expr[0] === "string" && FEATURE_DATA_OPERATORS.has(expr[0])) ||
+      expr.some(expressionUsesFeatureData)
+    );
+  }
+  if (expr && typeof expr === "object") {
+    // Legacy property and composite functions.
+    if ("property" in expr) return true;
+    return Object.values(expr).some(expressionUsesFeatureData);
+  }
+  return false;
+}

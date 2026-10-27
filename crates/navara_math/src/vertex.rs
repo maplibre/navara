@@ -5,7 +5,7 @@ pub use bevy_math::{
     DMat2 as RawDMat2, DMat3 as RawDMat3, DMat4 as RawDMat4, DQuat as RawDQuat, DVec2 as RawDVec2,
     DVec3 as RawDVec3, DVec4 as RawDVec4, Dir2 as RawDir2, Dir3A as RawDir3,
     EulerRot as RawEulerRot, Mat2 as RawMat2, Mat3 as RawMat3, Mat4 as RawMat4, Quat as RawQuat,
-    Vec2 as RawVec2, Vec3 as RawVec3, Vec4 as RawVec4, swizzles::*,
+    Vec2 as RawVec2, Vec2Swizzles, Vec3 as RawVec3, Vec3Swizzles, Vec4 as RawVec4, Vec4Swizzles,
 };
 
 use crate::{EPSILON10, FloatType};

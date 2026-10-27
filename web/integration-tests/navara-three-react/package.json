@@ -23,9 +23,9 @@
     "@navaramap/three-default-descs": "workspace:*",
     "@navaramap/three-default-plugin": "workspace:*",
     "@navaramap/three-react": "workspace:*",
-    "three": "0.185.1"
+    "three": "0.186.1"
   },
   "devDependencies": {
-    "@types/three": "0.185.4"
+    "@types/three": "0.186.0"
   }
 }
