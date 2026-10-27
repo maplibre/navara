@@ -275,13 +275,13 @@ export class DeclutterManager {
       input[o + 15] = c.padding[1];
       input[o + 16] = c.padding[2];
       input[o + 17] = c.padding[3];
-      input[o + 18] = c.pair?.group ?? 0;
-      input[o + 19] = c.pair?.featureIndex ?? 0;
-      input[o + 20] = c.pair ? PAIR_ROLE_CODES[c.pair.role] : 0;
+      input[o + 18] = c.pairGroup;
+      input[o + 19] = c.featureIndex;
+      input[o + 20] = c.pairGroup === 0 ? 0 : PAIR_ROLE_CODES[c.pairRole];
       input[o + 21] = c.standalone ? 1 : 0;
-      input[o + 22] = c.orientation?.flatFacing ? 1 : 0;
-      input[o + 23] = (c.orientation?.rotateWithCamera ?? true) ? 1 : 0;
-      input[o + 24] = c.orientation?.rotation ?? 0;
+      input[o + 22] = c.flatFacing ? 1 : 0;
+      input[o + 23] = c.rotateWithCamera ? 1 : 0;
+      input[o + 24] = c.rotation;
     }
 
     // The pass may run before the renderer refreshed matrixWorldInverse, so

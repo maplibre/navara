@@ -154,9 +154,11 @@ export type DeclutterCandidate = {
   overlap: "never" | "always" | "cooperative"; // see Overlap modes
   ignorePlacement: boolean; // test, but leave the box out of the grid
   padding: readonly number[]; // screen px: top, right, bottom, left
-  pair?: { group: number; featureIndex: number; role: "label" | "billboard" };
+  pairGroup: number;   // 0 = never paired
+  featureIndex: number;
+  pairRole: "label" | "billboard";
   standalone: boolean; // may show while its pair partner is hidden
-  orientation?: { flatFacing; rotateWithCamera; rotation }; // point quads only
+  flatFacing: boolean; rotateWithCamera: boolean; rotation: number; // quad orientation
   owner: DeclutterParticipant;
   handle: number;      // label slot (text) or instance index (sprites)
   contentKey?: string; // label text; feeds the tile-swap handoff
@@ -164,13 +166,14 @@ export type DeclutterCandidate = {
 ```
 
 The local box is anchor-relative, +Y up. For a point label or sprite it is
-the unrotated block, sent with the quad's effective `orientation` (facing,
-`rotateWithCamera`, `rotation`, per-feature overrides included); the kernel
-turns it with `quad_screen_basis` and `basis_box` from `line_label.rs`, the CPU
-mirror of the shaders' `nvr_quadBasis`, so a rotated, flat, or map-aligned
-quad claims the box it is drawn over. For an along-line candidate it is the
-screen-axis box of the turned label or quad, as step 0 resolved it, in the
-same units, with no orientation. The kernel projects and scales both the same
+the unrotated block, sent with the quad's effective orientation (facing,
+`rotateWithCamera`, `rotation`, per-feature overrides included, plus the line
+bearing a sprite on a line adds without scale bands); the kernel turns it with
+`quad_screen_basis` and `basis_box` from `line_label.rs`, the CPU mirror of the
+shaders' `nvr_quadBasis`, so a rotated, flat, or map-aligned quad claims the
+box it is drawn over. For an along-line candidate it is the screen-axis box of
+the turned label or quad, as step 0 resolved it, in the same units, with a
+screen-aligned orientation. The kernel projects and scales both the same
 way. A text label created since the last pass has no line box yet and falls
 back to its unrotated block.
 
@@ -354,13 +357,16 @@ leave it out of collection altogether, exactly like `declutter: false`
 
 MapLibre places a symbol's text and icon as one. A Navara layer that has both
 `text` and `billboard` does the same: a label and the billboard of the same
-feature at the same anchor form a pair, unless both are `standalone`. Each candidate carries a `pair` —
-the pair group (a hash of layer id and tile handle, `declutterPairGroup`,
-computed in `event/feature.ts` and handed to both meshes), the feature's batch
-index, and its role — and `pair_partners` in `declutter.rs` matches label to
-billboard on group, feature, and anchor. The anchors match bit for bit since
-both meshes derive them from the same geometry; instance indices do not
-(along-line text keeps more anchors than sprites).
+feature at the same anchor form a pair, unless both are `standalone`. Each
+candidate carries the pair group (a hash of layer id and tile handle,
+`declutterPairGroup`, computed in `event/feature.ts` and handed to both
+meshes), the feature's batch index, and its role. `pair_partners` in
+`declutter.rs` groups candidates by group and feature, then matches labels to
+billboards closest anchor first. Instance indices cannot pair them (along-line
+text keeps more anchors than sprites), and exact anchors cannot either: each
+mesh rebuilds its anchors from its own position arrays and transform, so they
+can differ by rounding, or for a moment when one mesh has seen a terrain
+update the other has not.
 
 At the first member's turn in the sorted walk, both members are tested
 against the grid before either claims space, so they never collide with each

@@ -158,6 +158,12 @@ export class JsStyleEngine implements StyleEngine {
           return (spec.default ?? getTypeDefault(spec.type)) as T;
         }
 
+        // A `Padding` instance; hand back its plain [top, right, bottom, left]
+        // as RustStyleEngine does.
+        if (spec.type === "padding") {
+          return (value as { values: number[] }).values as T;
+        }
+
         return value as T;
       } catch (e) {
         console.error("Expression evaluation error:", e);

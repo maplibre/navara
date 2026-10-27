@@ -553,8 +553,15 @@ export default class ThreeView<
     animation: false,
   };
   /** Shared screen-space label declutterer for text/sprite features. */
-  private _declutter = new DeclutterManager(wasmDeclutterKernel, () =>
-    this._scheduleDeclutterFrame(0),
+  private _declutter: DeclutterManager = new DeclutterManager(
+    wasmDeclutterKernel,
+    // Land the frame once the throttle allows the pass: an earlier one would
+    // only report "throttled" and reschedule. The main loop's frame time
+    // shares `performance.now()`'s origin.
+    () =>
+      this._scheduleDeclutterFrame(
+        this._declutter.remainingThrottleMs(performance.now()),
+      ),
   );
   /** Reusable Vector2 for the declutter pass's per-frame viewport query. */
   private _declutterSize = new Vector2();
@@ -2080,6 +2087,10 @@ export default class ThreeView<
         // Keep frames coming at fade cadence until every label reaches its
         // placement target.
         this._scheduleDeclutterFrame(16);
+      } else if (this._declutterRetry !== undefined) {
+        // This frame's pass consumed what asked for the pending frame.
+        clearTimeout(this._declutterRetry);
+        this._declutterRetry = undefined;
       }
     }
 

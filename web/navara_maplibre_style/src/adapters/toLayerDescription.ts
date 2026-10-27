@@ -185,6 +185,10 @@ function resolveOverlap(
  * Resolve `*-padding` as the one to four CSS-ordered values the material's
  * `declutterPadding` takes. `text-padding` is a single number, `icon-padding`
  * either form.
+ *
+ * Evaluated at the whole zoom: a changed padding rebuilds the layer through
+ * `layer.update()`, which an interpolation would otherwise trigger on every
+ * zoom step.
  */
 function resolvePadding(
   engine: StyleEngine,
@@ -197,7 +201,7 @@ function resolvePadding(
     styleLayer,
     "layout",
     `${prefix}-padding`,
-    zoom,
+    Math.floor(zoom),
   );
   return typeof value === "number" ? [value] : (value as number[]);
 }

@@ -91,7 +91,13 @@ function label(
     overlap: "never",
     ignorePlacement: false,
     padding: [2, 2, 2, 2],
+    pairGroup: 0,
+    featureIndex: 0,
+    pairRole: "label",
     standalone: true,
+    flatFacing: false,
+    rotateWithCamera: true,
+    rotation: 0,
     handle: 0,
     ...partial,
   };
@@ -135,15 +141,15 @@ describe("DeclutterManager", () => {
         ignorePlacement: true,
         rank: 4,
         padding: [1, 2, 3, 4],
-        pair: { group: 9, featureIndex: 5, role: "billboard" },
+        pairGroup: 9,
+        featureIndex: 5,
+        pairRole: "billboard",
         standalone: false,
-        orientation: {
-          flatFacing: true,
-          rotateWithCamera: false,
-          rotation: 0.5,
-        },
+        flatFacing: true,
+        rotateWithCamera: false,
+        rotation: 0.5,
       }),
-      label({ handle: 1, priority: 1 }),
+      label({ handle: 1, priority: 1, pairRole: "billboard" }),
     ]);
     manager.register(p);
 
@@ -169,7 +175,7 @@ describe("DeclutterManager", () => {
     expect(Array.from(candidates.subarray(18, 22))).toEqual([9, 5, 2, 0]);
     // flatFacing, rotateWithCamera, rotation
     expect(Array.from(candidates.subarray(22, 25))).toEqual([1, 0, 0.5]);
-    // An unpaired candidate packs role 0, and no orientation as screen-aligned.
+    // An unpaired candidate packs role 0 whatever its pairRole.
     expect(candidates[CANDIDATE_STRIDE + 20]).toBe(0);
     expect(
       Array.from(

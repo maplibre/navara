@@ -535,31 +535,50 @@ struct Judged {
     overlap: Overlap,
 }
 
-/// Pair each label with the billboard of the same feature at the same anchor,
-/// as MapLibre places a symbol's text and icon as one, unless both are
-/// standalone: those are placed independently and may block each other. Both
-/// are derived from the same geometry, so their anchors match bit for bit.
-/// Returns each candidate's partner, if it has one.
+/// Pair each label with the billboard of the same feature at the nearest
+/// anchor, as MapLibre places a symbol's text and icon as one, unless both are
+/// standalone: those are placed independently and may block each other. A
+/// feature placed along a line has a label at each of its anchors and a
+/// billboard at some of them; matching the closest first pairs each billboard
+/// with the label at its own anchor even while the two meshes' anchors differ,
+/// as they do by rounding or until both see the same terrain update. Returns
+/// each candidate's partner, if it has one.
 fn pair_partners(candidates: &[f64]) -> Vec<Option<usize>> {
     let n = candidates.len() / CANDIDATE_STRIDE;
-    let mut slots: HashMap<[u64; 5], [Option<usize>; 2]> = HashMap::new();
+    let mut features: HashMap<[u64; 2], [Vec<usize>; 2]> = HashMap::new();
     for i in 0..n {
         let c = &candidates[i * CANDIDATE_STRIDE..(i + 1) * CANDIDATE_STRIDE];
         let role = c[20] as usize;
         if role == 0 {
             continue;
         }
-        let key = [c[18], c[19], c[0], c[1], c[2]].map(f64::to_bits);
-        slots.entry(key).or_default()[role - 1].get_or_insert(i);
+        let key = [c[18], c[19]].map(f64::to_bits);
+        features.entry(key).or_default()[role - 1].push(i);
     }
     let mut partners = vec![None; n];
     let standalone = |i: usize| candidates[i * CANDIDATE_STRIDE + 21] != 0.0;
-    for [label, billboard] in slots.into_values() {
-        if let (Some(l), Some(b)) = (label, billboard)
-            && !(standalone(l) && standalone(b))
-        {
-            partners[l] = Some(b);
-            partners[b] = Some(l);
+    let distance_sq = |a: usize, b: usize| {
+        let (a, b) = (a * CANDIDATE_STRIDE, b * CANDIDATE_STRIDE);
+        (0..3)
+            .map(|k| (candidates[a + k] - candidates[b + k]).powi(2))
+            .sum::<f64>()
+    };
+    let mut matches = Vec::new();
+    for [labels, billboards] in features.into_values() {
+        matches.clear();
+        for &l in &labels {
+            for &b in &billboards {
+                if !(standalone(l) && standalone(b)) {
+                    matches.push((distance_sq(l, b), l, b));
+                }
+            }
+        }
+        matches.sort_by(|x, y| x.0.total_cmp(&y.0));
+        for &(_, l, b) in &matches {
+            if partners[l].is_none() && partners[b].is_none() {
+                partners[l] = Some(b);
+                partners[b] = Some(l);
+            }
         }
     }
     partners
@@ -827,7 +846,7 @@ mod tests {
     }
 
     #[test]
-    fn pairs_need_the_same_group_feature_and_anchor() {
+    fn pairs_need_the_same_group_and_feature() {
         let text = paired(label(R, 0.0, 0.0, 1.0, false), 7.0, 3.0, LABEL, false);
         let icon = |group, feature, y| {
             paired(
@@ -841,8 +860,27 @@ mod tests {
         // Unpaired, the overlapping billboard loses to the label.
         assert_eq!(place(&[text, icon(8.0, 3.0, 0.0)]), vec![0, 1]);
         assert_eq!(place(&[text, icon(7.0, 4.0, 0.0)]), vec![0, 1]);
-        assert_eq!(place(&[text, icon(7.0, 3.0, 1.0)]), vec![0, 1]);
         assert_eq!(place(&[text, icon(7.0, 3.0, 0.0)]), vec![0, 0]);
+        // Anchors a rounding or a terrain update apart still pair.
+        assert_eq!(place(&[text, icon(7.0, 3.0, 0.25)]), vec![0, 0]);
+    }
+
+    #[test]
+    fn a_feature_s_labels_pair_with_their_nearest_billboards() {
+        // One feature placed at two anchors along a line, each icon slightly off
+        // its label's anchor and listed in the other order. Paired by anchor,
+        // all four show; crossed, each label would collide with the icon it sits
+        // on.
+        let symbol = |y: f64, role| paired(label(R, y, 0.0, 0.0, false), 7.0, 3.0, role, false);
+        assert_eq!(
+            place(&[
+                symbol(0.0, LABEL),
+                symbol(1e6, LABEL),
+                symbol(1e6 + 0.25, BILLBOARD),
+                symbol(0.25, BILLBOARD),
+            ]),
+            vec![0, 0, 0, 0],
+        );
     }
 
     #[test]

@@ -39,25 +39,26 @@ export type DeclutterCandidate = {
    *  `[top, right, bottom, left]` (MapLibre's `*-padding`). */
   padding: readonly number[];
   /**
-   * Pairs a label with the billboard of the same feature at the same anchor,
-   * as MapLibre places a symbol's text and icon together: the layer and tile
-   * both belong to ({@link declutterPairGroup}), the feature's index there, and
-   * which of the two this is. Omitted, the candidate is never paired.
+   * Pairs a label with the billboard of the same feature at the nearest
+   * anchor, as MapLibre places a symbol's text and icon together: the layer
+   * and tile both belong to ({@link declutterPairGroup}), `0` for never
+   * paired. `featureIndex` is the feature's index in the group and `pairRole`
+   * which of the two this is.
    */
-  pair?: { group: number; featureIndex: number; role: "label" | "billboard" };
+  pairGroup: number;
+  featureIndex: number;
+  pairRole: "label" | "billboard";
   /** Whether it may show while its paired partner is hidden. */
   standalone: boolean;
   /**
    * How the quad is turned, as the vertex shader lays it out (`rotation` in
    * radians, clockwise from the front); the kernel turns the box to match.
-   * Omitted, the box is already as drawn: screen-aligned, or turned by line
-   * placement.
+   * A box already as drawn (turned by line placement) is screen-aligned:
+   * not flat facing, rotating with the camera, rotation `0`.
    */
-  orientation?: {
-    flatFacing: boolean;
-    rotateWithCamera: boolean;
-    rotation: number;
-  };
+  flatFacing: boolean;
+  rotateWithCamera: boolean;
+  rotation: number;
   /** Whether the label is currently shown (its fade target is "visible").
    *  Feeds placement hysteresis: shown labels win equal-priority ties and
    *  tolerate marginal overlaps, so slow camera drift doesn't make near-tied
@@ -96,6 +97,25 @@ export type DeclutterSettings = {
 
 const DEFAULT_PADDING = [2, 2, 2, 2];
 
+/** Expand one to four padding values the CSS way into
+ *  `[top, right, bottom, left]`, as `parse_padding` does on the Rust side. */
+function expandPadding(values: ArrayLike<number>): readonly number[] {
+  switch (values.length) {
+    case 1:
+      return [values[0], values[0], values[0], values[0]];
+    case 2:
+      return [values[0], values[1], values[0], values[1]];
+    case 3:
+      return [values[0], values[1], values[2], values[1]];
+    case 4:
+      return Array.from(values);
+    default:
+      throw new Error(
+        `declutterPadding: expected 1 to 4 values, got ${values.length}`,
+      );
+  }
+}
+
 export function resolveDeclutterSettings(material: {
   declutter?: boolean;
   declutterRank?: number;
@@ -117,7 +137,7 @@ export function resolveDeclutterSettings(material: {
     overlap,
     ignorePlacement,
     padding: material.declutterPadding
-      ? Array.from(material.declutterPadding)
+      ? expandPadding(material.declutterPadding)
       : DEFAULT_PADDING,
     standalone,
   };

@@ -76,6 +76,13 @@ describe("JsStyleEngine", () => {
       expect(valueFn({ properties: {} })).toBe("");
     });
 
+    it("should evaluate a padding expression to [top, right, bottom, left]", () => {
+      const spec = { type: "padding" as const, default: [2] };
+      const valueFn = engine.createValueFn(["get", "pad"], spec, "Point");
+
+      expect(valueFn({ properties: { pad: [1, 4] } })).toEqual([1, 4, 1, 4]);
+    });
+
     it("should throw error for invalid expression", () => {
       const spec = { type: "color" as const, default: "#000000" };
 

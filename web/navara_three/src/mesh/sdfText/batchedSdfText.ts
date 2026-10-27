@@ -327,8 +327,9 @@ export class BatchedSdfTextMesh
   private _ignorePlacement: boolean;
   private _declutterPadding: readonly number[];
   private _standalone: boolean;
-  /** Declutter pair group shared with the layer's billboards in this tile. */
-  private readonly _pairGroup: number | undefined;
+  /** Declutter pair group shared with the layer's billboards in this tile;
+   *  `0` when unpaired. */
+  private readonly _pairGroup: number;
   /** Skips the per-frame fade walk entirely once everything has settled. */
   private _declutterAnimating = false;
 
@@ -349,7 +350,7 @@ export class BatchedSdfTextMesh
   ) {
     super(options);
     this.ctx = ctx;
-    this._pairGroup = options.pairGroup;
+    this._pairGroup = options.pairGroup ?? 0;
     this._fontIdentifier = fontIdentifier;
     invariant(ctx.fontManager);
     this._fontManager = ctx.fontManager;
@@ -1382,6 +1383,9 @@ export class BatchedSdfTextMesh
       const b = record.slot * 4;
       const alongLine = this._isAlongLine(record);
       const hasBox = boxes !== null && b + 3 < boxes.length && alongLine;
+      const orientation = alongLine
+        ? defaults
+        : this._resolveOrientation(record.batchIndex, defaults);
       out.push({
         anchorX: record.anchor[0],
         anchorY: record.anchor[1],
@@ -1398,23 +1402,15 @@ export class BatchedSdfTextMesh
         overlap: this._overlap,
         ignorePlacement: this._ignorePlacement,
         padding: this._declutterPadding,
-        pair: this._pairGroup
-          ? {
-              group: this._pairGroup,
-              featureIndex: record.batchIndex,
-              role: "label",
-            }
-          : undefined,
+        pairGroup: this._pairGroup,
+        featureIndex: record.batchIndex,
+        pairRole: "label",
         standalone: this._standalone,
-        orientation: alongLine
-          ? undefined
-          : {
-              ...this._resolveOrientation(record.batchIndex, defaults),
-              rotation: this._resolveRotation(
-                record.batchIndex,
-                defaults.rotation,
-              ),
-            },
+        flatFacing: !alongLine && orientation.flatFacing,
+        rotateWithCamera: alongLine || orientation.rotateWithCamera,
+        rotation: alongLine
+          ? 0
+          : this._resolveRotation(record.batchIndex, defaults.rotation),
         owner: this,
         handle: record.slot,
         contentKey: record.text,

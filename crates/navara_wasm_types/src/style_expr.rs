@@ -254,6 +254,14 @@ fn value_to_jsvalue(value: &Value) -> Result<JsValue, JsValue> {
             }
             Ok(js_arr.into())
         }
+        // [top, right, bottom, left], as maplibre-gl's `Padding.values`.
+        Value::Padding(values) => {
+            let js_arr = js_sys::Array::new();
+            for n in values {
+                js_arr.push(&JsValue::from(*n));
+            }
+            Ok(js_arr.into())
+        }
         // Fallback for unsupported types: log warning and return null
         // This prevents valid MapLibre expressions from failing at runtime
         _ => {

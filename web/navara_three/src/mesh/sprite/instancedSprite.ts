@@ -234,7 +234,7 @@ export class InstancedSpriteMesh
   private _ignorePlacement = false;
   private _declutterPadding: readonly number[] = [];
   private _standalone = true;
-  private _pairGroup: number | undefined;
+  private _pairGroup: number;
   /** Per-instance priorities set through the evaluator (NaN = no override,
    *  fall back to the layer value). Lazily allocated on first use. */
   private _declutterPriorityOverrides: Float32Array | null = null;
@@ -266,7 +266,7 @@ export class InstancedSpriteMesh
     this.renderOrder = options.renderOrder ?? this.renderOrder;
     this.ctx = options.ctx;
     this._geometryType = options.geometryType;
-    this._pairGroup = options.pairGroup;
+    this._pairGroup = options.pairGroup ?? 0;
     this.ctx.declutter?.register(this);
     // `processObjectRemoved` dispatches this for every removed mesh; it is the
     // reliable teardown signal (this class's dispose() is not called there).
@@ -427,6 +427,7 @@ export class InstancedSpriteMesh
     const targets = this._declutterTargets;
     const outOfBand = this._outOfBand;
     const placed = this._linePlacement;
+    const bearings = state.instanceBearing ? this._bearings : null;
     const count = Math.min(this._instanceCount, anchors.length / 3);
 
     for (let i = 0; i < count; i++) {
@@ -455,13 +456,18 @@ export class InstancedSpriteMesh
       // Mirror of instancedSprite.vert.glsl — the quad spans
       // (position.xy - center) * vec2(aspect, 1) * size around the anchor,
       // turned as `placeLineLabels` resolved for an along-line anchor, and by
-      // the kernel from the feature's own orientation otherwise.
+      // the kernel from the feature's own orientation (plus the line bearing
+      // the shader adds) otherwise.
       const p = i * LINE_ANCHOR_RESULT_STRIDE;
       const packed = placed
         ? undefined
         : readBatchScalar(material, batchIndex, "orientation");
       const orientation =
         packed === undefined ? state : unpackOrientation(packed);
+      const rotation = placed
+        ? 0
+        : (readBatchScalar(material, batchIndex, "rotation") ??
+            state.rotation) + (bearings ? bearings[i] : 0);
       out.push({
         anchorX: anchors[i * 3],
         anchorY: anchors[i * 3 + 1],
@@ -479,23 +485,13 @@ export class InstancedSpriteMesh
         overlap: this._overlap,
         ignorePlacement: this._ignorePlacement,
         padding: this._declutterPadding,
-        pair: this._pairGroup
-          ? {
-              group: this._pairGroup,
-              featureIndex: batchIndex,
-              role: "billboard",
-            }
-          : undefined,
+        pairGroup: this._pairGroup,
+        featureIndex: batchIndex,
+        pairRole: "billboard",
         standalone: this._standalone,
-        orientation: placed
-          ? undefined
-          : {
-              flatFacing: orientation.flatFacing,
-              rotateWithCamera: orientation.rotateWithCamera,
-              rotation:
-                readBatchScalar(material, batchIndex, "rotation") ??
-                state.rotation,
-            },
+        flatFacing: !placed && orientation.flatFacing,
+        rotateWithCamera: placed !== null || orientation.rotateWithCamera,
+        rotation,
         owner: this,
         handle: i,
       });

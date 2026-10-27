@@ -317,7 +317,8 @@ export type PropertySpec = {
     | "string"
     | "array"
     | "formatted"
-    | "resolvedImage";
+    | "resolvedImage"
+    | "padding";
   default?: unknown;
   minimum?: number;
   maximum?: number;

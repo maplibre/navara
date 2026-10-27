@@ -610,6 +610,28 @@ describe("toLayerDescription", () => {
       ).toBe(true);
     });
 
+    it("evaluates padding expressions at the whole zoom", () => {
+      const { billboard } = toLayerDescription(
+        mockSource,
+        symbolLayer({
+          "icon-image": "marker",
+          "icon-padding": [
+            "interpolate",
+            ["linear"],
+            ["zoom"],
+            0,
+            ["literal", [0, 10]],
+            10,
+            ["literal", [10, 20]],
+          ],
+        }),
+        "Font",
+        engine,
+        5.9,
+      ) as VectorLayer;
+      expect(billboard?.declutterPadding).toEqual([5, 15, 5, 15]);
+    });
+
     it("ranks text and icons by the layer's index in the style", () => {
       const { text, billboard } = toLayerDescription(
         mockSource,
