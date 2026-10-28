@@ -11,14 +11,15 @@
     "astro": "astro"
   },
   "dependencies": {
-    "@astrojs/starlight": "0.41.9",
-    "@lucide/astro": "1.31.0",
-    "astro": "7.2.8",
+    "@astrojs/markdown-remark": "7.3.4",
+    "@astrojs/starlight": "0.42.6",
+    "@lucide/astro": "1.61.0",
+    "astro": "7.4.2",
     "rehype-mermaid": "3.0.0",
-    "sharp": "0.35.4"
+    "sharp": "0.35.5"
   },
   "packageManager": "pnpm@11.28.6",
   "devDependencies": {
-    "playwright": "1.62.1"
+    "playwright": "1.64.1"
   }
 }

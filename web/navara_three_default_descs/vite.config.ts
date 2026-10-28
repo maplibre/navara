@@ -1,11 +1,10 @@
 import path from "path";
 
-import dts from "unplugin-dts/vite";
 import { defineConfig, normalizePath } from "vite";
 import glsl from "vite-plugin-glsl";
 import tsconfig from "vite-tsconfig-paths";
 
-import { commonConfig, composePlugins } from "../vite.config.common";
+import { commonConfig, composePlugins, dts } from "../vite.config.common";
 
 export default defineConfig((env) => {
   const common = commonConfig("NavaraDefaultLayers", env);
