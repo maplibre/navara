@@ -199,6 +199,12 @@ flatten(): Float32Array
 
 A flattened RGBA array with every alpha set to 1 (length = number of colors in LUT x 4)
 
+**Using the array with elevation heatmaps:**
+
+- **Layout**: Each color takes 4 values (`r, g, b, a`), each in the range [0, 1]. `flatten()` always writes an alpha of 1. For translucent or transparent colors, write the `Float32Array` yourself.
+- **Placement**: Colors are evenly spaced from `minHeight` to `maxHeight`. Pass [`colorStops`](../../../three/material/elevation-heatmap-material/#colorstops) to place each color at an exact elevation instead.
+- **Updating**: Pass the new `colorMap` to `layer.update()` or `view.updateLayerById()`. An update that leaves out `colorMap` keeps the current one, and `colorMap: undefined` switches back to grayscale.
+
 ## Usage Examples
 
 ### Usage with Elevation Heatmaps
@@ -338,4 +344,3 @@ setColorMap("rdYlGn");
 
 - [Color Class](../../../three/api/color/) - A class for representing colors
 - [ElevationHeatmapMaterial](../../../three/material/elevation-heatmap-material/) - Using color maps with elevation heatmap layers
-- [ElevationHeatmapMaterial](../../../three/material/elevation-heatmap-material/) - Elevation heatmap material

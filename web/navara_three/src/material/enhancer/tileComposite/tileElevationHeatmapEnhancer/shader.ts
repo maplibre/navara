@@ -5,8 +5,8 @@ import type { CompositeSlotContext } from "../tileCompositeBaseEnhancer";
 export const elevationSlotUniformDecls = (numTextures: number): string =>
   `// Packed elevation heatmap params: (isElevationHeatmap, usesBilinear, colorMapRow, logBoundary)
 uniform vec4 uElevationHeatmapParams[${numTextures}];
-uniform vec2 uElevationColorRamps[${numTextures}];  // Per-layer (stopCount, hasColorStops)
-uniform vec2 uElevationMinMaxHeights[${numTextures}];  // Per-layer (min, max) normalization range
+// Per-layer (minHeight, maxHeight, stopCount, hasColorStops): the normalization range and the color ramp shape
+uniform vec4 uElevationRangeAndRamp[${numTextures}];
 uniform vec4 uElevationRGBScalersAndBoundaries[${numTextures}];  // (r, g, b, boundary)
 uniform vec4 uElevationDecoderOffsets[${numTextures}];  // (minOffset, maxOffset, epsilon, offset)`;
 
@@ -52,17 +52,16 @@ export const elevationSampleProducer = ({
       // Ramp key: the height itself for colorStops (meters), otherwise the
       // height normalized with the layer's own minHeight/maxHeight and
       // logarithmic scaling (0 = off, >0 = on with boundary value).
-      vec2 ramp${k} = uElevationColorRamps[${k}];
+      vec4 rangeAndRamp${k} = uElevationRangeAndRamp[${k}];
       float key${k} = h${k};
-      if (ramp${k}.y < 0.5) {
+      if (rangeAndRamp${k}.w < 0.5) {
         bool logarithmic = logBoundary > 0.0;
         float logBase = logarithmic ? log(logBoundary) : 1.0;  // ln(boundary)
-        vec2 minMax${k} = uElevationMinMaxHeights[${k}];
-        key${k} = normalizeElevationHeight(h${k}, minMax${k}.x, minMax${k}.y, logarithmic, logBase, logBoundary);
+        key${k} = normalizeElevationHeight(h${k}, rangeAndRamp${k}.x, rangeAndRamp${k}.y, logarithmic, logBase, logBoundary);
       }
 
       // The ramp's (straight) alpha is kept; no-data texels stay transparent.
-      vec4 mapped${k} = sampleColorRamp(int(params${k}.z), int(ramp${k}.x), key${k});
+      vec4 mapped${k} = sampleColorRamp(int(params${k}.z), int(rangeAndRamp${k}.z), key${k});
       texColor${k} = vec4(mapped${k}.rgb, demValid${k} ? mapped${k}.a : 0.0);
     } else {
       texColor${k} = texture2D(uTextures[${k}], texUv${k}) * vec4(uColors[${k}], 1.0);

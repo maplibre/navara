@@ -23,20 +23,14 @@ DEM タイルをデコードするため、[`raster-dem`](../../../three/source/
 
 **デフォルト:** `undefined`
 
-**説明:** このレイヤー用のカラーマップルックアップテーブル。フラット化された RGBA 配列 `[r0,g0,b0,a0, r1,g1,b1,a1, ...]` で、各成分は [0, 1] の範囲です。各エントリは `minHeight` から `maxHeight` まで等間隔に（`colorStops` を指定した場合はその標高に）対応し、アルファ値でその標高を半透明または透明にできます。ColorMap インスタンスをこの形式に変換するには `ColorMap.flatten()` を使用します（色は不透明になります）。省略した場合、標高は `minHeight` の黒から `maxHeight` の白までのグレースケールで表示されます。追加済みレイヤーのカラーマップを変更するには、新しいレイヤー定義を `view.updateLayerById()` に渡します。`colorMap` を含まない更新では現在のカラーマップが維持され、`colorMap: undefined` を指定するとグレースケールに戻ります。`layer.update()` ではカラーマップは更新されません。
+**説明:** このレイヤー用のカラールックアップテーブル。フラット化された RGBA の `Float32Array` で、[`ColorMap.flatten()`](../../../three/api/colormap/#flatten) で作成できます。省略した場合、標高はグレースケールで表示されます。配列の形式、色の配置（[`colorStops`](#colorstops) も参照）、実行時の変更方法は [ColorMap](../../../three/api/colormap/) を参照してください。
 
 ```typescript
 import { ColorMap, Color } from "@navaramap/three";
 
-const colorMap = new ColorMap("sequential", "YlGnBu", [
+const colorMap = new ColorMap("sequential", "Example", [
   new Color().setStyle("#ffffd9"),
-  new Color().setStyle("#edf8b1"),
-  new Color().setStyle("#c7e9b4"),
-  new Color().setStyle("#7fcdbb"),
-  new Color().setStyle("#41b6c4"),
   new Color().setStyle("#1d91c0"),
-  new Color().setStyle("#225ea8"),
-  new Color().setStyle("#253494"),
   new Color().setStyle("#081d58"),
 ]);
 

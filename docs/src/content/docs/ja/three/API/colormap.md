@@ -199,6 +199,12 @@ flatten(): Float32Array
 
 アルファ値をすべて 1 にした、フラット化された RGBA 配列（長さ = LUT の色数 × 4）
 
+**標高ヒートマップでの配列の扱い:**
+
+- **レイアウト**: 各色は 4 つの値（`r, g, b, a`）で、それぞれ [0, 1] の範囲です。`flatten()` はアルファ値を常に 1 にします。半透明や透明の色が必要な場合は、`Float32Array` を自分で作成してください。
+- **配置**: 色は `minHeight` から `maxHeight` まで等間隔に配置されます。[`colorStops`](../../../three/material/elevation-heatmap-material/#colorstops) を指定すると、各色を正確な標高に配置できます。
+- **更新**: 新しい `colorMap` を `layer.update()` または `view.updateLayerById()` に渡します。`colorMap` を含まない更新では現在のカラーマップが維持され、`colorMap: undefined` を指定するとグレースケールに戻ります。
+
 ## 使用例
 
 ### 標高ヒートマップでの使用

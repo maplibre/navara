@@ -23,20 +23,14 @@ Because it decodes DEM tiles, it requires a [`raster-dem`](../../../three/source
 
 **Default:** `undefined`
 
-**Description:** Color map lookup table for this layer. A flattened RGBA array `[r0,g0,b0,a0, r1,g1,b1,a1, ...]` where each component is in the range [0, 1]. Entries are evenly spaced from `minHeight` to `maxHeight` (or placed at `colorStops`), and the alpha makes those elevations translucent or transparent. Use `ColorMap.flatten()` to convert a ColorMap instance to this format (its colors are opaque). When omitted, the elevation is shown in grayscale, from black at `minHeight` to white at `maxHeight`. To change the color map of an added layer, pass the new layer description to `view.updateLayerById()`. An update that leaves out `colorMap` keeps the current one, and `colorMap: undefined` switches back to grayscale. `layer.update()` does not update the color map.
+**Description:** Color lookup table for this layer, as a flattened RGBA `Float32Array`. Create it with [`ColorMap.flatten()`](../../../three/api/colormap/#flatten). When omitted, the elevation is shown in grayscale. See [ColorMap](../../../three/api/colormap/) for the array format, how colors are placed (see also [`colorStops`](#colorstops)), and how to change it at runtime.
 
 ```typescript
 import { ColorMap, Color } from "@navaramap/three";
 
-const colorMap = new ColorMap("sequential", "YlGnBu", [
+const colorMap = new ColorMap("sequential", "Example", [
   new Color().setStyle("#ffffd9"),
-  new Color().setStyle("#edf8b1"),
-  new Color().setStyle("#c7e9b4"),
-  new Color().setStyle("#7fcdbb"),
-  new Color().setStyle("#41b6c4"),
   new Color().setStyle("#1d91c0"),
-  new Color().setStyle("#225ea8"),
-  new Color().setStyle("#253494"),
   new Color().setStyle("#081d58"),
 ]);
 

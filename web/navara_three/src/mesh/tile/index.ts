@@ -1417,10 +1417,14 @@ ${generateTileCommonInjection(maxTextures)}
     }
 
     // Keep layer IDs; the colorMap atlas row is resolved at composite time
-    if (mat.layerIds && mat.layerIds.length > 0) {
-      for (let i = 0; i < Math.min(mat.layerIds.length, maxTextures); i++) {
+    if (mat.colorMapLayerIds && mat.colorMapLayerIds.length > 0) {
+      for (
+        let i = 0;
+        i < Math.min(mat.colorMapLayerIds.length, maxTextures);
+        i++
+      ) {
         m.userData.elevationHeatmapLayerIds.value[i] =
-          mat.layerIds[i] || undefined;
+          mat.colorMapLayerIds[i] || undefined;
       }
     }
 

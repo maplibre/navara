@@ -30,7 +30,7 @@ A handle class for controlling resource layers (imagery, terrain, GeoJSON, 3D Ti
 
 #### update()
 
-Updates the layer settings. To change an elevation heatmap's `colorMap` or `colorStops`, use [`view.updateLayerById()`](../../../three/api/threeview-functions/#updatelayerbyid) instead, because `update()` does not update the colors.
+Updates the layer settings.
 
 **Syntax:**
 
@@ -192,6 +192,24 @@ layer.on("featureUpdated", ({ evaluator }) => {
 | Property | Type | Description |
 |----------|------|-------------|
 | `featureSetId` | `FeatureSetId` | Identifier of the removed feature set |
+
+#### updated
+
+**Description:** Fires after `update()` (or `view.updateLayerById()`) applies a new configuration. The handler receives the configuration as it was passed in.
+
+**Handler Type:**
+
+```typescript
+(l: LayerDescription) => void
+```
+
+**Example:**
+
+```typescript
+layer.on("updated", (description) => {
+  console.log("Layer updated", description);
+});
+```
 
 #### deleted
 

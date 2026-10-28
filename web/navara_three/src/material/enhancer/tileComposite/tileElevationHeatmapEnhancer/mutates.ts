@@ -1,4 +1,4 @@
-import { Uniform, Vector2, Vector4, type Texture } from "three";
+import { Uniform, Vector4, type Texture } from "three";
 
 import {
   DEFAULT_ELEVATION_HEATMAP_LOG_BOUNDARY,
@@ -25,8 +25,9 @@ export function createElevationMutates(): ElevationMutates {
   const refs = {
     // Packed params: (isElevationHeatmap, usesBilinear, colorMapRow, logBoundary)
     uElevationHeatmapParams: new Uniform<Vector4[]>([]),
-    uElevationColorRamps: new Uniform<Vector2[]>([]), // Per-layer (stopCount, hasColorStops)
-    uElevationMinMaxHeights: new Uniform<Vector2[]>([]),
+    // Per-layer (minHeight, maxHeight, stopCount, hasColorStops). One vec4
+    // instead of two vec2 halves the fragment uniform vectors they take.
+    uElevationRangeAndRamp: new Uniform<Vector4[]>([]),
     uColorMapTexture: new Uniform<Texture | null>(null),
     uElevationRGBScalersAndBoundaries: new Uniform<Vector4[]>([]), // Per-layer (r, g, b, boundary)
     uElevationDecoderOffsets: new Uniform<Vector4[]>([]), // Per-layer (minOffset, maxOffset, epsilon, offset)
@@ -40,13 +41,10 @@ export function createElevationMutates(): ElevationMutates {
         { length: numTextures },
         () => new Vector4(0, 1, 0, 0), // defaults: not an elevation heatmap, bilinear, default row, log off
       );
-      refs.uElevationColorRamps.value = Array.from(
+      refs.uElevationRangeAndRamp.value = Array.from(
         { length: numTextures },
-        () => new Vector2(2, 0), // default grayscale ramp: 2 evenly spaced stops
-      );
-      refs.uElevationMinMaxHeights.value = Array.from(
-        { length: numTextures },
-        () => new Vector2(0, 1),
+        // range 0..1, default grayscale ramp: 2 evenly spaced stops
+        () => new Vector4(0, 1, 2, 0),
       );
       refs.uElevationRGBScalersAndBoundaries.value = Array.from(
         { length: numTextures },
@@ -59,8 +57,7 @@ export function createElevationMutates(): ElevationMutates {
       placeholderTexture = placeholder;
       refs.uColorMapTexture.value = placeholder;
       target.uElevationHeatmapParams = refs.uElevationHeatmapParams;
-      target.uElevationColorRamps = refs.uElevationColorRamps;
-      target.uElevationMinMaxHeights = refs.uElevationMinMaxHeights;
+      target.uElevationRangeAndRamp = refs.uElevationRangeAndRamp;
       target.uColorMapTexture = refs.uColorMapTexture;
       target.uElevationRGBScalersAndBoundaries =
         refs.uElevationRGBScalersAndBoundaries;
@@ -82,16 +79,14 @@ export function createElevationMutates(): ElevationMutates {
           ramp?.row ?? 0,
           logBoundary,
         );
-        refs.uElevationColorRamps.value[k].set(
-          ramp?.stopCount ?? 2,
-          ramp?.hasColorStops ? 1 : 0,
-        );
 
-        // Set per-layer min/max heights
+        // Per-layer min/max heights and color ramp shape
         const minH = layer.minHeight ?? 0;
-        refs.uElevationMinMaxHeights.value[k].set(
+        refs.uElevationRangeAndRamp.value[k].set(
           minH,
           layer.maxHeight ?? minH + 1,
+          ramp?.stopCount ?? 2,
+          ramp?.hasColorStops ? 1 : 0,
         );
 
         // Set per-layer decoder parameters; reset when absent so the slot
@@ -111,8 +106,7 @@ export function createElevationMutates(): ElevationMutates {
       } else {
         // Reset to defaults: (isElevationHeatmap=0, usesBilinear=1, colorMapRow=0, logBoundary=0)
         refs.uElevationHeatmapParams.value[k].set(0, 1, 0, 0);
-        refs.uElevationColorRamps.value[k].set(2, 0);
-        refs.uElevationMinMaxHeights.value[k].set(0, 1);
+        refs.uElevationRangeAndRamp.value[k].set(0, 1, 2, 0);
         refs.uElevationRGBScalersAndBoundaries.value[k].set(0, 0, 0, 0);
         refs.uElevationDecoderOffsets.value[k].set(0, 0, 1, 0);
       }

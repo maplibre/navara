@@ -27,8 +27,8 @@ uniform bool uIsHillshades[4];
 uniform float uHillshadeExaggeration;
 // Packed elevation heatmap params: (isElevationHeatmap, usesBilinear, colorMapRow, logBoundary)
 uniform vec4 uElevationHeatmapParams[4];
-uniform vec2 uElevationColorRamps[4];  // Per-layer (stopCount, hasColorStops)
-uniform vec2 uElevationMinMaxHeights[4];  // Per-layer (min, max) normalization range
+// Per-layer (minHeight, maxHeight, stopCount, hasColorStops): the normalization range and the color ramp shape
+uniform vec4 uElevationRangeAndRamp[4];
 uniform vec4 uElevationRGBScalersAndBoundaries[4];  // (r, g, b, boundary)
 uniform vec4 uElevationDecoderOffsets[4];  // (minOffset, maxOffset, epsilon, offset)
 uniform bool uWaters[4];
@@ -360,17 +360,16 @@ void main() {
       // Ramp key: the height itself for colorStops (meters), otherwise the
       // height normalized with the layer's own minHeight/maxHeight and
       // logarithmic scaling (0 = off, >0 = on with boundary value).
-      vec2 ramp0 = uElevationColorRamps[0];
+      vec4 rangeAndRamp0 = uElevationRangeAndRamp[0];
       float key0 = h0;
-      if (ramp0.y < 0.5) {
+      if (rangeAndRamp0.w < 0.5) {
         bool logarithmic = logBoundary > 0.0;
         float logBase = logarithmic ? log(logBoundary) : 1.0;  // ln(boundary)
-        vec2 minMax0 = uElevationMinMaxHeights[0];
-        key0 = normalizeElevationHeight(h0, minMax0.x, minMax0.y, logarithmic, logBase, logBoundary);
+        key0 = normalizeElevationHeight(h0, rangeAndRamp0.x, rangeAndRamp0.y, logarithmic, logBase, logBoundary);
       }
 
       // The ramp's (straight) alpha is kept; no-data texels stay transparent.
-      vec4 mapped0 = sampleColorRamp(int(params0.z), int(ramp0.x), key0);
+      vec4 mapped0 = sampleColorRamp(int(params0.z), int(rangeAndRamp0.z), key0);
       texColor0 = vec4(mapped0.rgb, demValid0 ? mapped0.a : 0.0);
     } else {
       texColor0 = texture2D(uTextures[0], texUv0) * vec4(uColors[0], 1.0);
@@ -453,17 +452,16 @@ void main() {
       // Ramp key: the height itself for colorStops (meters), otherwise the
       // height normalized with the layer's own minHeight/maxHeight and
       // logarithmic scaling (0 = off, >0 = on with boundary value).
-      vec2 ramp1 = uElevationColorRamps[1];
+      vec4 rangeAndRamp1 = uElevationRangeAndRamp[1];
       float key1 = h1;
-      if (ramp1.y < 0.5) {
+      if (rangeAndRamp1.w < 0.5) {
         bool logarithmic = logBoundary > 0.0;
         float logBase = logarithmic ? log(logBoundary) : 1.0;  // ln(boundary)
-        vec2 minMax1 = uElevationMinMaxHeights[1];
-        key1 = normalizeElevationHeight(h1, minMax1.x, minMax1.y, logarithmic, logBase, logBoundary);
+        key1 = normalizeElevationHeight(h1, rangeAndRamp1.x, rangeAndRamp1.y, logarithmic, logBase, logBoundary);
       }
 
       // The ramp's (straight) alpha is kept; no-data texels stay transparent.
-      vec4 mapped1 = sampleColorRamp(int(params1.z), int(ramp1.x), key1);
+      vec4 mapped1 = sampleColorRamp(int(params1.z), int(rangeAndRamp1.z), key1);
       texColor1 = vec4(mapped1.rgb, demValid1 ? mapped1.a : 0.0);
     } else {
       texColor1 = texture2D(uTextures[1], texUv1) * vec4(uColors[1], 1.0);
@@ -546,17 +544,16 @@ void main() {
       // Ramp key: the height itself for colorStops (meters), otherwise the
       // height normalized with the layer's own minHeight/maxHeight and
       // logarithmic scaling (0 = off, >0 = on with boundary value).
-      vec2 ramp2 = uElevationColorRamps[2];
+      vec4 rangeAndRamp2 = uElevationRangeAndRamp[2];
       float key2 = h2;
-      if (ramp2.y < 0.5) {
+      if (rangeAndRamp2.w < 0.5) {
         bool logarithmic = logBoundary > 0.0;
         float logBase = logarithmic ? log(logBoundary) : 1.0;  // ln(boundary)
-        vec2 minMax2 = uElevationMinMaxHeights[2];
-        key2 = normalizeElevationHeight(h2, minMax2.x, minMax2.y, logarithmic, logBase, logBoundary);
+        key2 = normalizeElevationHeight(h2, rangeAndRamp2.x, rangeAndRamp2.y, logarithmic, logBase, logBoundary);
       }
 
       // The ramp's (straight) alpha is kept; no-data texels stay transparent.
-      vec4 mapped2 = sampleColorRamp(int(params2.z), int(ramp2.x), key2);
+      vec4 mapped2 = sampleColorRamp(int(params2.z), int(rangeAndRamp2.z), key2);
       texColor2 = vec4(mapped2.rgb, demValid2 ? mapped2.a : 0.0);
     } else {
       texColor2 = texture2D(uTextures[2], texUv2) * vec4(uColors[2], 1.0);
@@ -639,17 +636,16 @@ void main() {
       // Ramp key: the height itself for colorStops (meters), otherwise the
       // height normalized with the layer's own minHeight/maxHeight and
       // logarithmic scaling (0 = off, >0 = on with boundary value).
-      vec2 ramp3 = uElevationColorRamps[3];
+      vec4 rangeAndRamp3 = uElevationRangeAndRamp[3];
       float key3 = h3;
-      if (ramp3.y < 0.5) {
+      if (rangeAndRamp3.w < 0.5) {
         bool logarithmic = logBoundary > 0.0;
         float logBase = logarithmic ? log(logBoundary) : 1.0;  // ln(boundary)
-        vec2 minMax3 = uElevationMinMaxHeights[3];
-        key3 = normalizeElevationHeight(h3, minMax3.x, minMax3.y, logarithmic, logBase, logBoundary);
+        key3 = normalizeElevationHeight(h3, rangeAndRamp3.x, rangeAndRamp3.y, logarithmic, logBase, logBoundary);
       }
 
       // The ramp's (straight) alpha is kept; no-data texels stay transparent.
-      vec4 mapped3 = sampleColorRamp(int(params3.z), int(ramp3.x), key3);
+      vec4 mapped3 = sampleColorRamp(int(params3.z), int(rangeAndRamp3.z), key3);
       texColor3 = vec4(mapped3.rgb, demValid3 ? mapped3.a : 0.0);
     } else {
       texColor3 = texture2D(uTextures[3], texUv3) * vec4(uColors[3], 1.0);
@@ -767,8 +763,8 @@ uniform vec2 uReprojectTerrainLat[2];
 uniform vec4 uReprojectMerc[2];
 // Packed elevation heatmap params: (isElevationHeatmap, usesBilinear, colorMapRow, logBoundary)
 uniform vec4 uElevationHeatmapParams[2];
-uniform vec2 uElevationColorRamps[2];  // Per-layer (stopCount, hasColorStops)
-uniform vec2 uElevationMinMaxHeights[2];  // Per-layer (min, max) normalization range
+// Per-layer (minHeight, maxHeight, stopCount, hasColorStops): the normalization range and the color ramp shape
+uniform vec4 uElevationRangeAndRamp[2];
 uniform vec4 uElevationRGBScalersAndBoundaries[2];  // (r, g, b, boundary)
 uniform vec4 uElevationDecoderOffsets[2];  // (minOffset, maxOffset, epsilon, offset)
 
@@ -1099,17 +1095,16 @@ void main() {
       // Ramp key: the height itself for colorStops (meters), otherwise the
       // height normalized with the layer's own minHeight/maxHeight and
       // logarithmic scaling (0 = off, >0 = on with boundary value).
-      vec2 ramp0 = uElevationColorRamps[0];
+      vec4 rangeAndRamp0 = uElevationRangeAndRamp[0];
       float key0 = h0;
-      if (ramp0.y < 0.5) {
+      if (rangeAndRamp0.w < 0.5) {
         bool logarithmic = logBoundary > 0.0;
         float logBase = logarithmic ? log(logBoundary) : 1.0;  // ln(boundary)
-        vec2 minMax0 = uElevationMinMaxHeights[0];
-        key0 = normalizeElevationHeight(h0, minMax0.x, minMax0.y, logarithmic, logBase, logBoundary);
+        key0 = normalizeElevationHeight(h0, rangeAndRamp0.x, rangeAndRamp0.y, logarithmic, logBase, logBoundary);
       }
 
       // The ramp's (straight) alpha is kept; no-data texels stay transparent.
-      vec4 mapped0 = sampleColorRamp(int(params0.z), int(ramp0.x), key0);
+      vec4 mapped0 = sampleColorRamp(int(params0.z), int(rangeAndRamp0.z), key0);
       texColor0 = vec4(mapped0.rgb, demValid0 ? mapped0.a : 0.0);
     } else {
       texColor0 = texture2D(uTextures[0], texUv0) * vec4(uColors[0], 1.0);
@@ -1188,17 +1183,16 @@ void main() {
       // Ramp key: the height itself for colorStops (meters), otherwise the
       // height normalized with the layer's own minHeight/maxHeight and
       // logarithmic scaling (0 = off, >0 = on with boundary value).
-      vec2 ramp1 = uElevationColorRamps[1];
+      vec4 rangeAndRamp1 = uElevationRangeAndRamp[1];
       float key1 = h1;
-      if (ramp1.y < 0.5) {
+      if (rangeAndRamp1.w < 0.5) {
         bool logarithmic = logBoundary > 0.0;
         float logBase = logarithmic ? log(logBoundary) : 1.0;  // ln(boundary)
-        vec2 minMax1 = uElevationMinMaxHeights[1];
-        key1 = normalizeElevationHeight(h1, minMax1.x, minMax1.y, logarithmic, logBase, logBoundary);
+        key1 = normalizeElevationHeight(h1, rangeAndRamp1.x, rangeAndRamp1.y, logarithmic, logBase, logBoundary);
       }
 
       // The ramp's (straight) alpha is kept; no-data texels stay transparent.
-      vec4 mapped1 = sampleColorRamp(int(params1.z), int(ramp1.x), key1);
+      vec4 mapped1 = sampleColorRamp(int(params1.z), int(rangeAndRamp1.z), key1);
       texColor1 = vec4(mapped1.rgb, demValid1 ? mapped1.a : 0.0);
     } else {
       texColor1 = texture2D(uTextures[1], texUv1) * vec4(uColors[1], 1.0);

@@ -519,26 +519,6 @@ export type ViewEvents = {
  * await view.init();
  * ```
  */
-
-/**
- * An explicit `colorMap: undefined` / `colorStops: undefined` clears that
- * array, but `undefined` is dropped when the description crosses into Rust,
- * which would then keep the old hash and skip re-compositing. Forward the clear
- * as an empty array instead (treated as "none" on both sides).
- */
-function withExplicitColorRampClears(l: LayerDescription): LayerDescription {
-  if (l.type !== "raster" || !l.elevationHeatmap) return l;
-  const elevationHeatmap = { ...l.elevationHeatmap };
-  let changed = false;
-  for (const key of ["colorMap", "colorStops"] as const) {
-    if (key in elevationHeatmap && elevationHeatmap[key] === undefined) {
-      elevationHeatmap[key] = new Float32Array(0);
-      changed = true;
-    }
-  }
-  return changed ? { ...l, elevationHeatmap } : l;
-}
-
 export default class ThreeView<
   D extends Descriptions = EmptyDescriptions,
 > extends EventHandler<ViewEvents> {
@@ -1987,9 +1967,11 @@ export default class ThreeView<
   /**
    * Syncs a layer's elevation heatmap colorMap / colorStops into the atlas.
    * Tiles are not marked here: Rust keeps hashes of both arrays in the layer's
-   * elevation heatmap config, so a change fails the per-tile material comparison and
-   * re-composites exactly the tiles drawing this layer (see
-   * `updateLayerById` for how an explicit clear reaches Rust). Atlas rows may
+   * elevation heatmap config, so a change fails the per-tile material
+   * comparison and re-composites exactly the tiles drawing this layer (see
+   * `withExplicitColorRampClears` in layer.ts for how an explicit clear
+   * reaches Rust). Called from `addLayer` and on the layer's "updated" and
+   * "deleted" events. Atlas rows may
    * shift on add/remove, but composites resolve rows when they run and bake
    * final colors, so other layers' tiles stay valid.
    *
@@ -2001,8 +1983,12 @@ export default class ThreeView<
    */
   private _syncColorMap(layerId: string, l: LayerDescription | undefined) {
     // Elevation heatmap layers sample the shared colorMap atlas: reserve its
-    // texture unit for tiles created from now on.
-    if (l?.type === "raster" && l.elevationHeatmap) {
+    // texture unit for tiles created from now on (once).
+    if (
+      l?.type === "raster" &&
+      l.elevationHeatmap &&
+      !this._defaultTextureOptions.additionalTexturesInUse?.colorMapTexture
+    ) {
       this._defaultTextureOptions.additionalTexturesInUse = {
         ...this._defaultTextureOptions.additionalTexturesInUse,
         colorMapTexture: true,
@@ -2020,7 +2006,8 @@ export default class ThreeView<
       const current = this._colorMapAtlas.get(layerId);
       // Plain number arrays (JS callers, JSON-defined layers) are accepted
       // too, as Rust accepts them.
-      // An empty array is how updateLayerById forwards an explicit clear.
+      // An empty array is how withExplicitColorRampClears forwards an
+      // explicit clear.
       const asArray = (v: unknown) => {
         const array =
           v instanceof Float32Array
@@ -2222,6 +2209,8 @@ export default class ThreeView<
     this.layersManager.add(layer);
 
     this._syncColorMap(layerId, l);
+    // `layer.update()` and `updateLayerById()` both emit "updated".
+    layer.on("updated", (desc) => this._syncColorMap(layerId, desc));
     layer.on("deleted", () => this._syncColorMap(layerId, undefined));
 
     return layer;
@@ -2548,8 +2537,7 @@ export default class ThreeView<
   /**
    * Updates an existing resource layer's configuration by its ID.
    * Only works for resource layers added via `addLayer()`.
-   * Use this rather than `Layer.update()` to change an elevation heatmap's
-   * `colorMap`: the colorMap atlas lives on the view and is synced here.
+   * Same as calling `update()` on the layer.
    * @param id - The unique identifier of the layer to update
    * @param l - New layer configuration
    */
@@ -2557,8 +2545,7 @@ export default class ThreeView<
     invariant(this._core);
     const target = this.layersManager.get(id);
     if (!target || !(target instanceof Layer)) return;
-    target.update(withExplicitColorRampClears(l));
-    this._syncColorMap(id, l);
+    target.update(l);
   }
 
   /**
