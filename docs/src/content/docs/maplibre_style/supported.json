@@ -24,6 +24,11 @@
         "fill-pattern": {
           "status": "❌"
         }
+      },
+      "layout": {
+        "visibility": {
+          "status": "✅"
+        }
       }
     },
     "fill-extrusion": {
@@ -52,6 +57,11 @@
         },
         "fill-extrusion-vertical-gradient": {
           "status": "❌"
+        }
+      },
+      "layout": {
+        "visibility": {
+          "status": "✅"
         }
       }
     },
@@ -98,6 +108,9 @@
         },
         "line-round-limit": {
           "status": "❌"
+        },
+        "visibility": {
+          "status": "✅"
         }
       }
     },
@@ -136,6 +149,11 @@
         },
         "circle-pitch-alignment": {
           "status": "❌"
+        }
+      },
+      "layout": {
+        "visibility": {
+          "status": "✅"
         }
       }
     },
@@ -284,6 +302,9 @@
         },
         "text-line-height": {
           "status": "❌"
+        },
+        "visibility": {
+          "status": "✅"
         }
       }
     },
@@ -314,6 +335,11 @@
         "raster-resampling": {
           "status": "❌"
         }
+      },
+      "layout": {
+        "visibility": {
+          "status": "✅"
+        }
       }
     },
     "hillshade": {
@@ -336,6 +362,30 @@
         },
         "hillshade-accent-color": {
           "status": "❌"
+        }
+      },
+      "layout": {
+        "visibility": {
+          "status": "✅"
+        }
+      }
+    },
+    "color-relief": {
+      "status": "✅",
+      "paint": {
+        "color-relief-color": {
+          "status": "✅"
+        },
+        "color-relief-opacity": {
+          "status": "✅"
+        },
+        "resampling": {
+          "status": "✅"
+        }
+      },
+      "layout": {
+        "visibility": {
+          "status": "✅"
         }
       }
     },
@@ -661,7 +711,7 @@
       "status": "❌"
     },
     "elevation": {
-      "status": "❌"
+      "status": "✅"
     },
     "is-supported-script": {
       "status": "✅"

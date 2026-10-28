@@ -25,7 +25,11 @@ pub trait Tile {
     fn max_height(&self) -> FloatType;
     fn min_height(&self) -> FloatType;
     fn update_heights(&mut self, max_height: FloatType, min_height: FloatType);
-    fn has_terrain(&self) -> bool;
+    /// Whether [`Tile::traversable_children`] resets this tile's heights to
+    /// its parent's range. A tile that sets its own heights whenever a
+    /// traversal enters it must not: the reset would rebuild its bounds a
+    /// second time on every traversal.
+    fn inherits_parent_heights(&self) -> bool;
 
     /// This is cached children, the children might be removed after the tile is cleared.
     /// If you want to traverse all children correctly, you need to use [`Tile::traversable_children`].
@@ -221,7 +225,7 @@ pub trait Tile {
             let c = *c;
             let is_tile_some = match qt.qt.get_mut(c) {
                 Some(tile) => {
-                    if !tile.has_terrain() {
+                    if tile.inherits_parent_heights() {
                         tile.update_heights(parent_max_height, parent_min_height);
                     }
                     true
@@ -288,6 +292,44 @@ mod tests {
         check_mercator_polar_lod::<TerrainTile>();
         check_mercator_polar_lod::<RasterTile>();
         check_mercator_polar_lod::<VectorTile>();
+    }
+
+    /// Revisits a root whose height range changed since its children were
+    /// created, after a traversal gave the first child its own range, and
+    /// returns that child's `(max, min)`.
+    fn revisited_child_heights<T: Tile<CoordUnit = usize> + Sync + Send + Debug + 'static>()
+    -> (f64, f64) {
+        let mut qt = Quadtree::<usize, T>::new_with_linear_qt();
+        qt.qt.initialize_zero(&|c| {
+            T::new_child(c, 0., 0., TilingScheme::WebMercator { tms: false })
+        });
+        let root = qt.qt.zero().unwrap().handle();
+        let child = T::traversable_children(&mut qt, root).unwrap()[0];
+        qt.qt.get_mut(root).unwrap().update_heights(100., -10.);
+        qt.qt.get_mut(child).unwrap().update_heights(50., 5.);
+
+        T::traversable_children(&mut qt, root).unwrap();
+        let child = qt.qt.get(child).unwrap();
+        (child.max_height(), child.min_height())
+    }
+
+    #[test]
+    fn traversable_children_resets_only_tiles_that_inherit_parent_heights() {
+        assert_eq!(
+            revisited_child_heights::<TerrainTile>(),
+            (100., -10.),
+            "a terrain tile without its own DEM borrows the parent's range"
+        );
+        assert_eq!(
+            revisited_child_heights::<RasterTile>(),
+            (50., 5.),
+            "a raster tile keeps the range its traversal set"
+        );
+        assert_eq!(
+            revisited_child_heights::<VectorTile>(),
+            (50., 5.),
+            "a vector tile keeps the range its traversal set"
+        );
     }
 
     #[test]

@@ -27,15 +27,13 @@ view.addLayer({
   type: "raster",
   source: dem,
   elevationHeatmap: {
+    colorMap: TURBO_COLOR_MAP.flatten(),
     maxHeight: 3200,
     minHeight: 0,
     logarithmic: true,
     logBoundary: 1000,
   },
 });
-
-// The heatmap colors come from the globe-wide elevation colormap.
-view.globe.elevationColormap = TURBO_COLOR_MAP;
 
 view.attribution?.add([
   {

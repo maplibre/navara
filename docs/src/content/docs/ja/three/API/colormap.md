@@ -187,7 +187,7 @@ createImage(): HTMLCanvasElement
 
 ### flatten()
 
-WASM/GPU 用にカラーマップを `Float32Array` に変換します。内部的に `globe.elevationColormap` に設定する際に使用されます。
+GPU 用にカラーマップを `Float32Array` に変換します。標高ヒートマップレイヤーの `colorMap` プロパティを設定する際に使用します。
 
 **Syntax:**
 
@@ -197,7 +197,13 @@ flatten(): Float32Array
 
 **Returns:**
 
-フラット化された RGB 配列（長さ = LUT の色数 × 3）
+アルファ値をすべて 1 にした、フラット化された RGBA 配列（長さ = LUT の色数 × 4）
+
+**標高ヒートマップでの配列の扱い:**
+
+- **レイアウト**: 各色は 4 つの値（`r, g, b, a`）で、それぞれ [0, 1] の範囲です。`flatten()` はアルファ値を常に 1 にします。半透明や透明の色が必要な場合は、`Float32Array` を自分で作成してください。
+- **配置**: 色は `minHeight` から `maxHeight` まで等間隔に配置されます。[`colorStops`](../../../three/material/elevation-heatmap-material/#colorstops) を指定すると、各色を正確な標高に配置できます。
+- **更新**: 新しい `colorMap` を `layer.update()` または `view.updateLayerById()` に渡します。`colorMap` を含まない更新では現在のカラーマップが維持され、`colorMap: undefined` を指定するとグレースケールに戻ります。
 
 ## 使用例
 
@@ -231,11 +237,8 @@ const spectralColorMap = new ColorMap("diverging", "Spectral", [
   new Color().setStyle("#5e4fa2"),
 ]);
 
-// Globe にカラーマップを設定
-view.globe.elevationColormap = spectralColorMap;
-
-// 標高ヒートマップレイヤーを追加
-const heatmapSource = view.addSource({
+// カラーマップを使った標高ヒートマップレイヤーを追加
+const demSource = view.addSource({
   type: "raster-dem",
   url: "https://example.com/terrain/{z}/{x}/{y}.png",
   elevationDecoder: TERRARIUM_ELEVATION_DECODER(),
@@ -243,8 +246,9 @@ const heatmapSource = view.addSource({
 });
 view.addLayer({
   type: "raster",
-  source: heatmapSource,
+  source: demSource,
   elevationHeatmap: {
+    colorMap: spectralColorMap.flatten(),
     maxHeight: 3000,
     minHeight: 0,
   },
@@ -254,7 +258,7 @@ view.addLayer({
 ### 動的なカラーマップ切り替え
 
 ```typescript
-import ThreeView, { ColorMap, Color } from "@navaramap/three";
+import ThreeView, { ColorMap, Color, TERRARIUM_ELEVATION_DECODER, type LayerDescription } from "@navaramap/three";
 
 const view = new ThreeView();
 await view.init();
@@ -305,9 +309,31 @@ const colorMaps = {
   ]),
 };
 
+const demSource = view.addSource({
+  type: "raster-dem",
+  url: "https://example.com/terrain/{z}/{x}/{y}.png",
+  elevationDecoder: TERRARIUM_ELEVATION_DECODER(),
+  maxZoom: 15,
+});
+
+const layerDef: LayerDescription = {
+  type: "raster",
+  source: demSource.id,
+  elevationHeatmap: {
+    colorMap: colorMaps.rdYlGn.flatten(),
+    maxHeight: 3000,
+    minHeight: 0,
+  },
+};
+
+const layer = view.addLayer(layerDef);
+
 // カラーマップを切り替える関数
 function setColorMap(name: keyof typeof colorMaps) {
-  view.globe.elevationColormap = colorMaps[name];
+  if (layerDef.elevationHeatmap) {
+    layerDef.elevationHeatmap.colorMap = colorMaps[name].flatten();
+    view.updateLayerById(layer.id, layerDef);
+  }
 }
 
 // 使用例
@@ -317,5 +343,4 @@ setColorMap("rdYlGn");
 ## 関連項目
 
 - [Color クラス](../../../three/api/color/) - 色を表現するクラス
-- [Globe クラス](../../../three/api/globe/) - `elevationColormap` プロパティ
-- [ElevationHeatmapMaterial](../../../three/material/elevation-heatmap-material/) - 標高ヒートマップマテリアル
+- [ElevationHeatmapMaterial](../../../three/material/elevation-heatmap-material/) - 標高ヒートマップレイヤーでカラーマップを使用

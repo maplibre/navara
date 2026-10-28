@@ -70,14 +70,12 @@ export const run = async (view: ThreeView<CustomDescriptions>) => {
     terrain: { castShadow: true, receiveShadow: true },
   });
 
-  // Set the elevation colormap on the globe
-  view.globe.elevationColormap = PLATEAU_COLOR_MAP;
-
   // Elevation heatmap from the same DEM, applied via a raster layer.
   const layerDef: LayerDescription = {
     type: "raster",
     source: demRaster.id,
     elevationHeatmap: {
+      colorMap: PLATEAU_COLOR_MAP.flatten(),
       maxHeight: 3000,
       minHeight: 0,
       logarithmic: true,
@@ -115,7 +113,6 @@ export const run = async (view: ThreeView<CustomDescriptions>) => {
     log_boundary: 1000,
   };
 
-  view.globe.elevationColormap = PLATEAU_COLOR_MAP;
   view.globe.color = new Color().setStyle("#9481ad");
 
   const changeFunc = () => {
@@ -128,16 +125,16 @@ export const run = async (view: ThreeView<CustomDescriptions>) => {
     layerDef.elevationHeatmap.logBoundary = params.log_boundary;
 
     if (params.color_map === "plateau") {
-      view.globe.elevationColormap = PLATEAU_COLOR_MAP;
+      layerDef.elevationHeatmap.colorMap = PLATEAU_COLOR_MAP.flatten();
       view.globe.color = new Color().setStyle("#9481ad");
     } else if (params.color_map === "turbo") {
-      view.globe.elevationColormap = TURBO_COLOR_MAP;
+      layerDef.elevationHeatmap.colorMap = TURBO_COLOR_MAP.flatten();
       view.globe.color = new Color().setStyle("#784986");
     } else if (params.color_map === "plasma") {
-      view.globe.elevationColormap = PLASMA_COLORMAP;
+      layerDef.elevationHeatmap.colorMap = PLASMA_COLORMAP.flatten();
       view.globe.color = new Color().setStyle("#7a4a91");
     } else if (params.color_map === "YlGnBu") {
-      view.globe.elevationColormap = YlGnBu_COLOR_MAP;
+      layerDef.elevationHeatmap.colorMap = YlGnBu_COLOR_MAP.flatten();
       view.globe.color = new Color().setStyle("#506b73");
     }
     view.updateLayerById(layerInst.id, layerDef);

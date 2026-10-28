@@ -3,9 +3,7 @@ use navara_core::{CRS, ElevationDecoder, calc_transform};
 use navara_geometry::TileUvTransform;
 use navara_math::{Transform, Vec2, Vec3};
 
-/// Configuration for elevation heatmap rendering.
-/// Shared across all elevation heatmap layers in a tile.
-/// Note: color_map_lut is now stored in Globe.elevation_colormap
+/// Configuration for elevation heatmap rendering (one per elevation heatmap layer).
 #[derive(Debug, Clone, PartialEq)]
 pub struct ElevationHeatmapConfig {
     pub max_height: f64,
@@ -13,6 +11,28 @@ pub struct ElevationHeatmapConfig {
 
     pub logarithmic: bool,
     pub log_boundary: f64,
+
+    /// Texture filter mode: "linear" for bilinear interpolation, "nearest" for nearest neighbor
+    pub filter: String,
+
+    /// Hashes of the layer's `colorMap` / `colorStops`. The arrays themselves
+    /// live on the web side (ColorMapAtlas); Rust only tracks that they
+    /// changed, so a colorMap-only update still fails the per-tile material
+    /// comparison in `update_mesh_material` and re-composites exactly the
+    /// tiles that draw this layer.
+    pub color_map_hash: Option<u64>,
+    pub color_stops_hash: Option<u64>,
+}
+
+/// Complete data for one elevation heatmap layer.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ElevationHeatmapLayerData {
+    /// Layer ID used for colorMap atlas row lookup
+    pub layer_id: String,
+    /// Elevation heatmap configuration (min/max height, logarithmic scaling, filter mode, etc.)
+    pub config: ElevationHeatmapConfig,
+    /// DEM decoder resolved from this layer's source
+    pub decoder: ElevationDecoder,
 }
 
 /// Configuration for hillshade rendering.
@@ -1081,13 +1101,9 @@ pub struct RasterTileInternalMaterial {
     pub lit: Option<bool>,
     pub show_bounding_box: Option<bool>,
 
-    // Elevation Heatmap fields
-    pub is_elevation_heatmaps: Vec<bool>, // Per-layer flags: which texture slots are elevation heatmaps
-    pub elevation_heatmap_config: Option<ElevationHeatmapConfig>, // Shared config for all heatmap layers
-    /// DEM decoder for the heatmap's source, resolved live from the referenced
-    /// `Source` at material-build time (not stored on the layer config). `None`
-    /// when there is no heatmap or the source isn't a raster-dem.
-    pub heatmap_elevation_decoder: Option<ElevationDecoder>,
+    /// Per-layer elevation heatmap data. `Some` when the layer is an elevation heatmap
+    /// with a raster-dem source that has a decoder; `None` for layers without an elevation heatmap.
+    pub elevation_heatmap_layers: Vec<Option<ElevationHeatmapLayerData>>,
 
     // Hillshade fields
     pub is_hillshades: Vec<bool>, // Per-layer flags: which texture slots are hillshades

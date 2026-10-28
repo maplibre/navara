@@ -149,7 +149,8 @@ impl Tile for RasterTile {
         self.occludee_point_in_scaled_space = None;
     }
 
-    fn has_terrain(&self) -> bool {
+    /// `traverse_raster` sets the heights from the terrain on entry.
+    fn inherits_parent_heights(&self) -> bool {
         false
     }
 

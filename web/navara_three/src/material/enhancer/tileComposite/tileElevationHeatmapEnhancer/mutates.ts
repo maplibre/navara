@@ -1,8 +1,9 @@
-import { Uniform, Vector3, Vector4, type Texture } from "three";
+import { Uniform, Vector4, type Texture } from "three";
 
-import type {
-  CompositeGlobals,
-  CompositeLayer,
+import {
+  DEFAULT_ELEVATION_HEATMAP_LOG_BOUNDARY,
+  type CompositeGlobals,
+  type CompositeLayer,
 } from "../../../../tileTexture/types";
 import type { CompositeUniformTarget } from "../tileCompositeBaseEnhancer";
 
@@ -22,47 +23,97 @@ export type ElevationMutates = {
  */
 export function createElevationMutates(): ElevationMutates {
   const refs = {
-    uIsElevationHeatmaps: new Uniform<boolean[]>([]),
+    // Packed params: (isElevationHeatmap, usesBilinear, colorMapRow, logBoundary)
+    uElevationHeatmapParams: new Uniform<Vector4[]>([]),
+    // Per-layer (minHeight, maxHeight, stopCount, hasColorStops). One vec4
+    // instead of two vec2 halves the fragment uniform vectors they take.
+    uElevationRangeAndRamp: new Uniform<Vector4[]>([]),
     uColorMapTexture: new Uniform<Texture | null>(null),
-    uElevationRGBScaler: new Uniform(new Vector3()),
-    uElevationMinMaxHeightAndBoundary: new Uniform(new Vector3()),
-    uElevationMinMaxOffsetAndEpsilonAndOffset: new Uniform(new Vector4()),
-    uLogarithmic: new Uniform(false),
-    uLogBase: new Uniform(10),
-    uLogBoundary: new Uniform(10),
+    uElevationRGBScalersAndBoundaries: new Uniform<Vector4[]>([]), // Per-layer (r, g, b, boundary)
+    uElevationDecoderOffsets: new Uniform<Vector4[]>([]), // Per-layer (minOffset, maxOffset, epsilon, offset)
   };
+  // Never leave the sampler unbound (a null texture samples black).
+  let placeholderTexture: Texture | null = null;
   return {
     attachUniforms: (target, numTextures, placeholder) => {
-      refs.uIsElevationHeatmaps.value = new Array<boolean>(numTextures).fill(
-        false,
+      // Initialize packed params: (isElevationHeatmap, usesBilinear, colorMapRow, logBoundary)
+      refs.uElevationHeatmapParams.value = Array.from(
+        { length: numTextures },
+        () => new Vector4(0, 1, 0, 0), // defaults: not an elevation heatmap, bilinear, default row, log off
       );
+      refs.uElevationRangeAndRamp.value = Array.from(
+        { length: numTextures },
+        // range 0..1, default grayscale ramp: 2 evenly spaced stops
+        () => new Vector4(0, 1, 2, 0),
+      );
+      refs.uElevationRGBScalersAndBoundaries.value = Array.from(
+        { length: numTextures },
+        () => new Vector4(0, 0, 0, 0),
+      );
+      refs.uElevationDecoderOffsets.value = Array.from(
+        { length: numTextures },
+        () => new Vector4(0, 0, 1, 0), // epsilon defaults to 1
+      );
+      placeholderTexture = placeholder;
       refs.uColorMapTexture.value = placeholder;
-      target.uIsElevationHeatmaps = refs.uIsElevationHeatmaps;
+      target.uElevationHeatmapParams = refs.uElevationHeatmapParams;
+      target.uElevationRangeAndRamp = refs.uElevationRangeAndRamp;
       target.uColorMapTexture = refs.uColorMapTexture;
-      target.uElevationRGBScaler = refs.uElevationRGBScaler;
-      target.uElevationMinMaxHeightAndBoundary =
-        refs.uElevationMinMaxHeightAndBoundary;
-      target.uElevationMinMaxOffsetAndEpsilonAndOffset =
-        refs.uElevationMinMaxOffsetAndEpsilonAndOffset;
-      target.uLogarithmic = refs.uLogarithmic;
-      target.uLogBase = refs.uLogBase;
-      target.uLogBoundary = refs.uLogBoundary;
+      target.uElevationRGBScalersAndBoundaries =
+        refs.uElevationRGBScalersAndBoundaries;
+      target.uElevationDecoderOffsets = refs.uElevationDecoderOffsets;
     },
     bindSlot: (k, layer) => {
-      refs.uIsElevationHeatmaps.value[k] = layer?.kind === "elevationHeatmap";
+      const isElevationHeatmap = layer?.kind === "elevationHeatmap";
+      if (isElevationHeatmap) {
+        // Pack params into vec4: (isElevationHeatmap, usesBilinear, colorMapRow, logBoundary)
+        const usesBilinear = layer.filter !== "nearest" ? 1 : 0;
+        const ramp = layer.colorRamp;
+        const logBoundary =
+          (layer.logarithmic ?? false)
+            ? (layer.logBoundary ?? DEFAULT_ELEVATION_HEATMAP_LOG_BOUNDARY)
+            : 0;
+        refs.uElevationHeatmapParams.value[k].set(
+          1,
+          usesBilinear,
+          ramp?.row ?? 0,
+          logBoundary,
+        );
+
+        // Per-layer min/max heights and color ramp shape
+        const minH = layer.minHeight ?? 0;
+        refs.uElevationRangeAndRamp.value[k].set(
+          minH,
+          layer.maxHeight ?? minH + 1,
+          ramp?.stopCount ?? 2,
+          ramp?.hasColorStops ? 1 : 0,
+        );
+
+        // Set per-layer decoder parameters; reset when absent so the slot
+        // never decodes with the previous layer's decoder.
+        if (layer.rgbScalersAndBoundary) {
+          refs.uElevationRGBScalersAndBoundaries.value[k].copy(
+            layer.rgbScalersAndBoundary,
+          );
+        } else {
+          refs.uElevationRGBScalersAndBoundaries.value[k].set(0, 0, 0, 0);
+        }
+        if (layer.decoderOffsets) {
+          refs.uElevationDecoderOffsets.value[k].copy(layer.decoderOffsets);
+        } else {
+          refs.uElevationDecoderOffsets.value[k].set(0, 0, 1, 0);
+        }
+      } else {
+        // Reset to defaults: (isElevationHeatmap=0, usesBilinear=1, colorMapRow=0, logBoundary=0)
+        refs.uElevationHeatmapParams.value[k].set(0, 1, 0, 0);
+        refs.uElevationRangeAndRamp.value[k].set(0, 1, 2, 0);
+        refs.uElevationRGBScalersAndBoundaries.value[k].set(0, 0, 0, 0);
+        refs.uElevationDecoderOffsets.value[k].set(0, 0, 1, 0);
+      }
     },
     bindGlobal: (globals) => {
-      refs.uColorMapTexture.value = globals.colorMapTexture;
-      refs.uElevationRGBScaler.value.copy(globals.elevationRGBScaler);
-      refs.uElevationMinMaxHeightAndBoundary.value.copy(
-        globals.elevationMinMaxHeightAndBoundary,
-      );
-      refs.uElevationMinMaxOffsetAndEpsilonAndOffset.value.copy(
-        globals.elevationMinMaxOffsetAndEpsilonAndOffset,
-      );
-      refs.uLogarithmic.value = globals.logarithmic;
-      refs.uLogBase.value = globals.logBase;
-      refs.uLogBoundary.value = globals.logBoundary;
+      refs.uColorMapTexture.value =
+        globals.colorMapTexture ?? placeholderTexture;
     },
   };
 }

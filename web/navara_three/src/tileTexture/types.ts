@@ -3,10 +3,11 @@ import type {
   Color,
   Texture,
   Vector2,
-  Vector3,
   Vector4,
   WebGLRenderTarget,
 } from "three";
+
+import type { ColorRampRow } from "../colorMapAtlas";
 
 /**
  * A mesh drawn into a vector drape bake. A bake material always blends, so
@@ -133,11 +134,58 @@ export type ElevationHeatmapCompositeLayer = CompositeLayerBase & {
   opacity: number;
   /**
    * Same Mercator latitude reprojection band as {@link RasterCompositeLayer}:
-   * the heatmap decode samples the reprojected per-slot UV, so a DEM draped on
+   * the elevation heatmap decode samples the reprojected per-slot UV, so a DEM draped on
    * Geographic terrain (baked or direct) remaps identically to color imagery.
    */
   reproject?: [number, number];
+  /**
+   * Texture filtering mode for the elevation data.
+   * "linear" uses bilinear interpolation, "nearest" uses nearest neighbor.
+   */
+  filter?: "linear" | "nearest";
+  /**
+   * The layer's color ramp in the colorMap atlas (row, stop count, and whether
+   * the layer set `colorStops`). Each elevation heatmap layer has its own row.
+   */
+  colorRamp?: ColorRampRow;
+  /**
+   * Minimum height for elevation normalization (meters).
+   * Heights below this value map to the start of the colorMap.
+   */
+  minHeight?: number;
+  /**
+   * Maximum height for elevation normalization (meters).
+   * Heights above this value map to the end of the colorMap.
+   */
+  maxHeight?: number;
+  /**
+   * Whether to apply logarithmic scaling to this layer.
+   * Enables more nuanced visualization of low-elevation areas when the elevation range is large.
+   */
+  logarithmic?: boolean;
+  /**
+   * Boundary value for pseudo-logarithmic scaling.
+   * Values between -logBoundary and +logBoundary are scaled linearly; values outside
+   * this range use logarithmic scaling. Only used when logarithmic is true.
+   */
+  logBoundary?: number;
+  /**
+   * DEM decoder parameters (r_scaler, g_scaler, b_scaler, boundary) for this layer's source.
+   * Each elevation heatmap layer can use a different DEM encoding (Terrarium, Mapbox, etc.).
+   */
+  rgbScalersAndBoundary?: Vector4;
+  /**
+   * DEM decoder offset parameters (minOffset, maxOffset, epsilon, offset) for this layer's source.
+   */
+  decoderOffsets?: Vector4;
 };
+
+/**
+ * Pseudo-log boundary used when an elevation heatmap enables `logarithmic`
+ * without a usable `logBoundary` (matches Rust's default). The boundary must
+ * be > 1: the shader divides by ln(logBoundary).
+ */
+export const DEFAULT_ELEVATION_HEATMAP_LOG_BOUNDARY = 10;
 
 export type CompositeLayer =
   | RasterCompositeLayer
@@ -156,11 +204,4 @@ export type CompositeGlobals = {
   watermask: Texture | null;
   /** Elevation heatmap colormap ramp, or null. */
   colorMapTexture: Texture | null;
-  /** Elevation heatmap shared decoder params. */
-  elevationRGBScaler: Vector3;
-  elevationMinMaxHeightAndBoundary: Vector3;
-  elevationMinMaxOffsetAndEpsilonAndOffset: Vector4;
-  logarithmic: boolean;
-  logBase: number;
-  logBoundary: number;
 };

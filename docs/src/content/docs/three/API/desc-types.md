@@ -193,6 +193,24 @@ layer.on("featureUpdated", ({ evaluator }) => {
 |----------|------|-------------|
 | `featureSetId` | `FeatureSetId` | Identifier of the removed feature set |
 
+#### updated
+
+**Description:** Fires after `update()` (or `view.updateLayerById()`) applies a new configuration. The handler receives the configuration as it was passed in.
+
+**Handler Type:**
+
+```typescript
+(l: LayerDescription) => void
+```
+
+**Example:**
+
+```typescript
+layer.on("updated", (description) => {
+  console.log("Layer updated", description);
+});
+```
+
 #### deleted
 
 **Description:** Fires when the layer is deleted.

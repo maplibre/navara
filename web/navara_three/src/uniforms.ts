@@ -17,7 +17,6 @@ export type CommonUniforms = {
   fov: RefThree<number>;
   screenHeightPx: RefThree<number>;
   time: RefThree<number>;
-  colorMapTexture: RefThree<Texture>;
   waterTexture: RefThree<Texture>;
   /** Shared by every terrain tile material (`uTerrainExaggeration`). */
   terrainExaggeration: { value: TerrainExaggeration };

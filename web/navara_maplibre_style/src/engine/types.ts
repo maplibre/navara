@@ -84,6 +84,7 @@ export type StyleLayer =
   | SymbolLayer
   | RasterLayer
   | HillshadeLayer
+  | ColorReliefLayer
   | BackgroundLayer;
 
 export type LayerType =
@@ -94,6 +95,7 @@ export type LayerType =
   | "symbol"
   | "raster"
   | "hillshade"
+  | "color-relief"
   | "background";
 
 export type BaseLayer = {
@@ -168,6 +170,17 @@ export type HillshadeLayer = {
 
 export type HillshadePaint = {
   "hillshade-exaggeration"?: ValueExpression;
+};
+
+export type ColorReliefLayer = {
+  type: "color-relief";
+  paint?: ColorReliefPaint;
+} & BaseLayer;
+
+export type ColorReliefPaint = {
+  "color-relief-opacity"?: ValueExpression;
+  "color-relief-color"?: ValueExpression;
+  resampling?: "linear" | "nearest";
 };
 
 export type BackgroundLayer = {
@@ -248,6 +261,8 @@ export type FilterExpression = unknown[];
 export type EvaluationContext = {
   properties: Record<string, unknown> | undefined;
   zoom?: number;
+  /** Terrain elevation in meters for `["elevation"]` (color-relief-color). */
+  elevation?: number;
 };
 
 /**

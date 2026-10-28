@@ -151,7 +151,10 @@ export class JsStyleEngine implements StyleEngine {
       const zoomValue = ctx.zoom ?? 0;
 
       try {
-        const value = expression.evaluate({ zoom: zoomValue }, feature);
+        const value = expression.evaluate(
+          { zoom: zoomValue, elevation: ctx.elevation },
+          feature,
+        );
 
         // Return default if result is null/undefined (defensive behavior)
         if (value == null) {

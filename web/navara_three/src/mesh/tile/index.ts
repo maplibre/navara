@@ -58,6 +58,7 @@ import { deriveCompositeFeatures } from "../../material/enhancer/tileComposite";
 import type { CustomObject3DEventMap } from "../../object3DEvent";
 import type { TextureOptions } from "../../textures";
 import {
+  DEFAULT_ELEVATION_HEATMAP_LOG_BOUNDARY,
   planSlots,
   type CompositeFeatures,
   type CompositeGlobals,
@@ -313,17 +314,18 @@ export class TileMesh
   private computeFeatures(): CompositeFeatures {
     const ud = this.material.userData;
     // Only slots that are still shown count: bindVectorSlots sets shows=0 when a
-    // slot loses its representative mesh but leaves the per-slot waters/heatmap
+    // slot loses its representative mesh but leaves the per-slot waters/elevation heatmap
     // uniforms at their previous values, so a disappeared layer would otherwise
     // keep its shader feature (e.g. water) compiled in. Mirrors the shows gate in
     // buildCompositeLayers.
     const shows: number[] = ud.shows?.value ?? [];
     const waters = ud.waters?.value as boolean[] | undefined;
-    const heatmaps = ud.isElevationHeatmaps?.value as boolean[] | undefined;
+    const elevationHeatmaps = ud.isElevationHeatmaps?.value as
+      boolean[] | undefined;
     return {
       hasHillshade: ud.defines?.USE_HILLSHADE === 1,
       hasWater: !!waters?.some((v, i) => v === true && shows[i] === 1),
-      hasElevationHeatmap: !!heatmaps?.some(
+      hasElevationHeatmap: !!elevationHeatmaps?.some(
         (v, i) => v === true && shows[i] === 1,
       ),
       hasWatermask: this.userData.watermask != null,
@@ -350,6 +352,18 @@ export class TileMesh
     const layerUvScale: Vector2[] = ud.layerUvScale?.value ?? [];
     const isHillshades: boolean[] = ud.isHillshades?.value ?? [];
     const isElevationHeatmaps: boolean[] = ud.isElevationHeatmaps?.value ?? [];
+    const elevationHeatmapUsesBilinear: boolean[] =
+      ud.elevationHeatmapUsesBilinear?.value ?? [];
+    const elevationHeatmapLayerIds: (string | undefined)[] =
+      ud.elevationHeatmapLayerIds?.value ?? [];
+    const elevationMinHeights: number[] = ud.elevationMinHeights?.value ?? [];
+    const elevationMaxHeights: number[] = ud.elevationMaxHeights?.value ?? [];
+    const elevationLogBoundaries: number[] =
+      ud.elevationLogBoundaries?.value ?? [];
+    const elevationRGBScalersAndBoundaries: Vector4[] =
+      ud.elevationRGBScalersAndBoundaries?.value ?? [];
+    const elevationDecoderOffsets: Vector4[] =
+      ud.elevationDecoderOffsets?.value ?? [];
     const waters: boolean[] = ud.waters?.value ?? [];
     const boundary = this.texturizedSceneIndexFrom;
 
@@ -381,6 +395,16 @@ export class TileMesh
           region === "vector" ? this.vectorDrape : this.rasterDrape
         ).slotReproject(absSlot);
         if (isElevationHeatmaps[absSlot]) {
+          const usesBilinear = elevationHeatmapUsesBilinear[absSlot] ?? true;
+          // Resolved per composite: atlas rows shift as colorMaps come and go.
+          const colorRamp = this.ctx.colorMapAtlas?.getRow(
+            elevationHeatmapLayerIds[absSlot],
+          );
+          const minHeight = elevationMinHeights[absSlot] ?? 0;
+          const maxHeight = elevationMaxHeights[absSlot] ?? minHeight + 1;
+          const logBoundary = elevationLogBoundaries[absSlot] ?? 0;
+          const logarithmic = logBoundary > 0;
+
           layers.push({
             kind: "elevationHeatmap",
             region,
@@ -390,6 +414,14 @@ export class TileMesh
             uvScale,
             opacity: opacities[absSlot] ?? 1,
             reproject: slotReproject,
+            filter: usesBilinear ? "linear" : "nearest",
+            colorRamp,
+            minHeight,
+            maxHeight,
+            logarithmic,
+            logBoundary,
+            rgbScalersAndBoundary: elevationRGBScalersAndBoundaries[absSlot],
+            decoderOffsets: elevationDecoderOffsets[absSlot],
           });
         } else {
           layers.push({
@@ -411,15 +443,8 @@ export class TileMesh
     const globals: CompositeGlobals = {
       hillshadeExaggeration: ud.hillshadeExaggeration?.value ?? 1,
       watermask: this.userData.watermask?.texture ?? null,
-      colorMapTexture: this.ctx.uniforms.colorMapTexture.value ?? null,
-      elevationRGBScaler: ud.elevationRGBScaler?.value ?? new Vector3(),
-      elevationMinMaxHeightAndBoundary:
-        ud.elevationMinMaxHeightAndBoundary?.value ?? new Vector3(),
-      elevationMinMaxOffsetAndEpsilonAndOffset:
-        ud.elevationMinMaxOffsetAndEpsilonAndOffset?.value ?? new Vector4(),
-      logarithmic: ud.logarithmic?.value ?? false,
-      logBase: ud.logBase?.value ?? 10,
-      logBoundary: ud.logBoundary?.value ?? 10,
+      // Built lazily here, so a burst of colorMap changes rebuilds it once.
+      colorMapTexture: this.ctx.colorMapAtlas?.getTexture() ?? null,
     };
 
     return { layers, globals };
@@ -1243,34 +1268,50 @@ ${generateTileCommonInjection(maxTextures)}
         value: [...new Array(maxTextures)].fill(false),
       };
     }
-    if (!m.userData.elevationRGBScaler) {
-      m.userData.elevationRGBScaler = {
-        value: new Vector3(0, 0, 0),
+    // Elevation Heatmap shader-side resampling (true = bilinear, false = nearest)
+    if (!m.userData.elevationHeatmapUsesBilinear) {
+      m.userData.elevationHeatmapUsesBilinear = {
+        value: [...new Array(maxTextures)].fill(true),
       };
     }
-    if (!m.userData.elevationMinMaxHeightAndBoundary) {
-      m.userData.elevationMinMaxHeightAndBoundary = {
-        value: new Vector3(0, 0, 0), // minHeight, maxHeight, boundary
+    // Per-slot layer IDs for colorMap atlas row lookup at composite time
+    if (!m.userData.elevationHeatmapLayerIds) {
+      m.userData.elevationHeatmapLayerIds = {
+        value: [...new Array(maxTextures)].fill(undefined),
       };
     }
-    if (!m.userData.elevationMinMaxOffsetAndEpsilonAndOffset) {
-      m.userData.elevationMinMaxOffsetAndEpsilonAndOffset = {
-        value: new Vector4(0, 0, 0, 0), // minOffset, maxOffset, epsilon, offset
+    // Per-layer elevation min/max heights for normalization
+    if (!m.userData.elevationMinHeights) {
+      m.userData.elevationMinHeights = {
+        value: [...new Array(maxTextures)].fill(0),
       };
     }
-    if (!m.userData.logarithmic) {
-      m.userData.logarithmic = {
-        value: false,
+    if (!m.userData.elevationMaxHeights) {
+      m.userData.elevationMaxHeights = {
+        value: [...new Array(maxTextures)].fill(1),
       };
     }
-    if (!m.userData.logBase) {
-      m.userData.logBase = {
-        value: 10,
+    // Per-layer logarithmic scaling (0 = off, >0 = on with boundary value)
+    if (!m.userData.elevationLogBoundaries) {
+      m.userData.elevationLogBoundaries = {
+        value: [...new Array(maxTextures)].fill(0),
       };
     }
-    if (!m.userData.logBoundary) {
-      m.userData.logBoundary = {
-        value: 10,
+    // Per-layer DEM decoder parameters
+    if (!m.userData.elevationRGBScalersAndBoundaries) {
+      m.userData.elevationRGBScalersAndBoundaries = {
+        value: Array.from(
+          { length: maxTextures },
+          () => new Vector4(0, 0, 0, 0),
+        ),
+      };
+    }
+    if (!m.userData.elevationDecoderOffsets) {
+      m.userData.elevationDecoderOffsets = {
+        value: Array.from(
+          { length: maxTextures },
+          () => new Vector4(0, 0, 1, 0),
+        ),
       };
     }
 
@@ -1302,6 +1343,8 @@ ${generateTileCommonInjection(maxTextures)}
       m.userData.colors.value[i] = new Color();
       m.userData.opacities.value[i] = 1;
       m.userData.isElevationHeatmaps.value[i] = false; // Reset elevation heatmap flags
+      m.userData.elevationHeatmapUsesBilinear.value[i] = true;
+      m.userData.elevationHeatmapLayerIds.value[i] = undefined; // Reset colorMap layer ID
       m.userData.isHillshades.value[i] = false; // Reset hillshade flags
     }
 
@@ -1324,6 +1367,64 @@ ${generateTileCommonInjection(maxTextures)}
       ) {
         m.userData.isElevationHeatmaps.value[i] =
           mat.isElevationHeatmaps[i] !== 0;
+
+        // Apply per-layer filter to elevation heatmap slots
+        if (mat.isElevationHeatmaps[i] !== 0 && mat.elevationHeatmapFilters) {
+          const filter = mat.elevationHeatmapFilters[i] || "linear";
+          m.userData.elevationHeatmapUsesBilinear.value[i] =
+            filter !== "nearest";
+        }
+
+        // Set per-layer min/max heights
+        if (mat.elevationMinHeights) {
+          m.userData.elevationMinHeights.value[i] =
+            mat.elevationMinHeights[i] ?? 0;
+        }
+        if (mat.elevationMaxHeights) {
+          const minH = m.userData.elevationMinHeights.value[i] ?? 0;
+          m.userData.elevationMaxHeights.value[i] =
+            mat.elevationMaxHeights[i] ?? minH + 1;
+        }
+
+        // Set per-layer logarithmic boundary (0 = off, >0 = on with boundary value).
+        // The pseudo-log divides by ln(boundary), so it must be > 1; a missing
+        // or smaller one falls back to the default instead of turning
+        // logarithmic scaling off (or inverting / breaking the mapping).
+        if (mat.logarithmics && mat.logBoundaries) {
+          const logarithmic = (mat.logarithmics[i] ?? 0) !== 0;
+          const boundary = mat.logBoundaries[i] ?? 0;
+          m.userData.elevationLogBoundaries.value[i] = logarithmic
+            ? boundary > 1
+              ? boundary
+              : DEFAULT_ELEVATION_HEATMAP_LOG_BOUNDARY
+            : 0;
+        }
+
+        // Set per-layer DEM decoder parameters
+        m.userData.elevationRGBScalersAndBoundaries.value[i].set(
+          mat.elevationRScalers?.[i] ?? 0,
+          mat.elevationGScalers?.[i] ?? 0,
+          mat.elevationBScalers?.[i] ?? 0,
+          mat.elevationBoundaries?.[i] ?? 0,
+        );
+        m.userData.elevationDecoderOffsets.value[i].set(
+          mat.elevationMinOffsets?.[i] ?? 0,
+          mat.elevationMaxOffsets?.[i] ?? 0,
+          mat.elevationEpsilons?.[i] ?? 1,
+          mat.elevationOffsets?.[i] ?? 0,
+        );
+      }
+    }
+
+    // Keep layer IDs; the colorMap atlas row is resolved at composite time
+    if (mat.colorMapLayerIds && mat.colorMapLayerIds.length > 0) {
+      for (
+        let i = 0;
+        i < Math.min(mat.colorMapLayerIds.length, maxTextures);
+        i++
+      ) {
+        m.userData.elevationHeatmapLayerIds.value[i] =
+          mat.colorMapLayerIds[i] || undefined;
       }
     }
 
@@ -1336,29 +1437,6 @@ ${generateTileCommonInjection(maxTextures)}
 
     // Hillshade exaggeration (applied during normal map sampling in shader)
     m.userData.hillshadeExaggeration.value = mat.hillshadeExaggeration;
-
-    m.userData.elevationRGBScaler.value.set(
-      mat.elevationRScaler,
-      mat.elevationGScaler,
-      mat.elevationBScaler,
-    );
-
-    m.userData.elevationMinMaxHeightAndBoundary.value.set(
-      mat.elevationMinHeight,
-      mat.elevationMaxHeight,
-      mat.elevationBoundary,
-    );
-
-    m.userData.elevationMinMaxOffsetAndEpsilonAndOffset.value.set(
-      mat.elevationMinOffset,
-      mat.elevationMaxOffset,
-      mat.elevationEpsilon,
-      mat.elevationOffset,
-    );
-
-    m.userData.logarithmic.value = mat.logarithmic;
-    m.userData.logBase.value = Math.log(mat.logBoundary);
-    m.userData.logBoundary.value = mat.logBoundary;
 
     const prevHillshade = m.userData.defines.USE_HILLSHADE;
     const newHillshade = m.userData.isHillshades.value.some(
@@ -1528,34 +1606,22 @@ ${generateTileCommonInjection(maxTextures)}
       // CRITICAL: Elevation DEM textures must use NearestFilter to prevent interpolation artifacts.
       // Linear interpolation between ocean RGB(128,0,0) and land RGB(0,0,5)
       // produces intermediate values like RGB(64,0,2) which decode to ~42000m!
-      // However, hillshade normal maps (which store normals directly in RGB, not encoded heights)
-      // should use LinearFilter for smooth bilinear interpolation at tile boundaries.
-      // Always apply these settings for DEM textures, independent of colorSpace change
+      // The elevation heatmap shader reads DEM texels with texelFetch and does its own
+      // decode-then-interpolate for "linear" resampling, so the hardware filter
+      // stays nearest regardless of the layer's resampling — this also matches
+      // the raster bake (`configureRasterBakeSource`), so the two never fight
+      // over the sampler and re-upload the texture.
+      // Hillshade normal maps (which store normals directly in RGB, not encoded
+      // heights) use LinearFilter for smooth bilinear interpolation at tile boundaries.
       if (isDEMTexture) {
-        if (isHillshade) {
-          // Hillshade normal maps: use LinearFilter for hardware bilinear interpolation
-          // Normals are stored directly in RGB [-1,1] -> [0,1], so linear filtering is safe
-          if (t.minFilter !== LinearFilter) {
-            t.minFilter = LinearFilter;
-            t.needsUpdate = true;
-          }
-          if (t.magFilter !== LinearFilter) {
-            t.magFilter = LinearFilter;
-            t.needsUpdate = true;
-          }
+        const targetFilter = isHillshade ? LinearFilter : NearestFilter;
+        if (t.minFilter !== targetFilter) {
+          t.minFilter = targetFilter;
+          t.needsUpdate = true;
         }
-
-        if (isElevationHeatmap) {
-          // Elevation DEM textures: use NearestFilter to prevent decoding artifacts
-          // RGB-encoded heights must not be interpolated before decoding
-          if (t.minFilter !== NearestFilter) {
-            t.minFilter = NearestFilter;
-            t.needsUpdate = true;
-          }
-          if (t.magFilter !== NearestFilter) {
-            t.magFilter = NearestFilter;
-            t.needsUpdate = true;
-          }
+        if (t.magFilter !== targetFilter) {
+          t.magFilter = targetFilter;
+          t.needsUpdate = true;
         }
 
         if (t.generateMipmaps !== false) {

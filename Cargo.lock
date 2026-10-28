@@ -1857,6 +1857,7 @@ dependencies = [
  "navara_math",
  "radians",
  "regex",
+ "rustc-hash",
  "serde",
  "url",
 ]

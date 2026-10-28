@@ -193,6 +193,24 @@ layer.on("featureUpdated", ({ evaluator }) => {
 | -------------- | -------------- | ------------------------------------ |
 | `featureSetId` | `FeatureSetId` | 削除されたフィーチャーセットの識別子 |
 
+#### updated
+
+**Description:** `update()`（または `view.updateLayerById()`）で新しい設定が適用された後に発火します。ハンドラーには渡された設定がそのまま渡されます。
+
+**Handler Type:**
+
+```typescript
+(l: LayerDescription) => void
+```
+
+**Example:**
+
+```typescript
+layer.on("updated", (description) => {
+  console.log("レイヤーが更新されました", description);
+});
+```
+
 #### deleted
 
 **Description:** レイヤーが削除されたときに発火します。

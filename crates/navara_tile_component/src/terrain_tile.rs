@@ -810,8 +810,9 @@ impl Tile for TerrainTile {
         self.rebuild_bounds();
     }
 
-    fn has_terrain(&self) -> bool {
-        self.terrain_data.is_some()
+    /// Until its own DEM lands, a tile borrows the parent's height range.
+    fn inherits_parent_heights(&self) -> bool {
+        self.terrain_data.is_none()
     }
 
     fn get_level_maximum_geometric_error(

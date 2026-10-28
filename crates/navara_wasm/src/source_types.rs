@@ -6,7 +6,7 @@
 //! dispatches on the `type` tag and converts the deserialized struct into a
 //! [`navara_source::Source`].
 
-use navara_core::{CRS, TilingScheme};
+use navara_core::{CRS, TilingScheme, hash_f32s};
 use navara_layer::{
     B3dmLayer, Cesium3dTilesLayer, GeoJsonLayer, LayerDescription, MvtLayer, PntsLayer,
     TerrainDataType, TerrainLayer, TilesLayer,
@@ -364,7 +364,7 @@ impl Tiles3dLayerDescription {
 
 impl RasterLayerDescription {
     /// Merge the partial `raster` imagery material onto the previous appearance.
-    /// The hillshade/heatmap render configs are layer-level (not part of the
+    /// The hillshade/elevation heatmap render configs are layer-level (not part of the
     /// `Appearance`), so the builder merges those separately.
     fn appearance(&mut self, old_desc: Option<&LayerDescription>) -> Appearance {
         let old_material = old_desc
@@ -393,8 +393,8 @@ impl RasterLayerDescription {
     }
 
     /// Merge the partial `elevationHeatmap` update onto the previous config.
-    /// Keeps the previous config when this update doesn't mention the heatmap.
-    fn heatmap_config(
+    /// Keeps the previous config when this update doesn't mention the elevation heatmap.
+    fn elevation_heatmap_config(
         &self,
         old: Option<&ElevationHeatmapConfig>,
     ) -> Option<ElevationHeatmapConfig> {
@@ -411,14 +411,29 @@ impl RasterLayerDescription {
                     .unwrap_or_else(|| old.is_some_and(|c| c.logarithmic)),
                 log_boundary: e
                     .log_boundary
-                    .unwrap_or_else(|| old.map_or(0.0, |c| c.log_boundary)),
+                    .unwrap_or_else(|| old.map_or(10.0, |c| c.log_boundary)),
+                filter: e.filter.clone().unwrap_or_else(|| {
+                    old.map_or_else(|| "linear".to_string(), |c| c.filter.clone())
+                }),
+                // The arrays live in TypeScript (ColorMapAtlas); keep only
+                // their hashes so a colorMap-only update changes the config.
+                color_map_hash: e
+                    .color_map
+                    .as_deref()
+                    .map(hash_f32s)
+                    .or_else(|| old.and_then(|c| c.color_map_hash)),
+                color_stops_hash: e
+                    .color_stops
+                    .as_deref()
+                    .map(hash_f32s)
+                    .or_else(|| old.and_then(|c| c.color_stops_hash)),
             }),
             None => old.cloned(),
         }
     }
 
     /// Build the internal `TilesLayer`. The imagery material is merged via
-    /// [`Self::appearance`]; the hillshade/heatmap render configs (render params
+    /// [`Self::appearance`]; the hillshade/elevation heatmap render configs (render params
     /// only — the DEM decoder is read live from the source where it's used) are
     /// merged onto the previous configs so a partial update keeps unset fields.
     fn build(
@@ -433,7 +448,7 @@ impl RasterLayerDescription {
             _ => return None,
         }
 
-        let (old_hillshade, old_heatmap) = match old_desc {
+        let (old_hillshade, old_elevation_heatmap) = match old_desc {
             Some(LayerDescription::Tiles(l)) => (
                 l.hillshade_config.as_ref(),
                 l.elevation_heatmap_config.as_ref(),
@@ -442,7 +457,7 @@ impl RasterLayerDescription {
         };
 
         let hillshade_config = self.hillshade_config(old_hillshade);
-        let elevation_heatmap_config = self.heatmap_config(old_heatmap);
+        let elevation_heatmap_config = self.elevation_heatmap_config(old_elevation_heatmap);
         let appearance = self.appearance(old_desc);
 
         Some(LayerDescription::Tiles(Box::new(TilesLayer {
@@ -1239,19 +1254,24 @@ mod tests {
     }
 
     #[test]
-    fn raster_heatmap_update_preserves_untouched_fields() {
+    fn raster_elevation_heatmap_update_preserves_untouched_fields() {
         let old = navara_material::ElevationHeatmapConfig {
             max_height: 500.0,
             min_height: 10.0,
             logarithmic: true,
             log_boundary: 5.0,
+            filter: "linear".to_string(),
+            color_map_hash: None,
+            color_stops_hash: None,
         };
         let desc = RasterLayerDescription {
             elevation_heatmap: Some(serde_json::from_str(r#"{"maxHeight": 999.0}"#).unwrap()),
             ..Default::default()
         };
 
-        let merged = desc.heatmap_config(Some(&old)).expect("heatmap config");
+        let merged = desc
+            .elevation_heatmap_config(Some(&old))
+            .expect("elevation heatmap config");
 
         assert_eq!(merged.max_height, 999.0, "max_height updated");
         assert_eq!(merged.min_height, 10.0, "min_height preserved");
@@ -1260,16 +1280,62 @@ mod tests {
     }
 
     #[test]
-    fn raster_without_heatmap_keeps_previous_config() {
+    fn raster_elevation_heatmap_tracks_color_ramp_changes() {
+        let config = |json: &str, old: Option<&navara_material::ElevationHeatmapConfig>| {
+            RasterLayerDescription {
+                elevation_heatmap: Some(serde_json::from_str(json).unwrap()),
+                ..Default::default()
+            }
+            .elevation_heatmap_config(old)
+            .expect("elevation heatmap config")
+        };
+
+        let first = config(r#"{"colorMap": [0, 0, 0, 1, 1, 1, 1, 1]}"#, None);
+        assert!(first.color_map_hash.is_some());
+        assert_eq!(first.color_stops_hash, None);
+
+        // Omitting colorMap keeps its hash; colorStops is merged on its own.
+        let stops = config(r#"{"colorStops": [0, 100]}"#, Some(&first));
+        assert_eq!(stops.color_map_hash, first.color_map_hash);
+        assert!(stops.color_stops_hash.is_some());
+
+        // A different colorMap changes the config (so tiles re-composite);
+        // an empty one (the web side's explicit clear) does too.
+        let changed = config(r#"{"colorMap": [1, 0, 0, 1, 1, 1, 1, 1]}"#, Some(&first));
+        assert_ne!(changed, first);
+        let cleared = config(r#"{"colorMap": []}"#, Some(&first));
+        assert_ne!(cleared.color_map_hash, first.color_map_hash);
+    }
+
+    #[test]
+    fn raster_elevation_heatmap_defaults_log_boundary_to_ten() {
+        let desc = RasterLayerDescription {
+            elevation_heatmap: Some(serde_json::from_str(r#"{"logarithmic": true}"#).unwrap()),
+            ..Default::default()
+        };
+
+        let config = desc
+            .elevation_heatmap_config(None)
+            .expect("elevation heatmap config");
+
+        assert!(config.logarithmic);
+        assert_eq!(config.log_boundary, 10.0, "positive default boundary");
+    }
+
+    #[test]
+    fn raster_without_elevation_heatmap_keeps_previous_config() {
         let old = navara_material::ElevationHeatmapConfig {
             max_height: 500.0,
             min_height: 10.0,
             logarithmic: true,
             log_boundary: 5.0,
+            filter: "linear".to_string(),
+            color_map_hash: None,
+            color_stops_hash: None,
         };
         let desc = RasterLayerDescription::default();
 
-        assert_eq!(desc.heatmap_config(Some(&old)), Some(old));
+        assert_eq!(desc.elevation_heatmap_config(Some(&old)), Some(old));
     }
 
     #[test]

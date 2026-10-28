@@ -38,9 +38,34 @@ export type LayerEvent = {
   featureVisibilityChanged: (params: FeatureVisibilityChangedParams) => void;
   /** Emitted when a feature is removed from this layer. */
   featureRemoved: (params: FeatureRemovedParams) => void;
+  /**
+   * Emitted after `update()` sends a new configuration to the engine, with the
+   * configuration as passed to `update()`.
+   */
+  updated: (l: LayerDescription) => void;
   /** Emitted when the layer is deleted. */
   deleted: () => void;
 };
+
+/**
+ * An explicit `colorMap: undefined` / `colorStops: undefined` clears that
+ * array, but `undefined` is dropped when the description crosses into Rust,
+ * which would then keep the old hash and skip re-compositing. Forward the clear
+ * as an empty array instead: Rust hashes it (a changed hash re-composites the
+ * layer's tiles), and the web side (`_syncColorMap`) treats it as no array.
+ */
+function withExplicitColorRampClears(l: LayerDescription): LayerDescription {
+  if (l.type !== "raster" || !l.elevationHeatmap) return l;
+  const elevationHeatmap = { ...l.elevationHeatmap };
+  let changed = false;
+  for (const key of ["colorMap", "colorStops"] as const) {
+    if (key in elevationHeatmap && elevationHeatmap[key] === undefined) {
+      elevationHeatmap[key] = new Float32Array(0);
+      changed = true;
+    }
+  }
+  return changed ? { ...l, elevationHeatmap } : l;
+}
 
 /**
  * A handle to control a resource layer (e.g., imagery, terrain, GeoJSON, 3D Tiles) after it has been added to the scene.
@@ -162,15 +187,17 @@ export class Layer extends EventHandler<LayerEvent> {
    * @param l - New layer configuration
    */
   update(l: LayerDescription) {
+    const desc = withExplicitColorRampClears(l);
     const normalized =
-      "source" in l && l.source instanceof Source
-        ? { ...l, source: l.source.id }
-        : l;
+      "source" in desc && desc.source instanceof Source
+        ? { ...desc, source: desc.source.id }
+        : desc;
     // Convert Color objects to numbers if converter is provided
     const processedLayer = this.convertColors
       ? (this.convertColors(normalized) as LayerDescription)
       : normalized;
     this.core.updateLayer(this.id, processedLayer);
+    this.emit("updated", l);
   }
 
   /**

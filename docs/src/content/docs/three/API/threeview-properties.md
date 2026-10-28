@@ -39,7 +39,7 @@ For full details on all properties, events, and control options, see [ThreeViewC
 
 **Read-only** (getter)
 
-The Globe instance that manages terrain, imagery layers, and globe-specific settings. Controls various properties related to globe display, including transparency, wireframe display, and elevation heatmap color maps.
+The Globe instance that manages terrain, imagery layers, and globe-specific settings. Controls various properties related to globe display, including transparency and wireframe display.
 
 **Example:**
 
@@ -50,9 +50,6 @@ view.globe.opacity = 0.8;
 
 // Enable wireframe mode
 view.globe.wireframe = true;
-
-// Set color map for elevation heatmap
-view.globe.elevationColormap = customColorMap;
 ```
 
 :::tip[Related Documentation]
