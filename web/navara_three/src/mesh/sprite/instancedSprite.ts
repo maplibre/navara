@@ -35,8 +35,10 @@ import {
 import {
   DECLUTTER_FADE_MS,
   resolveDeclutterSettings,
-  type DeclutterCandidate,
-  type DeclutterParticipant,
+} from "../../declutter/participant";
+import type {
+  DeclutterCandidate,
+  DeclutterParticipant,
 } from "../../declutter/types";
 import type { EventContext } from "../../event/context";
 import { createInstancedSpriteMaterialEnhancer } from "../../material/enhancer";

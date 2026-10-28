@@ -6,7 +6,7 @@ import {
 } from "@navaramap/engine";
 import { Mesh, Sprite, Object3D, Scene } from "three";
 
-import { declutterPairGroup } from "../declutter/types";
+import { declutterPairGroup } from "../declutter/participant";
 import {
   BatchedSdfTextMesh,
   InstancedSpriteMesh,
