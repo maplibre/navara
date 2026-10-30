@@ -40,3 +40,19 @@ export {
   type TileJsonLoadedEvent,
   type TileJsonPluginEventMap,
 } from "./TileJsonPlugin";
+
+export {
+  StreetLightsPlugin,
+  type StreetLightsConfig,
+  type StreetLightsStartOptions,
+  type StreetLightsUpdate,
+} from "./StreetLightsPlugin";
+
+export {
+  StreetTrafficMeshDesc,
+  type StreetTrafficData,
+  type StreetTrafficOptions,
+  type StreetTrafficMeshConfig,
+  type StreetTrafficMeshUpdate,
+  type StreetTrafficDescriptions,
+} from "./StreetTrafficMeshDesc";

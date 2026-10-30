@@ -19,7 +19,8 @@ navara_three（コア: ThreeView, Plugin, addPlugin）
         ├── PersonViewPlugin（キーボード操作による一人称 / 三人称ビューコントローラー）
         ├── OverlayPlugin（ワールド座標からスクリーン座標への HTML オーバーレイ投影）
         ├── CesiumIonPlugin（Cesium Ion quantized-mesh 地形）
-        └── TileJsonPlugin（TileJSON 3.0.0 タイルソースの登録）
+        ├── TileJsonPlugin（TileJSON 3.0.0 タイルソースの登録）
+        └── StreetLightsPlugin（夜の街灯・屋上灯・車）
 ```
 
 `three_plugins` は `Plugin` 基底クラスとコア API のために `navara_three` に依存し、`DefaultDescriptions` 型のために `three_default_plugin` に依存しています。各プラグインは独立しており、片方だけを使うこともできます。
@@ -32,6 +33,7 @@ import {
   OverlayPlugin,
   CesiumIonPlugin,
   TileJsonPlugin,
+  StreetLightsPlugin,
   moveOverlayElement,
 } from "@navaramap/three-plugins";
 ```
@@ -53,6 +55,10 @@ import {
 ### TileJsonPlugin
 
 TileJSON 3.0.0 ドキュメントを取得し、`addSource()` を通じて単一のラスター・ベクトル・raster-DEM（標高）タイルソースとして登録するプラグインです。タイル URL、ズーム範囲、スキーム、アトリビューション、そして raster-DEM では MapLibre 互換の `tileSize` / `encoding` をドキュメントから導出します。詳細は [TileJsonPlugin](../tilejsonplugin/) を参照してください。
+
+### StreetLightsPlugin
+
+OpenMapTiles スキーマのベクトルタイルセットのズーム 14 のタイルを位置の周辺にストリーミングし、道路に沿った街灯、高いビルの屋上の赤い灯、道路の区間を走る車を、`addRoads()` で描いた暗い路面の上に配置するプラグインです。街灯と屋上灯は `start()` に渡した Selective Effect（組み込みの Bloom など）に参加します。詳細は [StreetLightsPlugin](../streetlightsplugin/) を参照してください。
 
 ## 使い方
 

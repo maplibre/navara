@@ -18,6 +18,12 @@ export {
   type AerialPerspectiveUpdate,
 } from "./AerialPerspectiveEffectDesc";
 export {
+  BuildingWindowsEffectDesc,
+  type BuildingWindowsOptions,
+  type BuildingWindowsConfig,
+  type BuildingWindowsUpdate,
+} from "./BuildingWindowsEffectDesc";
+export {
   CloudsEffectDesc,
   type CloudsConfig,
   type CloudsUpdate,

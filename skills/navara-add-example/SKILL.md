@@ -24,7 +24,7 @@ description: >
 
    **The gallery is curated, not exhaustive.** Pages under `pages/examples/` require **design approval** and are planned against the gallery's overall design. Never add a page there for development/debug purposes, and never add one proactively "for coverage" the way docs pages are added — only add a gallery example when explicitly asked to, with the placement already decided.
 
-   Sections and the `ExampleMeta` type are declared in `pages/examples/sections.ts` (`getting-started`, `2d`, `2.5d`, `3d`, `basemap`, `terrain`, `source`, `styling`, `interaction`, `lighting-effect`). `meta.ts` shape:
+   Sections and the `ExampleMeta` type are declared in `pages/examples/sections.ts` (`getting-started`, `2d`, `2.5d`, `3d`, `basemap`, `terrain`, `tiles-3d`, `styling`, `interaction`, `lighting-effect`, `showcase`). `meta.ts` shape:
 
 ```typescript
 import type { ExampleMeta } from "../../sections";

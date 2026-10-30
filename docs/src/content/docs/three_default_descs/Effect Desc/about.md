@@ -18,6 +18,7 @@ The following EffectDescriptor types are available in navara_three:
 | Descriptor Type | Description |
 |------------|------|
 | [AerialPerspectiveEffectDesc](../aerial-perspective-effect-desc) | An effect that simulates light scattering and transmittance through the atmosphere |
+| [BuildingWindowsEffectDesc](../building-windows-effect-desc) | An effect that draws lit windows on building walls |
 | [CloudsEffectDesc](../clouds-effect-desc) | An effect that renders real-time volumetric clouds |
 | [ColorGradingLUTEffectDesc](../color-grading-lut-effect-desc) | An effect that applies color grading using a LUT |
 | [DepthOfFieldEffectDesc](../depth-of-field-effect-desc) | An effect that applies bokeh based on the camera's focal plane |

@@ -60,6 +60,7 @@
     "three-stdlib": "2.36.1"
   },
   "devDependencies": {
+    "@mapbox/vector-tile": "3.0.0",
     "@navaramap/three-default-descs": "workspace:*",
     "@navaramap/three-default-plugin": "workspace:*",
     "@navaramap/three-plugins": "workspace:*",
@@ -84,6 +85,7 @@
     "clsx": "2.1.1",
     "dayjs": "1.11.23",
     "lucide-react": "1.61.0",
+    "pbf": "5.1.2",
     "playwright": "1.64.1",
     "postcss": "8.5.31",
     "postprocessing": "6.39.5",

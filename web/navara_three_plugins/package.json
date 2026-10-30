@@ -35,10 +35,15 @@
     "@navaramap/three-default-plugin": "workspace:*",
     "three": ">=0.183.0"
   },
+  "dependencies": {
+    "@mapbox/vector-tile": "3.0.0",
+    "pbf": "5.1.2"
+  },
   "devDependencies": {
     "@navaramap/three": "workspace:*",
     "@navaramap/three-default-descs": "workspace:*",
     "@navaramap/three-default-plugin": "workspace:*",
+    "@types/geojson": "7946.0.16",
     "@types/three": "0.186.0",
     "three": "0.186.1"
   }
