@@ -27,6 +27,26 @@ sidebar:
 }
 ```
 
+### anchor
+
+**Type:** `"center" | "left" | "right" | "top" | "bottom" | "top-left" | "top-right" | "bottom-left" | "bottom-right" | undefined`
+
+**Description:** Sets which part of the billboard sits on its position, as MapLibre's `icon-anchor` does. For example, `"bottom"` stands the billboard on its position like a map pin. The anchor is also the point [`rotation`](#rotation) turns the billboard around.
+
+Can also be set per feature from a [feature evaluator](../../api/feature-evaluator/).
+
+**Default:** `"center"`
+
+**Example:**
+
+```typescript
+{
+  billboard: {
+    anchor: "bottom"
+  }
+}
+```
+
 ### backfaceCulling
 
 **Type:** `boolean | undefined`
@@ -44,24 +64,6 @@ Only a flat billboard (see [`billboardFacing`](#billboardfacing)) has a back the
   billboard: {
     billboardFacing: "flat",
     backfaceCulling: true
-  }
-}
-```
-
-### center
-
-**Type:** [`Vec2`](../../api/types/#vec2)
-
-**Description:** Specifies the shift amount from the center. The range is between 0 and 1.
-
-**Default:** Required
-
-**Example:**
-
-```typescript
-{
-  billboard: {
-    center: { x: 0.5, y: 0.5 }
   }
 }
 ```
@@ -305,6 +307,26 @@ import { Color } from "@navaramap/three";
 }
 ```
 
+### offset
+
+**Type:** [`Vec2`](../../api/types/#vec2) | undefined
+
+**Description:** Moves the billboard away from its anchor point, in the unit of [`size`](#size): pixels when [`sizeInMeters`](#sizeinmeters) is `false`, meters otherwise. A positive `x` moves it right and a positive `y` moves it down, as MapLibre's `icon-offset` does. The offset lies in the billboard's own plane, so it turns with [`rotation`](#rotation).
+
+Can also be set per feature from a [feature evaluator](../../api/feature-evaluator/).
+
+**Default:** `{ x: 0, y: 0 }`
+
+**Example:**
+
+```typescript
+{
+  billboard: {
+    offset: { x: 0, y: -8 } // 8 units up
+  }
+}
+```
+
 ### offsetDepth
 
 **Type:** `boolean | undefined`
@@ -410,6 +432,27 @@ This option applies when the layer's geometry is built: set it at layer creation
 }
 ```
 
+### sizeRelativeToImage
+
+**Type:** `boolean | undefined`
+
+**Description:** Whether [`size`](#size) scales the image's own pixel height instead of setting the billboard's height, as MapLibre's `icon-size` does. With `true`, a `size` of `1` draws the image at its natural size: in pixels when [`sizeInMeters`](#sizeinmeters) is `false`, or one meter per image pixel otherwise. The width follows the image's aspect ratio either way. [`offset`](#offset) is not scaled by the image and stays in pixels or meters.
+
+**Default:** `false`
+
+**Example:**
+
+```typescript
+{
+  billboard: {
+    url: "https://example.com/pin.png", // a 32 x 40 px image
+    sizeInMeters: false,
+    sizeRelativeToImage: true,
+    size: 1.5 // drawn 48 x 60 px
+  }
+}
+```
+
 ### billboardFacing
 
 **Type:** `"upright" | "flat" | undefined`
@@ -493,7 +536,7 @@ Can also be set per feature from a [feature evaluator](../../api/feature-evaluat
 
 **Description:** Rotates the billboard within its own plane around its anchor point, in degrees, clockwise as seen from the front. The rotation is applied on top of the orientation that [`billboardFacing`](#billboardfacing) and [`rotateWithCamera`](#rotatewithcamera) resolve to.
 
-[`center`](#center) decides where inside the billboard the pivot sits.
+[`anchor`](#anchor) decides where inside the billboard the pivot sits.
 
 Can also be set per feature from a [feature evaluator](../../api/feature-evaluator/), so every billboard in a layer can point a different way.
 
@@ -587,6 +630,43 @@ This option applies when the layer's geometry is built. `layer.update()` does no
 {
   billboard: {
     standalone: false
+  }
+}
+```
+
+### translate
+
+**Type:** [`Vec2`](../../api/types/#vec2) | undefined
+
+**Description:** Moves the drawn billboard by a number of screen pixels, as MapLibre's `icon-translate` does. A positive `x` moves it right and a positive `y` moves it down, in the frame [`translateAnchor`](#translateanchor) sets. The shift is applied after the billboard is projected, so it stays the same number of pixels at any distance and does not turn with [`rotation`](#rotation). Decluttering reserves the space where the billboard is drawn.
+
+**Default:** `{ x: 0, y: 0 }`
+
+**Example:**
+
+```typescript
+{
+  billboard: {
+    translate: { x: 0, y: -10 } // 10 px up
+  }
+}
+```
+
+### translateAnchor
+
+**Type:** `"map" | "viewport" | undefined`
+
+**Description:** Sets the frame [`translate`](#translate) is measured in. With `"map"`, the shift turns with the camera heading, so a positive `x` points east and a positive `y` points south. With `"viewport"`, it follows the screen axes. Unlike MapLibre's `"map"`, the shift is not foreshortened when the camera is pitched.
+
+**Default:** `"map"`
+
+**Example:**
+
+```typescript
+{
+  billboard: {
+    translate: { x: 10, y: 0 },
+    translateAnchor: "viewport" // 10 px right on screen, whatever the heading
   }
 }
 ```

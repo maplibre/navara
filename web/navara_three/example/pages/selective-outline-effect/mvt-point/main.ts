@@ -67,7 +67,7 @@ const run = async () => {
       sizeInMeters: true,
       clampToGround: true,
       color: new Color().setHex(0xffcc00),
-      center: { x: 0, y: -0.5 },
+      anchor: "bottom",
       effectIds: [outlineEffect.id],
     },
   });

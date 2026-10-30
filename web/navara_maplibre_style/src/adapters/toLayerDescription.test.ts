@@ -200,7 +200,7 @@ describe("toLayerDescription", () => {
         source: mockSource,
         point: {
           clampToGround: true,
-          center: { x: 0, y: -0.5 },
+          anchor: "bottom",
         },
       });
     });
@@ -677,6 +677,10 @@ describe("toLayerDescription", () => {
       expect(layerWithBillboard.billboard).toMatchObject({
         url: "marker-icon",
         clampToGround: true,
+        // `icon-size` scales the image, so 1 is its natural size.
+        size: 1,
+        sizeRelativeToImage: true,
+        sizeInMeters: false,
       });
 
       expect(result).not.toHaveProperty("text");
@@ -718,7 +722,6 @@ describe("toLayerDescription", () => {
         spreadGlyphs: false,
         declutter: true,
         maxWidth: 10,
-        textAlign: "center",
       });
       expect(text?.geometryTypes).toEqual(["point", "line", "polygon"]);
       expect(billboard).toMatchObject({
@@ -774,7 +777,6 @@ describe("toLayerDescription", () => {
         rotateWithCamera: false,
         spreadGlyphs: true,
         maxWidth: 0,
-        textAlign: "center",
       });
       expect(billboard).toMatchObject({
         placement: "line",
@@ -1030,22 +1032,66 @@ describe("toLayerDescription", () => {
       expect(billboard?.declutterRank).toBe(7);
     });
 
-    it("maps an explicit icon-anchor to the sprite center", () => {
-      expect(
-        buildSymbol({ "icon-image": "pin", "icon-anchor": "bottom" }).billboard
-          ?.center,
-      ).toEqual({ x: 0, y: -0.5 });
-      expect(
-        buildSymbol({ "icon-image": "pin", "icon-anchor": "top-left" })
-          .billboard?.center,
-      ).toEqual({ x: -0.5, y: 0.5 });
+    it("maps translate and its frame for text and icon", () => {
+      const { text, billboard } = toLayerDescription(
+        mockSource,
+        {
+          ...symbolLayer({ "text-field": "{name}", "icon-image": "pin" }),
+          paint: {
+            "text-translate": [4, -6],
+            "text-translate-anchor": "viewport",
+            "icon-translate": [0, 10],
+          },
+        } as StyleLayer,
+        "Font",
+        engine,
+      ) as {
+        text?: Record<string, unknown>;
+        billboard?: Record<string, unknown>;
+      };
+      expect(text).toMatchObject({
+        translate: { x: 4, y: -6 },
+        translateAnchor: "viewport",
+      });
+      expect(billboard).toMatchObject({
+        translate: { x: 0, y: 10 },
+        translateAnchor: "map",
+      });
     });
 
-    it("keeps the icon/text pairing center when icon-anchor is unset", () => {
+    it("follows zoom for an interpolated translate", () => {
       expect(
-        buildSymbol({ "icon-image": "pin", "text-field": "{name}" }).billboard
-          ?.center,
-      ).toEqual({ x: 1.0, y: -0.5 });
+        symbolLayerFollowsZoom({
+          ...symbolLayer({ "text-field": "{name}" }),
+          paint: {
+            "text-translate": [
+              "interpolate",
+              ["linear"],
+              ["zoom"],
+              5,
+              ["literal", [0, 0]],
+              10,
+              ["literal", [0, 8]],
+            ],
+          },
+        } as StyleLayer),
+      ).toBe(true);
+    });
+
+    it("leaves anchor, offset and justification to the per-feature values", () => {
+      // Data-driven in MapLibre, so the evaluator sets them per feature; the
+      // layer keeps the engine's centred defaults.
+      const { text, billboard } = buildSymbol({
+        "icon-image": "pin",
+        "icon-anchor": "bottom",
+        "text-field": "{name}",
+        "text-anchor": "top",
+        "text-justify": "left",
+      });
+      for (const key of ["anchor", "offset", "textAlign"]) {
+        expect(text).not.toHaveProperty(key);
+        expect(billboard).not.toHaveProperty(key);
+      }
     });
 
     it("resolves symbol placement", () => {

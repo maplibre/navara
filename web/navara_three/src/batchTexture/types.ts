@@ -16,6 +16,10 @@ export const BATCHED_ATTRIBUTE_NAMES = [
   "spreadGlyphs",
   "emissive",
   "emissiveIntensity",
+  /** `anchorCode` of the sprite's anchor (see `material/anchor.ts`). */
+  "anchor",
+  /** `[x, y]`, x right and y down, in the unit of the sprite's size. */
+  "offset",
 ] as const;
 
 export type BatchedAttributeName = (typeof BATCHED_ATTRIBUTE_NAMES)[number];
@@ -37,6 +41,10 @@ export type BatchAttributeDefaults = {
   rotateWithCamera: boolean;
   /** Text only. */
   spreadGlyphs?: boolean;
+  /** Sprites only: `anchorCode` of the material's anchor. */
+  anchor?: number;
+  /** Sprites only: the material's offset. */
+  offset?: readonly [number, number];
 };
 
 /** vec3 attributes: three components of a row (component 3 stays scalar-poolable). */
@@ -61,6 +69,14 @@ export const BATCH_SCALAR_KEYS = [
    * that actually declare receivers.
    */
   "orientation",
+  /** Packed anchor, `anchorCode` in `material/anchor.ts`. */
+  "anchor",
+  /**
+   * The two halves of the public `offset` attribute, always allocated
+   * together (see `ensureOffsetSlots`).
+   */
+  "offsetX",
+  "offsetY",
 ] as const;
 
 export type BatchScalarKey = (typeof BATCH_SCALAR_KEYS)[number];

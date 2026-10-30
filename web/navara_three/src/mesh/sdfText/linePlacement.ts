@@ -83,7 +83,8 @@ export type PackableLabel = {
   anchor: Float64Array;
   addHeight: number;
   widthEm: number;
-  heightEm: number;
+  /** Where the anchor and offset move the block, in ems (`anchorShiftEm`). */
+  shiftEm: readonly [number, number];
   minYEm: number;
   maxYEm: number;
   minXEm: number;
@@ -119,8 +120,6 @@ export type LinePlacementOptions = {
   sizeInMeters: boolean;
   maxAngleDeg: number;
   keepUpright: boolean;
-  /** The text block's anchor point, already clamped to [-0.5, 0.5]. */
-  center: readonly [number, number];
   /** Perpendicular offset from the line, in the font size's units. */
   lineOffset: number;
   /** How the label is oriented, resolved per label since a feature can
@@ -135,28 +134,25 @@ export type LinePlacementOptions = {
 /**
  * The text's drawn extent along the line, in ems from its anchor.
  *
- * The shader shifts the layout by `-cx·w` (see `wordCenterEm` in
- * sdfText.vert.glsl), so the advance box sits over `[-cx·w, (1 - cx)·w]`. The
- * ink is what has to fit, though, and a glyph can overhang its advance (an
- * italic's tail, a wide accent), so the glyph boxes' own bounds are measured
- * from that same origin.
+ * The shader moves the layout by `shiftEm` (see `wordCenterEm` in
+ * sdfText.vert.glsl). The ink is what has to fit, though, and a glyph can
+ * overhang its advance (an italic's tail, a wide accent), so the glyph boxes'
+ * own bounds are measured from that same origin.
  */
-function drawnExtentEm(
-  label: PackableLabel,
-  centerX: number,
-): [number, number] {
-  const origin = centerX * label.widthEm;
-  return [label.minXEm - origin, label.maxXEm - origin];
+function drawnExtentEm(label: PackableLabel): [number, number] {
+  const shiftX = label.shiftEm[0];
+  return [label.minXEm + shiftX, label.maxXEm + shiftX];
 }
 
 /**
  * How far the text runs from its anchor along the line, in ems.
  *
- * The anchor is the text's centre only when `center.x` is 0.5; otherwise one
- * side is longer, and it is that side that has to fit.
+ * The anchor is the text's centre only for a horizontally centered anchor
+ * without an x offset; otherwise one side is longer, and it is that side that
+ * has to fit.
  */
-function reachEm(label: PackableLabel, centerX: number): number {
-  const [x0, x1] = drawnExtentEm(label, centerX);
+function reachEm(label: PackableLabel): number {
+  const [x0, x1] = drawnExtentEm(label);
   return Math.max(Math.abs(x0), Math.abs(x1));
 }
 
@@ -181,10 +177,7 @@ function drawnWidthEm(label: PackableLabel): number {
 export function packLineLabelFits(
   labels: readonly PackableLabel[],
   path: LinePath,
-  options: Pick<
-    LinePlacementOptions,
-    "sizeInMeters" | "center" | "readOrientation"
-  >,
+  options: Pick<LinePlacementOptions, "sizeInMeters" | "readOrientation">,
 ): Float64Array {
   const out = new Float64Array(labels.length * LINE_LABEL_FIT_STRIDE);
   const metric = options.sizeInMeters ? 1 : 0;
@@ -196,7 +189,7 @@ export function packLineLabelFits(
     out[o + 1] = label.anchor[1];
     out[o + 2] = label.anchor[2];
     out[o + 3] = label.addHeight;
-    out[o + 4] = reachEm(label, options.center[0]);
+    out[o + 4] = reachEm(label);
     out[o + 5] = label.fontSize;
     out[o + 6] = metric;
     out[o + 7] = usableHalfExtentMeters(path, label.instanceIndex);
@@ -234,7 +227,7 @@ export function packLineLabels(
     out[o + 1] = label.anchor[1];
     out[o + 2] = label.anchor[2];
     out[o + 3] = label.addHeight;
-    out[o + 4] = reachEm(label, options.center[0]);
+    out[o + 4] = reachEm(label);
     out[o + 5] = label.fontSize;
     out[o + 6] = options.sizeInMeters ? 1 : 0;
     out[o + 7] = maxAngleRad;
@@ -252,13 +245,12 @@ export function packLineLabels(
     // it lies flat, so the kernel projects the two differently.
     // Along the line it spans the glyphs' drawn bounds, which the path box
     // clamps every word to.
-    const [cx, cy] = options.center;
-    const h = label.heightEm;
-    const [x0, x1] = drawnExtentEm(label, cx);
+    const [x0, x1] = drawnExtentEm(label);
+    const shiftY = label.shiftEm[1];
     out[o + 13] = x0 * label.fontSize;
     out[o + 14] = x1 * label.fontSize;
-    out[o + 15] = (label.minYEm - cy * h) * label.fontSize;
-    out[o + 16] = (label.maxYEm - cy * h) * label.fontSize;
+    out[o + 15] = (label.minYEm + shiftY) * label.fontSize;
+    out[o + 16] = (label.maxYEm + shiftY) * label.fontSize;
     out[o + 17] = options.lineOffset;
     out[o + 18] = orientation.flatFacing ? 1 : 0;
     out[o + 19] = scaleBands[band];

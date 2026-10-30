@@ -136,6 +136,17 @@ The extrusions render once the scene has lights, which the harness adds
   `crates/navara_mvt` always builds URLs with `tms: false`). Raster and
   raster-dem sources already support it.
 
+### Symbol text is never drawn
+
+Verified: the styles load fonts through `glyphs` (PBF glyph ranges), which the
+plugin does not read, and `lib/test-page.ts` passes no font overrides, so the
+plugin skips every `text-field` ("no font was provided"). Text layout and
+placement are therefore untested here; a low `diffRatio` on a text-only case
+only means both images are mostly background.
+
+- Cases: `text-anchor/*`, `text-offset/*`, `text-variable-anchor/*`,
+  `text-variable-anchor-offset/*`, `text-radial-offset/basic`.
+
 ## Style parsing and evaluation
 
 ### CSS named colors are only partially supported

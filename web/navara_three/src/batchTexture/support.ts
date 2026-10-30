@@ -33,7 +33,15 @@ export const MODEL_BATCH_SUPPORT: BatchTextureSupport = {
 };
 
 export const SPRITE_BATCH_SUPPORT: BatchTextureSupport = {
-  scalars: ["height", "size", "rotation", "orientation"],
+  scalars: [
+    "height",
+    "size",
+    "rotation",
+    "orientation",
+    "anchor",
+    "offsetX",
+    "offsetY",
+  ],
   vec3s: ["color", "emissive"],
 };
 

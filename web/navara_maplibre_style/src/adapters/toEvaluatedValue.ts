@@ -3,7 +3,13 @@
  */
 
 import { Color as MapLibreColorParser } from "@maplibre/maplibre-gl-style-spec";
-import { Color, type GeometryType } from "@navaramap/three";
+import {
+  Color,
+  type Anchor,
+  type GeometryType,
+  type TextAlign,
+  type VariableAnchor,
+} from "@navaramap/three";
 
 import type { StyleEngine } from "../engine/StyleEngine";
 import {
@@ -14,6 +20,12 @@ import {
   type ValueExpression,
 } from "../engine/types";
 import { expressionUsesFeatureData } from "../utils/expressionHelpers";
+
+import {
+  fromRadialOffset,
+  isAnchor,
+  resolveVariableAnchors,
+} from "./textAnchor";
 
 type EvaluatedResult = {
   color?: Color;
@@ -29,6 +41,11 @@ type EvaluatedResult = {
   /** Degrees clockwise, like MapLibre's `text-rotate` / `icon-rotate`. */
   rotation?: number;
   declutterPriority?: number;
+  anchor?: Anchor;
+  /** x right, y down: ems for text, pixels for icons. */
+  offset?: { x: number; y: number };
+  variableAnchors?: VariableAnchor[];
+  textAlign?: TextAlign;
 };
 
 /**
@@ -219,9 +236,14 @@ export function createLayoutEvaluators(
     "text-letter-spacing",
     "text-rotate",
     "text-transform",
+    "text-anchor",
+    "text-offset",
+    "text-justify",
     "icon-image",
     "icon-size",
     "icon-rotate",
+    "icon-anchor",
+    "icon-offset",
     "symbol-sort-key",
   ];
 
@@ -430,16 +452,33 @@ function applyTextTransform(text: string, transform: unknown): string {
 
 /**
  * Apply the per-feature placement properties shared by icons and text:
- * `*-rotate` and `symbol-sort-key`.
+ * `*-anchor`, `*-offset` (multiplied by `offsetScale`), `*-rotate` and
+ * `symbol-sort-key`.
  */
 function applySymbolPlacement(
   result: EvaluatedResult,
-  rotate: unknown,
-  sortKey: unknown,
+  layoutValues: Record<string, unknown> | undefined,
+  prefix: "text" | "icon",
+  offsetScale: number,
 ): void {
+  const anchor = layoutValues?.[`${prefix}-anchor`];
+  if (isAnchor(anchor)) result.anchor = anchor;
+  const offset = layoutValues?.[`${prefix}-offset`];
+  if (
+    Array.isArray(offset) &&
+    Number.isFinite(offset[0]) &&
+    Number.isFinite(offset[1])
+  ) {
+    result.offset = {
+      x: offset[0] * offsetScale,
+      y: offset[1] * offsetScale,
+    };
+  }
+  const rotate = layoutValues?.[`${prefix}-rotate`];
   if (typeof rotate === "number" && Number.isFinite(rotate)) {
     result.rotation = rotate;
   }
+  const sortKey = layoutValues?.["symbol-sort-key"];
   // A lower sort key is placed first in MapLibre; higher priority wins in Navara.
   if (typeof sortKey === "number" && Number.isFinite(sortKey)) {
     result.declutterPriority = -sortKey;
@@ -504,14 +543,19 @@ function processSymbolLayer(
     // Note: createLayoutEvaluators ensures icon-size is always present (using spec.default = 1)
     // The ?? 1 fallback is defensive and should rarely trigger
     const iconSize = layoutValues?.["icon-size"] ?? 1;
-    if (typeof iconSize === "number" && Number.isFinite(iconSize)) {
+    const validIconSize =
+      typeof iconSize === "number" && Number.isFinite(iconSize);
+    if (validIconSize) {
       result.size = iconSize;
     }
 
+    // `icon-offset` is scaled by `icon-size` into pixels, the billboard's
+    // size unit.
     applySymbolPlacement(
       result,
-      layoutValues?.["icon-rotate"],
-      layoutValues?.["symbol-sort-key"],
+      layoutValues,
+      "icon",
+      validIconSize ? iconSize : 1,
     );
   }
 
@@ -543,11 +587,28 @@ function processSymbolLayer(
         result.letterSpacing = letterSpacing;
       }
 
-      applySymbolPlacement(
-        result,
-        layoutValues?.["text-rotate"],
-        layoutValues?.["symbol-sort-key"],
-      );
+      // `text-offset` is in ems, like Navara's text `offset`.
+      applySymbolPlacement(result, layoutValues, "text", 1);
+      // The variable-anchor properties only have values when the style sets
+      // them; MapLibre tells "unset" from the default the same way.
+      const variableAnchors = resolveVariableAnchors(layoutValues ?? {});
+      const radial = layoutValues?.["text-radial-offset"];
+      if (variableAnchors) {
+        result.variableAnchors = variableAnchors;
+      } else if (typeof radial === "number" && radial !== 0) {
+        const [x, y] = fromRadialOffset(result.anchor ?? "center", radial);
+        result.offset = { x, y };
+      }
+
+      const justify = layoutValues?.["text-justify"];
+      if (
+        justify === "auto" ||
+        justify === "left" ||
+        justify === "center" ||
+        justify === "right"
+      ) {
+        result.textAlign = justify;
+      }
     } else {
       // Hide text features with empty text-field (e.g., from zoom-based step expressions)
       result.show = false;

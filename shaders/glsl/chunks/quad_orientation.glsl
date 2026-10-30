@@ -89,7 +89,7 @@ void nvr_quadOrientation(
  * the plane its orientation mode put it in.
  *
  * Local offsets are measured from the anchor, so this pivots the quad about
- * that anchor — which makes the material's `center` the control for where the
+ * that anchor — which makes the material's `anchor` the control for where the
  * pivot sits inside the quad.
  */
 void nvr_quadBasis(
@@ -111,6 +111,24 @@ void nvr_quadBasis(
     vec3 rotatedRight = c * right - s * up;
     up = s * right + c * up;
     right = rotatedRight;
+}
+
+/**
+ * View-space shift for a `translate` of `px` screen pixels (x right, y down),
+ * scaled by `worldPerPx` at the anchor's depth. With `viewport` it follows the
+ * screen axes; without, it turns with the camera heading so +x points east and
+ * +y south (MapLibre's `*-translate-anchor: map`). It lies in the screen plane
+ * either way, so it is added to the final view position, never wrapped.
+ * Mirrored by `project_candidate` in crates/navara_wasm_api/src/declutter.rs.
+ */
+vec3 nvr_translateOffset(vec3 worldPos, vec2 px, bool viewport, float worldPerPx) {
+    if (px == vec2(0.0)) {
+        return vec3(0.0);
+    }
+    vec3 right;
+    vec3 up;
+    nvr_quadOrientation(worldPos, false, viewport, right, up);
+    return (px.x * right - px.y * up) * worldPerPx;
 }
 
 /**

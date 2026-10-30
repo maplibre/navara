@@ -46,7 +46,7 @@ const layer = view.addLayer({
     size: 32,
     sizeInMeters: false,
     clampToGround: true,
-    center: { x: 0.5, y: 0 },
+    anchor: "bottom",
     outlineColor: new Color().setStyle("#000000"),
     outlineWidth: 4,
   },

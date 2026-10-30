@@ -8,6 +8,9 @@ import {
   type ShapeTextResult,
 } from "@navaramap/font";
 
+import { ANCHOR_ALIGN } from "../../material/anchor";
+import type { Anchor } from "../../type";
+
 /**
  * Pure text-layout helpers: line breaking and turning a
  * shaping result into positioned glyph quads in em space.
@@ -23,6 +26,34 @@ export const ALIGN_FACTORS: Record<string, number> = {
   center: 0.5,
   right: 1,
 };
+
+/** The alignment factor for `textAlign`, resolving `"auto"` to the
+ *  horizontal side of the label's anchor. */
+export function resolveTextAlign(
+  textAlign: string | undefined,
+  anchor: Anchor,
+): number {
+  return textAlign === "auto"
+    ? ANCHOR_ALIGN[anchor][0]
+    : (ALIGN_FACTORS[textAlign ?? "center"] ?? 0.5);
+}
+
+/**
+ * Where the label's glyphs move, in ems, so its `anchor` point lands on the
+ * anchor position and `offset` (x right, y down) then shifts it. The layout's
+ * origin is the left edge and first baseline, y up.
+ */
+export function anchorShiftEm(
+  anchor: Anchor,
+  offsetX: number,
+  offsetY: number,
+  widthEm: number,
+  topEm: number,
+  bottomEm: number,
+): [number, number] {
+  const [h, v] = ANCHOR_ALIGN[anchor];
+  return [-h * widthEm + offsetX, -(topEm - v * (topEm - bottomEm)) - offsetY];
+}
 
 /**
  * Letter spacing (font units) between two adjacent glyphs of a line: only at
@@ -206,7 +237,11 @@ export type LabelLayout = {
   /** Unique atlas glyphs referenced, for retain/release against the atlas. */
   glyphKeys: bigint[];
   widthEm: number;
-  heightEm: number;
+  /** The box `anchor` aligns to, from the first line's baseline: one line
+   *  height per line, each centered on the font's midline (the middle of its
+   *  ascender and descender), as MapLibre stacks its line boxes. */
+  topEm: number;
+  bottomEm: number;
   /** Y bounds of the actual rendered glyph bboxes, for the background quad. */
   minYEm: number;
   maxYEm: number;
@@ -242,7 +277,8 @@ const EMPTY_LAYOUT: LabelLayout = {
   quads: [],
   glyphKeys: [],
   widthEm: 0,
-  heightEm: 0,
+  topEm: 0,
+  bottomEm: 0,
   minYEm: 0,
   maxYEm: 1,
   minXEm: 0,
@@ -392,15 +428,14 @@ export function buildLabelLayout(
     return { ...EMPTY_LAYOUT, glyphKeys: [...glyphKeys] };
   }
 
-  // The block is as wide as its widest line and grows downward by one line
-  // height per extra line (a single line stays exactly one em tall).
+  const midEm = (ascender + descender) / 2 / unitsPerEm;
+  const lineEm = lineHeightFu / unitsPerEm;
   return {
     quads,
     glyphKeys: [...glyphKeys],
     widthEm: (blockWidthFu * fontUnitToSdfPx) / SDF_PX_SIZE,
-    heightEm:
-      (SDF_PX_SIZE + (lines.length - 1) * lineHeightFu * fontUnitToSdfPx) /
-      SDF_PX_SIZE,
+    topEm: midEm + lineEm / 2,
+    bottomEm: midEm - lineEm / 2 - (lines.length - 1) * lineEm,
     minYEm,
     maxYEm,
     minXEm,

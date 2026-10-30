@@ -124,7 +124,7 @@ const run = async () => {
         sizeInMeters: false,
         clampToGround: true,
         size: params.size,
-        center: { x: 0.5, y: 0.0 },
+        anchor: "bottom",
         outlineColor: new Color().setStyle("#000000"),
         outlineWidth: 2,
         // Hide labels whose screen boxes overlap a higher-priority one

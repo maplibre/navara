@@ -44,11 +44,15 @@ export const createBaseMutates = (
     uColor: { value: new Color(1, 1, 1) },
     uOpacity: { value: 1.0 },
     uAddHeight: { value: 0.0 },
-    uCenter: { value: new ThreeVector2(0, 0) },
+    uAnchor: { value: new ThreeVector2(0, 0) },
+    uOffset: { value: new ThreeVector2(0, 0) },
+    uTranslate: { value: new ThreeVector2(0, 0) },
+    uTranslateViewport: { value: false },
     uFlatFacing: { value: false },
     uRotateWithCamera: { value: true },
     uRotation: { value: 0 },
     uSizeInMeters: { value: true },
+    uSizeRelativeToImage: { value: false },
     uOffsetDepth: { value: true },
     uAlphaTest: { value: 0.0 },
     uFarPlane: { value: 0.0 },
@@ -77,11 +81,15 @@ export const createBaseMutates = (
         ? Math.min(Math.max(state.opacity, 0), 1)
         : 1.0;
       refs.uAddHeight.value = state.addHeight;
-      refs.uCenter.value.set(state.center[0], state.center[1]);
+      refs.uAnchor.value.set(state.anchor[0], state.anchor[1]);
+      refs.uOffset.value.set(state.offset[0], state.offset[1]);
+      refs.uTranslate.value.set(state.translate[0], state.translate[1]);
+      refs.uTranslateViewport.value = state.translateViewport;
       refs.uFlatFacing.value = state.flatFacing;
       refs.uRotateWithCamera.value = state.rotateWithCamera;
       refs.uRotation.value = state.rotation;
       refs.uSizeInMeters.value = state.sizeInMeters;
+      refs.uSizeRelativeToImage.value = state.sizeRelativeToImage;
       refs.uOffsetDepth.value = state.offsetDepth;
       refs.uAlphaTest.value = state.alphaTest;
       refs.uAtlasSize.value.set(state.atlasSize[0], state.atlasSize[1]);
@@ -101,11 +109,15 @@ export const createBaseMutates = (
       uniforms.uEyeRTEHigh = refs.uEyeRTEHigh;
       uniforms.u_rteOne = RTE_ONE_UNIFORM;
       uniforms.uScale = refs.uScale;
-      uniforms.uCenter = refs.uCenter;
+      uniforms.uAnchor = refs.uAnchor;
+      uniforms.uOffset = refs.uOffset;
+      uniforms.uTranslate = refs.uTranslate;
+      uniforms.uTranslateViewport = refs.uTranslateViewport;
       uniforms.uFlatFacing = refs.uFlatFacing;
       uniforms.uRotateWithCamera = refs.uRotateWithCamera;
       uniforms.uRotation = refs.uRotation;
       uniforms.uSizeInMeters = refs.uSizeInMeters;
+      uniforms.uSizeRelativeToImage = refs.uSizeRelativeToImage;
       uniforms.uOffsetDepth = refs.uOffsetDepth;
       uniforms.uAlphaTest = refs.uAlphaTest;
       uniforms.uFarPlane = refs.uFarPlane;

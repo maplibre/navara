@@ -7,6 +7,7 @@ import {
   type Overlap,
   type Source,
   type SourceGeometryType,
+  type TranslateAnchor,
   type VectorLayer,
 } from "@navaramap/three";
 
@@ -40,8 +41,6 @@ const ZOOM_FOLLOWING_SYMBOL_PROPERTIES = {
     "text-keep-upright",
     "text-max-angle",
     "text-max-width",
-    "text-justify",
-    "icon-anchor",
     "text-allow-overlap",
     "icon-allow-overlap",
     "text-overlap",
@@ -53,7 +52,14 @@ const ZOOM_FOLLOWING_SYMBOL_PROPERTIES = {
     "text-optional",
     "icon-optional",
   ],
-  paint: ["text-halo-color", "text-halo-width"],
+  paint: [
+    "text-halo-color",
+    "text-halo-width",
+    "text-translate",
+    "text-translate-anchor",
+    "icon-translate",
+    "icon-translate-anchor",
+  ],
 } as const;
 
 /**
@@ -222,6 +228,38 @@ function resolvePadding(
 }
 
 /**
+ * Resolve `*-translate` and `*-translate-anchor` for the layer. Both are
+ * zoom-only in the spec, so one value covers every feature; MapLibre's pixels,
+ * +y down, match the material's `translate`.
+ */
+function resolveTranslate(
+  engine: StyleEngine,
+  styleLayer: StyleLayer,
+  prefix: "text" | "icon",
+  zoom: number,
+): { translate: { x: number; y: number }; translateAnchor: TranslateAnchor } {
+  const translate = evaluateLayerProperty(
+    engine,
+    styleLayer,
+    "paint",
+    `${prefix}-translate`,
+    zoom,
+  );
+  const [x, y] = Array.isArray(translate) ? translate : [];
+  const anchor = evaluateLayerProperty(
+    engine,
+    styleLayer,
+    "paint",
+    `${prefix}-translate-anchor`,
+    zoom,
+  );
+  return {
+    translate: { x: finiteOr(x, 0), y: finiteOr(y, 0) },
+    translateAnchor: anchor === "viewport" ? "viewport" : "map",
+  };
+}
+
+/**
  * Whether a symbol's icon or text may show while its `partner` is hidden:
  * MapLibre places the two together unless the partner is `*-optional`, or the
  * layer does not draw it at all.
@@ -244,22 +282,6 @@ function placesAlone(
     ) === true
   );
 }
-
-/**
- * MapLibre `icon-anchor` → Navara sprite `center`: the anchor's position
- * within the sprite, x right and y up, in [-0.5, 0.5].
- */
-const ICON_ANCHOR_CENTERS: Record<string, { x: number; y: number }> = {
-  center: { x: 0, y: 0 },
-  left: { x: -0.5, y: 0 },
-  right: { x: 0.5, y: 0 },
-  top: { x: 0, y: 0.5 },
-  bottom: { x: 0, y: -0.5 },
-  "top-left": { x: -0.5, y: 0.5 },
-  "top-right": { x: 0.5, y: 0.5 },
-  "bottom-left": { x: -0.5, y: -0.5 },
-  "bottom-right": { x: 0.5, y: -0.5 },
-};
 
 /**
  * Helper to extract sourceLayers from MapLibre's source-layer property.
@@ -345,7 +367,7 @@ function createCircleLayer(
     ...getSourceLayersField(styleLayer),
     point: {
       clampToGround: true,
-      center: { x: 0, y: -0.5 },
+      anchor: "bottom",
     },
   };
 }
@@ -580,19 +602,10 @@ function createSymbolLayer(
     : undefined;
 
   if (hasIconImage) {
-    const iconAnchor =
-      engine && layout?.["icon-anchor"] !== undefined
-        ? evaluateLayerProperty(
-            engine,
-            styleLayer,
-            "layout",
-            "icon-anchor",
-            zoom,
-          )
-        : undefined;
-
     layerDesc.billboard = {
+      // `icon-size`, evaluated per feature, scales the image's own size.
       size: 1.0,
+      sizeRelativeToImage: true,
       height: 1,
       sizeInMeters: false,
       clampToGround: true,
@@ -600,9 +613,6 @@ function createSymbolLayer(
       url: getIconUrl(layout?.["icon-image"]),
       offsetDepth: true,
       transparent: true,
-      center:
-        (typeof iconAnchor === "string" && ICON_ANCHOR_CENTERS[iconAnchor]) ||
-        (hasTextField ? { x: 1.0, y: -0.5 } : { x: 0.5, y: -0.5 }),
     };
 
     if (engine && orientation) {
@@ -620,6 +630,7 @@ function createSymbolLayer(
           zoom,
         ),
         ...resolveOverlap(engine, styleLayer, "icon", zoom),
+        ...resolveTranslate(engine, styleLayer, "icon", zoom),
         ...(geometryTypes && { geometryTypes }),
         ...(alongLine && { spacing: orientation.spacing }),
       } satisfies Partial<BillboardDescription>);
@@ -633,7 +644,6 @@ function createSymbolLayer(
       text: "",
       size: 1.0,
       sizeInMeters: false,
-      center: hasIconImage ? { x: 0.0, y: 0.0 } : { x: 0.5, y: 0.0 },
       depthTest: true,
       offsetDepth: true,
       declutter: true, // Enable declutter to hide duplicate/overlapping labels
@@ -645,14 +655,6 @@ function createSymbolLayer(
     // To fix this, Navara's EvaluatedValue should support outlineColor/outlineWidth fields so
     // they can be evaluated per-feature.
     if (engine && orientation && styleLayer.type === "symbol") {
-      const justify = evaluateLayerProperty(
-        engine,
-        styleLayer,
-        "layout",
-        "text-justify",
-        zoom,
-      );
-
       Object.assign(layerDesc.text, {
         placement,
         ...orientation.text,
@@ -660,6 +662,7 @@ function createSymbolLayer(
         declutterPadding: resolvePadding(engine, styleLayer, "text", zoom),
         standalone: placesAlone(engine, styleLayer, "icon", hasIconImage, zoom),
         ...resolveOverlap(engine, styleLayer, "text", zoom),
+        ...resolveTranslate(engine, styleLayer, "text", zoom),
         // MapLibre never wraps or justifies labels placed along a line.
         maxWidth: alongLine
           ? 0
@@ -673,12 +676,6 @@ function createSymbolLayer(
               ),
               10,
             ),
-        // `auto` aligns towards the anchor; `text-anchor` is not mapped, so
-        // it falls back to centered like the other unknown values.
-        textAlign:
-          !alongLine && (justify === "left" || justify === "right")
-            ? justify
-            : "center",
         ...(geometryTypes && { geometryTypes }),
         ...(alongLine && { spacing: orientation.spacing }),
       } satisfies Partial<TextDescription>);

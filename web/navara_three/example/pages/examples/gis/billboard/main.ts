@@ -45,7 +45,7 @@ view.addLayer({
     color: new Color().setStyle("#ffffff"),
     size: 160,
     sizeInMeters: false,
-    center: { x: 0, y: -0.5 },
+    anchor: "bottom",
     transparent: true,
     clampToGround: true,
   },

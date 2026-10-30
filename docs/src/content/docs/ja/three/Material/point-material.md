@@ -9,6 +9,26 @@ sidebar:
 
 ## Properties
 
+### anchor
+
+**Type:** `"center" | "left" | "right" | "top" | "bottom" | "top-left" | "top-right" | "bottom-left" | "bottom-right" | undefined`
+
+**Description:** ポイントのどの部分を位置に置くかを指定します。MapLibre の `icon-anchor` と同じ動作です。たとえば `"bottom"` では、地図のピンのようにポイントが位置の上に立ちます。アンカーは [`rotation`](#rotation) の回転の中心にもなります。
+
+[`FeatureEvaluator`](../../api/feature-evaluator/) から地物ごとに指定することもできます。
+
+**Default:** `"center"`
+
+**Example:**
+
+```typescript
+{
+  point: {
+    anchor: "bottom"
+  }
+}
+```
+
 ### backfaceCulling
 
 **Type:** `boolean | undefined`
@@ -26,24 +46,6 @@ sidebar:
   point: {
     pointFacing: "flat",
     backfaceCulling: true
-  }
-}
-```
-
-### center
-
-**Type:** `{ x: number, y: number }`
-
-**Description:** 中心からのシフト量を指定します。範囲は 0 から 1 の間です。単位は、ポイントの丸に対する相対位置です。
-
-**Default:** Required
-
-**Example:**
-
-```typescript
-{
-  point: {
-    center: { x: 0.5, y: 0.5 }
   }
 }
 ```
@@ -287,6 +289,26 @@ import { Color } from "@navaramap/three";
 }
 ```
 
+### offset
+
+**Type:** [`Vec2`](../../api/types/#vec2) | undefined
+
+**Description:** ポイントをアンカー位置からずらす量を [`size`](#size) と同じ単位で指定します。[`sizeInMeters`](#sizeinmeters) が `false` のときはピクセル、それ以外はメートルです。`x` が正の値で右に、`y` が正の値で下に移動します。MapLibre の `icon-offset` と同じ動作です。オフセットはポイント自身の平面内にあるため、[`rotation`](#rotation) とともに回転します。
+
+[`FeatureEvaluator`](../../api/feature-evaluator/) から地物ごとに指定することもできます。
+
+**Default:** `{ x: 0, y: 0 }`
+
+**Example:**
+
+```typescript
+{
+  point: {
+    offset: { x: 0, y: -8 } // 8 単位上
+  }
+}
+```
+
 ### offsetDepth
 
 **Type:** `boolean | undefined`
@@ -473,7 +495,7 @@ import { Color } from "@navaramap/three";
 
 **Description:** ポイントを自身の平面内で、アンカー位置を中心に回転させる角度を度数で指定します。正面から見て時計回りです。回転は [`pointFacing`](#pointfacing) と [`rotateWithCamera`](#rotatewithcamera) で決まる向きに対して追加で適用されます。
 
-回転の中心がポイントのどこになるかは [`center`](#center) で決まります。
+回転の中心がポイントのどこになるかは [`anchor`](#anchor) で決まります。
 
 [`FeatureEvaluator`](../../api/feature-evaluator/) から地物ごとに指定できるため、レイヤー内のポイントごとに異なる向きにできます。
 
@@ -549,6 +571,43 @@ MapLibre の `symbol-spacing` と同様に、ラインに沿った長さが `spa
     geometryTypes: ["line"],
     placement: "line",
     spacing: 100
+  }
+}
+```
+
+### translate
+
+**Type:** [`Vec2`](../../api/types/#vec2) | undefined
+
+**Description:** 描画されたポイントを画面上のピクセル数だけ移動します。`x` が正の値で右に、`y` が正の値で下に移動し、向きは [`translateAnchor`](#translateanchor) で決まります。移動はポイントを投影した後に適用されるため、距離にかかわらず同じピクセル数だけ移動し、[`rotation`](#rotation) とともには回転しません。デクラッタリングではポイントが描画される位置の領域が確保されます。
+
+**Default:** `{ x: 0, y: 0 }`
+
+**Example:**
+
+```typescript
+{
+  point: {
+    translate: { x: 0, y: -10 } // 10 px 上
+  }
+}
+```
+
+### translateAnchor
+
+**Type:** `"map" | "viewport" | undefined`
+
+**Description:** [`translate`](#translate) の向きの基準を指定します。`"map"` ではカメラの方位とともに回転し、`x` が正の値で東、`y` が正の値で南を向きます。`"viewport"` では画面の軸に従います。MapLibre の `"map"` とは異なり、カメラを傾けても移動量は短縮されません。
+
+**Default:** `"map"`
+
+**Example:**
+
+```typescript
+{
+  point: {
+    translate: { x: 10, y: 0 },
+    translateAnchor: "viewport" // 方位にかかわらず画面上で 10 px 右
   }
 }
 ```

@@ -505,7 +505,6 @@ export const run = async (view: ThreeView<CustomDescriptions>) => {
       size: LABEL_TIERS[0].size,
       sizeInMeters: false,
       clampToGround: false,
-      center: { x: 0.5, y: 0.5 },
       outlineColor: new Color().setStyle(OVERTURE_COLORS.adminHalo),
       outlineWidth: ADMIN_OUTLINE_WIDTH,
       outlineOpacity: OVERTURE_COLORS.adminHaloOpacity,
@@ -594,11 +593,9 @@ export const run = async (view: ThreeView<CustomDescriptions>) => {
   // evaluator selects each billboard's atlas image, so every supported category
   // can render at once.
   //
-  // Positioning is anchor-only (`center`, a normalized Vec2), there is no pixel
-  // offset. To read as `icon │ name` we anchor the icon's RIGHT edge and the
-  // text's LEFT edge to the same geographic point. The text keeps its baseline
-  // origin so the icon aligns with the first line; the leading en space supplies
-  // a small, consistent gap between them.
+  // To read as `icon │ name` we anchor the icon's RIGHT edge and the text's
+  // LEFT edge to the same geographic point, both vertically centred; the
+  // leading en space supplies a small, consistent gap between them.
   const poiLayer = view.addLayer({
     type: "vector",
     source: placesSource,
@@ -608,7 +605,7 @@ export const run = async (view: ThreeView<CustomDescriptions>) => {
       size: 30,
       sizeInMeters: false,
       clampToGround: false,
-      center: { x: 0.5, y: 0.0 },
+      anchor: "right",
       depthTest: true,
       offsetDepth: true,
       transparent: true,
@@ -624,7 +621,7 @@ export const run = async (view: ThreeView<CustomDescriptions>) => {
       size: 12,
       sizeInMeters: false,
       clampToGround: false,
-      center: { x: 0.0, y: 0.0 },
+      anchor: "left",
       outlineColor: new Color().setStyle(OVERTURE_COLORS.placeHalo),
       outlineWidth: POI_OUTLINE_WIDTH,
       outlineOpacity: OVERTURE_COLORS.placeHaloOpacity,

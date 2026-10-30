@@ -114,7 +114,7 @@ export const run = async (view: ThreeView<DefaultDescriptions>) => {
     alphaTest: 0.1,
     transparent: true,
     url: defaultImageUrl,
-    center: { x: 0.0, y: -0.5 },
+    anchor: "bottom" as const,
     offsetDepth: true,
   });
 

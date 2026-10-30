@@ -31,7 +31,7 @@ knowing before touching either shader.
 ```mermaid
 flowchart LR
   subgraph U["Tier 1 · batch-wide<br/>uniforms"]
-    U1["outline width/color/opacity<br/>background color/border<br/>uCenter, uSizeInMeters, uOffsetDepth<br/>atlas samplers + sizes<br/>label + path samplers + sizes<br/>(uPathData, uPathTexSize), uLineOffset<br/>camera fov / screen height / far plane<br/>RTE eye split, RTC center<br/>nvr_uPickable"]
+    U1["outline width/color/opacity<br/>background color/border<br/>uSizeInMeters, uOffsetDepth<br/>uTranslate, uTranslateViewport<br/>atlas samplers + sizes<br/>label + path samplers + sizes<br/>(uPathData, uPathTexSize), uLineOffset<br/>camera fov / screen height / far plane<br/>RTE eye split, RTC center<br/>nvr_uPickable"]
   end
   subgraph L["Tier 2 · per-label<br/>uLabelData texels"]
     L1["anchor (RTE high/low)<br/>text box metrics<br/>declutterHide, batchId, show, batchIndex<br/>PATH: path run, step, flip, rejected"]
@@ -68,16 +68,25 @@ that the **vertex** shader reads with `texelFetch`
 
 | row | x | y | z | w |
 | --- | --- | --- | --- | --- |
-| 0 `POSITION_HIGH` | anchor high .x | .y | .z | *(reserved)* |
-| 1 `POSITION_LOW` | anchor low .x | .y | .z | *(reserved)* |
-| 2 `BOX` | textWidth | textHeight | bgMinY | bgMaxY |
+| 0 `POSITION_HIGH` | anchor high .x | .y | .z | shift .x (em) |
+| 1 `POSITION_LOW` | anchor low .x | .y | .z | shift .y (em) |
+| 2 `BOX` | textWidth | *(reserved)* | bgMinY | bgMaxY |
 | 3 `STATE` | declutterHide | batchId | show | batchIndex |
 | 4 `PATH` | first texel of the path run | metres between samples | flip | rejected |
 
 Rows 0–1 carry the RTE high/low anchor split (see
 [RTC_VS_RTE.md](RTC_VS_RTE.md)); in RTC mode row 0 holds the tile-relative
 position and row 1's `xyz` is unused. The layout is identical across both so
-the shader's row indices never branch. `STATE.w` is the feature index into the
+the shader's row indices never branch. Their `w` pair is the label's **shift**:
+where its `anchor` and `offset` (both per label, since MapLibre's
+`text-anchor`/`text-offset` are data-driven) move the block from its layout
+origin, resolved on the CPU by `anchorShiftEm` against the layout's line box
+(`LabelLayout.topEm`/`bottomEm`). An anchor change only rewrites the shift,
+unless `textAlign: "auto"` makes the justification follow it, which re-lays out
+the glyphs. A point label with `variableAnchors` is shifted by the one the
+declutter pass placed it with (see [DECLUTTER.md](DECLUTTER.md#variable-anchors));
+the record keeps every variable anchor's shift for the pass's candidate rows.
+`STATE.w` is the feature index into the
 batch data texture. `PATH` is all zero unless the label sits on a line (see
 [LINE_PLACEMENT.md](LINE_PLACEMENT.md)).
 
@@ -252,10 +261,10 @@ relative to the usual counter-clockwise matrix so a positive angle reads
 clockwise from in front, matching compass bearings and MapLibre's
 `text-rotate`.
 
-The pivot is the **anchor**: glyph offsets are measured from it once `uCenter`
-has shifted the text block, so `center` is what decides where inside the text
-the label turns about — `{x: 0.5, y: 0.5}` spins it about its middle,
-`{x: 0.5, y: 0.0}` about the bottom of the block.
+The pivot is the **anchor**: glyph offsets are measured from it once the
+label's shift has moved the text block, so `anchor` (and `offset`) decide where
+inside the text the label turns about — `"center"` spins it about its middle,
+`"bottom"` about the bottom of the block.
 
 Flat labels are then **wrapped onto the globe** by `nvr_quadOffset`: each
 vertex's tangent-plane offset is walked the same distance along the great

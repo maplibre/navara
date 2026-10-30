@@ -50,6 +50,7 @@ class StubKernel implements DeclutterKernel {
 
 class FakeParticipant implements DeclutterParticipant {
   hidden = new Map<number, boolean>();
+  variants = new Map<number, number>();
   /** How many more stepDeclutterFade calls report an active fade. */
   fadeStepsLeft = 0;
   fadeDeltas: number[] = [];
@@ -60,8 +61,9 @@ class FakeParticipant implements DeclutterParticipant {
     for (const c of this.candidates) out.push({ ...c, owner: this });
   }
 
-  applyDeclutter(handle: number, hidden: boolean): void {
+  applyDeclutter(handle: number, hidden: boolean, variant: number): void {
     this.hidden.set(handle, hidden);
+    this.variants.set(handle, variant);
   }
 
   stepDeclutterFade(deltaMs: number): boolean {
@@ -98,6 +100,8 @@ function label(
     flatFacing: false,
     rotateWithCamera: true,
     rotation: 0,
+    translate: [0, 0],
+    translateViewport: false,
     handle: 0,
     ...partial,
   };
@@ -148,6 +152,8 @@ describe("DeclutterManager", () => {
         flatFacing: true,
         rotateWithCamera: false,
         rotation: 0.5,
+        translate: [6, -7],
+        translateViewport: true,
       }),
       label({ handle: 1, priority: 1, pairRole: "billboard" }),
     ]);
@@ -175,6 +181,8 @@ describe("DeclutterManager", () => {
     expect(Array.from(candidates.subarray(18, 22))).toEqual([9, 5, 2, 0]);
     // flatFacing, rotateWithCamera, rotation
     expect(Array.from(candidates.subarray(22, 25))).toEqual([1, 0, 0.5]);
+    // translateX, translateY, translateMap (viewport -> 0)
+    expect(Array.from(candidates.subarray(25, 28))).toEqual([6, -7, 0]);
     // An unpaired candidate packs role 0 whatever its pairRole.
     expect(candidates[CANDIDATE_STRIDE + 20]).toBe(0);
     expect(
@@ -182,6 +190,8 @@ describe("DeclutterManager", () => {
         candidates.subarray(CANDIDATE_STRIDE + 22, CANDIDATE_STRIDE + 25),
       ),
     ).toEqual([0, 1, 0]);
+    // A map-anchored translate packs 1.
+    expect(candidates[CANDIDATE_STRIDE + 27]).toBe(1);
     expect(candidates[CANDIDATE_STRIDE + 11]).toBe(0); // overlap: never -> 0
   });
 
@@ -324,6 +334,58 @@ describe("DeclutterManager", () => {
     expect(manager.update(camera, 800, 600, 1000, 0)).toBe("idle");
   });
 
+  describe("variable anchors", () => {
+    /** A label tagged 5 in use, with alternatives tagged 1 and 7. */
+    const group = () => [
+      label({ handle: 0, variants: 3, variant: 5 }),
+      label({ handle: 0, variants: 0, variant: 1 }),
+      label({ handle: 0, variants: 0, variant: 7 }),
+    ];
+
+    it("packs the group size on the first row and 0 on the rest", () => {
+      const kernel = new StubKernel();
+      const manager = new DeclutterManager(kernel);
+      manager.register(new FakeParticipant([...group(), label({ handle: 1 })]));
+      manager.update(makeCamera(), 800, 600, 0, 0);
+
+      const packed = kernel.calls[0].candidates;
+      const variants = [0, 1, 2, 3].map(
+        (i) => packed[i * CANDIDATE_STRIDE + 28],
+      );
+      expect(variants).toEqual([3, 0, 0, 1]);
+    });
+
+    it("applies one result per label, with the variant the pass showed", () => {
+      const kernel = new StubKernel();
+      kernel.hiddenFor = () => Uint8Array.from([1, 1, 0, 1]);
+      const manager = new DeclutterManager(kernel);
+      const p = new FakeParticipant([...group(), label({ handle: 1 })]);
+      manager.register(p);
+      manager.update(makeCamera(), 800, 600, 0, 0);
+
+      expect(p.hidden).toEqual(
+        new Map([
+          [0, false],
+          [1, true],
+        ]),
+      );
+      expect(p.variants.get(0)).toBe(7);
+      expect(p.variants.get(1)).toBe(0);
+    });
+
+    it("keeps the variant in use for a label hidden at every anchor", () => {
+      const kernel = new StubKernel();
+      kernel.hiddenFor = (n) => new Uint8Array(n).fill(1);
+      const manager = new DeclutterManager(kernel);
+      const p = new FakeParticipant(group());
+      manager.register(p);
+      manager.update(makeCamera(), 800, 600, 0, 0);
+
+      expect(p.hidden.get(0)).toBe(true);
+      expect(p.variants.get(0)).toBe(5);
+    });
+  });
+
   // Tile swaps replace a batch wholesale; the new batch's labels start hidden
   // and would re-earn placement from scratch (throttled pass + fade-in) while
   // the old batch vanished instantly — a tile-shaped blink. The registry lets
@@ -336,17 +398,19 @@ describe("DeclutterManager", () => {
       manager.register(p);
 
       // Nothing recorded before any pass ran.
-      expect(manager.wasRecentlyShown("東京", R, 0, 0)).toBe(false);
+      expect(manager.recentlyShownVariant("東京", R, 0, 0)).toBeUndefined();
 
       manager.update(makeCamera(), 800, 600, 0, 0);
 
-      expect(manager.wasRecentlyShown("東京", R, 0, 0)).toBe(true);
+      expect(manager.recentlyShownVariant("東京", R, 0, 0)).toBe(0);
       // Same content, slightly offset anchor (a coarser tile's quantization).
-      expect(manager.wasRecentlyShown("東京", R + 500, 200, -300)).toBe(true);
+      expect(manager.recentlyShownVariant("東京", R + 500, 200, -300)).toBe(0);
       // Same content but far away (an unrelated same-name label).
-      expect(manager.wasRecentlyShown("東京", R + 50_000, 0, 0)).toBe(false);
+      expect(
+        manager.recentlyShownVariant("東京", R + 50_000, 0, 0),
+      ).toBeUndefined();
       // Different content at the same anchor.
-      expect(manager.wasRecentlyShown("大阪", R, 0, 0)).toBe(false);
+      expect(manager.recentlyShownVariant("大阪", R, 0, 0)).toBeUndefined();
     });
 
     it("does not record candidates the pass hid", () => {
@@ -358,7 +422,7 @@ describe("DeclutterManager", () => {
 
       manager.update(makeCamera(), 800, 600, 0, 0);
 
-      expect(manager.wasRecentlyShown("東京", R, 0, 0)).toBe(false);
+      expect(manager.recentlyShownVariant("東京", R, 0, 0)).toBeUndefined();
     });
 
     it("reflects the latest pass only", () => {
@@ -369,13 +433,29 @@ describe("DeclutterManager", () => {
       const camera = makeCamera();
 
       manager.update(camera, 800, 600, 0, 0);
-      expect(manager.wasRecentlyShown("東京", R, 0, 0)).toBe(true);
+      expect(manager.recentlyShownVariant("東京", R, 0, 0)).toBe(0);
 
       // The next pass hides it; the registry must forget it.
       kernel.hiddenFor = (n) => new Uint8Array(n).fill(1);
       manager.markDirty();
       manager.update(camera, 800, 600, DeclutterManager.MIN_INTERVAL_MS, 0);
-      expect(manager.wasRecentlyShown("東京", R, 0, 0)).toBe(false);
+      expect(manager.recentlyShownVariant("東京", R, 0, 0)).toBeUndefined();
+    });
+
+    it("records the variable anchor a label was shown with", () => {
+      const kernel = new StubKernel();
+      kernel.hiddenFor = () => Uint8Array.from([1, 0]);
+      const manager = new DeclutterManager(kernel);
+      manager.register(
+        new FakeParticipant([
+          label({ variants: 2, variant: 0, contentKey: "東京" }),
+          label({ variants: 0, variant: 3, contentKey: "東京" }),
+        ]),
+      );
+
+      manager.update(makeCamera(), 800, 600, 0, 0);
+
+      expect(manager.recentlyShownVariant("東京", R, 0, 0)).toBe(3);
     });
 
     it("ignores candidates without a contentKey", () => {
@@ -385,7 +465,7 @@ describe("DeclutterManager", () => {
 
       manager.update(makeCamera(), 800, 600, 0, 0);
 
-      expect(manager.wasRecentlyShown("", R, 0, 0)).toBe(false);
+      expect(manager.recentlyShownVariant("", R, 0, 0)).toBeUndefined();
     });
   });
 });

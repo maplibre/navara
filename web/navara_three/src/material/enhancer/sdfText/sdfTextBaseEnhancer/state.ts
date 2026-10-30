@@ -17,12 +17,13 @@ export const DEFAULT_BASE_PROPS: Required<
   useMsdf: false,
   linePlacement: false,
   pathSamples: 0,
-  center: [0.5, 0.0],
   flatFacing: false,
   rotateWithCamera: true,
   rotation: 0,
   sizeInMeters: true,
   lineOffset: 0,
+  translate: [0, 0],
+  translateViewport: false,
   spreadGlyphs: false,
   offsetDepth: true,
   outlineWidth: 0,
@@ -47,12 +48,13 @@ export const DEFAULT_BASE_STATE: SdfTextBaseState = {
   useMsdf: DEFAULT_BASE_PROPS.useMsdf,
   linePlacement: DEFAULT_BASE_PROPS.linePlacement,
   pathSamples: DEFAULT_BASE_PROPS.pathSamples,
-  center: DEFAULT_BASE_PROPS.center,
   flatFacing: DEFAULT_BASE_PROPS.flatFacing,
   rotateWithCamera: DEFAULT_BASE_PROPS.rotateWithCamera,
   rotation: DEFAULT_BASE_PROPS.rotation * MathUtils.DEG2RAD,
   sizeInMeters: DEFAULT_BASE_PROPS.sizeInMeters,
   lineOffset: DEFAULT_BASE_PROPS.lineOffset,
+  translate: DEFAULT_BASE_PROPS.translate,
+  translateViewport: DEFAULT_BASE_PROPS.translateViewport,
   spreadGlyphs: DEFAULT_BASE_PROPS.spreadGlyphs,
   offsetDepth: DEFAULT_BASE_PROPS.offsetDepth,
   outlineWidth:
@@ -88,7 +90,6 @@ export const updateState = (
     linePlacement: currentState.linePlacement,
     pathSamples: currentState.pathSamples,
     // Mutable
-    center: props.center ?? currentState.center,
     flatFacing: props.flatFacing ?? currentState.flatFacing,
     rotateWithCamera: props.rotateWithCamera ?? currentState.rotateWithCamera,
     rotation:
@@ -97,6 +98,9 @@ export const updateState = (
         : currentState.rotation,
     sizeInMeters: props.sizeInMeters ?? currentState.sizeInMeters,
     lineOffset: props.lineOffset ?? currentState.lineOffset,
+    translate: props.translate ?? currentState.translate,
+    translateViewport:
+      props.translateViewport ?? currentState.translateViewport,
     spreadGlyphs: props.spreadGlyphs ?? currentState.spreadGlyphs,
     offsetDepth: props.offsetDepth ?? currentState.offsetDepth,
     outlineWidth:

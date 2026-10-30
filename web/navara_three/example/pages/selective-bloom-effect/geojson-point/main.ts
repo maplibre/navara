@@ -83,7 +83,7 @@ const run = async () => {
       sizeInMeters: true,
       clampToGround: true,
       color: new Color().setHex(0x0066ff),
-      center: { x: 0, y: -0.5 },
+      anchor: "bottom",
       effectIds: [bloomEffect.id],
       emissiveIntensity: 0.5,
     },

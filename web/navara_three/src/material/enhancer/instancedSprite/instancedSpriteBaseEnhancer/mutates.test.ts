@@ -26,8 +26,12 @@ describe("instancedSpriteBaseEnhancer/mutates", () => {
       const state: InstancedSpriteBaseState = {
         ...DEFAULT_BASE_STATE,
         scale: 50,
-        center: [0.5, 0.5],
+        anchor: [0.5, 0.5],
+        offset: [3, -4],
+        translate: [5, 6],
+        translateViewport: true,
         sizeInMeters: false,
+        sizeRelativeToImage: true,
         offsetDepth: false,
         alphaTest: 0.3,
         pickable: true,
@@ -40,9 +44,15 @@ describe("instancedSpriteBaseEnhancer/mutates", () => {
       mutates.updateUniforms(uniforms, state);
 
       expect(uniforms.uScale?.value).toBe(50);
-      expect(uniforms.uCenter?.value.x).toBe(0.5);
-      expect(uniforms.uCenter?.value.y).toBe(0.5);
+      expect(uniforms.uAnchor?.value.x).toBe(0.5);
+      expect(uniforms.uAnchor?.value.y).toBe(0.5);
+      expect(uniforms.uOffset?.value.x).toBe(3);
+      expect(uniforms.uOffset?.value.y).toBe(-4);
+      expect(uniforms.uTranslate?.value.x).toBe(5);
+      expect(uniforms.uTranslate?.value.y).toBe(6);
+      expect(uniforms.uTranslateViewport?.value).toBe(true);
       expect(uniforms.uSizeInMeters?.value).toBe(false);
+      expect(uniforms.uSizeRelativeToImage?.value).toBe(true);
       expect(uniforms.uOffsetDepth?.value).toBe(false);
       expect(uniforms.uAlphaTest?.value).toBe(0.3);
       expect(uniforms.nvr_uPickable?.value).toBe(1.0);

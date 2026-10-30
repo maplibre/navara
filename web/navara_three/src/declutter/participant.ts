@@ -26,22 +26,34 @@ function expandPadding(values: ArrayLike<number>): readonly number[] {
   }
 }
 
-export function resolveDeclutterSettings(material: {
-  declutter?: boolean;
-  declutterRank?: number;
-  declutterPriority?: number;
-  overlap?: string;
-  ignorePlacement?: boolean;
-  declutterPadding?: ArrayLike<number>;
-  standalone?: boolean;
-}): DeclutterSettings {
+/**
+ * A batch's declutter settings. `featureVariants` says some feature has
+ * variable anchors of its own (from an evaluator), which keep the batch in
+ * the pass just as the material's would: even a label that may overlap
+ * everything first tries its anchors for a free spot.
+ */
+export function resolveDeclutterSettings(
+  material: {
+    declutter?: boolean;
+    declutterRank?: number;
+    declutterPriority?: number;
+    overlap?: string;
+    ignorePlacement?: boolean;
+    declutterPadding?: ArrayLike<number>;
+    standalone?: boolean;
+    variableAnchors?: ArrayLike<unknown>;
+  },
+  featureVariants = false,
+): DeclutterSettings {
   const overlap = (material.overlap ?? "never") as Overlap;
   const ignorePlacement = material.ignorePlacement ?? false;
   const standalone = material.standalone ?? true;
   return {
     participates:
       (material.declutter ?? true) &&
-      !(overlap === "always" && ignorePlacement && standalone),
+      (featureVariants ||
+        (material.variableAnchors?.length ?? 0) > 1 ||
+        !(overlap === "always" && ignorePlacement && standalone)),
     rank: material.declutterRank ?? 0,
     priority: material.declutterPriority ?? 0,
     overlap,

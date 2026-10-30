@@ -120,7 +120,7 @@ const run = async () => {
         sizeInMeters: false,
         clampToGround: true,
         depthTest: true,
-        center: { x: 0.5, y: 0.0 },
+        anchor: "bottom",
         outlineColor: new Color().setStyle("#000000"),
         outlineWidth: 5,
         outlineOpacity: 0.5,

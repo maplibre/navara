@@ -27,6 +27,26 @@ sidebar:
 }
 ```
 
+### anchor
+
+**Type:** `"center" | "left" | "right" | "top" | "bottom" | "top-left" | "top-right" | "bottom-left" | "bottom-right" | undefined`
+
+**Description:** ビルボードのどの部分を位置に置くかを指定します。MapLibre の `icon-anchor` と同じ動作です。たとえば `"bottom"` では、地図のピンのようにビルボードが位置の上に立ちます。アンカーは [`rotation`](#rotation) の回転の中心にもなります。
+
+[`FeatureEvaluator`](../../api/feature-evaluator/) から地物ごとに指定することもできます。
+
+**Default:** `"center"`
+
+**Example:**
+
+```typescript
+{
+  billboard: {
+    anchor: "bottom"
+  }
+}
+```
+
 ### backfaceCulling
 
 **Type:** `boolean | undefined`
@@ -44,24 +64,6 @@ sidebar:
   billboard: {
     billboardFacing: "flat",
     backfaceCulling: true
-  }
-}
-```
-
-### center
-
-**Type:** [`Vec2`](../../api/types/#vec2)
-
-**Description:** 中心からのシフト量を指定します。範囲は 0 から 1 の間です。
-
-**Default:** Required
-
-**Example:**
-
-```typescript
-{
-  billboard: {
-    center: { x: 0.5, y: 0.5 }
   }
 }
 ```
@@ -305,6 +307,26 @@ import { Color } from "@navaramap/three";
 }
 ```
 
+### offset
+
+**Type:** [`Vec2`](../../api/types/#vec2) | undefined
+
+**Description:** ビルボードをアンカー位置からずらす量を [`size`](#size) と同じ単位で指定します。[`sizeInMeters`](#sizeinmeters) が `false` のときはピクセル、それ以外はメートルです。`x` が正の値で右に、`y` が正の値で下に移動します。MapLibre の `icon-offset` と同じ動作です。オフセットはビルボード自身の平面内にあるため、[`rotation`](#rotation) とともに回転します。
+
+[`FeatureEvaluator`](../../api/feature-evaluator/) から地物ごとに指定することもできます。
+
+**Default:** `{ x: 0, y: 0 }`
+
+**Example:**
+
+```typescript
+{
+  billboard: {
+    offset: { x: 0, y: -8 } // 8 単位上
+  }
+}
+```
+
 ### offsetDepth
 
 **Type:** `boolean | undefined`
@@ -410,6 +432,27 @@ import { Color } from "@navaramap/three";
 }
 ```
 
+### sizeRelativeToImage
+
+**Type:** `boolean | undefined`
+
+**Description:** [`size`](#size) をビルボードの高さではなく、画像そのもののピクセル高さに対する倍率として扱うかどうか。MapLibre の `icon-size` と同じ扱いです。`true` の場合、`size` が `1` のとき画像は本来の大きさで描画されます。[`sizeInMeters`](#sizeinmeters) が `false` ならピクセル単位、`true` なら画像の 1 ピクセルを 1 メートルとして描画します。幅はどちらの場合も画像の縦横比に従います。[`offset`](#offset) は画像の大きさでは拡大されず、ピクセルまたはメートル単位のままです。
+
+**Default:** `false`
+
+**Example:**
+
+```typescript
+{
+  billboard: {
+    url: "https://example.com/pin.png", // 32 x 40 px の画像
+    sizeInMeters: false,
+    sizeRelativeToImage: true,
+    size: 1.5 // 48 x 60 px で描画
+  }
+}
+```
+
 ### billboardFacing
 
 **Type:** `"upright" | "flat" | undefined`
@@ -493,7 +536,7 @@ import { Color } from "@navaramap/three";
 
 **Description:** ビルボードを自身の平面内で、アンカー位置を中心に回転させる角度を度数で指定します。正面から見て時計回りです。回転は [`billboardFacing`](#billboardfacing) と [`rotateWithCamera`](#rotatewithcamera) で決まる向きに対して追加で適用されます。
 
-回転の中心がビルボードのどこになるかは [`center`](#center) で決まります。
+回転の中心がビルボードのどこになるかは [`anchor`](#anchor) で決まります。
 
 [`FeatureEvaluator`](../../api/feature-evaluator/) から地物ごとに指定できるため、レイヤー内のビルボードごとに異なる向きにできます。
 
@@ -587,6 +630,43 @@ MapLibre の `symbol-spacing` と同様に、ラインに沿った長さが `spa
 {
   billboard: {
     standalone: false
+  }
+}
+```
+
+### translate
+
+**Type:** [`Vec2`](../../api/types/#vec2) | undefined
+
+**Description:** 描画されたビルボードを画面上のピクセル数だけ移動します。MapLibre の `icon-translate` と同じ動作です。`x` が正の値で右に、`y` が正の値で下に移動し、向きは [`translateAnchor`](#translateanchor) で決まります。移動はビルボードを投影した後に適用されるため、距離にかかわらず同じピクセル数だけ移動し、[`rotation`](#rotation) とともには回転しません。デクラッタリングではビルボードが描画される位置の領域が確保されます。
+
+**Default:** `{ x: 0, y: 0 }`
+
+**Example:**
+
+```typescript
+{
+  billboard: {
+    translate: { x: 0, y: -10 } // 10 px 上
+  }
+}
+```
+
+### translateAnchor
+
+**Type:** `"map" | "viewport" | undefined`
+
+**Description:** [`translate`](#translate) の向きの基準を指定します。`"map"` ではカメラの方位とともに回転し、`x` が正の値で東、`y` が正の値で南を向きます。`"viewport"` では画面の軸に従います。MapLibre の `"map"` とは異なり、カメラを傾けても移動量は短縮されません。
+
+**Default:** `"map"`
+
+**Example:**
+
+```typescript
+{
+  billboard: {
+    translate: { x: 10, y: 0 },
+    translateAnchor: "viewport" // 方位にかかわらず画面上で 10 px 右
   }
 }
 ```

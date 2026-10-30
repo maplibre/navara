@@ -74,7 +74,7 @@ describe("instancedSpriteBaseEnhancer", () => {
     it("should initialize state on mount", () => {
       const props: InstancedSpriteBaseProps = {
         scale: 50,
-        center: [0.5, 0.5],
+        anchor: [0.5, 0.5],
         pickable: true,
       };
 
@@ -82,7 +82,7 @@ describe("instancedSpriteBaseEnhancer", () => {
 
       const state = enhancer.states();
       expect(state.scale).toBe(50);
-      expect(state.center).toEqual([0.5, 0.5]);
+      expect(state.anchor).toEqual([0.5, 0.5]);
       expect(state.pickable).toBe(true);
       expect(state.useRTE).toBe(false);
       expect(state.billboard).toBe(false);
@@ -115,7 +115,8 @@ describe("instancedSpriteBaseEnhancer", () => {
 
       // Should have assigned uniforms
       expect(shader.uniforms.uScale).toBeDefined();
-      expect(shader.uniforms.uCenter).toBeDefined();
+      expect(shader.uniforms.uAnchor).toBeDefined();
+      expect(shader.uniforms.uOffset).toBeDefined();
       expect(shader.uniforms.nvr_uPickable).toBeDefined();
     });
 

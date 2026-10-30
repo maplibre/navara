@@ -9,6 +9,26 @@ sidebar:
 
 ## Properties
 
+### anchor
+
+**Type:** `"center" | "left" | "right" | "top" | "bottom" | "top-left" | "top-right" | "bottom-left" | "bottom-right" | undefined`
+
+**Description:** Sets which part of the text block sits on the label's position, as MapLibre's `text-anchor` does. The block is as wide as its widest line and one line height tall per line, so `"top"` hangs the text below the position and `"bottom"` stands it above. The anchor is also the point [`rotation`](#rotation) turns the label around.
+
+Can also be set per feature from a [feature evaluator](../../api/feature-evaluator/).
+
+**Default:** `"center"`
+
+**Example:**
+
+```typescript
+{
+  text: {
+    anchor: "top"
+  }
+}
+```
+
 ### backfaceCulling
 
 **Type:** `boolean | undefined`
@@ -84,24 +104,6 @@ import { Color } from "@navaramap/three";
 {
   text: {
     borderWidth: 2
-  }
-}
-```
-
-### center
-
-**Type:** [`Vec2`](../../api/types/#vec2) | undefined
-
-**Description:** Specifies the shift amount from the center. The range is between 0 and 1.
-
-**Default:** `undefined`
-
-**Example:**
-
-```typescript
-{
-  text: {
-    center: { x: 0.5, y: 0.0 }
   }
 }
 ```
@@ -522,6 +524,27 @@ view.addFontFamily({
 }
 ```
 
+### offset
+
+**Type:** [`Vec2`](../../api/types/#vec2) | undefined
+
+**Description:** Moves the text away from its anchor point, in ems (multiples of [`size`](#size)), as MapLibre's `text-offset` does. A positive `x` moves it right and a positive `y` moves it down. The offset lies in the label's own plane, so it turns with [`rotation`](#rotation).
+
+Can also be set per feature from a [feature evaluator](../../api/feature-evaluator/).
+
+**Default:** `{ x: 0, y: 0 }`
+
+**Example:**
+
+```typescript
+{
+  text: {
+    anchor: "top",
+    offset: { x: 0, y: 0.5 } // Half an em below the position
+  }
+}
+```
+
 ### offsetDepth
 
 **Type:** `boolean | undefined`
@@ -712,7 +735,7 @@ Can also be set per feature from a [feature evaluator](../../api/feature-evaluat
 
 When [`placement`](#placement) is `"line"` or `"line-center"`, each glyph spins about its own center and keeps its place on the line, as MapLibre's `text-rotate` does on line labels. A label drawn straight (`rotateWithCamera: true` without [`spreadGlyphs`](#spreadglyphs)) turns as a whole around its anchor, as a point label does.
 
-[`center`](#center) decides where inside the text the pivot sits. For example, `{ x: 0.5, y: 0.5 }` turns the label around its middle, and `{ x: 0.5, y: 0.0 }` turns it around the bottom of the text block.
+[`anchor`](#anchor) decides where inside the text the pivot sits. For example, `"center"` turns the label around its middle, and `"bottom"` turns it around the bottom of the text block.
 
 Can also be set per feature from a [feature evaluator](../../api/feature-evaluator/), so every label in a layer can point a different way.
 
@@ -726,7 +749,7 @@ Can also be set per feature from a [feature evaluator](../../api/feature-evaluat
     textFacing: "flat",
     rotateWithCamera: false,
     rotation: 45, // Turned 45° clockwise on the surface
-    center: { x: 0.5, y: 0.5 } // Pivot around the middle of the text
+    anchor: "center" // Pivot around the middle of the text
   }
 }
 ```
@@ -902,9 +925,9 @@ Can also be set per feature from a [feature evaluator](../../api/feature-evaluat
 
 ### textAlign
 
-**Type:** `string | undefined`
+**Type:** `"left" | "center" | "right" | "auto" | undefined`
 
-**Description:** Specifies the horizontal alignment of lines within a multi-line text block. One of `"left"`, `"center"`, or `"right"`. Has a visible effect only when the text spans multiple lines (via [`maxWidth`](#maxwidth) or explicit `\n` characters).
+**Description:** Specifies the horizontal alignment of lines within a multi-line text block. One of `"left"`, `"center"`, `"right"`, or `"auto"`, which aligns the lines towards the horizontal side of [`anchor`](#anchor), as MapLibre's `text-justify: auto` does. Can also be set per feature from a [feature evaluator](../../api/feature-evaluator/). Has a visible effect only when the text spans multiple lines (via [`maxWidth`](#maxwidth) or explicit `\n` characters).
 
 **Default:** `"center"`
 
@@ -949,6 +972,43 @@ Can also be set per feature from a [feature evaluator](../../api/feature-evaluat
 }
 ```
 
+### translate
+
+**Type:** [`Vec2`](../../api/types/#vec2) | undefined
+
+**Description:** Moves the drawn label by a number of screen pixels, as MapLibre's `text-translate` does. A positive `x` moves it right and a positive `y` moves it down, in the frame [`translateAnchor`](#translateanchor) sets. The shift is applied after the label is projected, so it stays the same number of pixels at any distance and does not turn with [`rotation`](#rotation). Decluttering reserves the space where the label is drawn.
+
+**Default:** `{ x: 0, y: 0 }`
+
+**Example:**
+
+```typescript
+{
+  text: {
+    translate: { x: 0, y: -10 } // 10 px up
+  }
+}
+```
+
+### translateAnchor
+
+**Type:** `"map" | "viewport" | undefined`
+
+**Description:** Sets the frame [`translate`](#translate) is measured in. With `"map"`, the shift turns with the camera heading, so a positive `x` points east and a positive `y` points south. With `"viewport"`, it follows the screen axes. Unlike MapLibre's `"map"`, the shift is not foreshortened when the camera is pitched.
+
+**Default:** `"map"`
+
+**Example:**
+
+```typescript
+{
+  text: {
+    translate: { x: 10, y: 0 },
+    translateAnchor: "viewport" // 10 px right on screen, whatever the heading
+  }
+}
+```
+
 ### transparent
 
 **Type:** `boolean | undefined`
@@ -964,6 +1024,31 @@ Can also be set per feature from a [feature evaluator](../../api/feature-evaluat
   text: {
     transparent: true,
     opacity: 0.5
+  }
+}
+```
+
+### variableAnchors
+
+**Type:** `{ anchor: Anchor, offset?: Vec2 }[] | undefined`
+
+**Description:** Placements the label may take, tried in order by [`declutter`](#declutter) until one has room, as MapLibre's `text-variable-anchor-offset` does. Each entry is an [`anchor`](#anchor) and an [`offset`](#offset) in ems. The placement in use is tried first, so a label moves only when its current spot is taken. If no placement has room, the label is hidden; with an [`overlap`](#overlap) other than `"never"`, it is drawn at the placement in use instead. When the list is not empty it replaces `anchor` and `offset`, except for labels placed along a line. Without `declutter` the first entry is used. With [`textAlign`](#textalign) `"auto"` the lines align towards the side of the chosen anchor.
+
+Can also be set per feature from a [feature evaluator](../../api/feature-evaluator/).
+
+**Default:** `[]`
+
+**Example:**
+
+```typescript
+{
+  text: {
+    textAlign: "auto",
+    variableAnchors: [
+      { anchor: "left", offset: { x: 0.5, y: 0 } }, // Right of the point
+      { anchor: "right", offset: { x: -0.5, y: 0 } }, // Left of the point
+      { anchor: "top", offset: { x: 0, y: 0.5 } } // Below the point
+    ]
   }
 }
 ```

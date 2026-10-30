@@ -18,6 +18,9 @@ export const SCALAR_DEFINE_SUFFIX: Record<BatchScalarSlotKey, string> = {
   size: "SIZE",
   rotation: "ROTATION",
   orientation: "ORIENTATION",
+  anchor: "ANCHOR",
+  offsetX: "OFFSET_X",
+  offsetY: "OFFSET_Y",
   showOpacity: "SHOW_OPACITY",
   emissiveIntensity: "EMISSIVE_INTENSITY",
 };

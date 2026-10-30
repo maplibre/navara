@@ -787,3 +787,105 @@ describe("text-rotate and icon-rotate", () => {
     );
   });
 });
+
+describe("anchor, offset and justify", () => {
+  const engine = new JsStyleEngine();
+  const symbol = (layout: StyleLayer["layout"]): StyleLayer =>
+    ({ id: "test", type: "symbol", source: "test", layout }) as StyleLayer;
+
+  it("evaluates spec defaults when omitted", () => {
+    const evaluators = createLayoutEvaluators(symbol({}), engine, "Point");
+    const ctx = { properties: {}, zoom: 10 };
+    expect(evaluators["text-anchor"](ctx)).toBe("center");
+    expect(evaluators["icon-anchor"](ctx)).toBe("center");
+    expect(evaluators["text-justify"](ctx)).toBe("center");
+    expect(evaluators["text-offset"](ctx)).toEqual([0, 0]);
+    expect(evaluators["icon-offset"](ctx)).toEqual([0, 0]);
+  });
+
+  it("evaluates a data-driven anchor per feature", () => {
+    const anchor = createLayoutEvaluators(
+      symbol({ "text-anchor": ["get", "side"] }),
+      engine,
+      "Point",
+    )["text-anchor"];
+    expect(anchor({ properties: { side: "left" }, zoom: 10 })).toBe("left");
+  });
+
+  it("maps text placement in ems", () => {
+    const result = toEvaluatedValue(
+      symbol({}),
+      {},
+      {
+        "text-field": "Label",
+        "text-anchor": "top",
+        "text-offset": [0, 1.5],
+        "text-justify": "auto",
+      },
+      "text",
+    );
+    expect(result.anchor).toBe("top");
+    expect(result.offset).toEqual({ x: 0, y: 1.5 });
+    expect(result.textAlign).toBe("auto");
+  });
+
+  it("scales the icon offset by icon-size into pixels", () => {
+    const result = toEvaluatedValue(
+      symbol({}),
+      {},
+      {
+        "icon-image": "/icons/marker.svg",
+        "icon-anchor": "bottom",
+        "icon-offset": [2, -3],
+        "icon-size": 2,
+      },
+      "billboard",
+    );
+    expect(result.anchor).toBe("bottom");
+    expect(result.offset).toEqual({ x: 4, y: -6 });
+  });
+
+  it("maps variable anchors only when the style sets them", () => {
+    const layout = {
+      "text-field": "Label",
+      "text-variable-anchor": ["left", "right"],
+      "text-radial-offset": ["get", "r"],
+    };
+    const evaluators = createLayoutEvaluators(symbol(layout), engine, "Point");
+    const ctx = { properties: { r: 2 }, zoom: 10 };
+    const values = Object.fromEntries(
+      Object.entries(evaluators).map(([key, fn]) => [key, fn(ctx)]),
+    );
+    const result = toEvaluatedValue(symbol(layout), {}, values, "text");
+    expect(result.variableAnchors).toEqual([
+      { anchor: "left", offset: { x: 2, y: 0 } },
+      { anchor: "right", offset: { x: -2, y: 0 } },
+    ]);
+
+    const plain = createLayoutEvaluators(symbol({}), engine, "Point");
+    expect(plain["text-variable-anchor"]).toBeUndefined();
+    expect(plain["text-radial-offset"]).toBeUndefined();
+  });
+
+  it("moves a fixed anchor by a radial offset", () => {
+    const result = toEvaluatedValue(
+      symbol({}),
+      {},
+      { "text-field": "Label", "text-anchor": "left", "text-radial-offset": 1 },
+      "text",
+    );
+    expect(result.offset).toEqual({ x: 1, y: 0 });
+    expect(result).not.toHaveProperty("variableAnchors");
+  });
+
+  it("drops values outside the spec's enums", () => {
+    const result = toEvaluatedValue(
+      symbol({}),
+      {},
+      { "text-field": "Label", "text-anchor": "middle", "text-justify": "x" },
+      "text",
+    );
+    expect(result).not.toHaveProperty("anchor");
+    expect(result).not.toHaveProperty("textAlign");
+  });
+});
