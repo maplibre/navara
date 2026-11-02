@@ -4,7 +4,7 @@ import type {
   Transform,
 } from "@navaramap/engine";
 import { lineLabelFit, lineLabelPlace } from "@navaramap/engine-api";
-import { atlasRangePx, type FontManager } from "@navaramap/font";
+import type { FontManager } from "@navaramap/font";
 import { degreeToRadian } from "@navaramap/three-api";
 import {
   Color,
@@ -355,10 +355,11 @@ export class BatchedSdfTextMesh
   /** Layout inputs baked into glyph quads; a change forces a re-layout. */
   private _maxWidth: number;
   private _lineHeight: number | undefined;
-  /** The material's `offset` and `variableAnchors`, read once: wasm getters
-   *  clone. */
+  /** The material's `offset`, `variableAnchors` and outline, read once: wasm
+   *  getters clone. */
   private _materialOffset: [number, number];
   private _materialVariableAnchors: readonly Placement[];
+  private _materialOutline: Readonly<TextOutline>;
   private _spreadGlyphs: boolean;
 
   /** Inside {@link deferLayout}: labels waiting for their re-layout. */
@@ -422,6 +423,7 @@ export class BatchedSdfTextMesh
     this._lineHeight = material.lineHeight;
     this._materialOffset = vec2Tuple(material.offset);
     this._materialVariableAnchors = toPlacements(material.variableAnchors);
+    this._materialOutline = materialOutline(material);
     this._spreadGlyphs = material.spreadGlyphs ?? false;
     const declutter = resolveDeclutterSettings(material);
     this._declutter = declutter.participates;
@@ -980,7 +982,7 @@ export class BatchedSdfTextMesh
       addHeight: material.height ?? 0.0,
       colorHex: material.color ?? 0xffffff,
       opacity: clamp01(material.opacity ?? 1.0),
-      outline: materialOutline(material),
+      outline: { ...this._materialOutline },
       placeAnchor: materialAnchor(material),
       offsetEm: [...this._materialOffset],
       variableAnchors: this._materialVariableAnchors,
@@ -1127,8 +1129,7 @@ export class BatchedSdfTextMesh
     this._updateBatchAttribute(record.batchIndex, "opacity", record.opacity);
   }
 
-  /** The shader takes outline widths as fractions of the atlas's
-   *  distance-field range. A batch nobody outlines allocates no slots. */
+  /** A batch nobody outlines allocates no slots. */
   private _writeOutline(record: LabelRecord): void {
     const { color, opacity, width, blur } = record.outline;
     if (
@@ -1138,15 +1139,14 @@ export class BatchedSdfTextMesh
     ) {
       return;
     }
-    const range = atlasRangePx(this._highQuality);
     _tmpColor.setHex(color);
     this._updateBatchAttribute(record.batchIndex, "outline", [
       _tmpColor.r,
       _tmpColor.g,
       _tmpColor.b,
       opacity,
-      width / range,
-      blur / range,
+      width,
+      blur,
     ]);
   }
 
@@ -1994,10 +1994,10 @@ export class BatchedSdfTextMesh
       opacity !== clamp01(prevMaterial.opacity ?? 1.0);
     const fontSizeChanged = fontSize !== (prevMaterial.size ?? 16.0);
     const outline = materialOutline(material);
-    const prevOutline = materialOutline(prevMaterial);
     const outlineChanges = OUTLINE_KEYS.filter(
-      (key) => outline[key] !== prevOutline[key],
+      (key) => outline[key] !== this._materialOutline[key],
     );
+    this._materialOutline = outline;
     const letterSpacing = material.letterSpacing ?? 0;
     const letterSpacingChanged =
       letterSpacing !== (prevMaterial.letterSpacing ?? 0);
@@ -2514,15 +2514,19 @@ export class BatchedSdfTextMesh
     }
   }
 
-  /** Outline for one feature, overriding the material's fields it sets. */
+  /** Outline for one feature, overriding the material's fields it sets.
+   *  `record.outline` mirrors what is written, so an unchanged outline (an
+   *  evaluator re-run on zoom) skips the texel writes. */
   setFeatureOutlineByBatchIndex(
     batchIndex: number,
     outline: Partial<TextOutline>,
   ) {
     const patch = sanitizeOutline(outline);
+    const keys = OUTLINE_KEYS.filter((key) => patch[key] !== undefined);
     for (const instanceIndex of this._instancesOfBatchIndex(batchIndex)) {
       const record = this._ensureLabel(instanceIndex);
       if (!record) continue;
+      if (keys.every((key) => record.outline[key] === patch[key])) continue;
       Object.assign(record.outline, patch);
       this._writeOutline(record);
     }

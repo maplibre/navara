@@ -21,8 +21,7 @@ export const BATCHED_ATTRIBUTE_NAMES = [
   /** `[x, y]`, x right and y down, in the unit of the sprite's size. */
   "offset",
   /**
-   * Text only: `[r, g, b, opacity, width, blur]`, width and blur as fractions
-   * of the label's distance-field range (see `sdfText.frag.glsl`).
+   * Text only: `[r, g, b, opacity, width, blur]`, width and blur in 1/64 em.
    */
   "outline",
 ] as const;

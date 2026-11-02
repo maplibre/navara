@@ -237,8 +237,6 @@ describe("BatchedSdfTextMesh material updates vs per-feature values", () => {
 });
 
 describe("BatchedSdfTextMesh outline", () => {
-  // The default SDF atlas spans 35 px of distance at 64 px/em.
-  const RANGE = 35;
   const outlineOf = (mesh: BatchedSdfTextMesh, batchIndex: number) => {
     const read = (key: "outlineOpacity" | "outlineWidth" | "outlineBlur") =>
       readBatchScalar(batchMat(mesh), batchIndex, key);
@@ -257,7 +255,7 @@ describe("BatchedSdfTextMesh outline", () => {
     expect(outlineOf(mesh, 0).width).toBeUndefined();
   });
 
-  it("writes the material's outline as fractions of the atlas range", () => {
+  it("writes the material's outline", () => {
     const { mesh } = makeMesh(
       material({
         outlineColor: 0xff0000,
@@ -271,8 +269,8 @@ describe("BatchedSdfTextMesh outline", () => {
     const outline = outlineOf(mesh, 0);
     expect(outline.red).toBe(1);
     expect(outline.opacity).toBe(0.5);
-    expect(outline.width).toBeCloseTo(7 / RANGE);
-    expect(outline.blur).toBeCloseTo(3.5 / RANGE);
+    expect(outline.width).toBe(7);
+    expect(outline.blur).toBe(3.5);
   });
 
   it("outlines one feature without touching the others", () => {
@@ -281,9 +279,24 @@ describe("BatchedSdfTextMesh outline", () => {
     mesh.setTextByBatchIndex(1, "CD");
     mesh.setFeatureOutlineByBatchIndex(1, { color: 0xff0000, width: 7 });
 
-    expect(outlineOf(mesh, 1)).toMatchObject({ red: 1, opacity: 1 });
-    expect(outlineOf(mesh, 1).width).toBeCloseTo(7 / RANGE);
+    expect(outlineOf(mesh, 1)).toMatchObject({ red: 1, opacity: 1, width: 7 });
     expect(outlineOf(mesh, 0)).toMatchObject({ red: 0, width: 0, blur: 0 });
+  });
+
+  it("skips the write when a feature's outline is unchanged", () => {
+    const { mesh } = makeMesh();
+    mesh.setTextByBatchIndex(0, "AB");
+    mesh.setFeatureOutlineByBatchIndex(0, { color: 0xff0000, width: 7 });
+    const writeOutline = vi.spyOn(
+      mesh as unknown as { _writeOutline(record: unknown): void },
+      "_writeOutline",
+    );
+
+    mesh.setFeatureOutlineByBatchIndex(0, { color: 0xff0000, width: 7 });
+    expect(writeOutline).not.toHaveBeenCalled();
+
+    mesh.setFeatureOutlineByBatchIndex(0, { width: 8 });
+    expect(writeOutline).toHaveBeenCalledTimes(1);
   });
 
   it("overwrites only the outline fields a material change touches", async () => {
@@ -294,8 +307,8 @@ describe("BatchedSdfTextMesh outline", () => {
 
     const outline = outlineOf(mesh, 0);
     expect(outline.red).toBe(1);
-    expect(outline.width).toBeCloseTo(7 / RANGE);
-    expect(outline.blur).toBeCloseTo(3.5 / RANGE);
+    expect(outline.width).toBe(7);
+    expect(outline.blur).toBe(3.5);
   });
 });
 

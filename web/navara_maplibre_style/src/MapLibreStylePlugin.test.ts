@@ -1512,6 +1512,51 @@ describe("MapLibreStylePlugin", () => {
       expect(mockLayer.update).toHaveBeenCalledTimes(1);
     });
 
+    it("re-evaluates features without a layer update when only the halo follows zoom", async () => {
+      const mockLayer = {
+        delete: vi.fn(),
+        on: vi.fn(),
+        forceUpdate: vi.fn(),
+        update: vi.fn(),
+      };
+      const plugin = new MapLibreStylePlugin({
+        version: 8,
+        "font-faces": { Test: "https://example.com/test.woff2" },
+        sources: {
+          test: {
+            type: "geojson",
+            data: { type: "FeatureCollection", features: [] },
+          },
+        },
+        layers: [
+          {
+            id: "labels",
+            type: "symbol",
+            source: "test",
+            layout: { "text-field": "{name}", "text-font": ["Test"] },
+            paint: {
+              "text-halo-color": ["step", ["zoom"], "#ffffff", 14, "#ffdc00"],
+            },
+          },
+        ],
+      } as StyleSpecification);
+      const view = createMockView(10);
+      view.addLayer = vi.fn().mockReturnValue(mockLayer);
+
+      await plugin.init(view, mockViewContext);
+      const moveListener = (view.camera.on as any).mock.calls.find(
+        (call: any) => call[0] === "move",
+      )[1];
+      moveListener();
+      expect(mockLayer.forceUpdate).toHaveBeenCalledTimes(1);
+
+      setMockZoom(view, 15);
+      moveListener();
+
+      expect(mockLayer.forceUpdate).toHaveBeenCalledTimes(2);
+      expect(mockLayer.update).not.toHaveBeenCalled();
+    });
+
     it("does not update symbol layers whose layer-level properties are constant", async () => {
       const mockLayer = {
         delete: vi.fn(),

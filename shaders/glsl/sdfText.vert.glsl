@@ -218,10 +218,11 @@ void main() {
     vColor = vec3(1.0);
     #include "chunks/batch_texture_vertex.glsl"
     vOutlineColor = nvr_batchOutlineColor;
+    // 1/64 em is one atlas pixel; the fragment stage works in range fractions.
     vOutline = vec3(
         nvr_batchOutlineOpacity,
-        nvr_batchOutlineWidth,
-        nvr_batchOutlineBlur
+        nvr_batchOutlineWidth / float(NVR_SDF_PX_RANGE),
+        nvr_batchOutlineBlur / float(NVR_SDF_PX_RANGE)
     );
 #ifdef NVR_LINE_PLACEMENT
     bool nvr_batchSpreadGlyphs = uSpreadGlyphs;

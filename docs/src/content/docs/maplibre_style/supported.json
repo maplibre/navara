@@ -176,10 +176,10 @@
           "status": "✅"
         },
         "text-halo-width": {
-          "status": "✅"
+          "status": "⚠️ Capped at 12/64 em past the glyph (MapLibre: 1/4 em), less half a screen pixel, so halos on small text draw thinner"
         },
         "text-halo-blur": {
-          "status": "⚠️ Fade is narrowed to end within 12/64 em of the glyph"
+          "status": "⚠️ Fade is narrowed to end within the same cap as text-halo-width"
         },
         "icon-halo-color": {
           "status": "❌"

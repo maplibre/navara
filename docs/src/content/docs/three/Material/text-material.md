@@ -585,7 +585,7 @@ Can also be set per feature from a [feature evaluator](../../api/feature-evaluat
 
 **Type:** `number | undefined`
 
-**Description:** Specifies the width over which the outline's outer edge fades out, centered on that edge, in the same unit as [`outlineWidth`](#outlinewidth). The outline and its fade reach at most 12/64 em past the glyph (8/64 em with `highQuality`), and a fade that would go further is narrowed to fit. Can be set per feature from a feature evaluator.
+**Description:** Specifies the width over which the outline's outer edge fades out, centered on that edge, in the same unit as [`outlineWidth`](#outlinewidth). The outline and its fade reach at most 12/64 em past the glyph (8/64 em with `highQuality`), less half a screen pixel kept for antialiasing, and a fade that would go further is narrowed to fit. Can be set per feature from a feature evaluator.
 
 **Default:** `0.0`
 
@@ -642,7 +642,7 @@ import { Color } from "@navaramap/three";
 
 **Type:** `number | undefined`
 
-**Description:** Specifies the outline thickness in 1/64 em: pixels of text drawn 64 pixels tall, so the outline keeps its proportion to the glyphs at any `size`. A 2 pixel outline on 16 pixel text is `2 / 16 × 64 = 8`. The outline reaches at most 12/64 em past the glyph (8/64 em with `highQuality`). Can be set per feature from a feature evaluator.
+**Description:** Specifies the outline thickness in 1/64 em: pixels of text drawn 64 pixels tall, so the outline keeps its proportion to the glyphs at any `size`. A 2 pixel outline on 16 pixel text is `2 / 16 × 64 = 8`. The outline reaches at most 12/64 em past the glyph (8/64 em with `highQuality`), less half a screen pixel kept for antialiasing, so small text gets proportionally thinner outlines: at 10 pixels, a 12/64 em outline draws about 1.4 pixels wide instead of 1.9. Can be set per feature from a feature evaluator.
 
 **Default:** `0.0`
 

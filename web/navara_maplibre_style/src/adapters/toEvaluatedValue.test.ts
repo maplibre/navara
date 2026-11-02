@@ -754,11 +754,17 @@ describe("text-letter-spacing", () => {
 });
 
 describe("text-halo-*", () => {
-  const symbol = (paint: StyleLayer["paint"]): StyleLayer =>
+  const symbol = (paint: Record<string, unknown>): StyleLayer =>
     ({ id: "test", type: "symbol", source: "test", paint }) as StyleLayer;
-  const text = (paint: Record<string, unknown>, size = 16) =>
+  /** `paint` holds constants, so it is also the layer's style paint unless
+   *  `stylePaint` gives the expressions it evaluated from. */
+  const text = (
+    paint: Record<string, unknown>,
+    size = 16,
+    stylePaint: Record<string, unknown> = paint,
+  ) =>
     toEvaluatedValue(
-      symbol({}),
+      symbol(stylePaint),
       paint,
       { "text-field": "Label", "text-size": size },
       "text",
@@ -782,9 +788,24 @@ describe("text-halo-*", () => {
   });
 
   it("spreads the blur over MapLibre's whole fade", () => {
-    expect(text({ "text-halo-blur": 1 }, 16).outlineBlur).toBeCloseTo(
-      (1 / 16) * 64 * 2.38,
-    );
+    expect(
+      text({ "text-halo-width": 1, "text-halo-blur": 1 }, 16).outlineBlur,
+    ).toBeCloseTo((1 / 16) * 64 * 2.38);
+  });
+
+  it("drops the blur when the width is 0 for every feature", () => {
+    expect(text({ "text-halo-blur": 1 }).outlineBlur).toBe(0);
+    expect(
+      text({ "text-halo-width": 0, "text-halo-blur": 1 }).outlineBlur,
+    ).toBe(0);
+  });
+
+  it("keeps the blur when a data-driven width is 0", () => {
+    const paint = { "text-halo-width": 0, "text-halo-blur": 1 };
+    expect(
+      text(paint, 16, { ...paint, "text-halo-width": ["get", "halo"] })
+        .outlineBlur,
+    ).toBeCloseTo((1 / 16) * 64 * 2.38);
   });
 
   it("takes opacity from the color's alpha, transparent when unset", () => {

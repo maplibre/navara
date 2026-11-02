@@ -5,8 +5,8 @@ import type { UniformValue } from "../../../types";
 import type { Mutates } from "../../MaterialEnhancer";
 
 /** Pixel range covered by a quality's atlas distance field; defines how
- *  outline-width pixels translate to a distance-value delta (see
- *  `BatchedSdfTextMesh`'s outline writes). SDF (`useMsdf=false`)
+ *  outline widths in atlas pixels (1/64 em) translate to a distance-value
+ *  delta (`sdfText.vert.glsl`). SDF (`useMsdf=false`)
  *  uses the classic 35 px radius from `sdf_glyph_renderer`; MSDF uses
  *  `MSDF_RANGE_PX` (16 px). See [`atlasRangePx`] in `@navaramap/font`. */
 export const sdfRadiusFor = (useMsdf: boolean): number => atlasRangePx(useMsdf);
