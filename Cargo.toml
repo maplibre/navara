@@ -78,7 +78,7 @@ fontdue = "=0.9.5"
 sdf_glyph_renderer = "=1.1.0"
 guillotiere = "=0.7.0"
 wuff = "=0.2.9"
-skrifa = "=0.48.0"
+skrifa = "=0.49.0"
 tiny-skia = { version = "=0.12.0", default-features = false, features = ["std", "simd"] }
 # MSDF generation (multi-channel SDF, used as a higher-quality alternative to sdf_glyph_renderer)
 fdsm = "=0.8.0"
