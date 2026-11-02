@@ -23,7 +23,7 @@ import type {
  *
  * One enhancer drives the whole tile-layer batch, so it owns only batch-wide
  * state:
- * - Anchor centering, outline (width, color, opacity)
+ * - Anchor centering
  * - Background quad (color, border)
  * - Depth offset and picking mode
  * - RTE (Relative-To-Eye) support for high-precision coordinates

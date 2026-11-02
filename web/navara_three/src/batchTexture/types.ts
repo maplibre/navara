@@ -20,6 +20,11 @@ export const BATCHED_ATTRIBUTE_NAMES = [
   "anchor",
   /** `[x, y]`, x right and y down, in the unit of the sprite's size. */
   "offset",
+  /**
+   * Text only: `[r, g, b, opacity, width, blur]`, width and blur as fractions
+   * of the label's distance-field range (see `sdfText.frag.glsl`).
+   */
+  "outline",
 ] as const;
 
 export type BatchedAttributeName = (typeof BATCHED_ATTRIBUTE_NAMES)[number];
@@ -48,7 +53,7 @@ export type BatchAttributeDefaults = {
 };
 
 /** vec3 attributes: three components of a row (component 3 stays scalar-poolable). */
-export const BATCH_VEC3_KEYS = ["color", "emissive"] as const;
+export const BATCH_VEC3_KEYS = ["color", "emissive", "outlineColor"] as const;
 
 export type BatchVec3Key = (typeof BATCH_VEC3_KEYS)[number];
 
@@ -83,11 +88,17 @@ export type BatchScalarKey = (typeof BATCH_SCALAR_KEYS)[number];
 
 /**
  * Scalar slot keys: the public scalar attributes plus internal components —
- * packed show/opacity (written through `show`/`opacity`) and the emissive
- * intensity paired with the emissive vec3 row.
+ * packed show/opacity (written through `show`/`opacity`), the emissive
+ * intensity paired with the emissive vec3 row, and the outline scalars paired
+ * with the outline color row (written through `outline`).
  */
 export type BatchScalarSlotKey =
-  BatchScalarKey | "showOpacity" | "emissiveIntensity";
+  | BatchScalarKey
+  | "showOpacity"
+  | "emissiveIntensity"
+  | "outlineOpacity"
+  | "outlineWidth"
+  | "outlineBlur";
 
 export type BatchTextureConfig = {
   /**

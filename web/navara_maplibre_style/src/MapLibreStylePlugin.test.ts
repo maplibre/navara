@@ -1467,7 +1467,7 @@ describe("MapLibreStylePlugin", () => {
       expect(mockLayer.update).toHaveBeenCalledTimes(1);
     });
 
-    it("updates a symbol layer when only its halo color crosses a zoom step", async () => {
+    it("updates a symbol layer when only its line height crosses a zoom step", async () => {
       const mockLayer = {
         delete: vi.fn(),
         on: vi.fn(),
@@ -1488,9 +1488,10 @@ describe("MapLibreStylePlugin", () => {
             id: "labels",
             type: "symbol",
             source: "test",
-            layout: { "text-field": "{name}", "text-font": ["Test"] },
-            paint: {
-              "text-halo-color": ["step", ["zoom"], "#ffffff", 14, "#ffdc00"],
+            layout: {
+              "text-field": "{name}",
+              "text-font": ["Test"],
+              "text-line-height": ["step", ["zoom"], 1.2, 14, 1.5],
             },
           },
         ],

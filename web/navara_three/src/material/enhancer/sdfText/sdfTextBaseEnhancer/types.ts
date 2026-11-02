@@ -5,7 +5,8 @@ import type { UniformValue } from "../../../types";
 import type { Mutates } from "../../MaterialEnhancer";
 
 /** Pixel range covered by a quality's atlas distance field; defines how
- *  outline-width pixels translate to a distance-value delta. SDF (`useMsdf=false`)
+ *  outline-width pixels translate to a distance-value delta (see
+ *  `BatchedSdfTextMesh`'s outline writes). SDF (`useMsdf=false`)
  *  uses the classic 35 px radius from `sdf_glyph_renderer`; MSDF uses
  *  `MSDF_RANGE_PX` (16 px). See [`atlasRangePx`] in `@navaramap/font`. */
 export const sdfRadiusFor = (useMsdf: boolean): number => atlasRangePx(useMsdf);
@@ -102,9 +103,6 @@ export type SdfTextBaseProps = {
    *  label is drawn straight at its anchor. Line placement only. */
   spreadGlyphs?: boolean;
   offsetDepth?: boolean;
-  outlineWidth?: number; // raw width, converted in state via sdfRadiusFor(useMsdf)
-  outlineColor?: number; // hex
-  outlineOpacity?: number;
   showBackground?: boolean;
   backgroundColor?: number; // hex
   backgroundOutlineColor?: number; // hex
@@ -148,9 +146,6 @@ export type SdfTextBaseState = Readonly<{
   translateViewport: boolean;
   spreadGlyphs: boolean;
   offsetDepth: boolean;
-  outlineWidth: number; // pre-converted: raw / sdfRadiusFor(useMsdf)
-  outlineColor: Color;
-  outlineOpacity: number;
   showBackground: boolean;
   backgroundColor: Color;
   backgroundOutlineColor: Color;
@@ -178,9 +173,6 @@ export type SdfTextBaseRefs = {
   uSizeInMeters: UniformValue<boolean>;
   uOffsetDepth: UniformValue<boolean>;
   uSdfThreshold: UniformValue<number>;
-  uOutlineWidth: UniformValue<number>;
-  uOutlineColor: UniformValue<Color>;
-  uOutlineOpacity: UniformValue<number>;
   uShowBackground: UniformValue<boolean>;
   uBackgroundColor: UniformValue<Color>;
   uBackgroundOutlineColor: UniformValue<Color>;

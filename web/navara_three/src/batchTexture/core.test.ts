@@ -312,6 +312,82 @@ describe("emissive", () => {
   });
 });
 
+describe("outline", () => {
+  const readOutline = (
+    data: Float32Array,
+    defines: Record<string, string>,
+    batchId: number,
+  ) => {
+    const scalar = (suffix: string) =>
+      data[
+        batchBaseIndex(
+          4,
+          1,
+          batchId,
+          Number(defines[`BATCHED_TEXTURE_ROW_OUTLINE_${suffix}`]),
+        ) + Number(defines[`BATCHED_TEXTURE_COMP_OUTLINE_${suffix}`])
+      ];
+    const colorBase = batchBaseIndex(
+      4,
+      1,
+      batchId,
+      Number(defines.BATCHED_TEXTURE_ROW_OUTLINE_COLOR),
+    );
+    return [
+      data[colorBase],
+      data[colorBase + 1],
+      data[colorBase + 2],
+      scalar("OPACITY"),
+      scalar("WIDTH"),
+      scalar("BLUR"),
+    ];
+  };
+
+  test("one write allocates the color row and its three scalars together", () => {
+    const { material } = setupBatchMaterial(4, [], ["color", "outlineColor"]);
+    updateBatchAttribute(material, 1, "outline", [1, 0.5, 0, 0.8, 0.2, 0.1]);
+
+    const texture = getBatchDataTexture(material);
+    invariant(texture);
+    // color rgb + opacity fill one row; width and blur open a second.
+    expect(texture.image.height).toBe(2);
+    const defines = material.userData.defines;
+    expect(defines.USE_BATCH_OUTLINE).toBe(true);
+
+    const data = texture.image.data as Float32Array;
+    const written = readOutline(data, defines, 1);
+    expect(written.map((v) => Math.fround(v))).toEqual(
+      [1, 0.5, 0, 0.8, 0.2, 0.1].map(Math.fround),
+    );
+    // Untouched features draw no outline: black, opaque, zero width and blur.
+    expect(readOutline(data, defines, 3)).toEqual([0, 0, 0, 1, 0, 0]);
+  });
+
+  test("non-finite components fall back to the defaults", () => {
+    const { material } = setupBatchMaterial(4, [], ["color", "outlineColor"]);
+    updateBatchAttribute(material, 0, "outline", [NaN, 0, 0, NaN, NaN, NaN]);
+
+    const texture = getBatchDataTexture(material);
+    invariant(texture);
+    expect(
+      readOutline(
+        texture.image.data as Float32Array,
+        material.userData.defines,
+        0,
+      ),
+    ).toEqual([0, 0, 0, 1, 0, 0]);
+  });
+
+  test("is ignored for mesh types without the capability", () => {
+    const { material } = setupBatchMaterial(4, [], ["color", "emissive"]);
+    expect(
+      updateBatchAttribute(material, 1, "outline", [1, 1, 1, 1, 1, 1]),
+    ).toBe(false);
+    expect(getBatchDataTexture(material)).toBeUndefined();
+    expect(material.userData.defines?.USE_BATCH_OUTLINE).toBeUndefined();
+  });
+});
+
 describe("read-back", () => {
   test("readBatchScalar returns undefined before allocation, then written values and the backfilled sentinel", () => {
     const { material } = setupBatchMaterial(4, ["height", "size"]);

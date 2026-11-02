@@ -31,7 +31,7 @@ knowing before touching either shader.
 ```mermaid
 flowchart LR
   subgraph U["Tier 1 · batch-wide<br/>uniforms"]
-    U1["outline width/color/opacity<br/>background color/border<br/>uSizeInMeters, uOffsetDepth<br/>uTranslate, uTranslateViewport<br/>atlas samplers + sizes<br/>label + path samplers + sizes<br/>(uPathData, uPathTexSize), uLineOffset<br/>camera fov / screen height / far plane<br/>RTE eye split, RTC center<br/>nvr_uPickable"]
+    U1["background color/border<br/>uSizeInMeters, uOffsetDepth<br/>uTranslate, uTranslateViewport<br/>atlas samplers + sizes<br/>label + path samplers + sizes<br/>(uPathData, uPathTexSize), uLineOffset<br/>camera fov / screen height / far plane<br/>RTE eye split, RTC center<br/>nvr_uPickable"]
   end
   subgraph L["Tier 2 · per-label<br/>uLabelData texels"]
     L1["anchor (RTE high/low)<br/>text box metrics<br/>declutterHide, batchId, show, batchIndex<br/>PATH: path run, step, flip, rejected"]
@@ -42,8 +42,8 @@ flowchart LR
   G -->|"labelIndex indexes into"| L
 ```
 
-Per-*feature* style — color, opacity, font size, height, orientation,
-rotation — is not in any of the three. It lives in the shared batch data
+Per-*feature* style — color, opacity, outline, font size, height,
+orientation, rotation — is not in any of the three. It lives in the shared batch data
 texture, keyed by the feature index the label carries in `STATE.w` (see
 [BATCH_TEXTURE.md](BATCH_TEXTURE.md)); a feature can own several labels
 (MultiPoint, along-line repeats), so the label rows only hold what differs per

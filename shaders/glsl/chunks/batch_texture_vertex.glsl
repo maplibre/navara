@@ -24,6 +24,14 @@
       * getBatchTexel(batchId, BATCHED_TEXTURE_ROW_EMISSIVE_INTENSITY)[BATCHED_TEXTURE_COMP_EMISSIVE_INTENSITY];
   #endif
 
+  #ifdef USE_BATCH_OUTLINE
+    // All four slots are always allocated together (see ensureOutlineSlots).
+    nvr_batchOutlineColor = getBatchTexel(batchId, BATCHED_TEXTURE_ROW_OUTLINE_COLOR).rgb;
+    nvr_batchOutlineOpacity = getBatchTexel(batchId, BATCHED_TEXTURE_ROW_OUTLINE_OPACITY)[BATCHED_TEXTURE_COMP_OUTLINE_OPACITY];
+    nvr_batchOutlineWidth = getBatchTexel(batchId, BATCHED_TEXTURE_ROW_OUTLINE_WIDTH)[BATCHED_TEXTURE_COMP_OUTLINE_WIDTH];
+    nvr_batchOutlineBlur = getBatchTexel(batchId, BATCHED_TEXTURE_ROW_OUTLINE_BLUR)[BATCHED_TEXTURE_COMP_OUTLINE_BLUR];
+  #endif
+
   #ifdef USE_BATCH_HEIGHT
     addHeight = getBatchTexel(batchId, BATCHED_TEXTURE_ROW_HEIGHT)[BATCHED_TEXTURE_COMP_HEIGHT];
   #endif

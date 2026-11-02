@@ -101,6 +101,18 @@ export type EvaluatableMaterialProperty = {
   /** Line justification of this label (for text). Overrides the material's
    *  `textAlign`. */
   textAlign: TextAlign;
+  /** Outline color of this label (for text). Overrides the material's
+   *  `outlineColor`. */
+  outlineColor: AvailableMaterialProperty["outlineColor"];
+  /** Outline opacity of this label (for text). Overrides the material's
+   *  `outlineOpacity`. */
+  outlineOpacity: AvailableMaterialProperty["outlineOpacity"];
+  /** Outline thickness of this label in 1/64 em (for text). Overrides the
+   *  material's `outlineWidth`. */
+  outlineWidth: AvailableMaterialProperty["outlineWidth"];
+  /** Width over which this label's outline fades out, in 1/64 em (for
+   *  text). Overrides the material's `outlineBlur`. */
+  outlineBlur: AvailableMaterialProperty["outlineBlur"];
   /** Emissive color expression (for polygons/3D Tiles models/points/billboards/text). */
   emissive: AvailableMaterialProperty["emissiveColor"];
   /** Emissive intensity expression (for polygons/3D Tiles models/points/billboards/text). */
@@ -131,6 +143,10 @@ type EvaluatedMaterialProperty = {
   offset: { x: number; y: number };
   variableAnchors: VariableAnchor[];
   textAlign: TextAlign;
+  outlineColor: Color;
+  outlineOpacity: number;
+  outlineWidth: number;
+  outlineBlur: number;
   emissive: Color;
   emissiveIntensity: number;
 };
@@ -456,6 +472,9 @@ export class FeatureEvaluator {
    *   the glyph fill glows — outline and background stay dark.
    * - `emissiveIntensity` - Emissive intensity multiplier (for batched
    *   polygons/3D Tiles models/points/billboards/text)
+   * - `outlineColor`, `outlineOpacity`, `outlineWidth`, `outlineBlur` - The
+   *   label's outline (for text); width and blur in 1/64 em, like the
+   *   material's
    *
    * Note: Evaluated styles override the layer's default styles.
    *
@@ -669,6 +688,20 @@ export class FeatureEvaluator {
           batchIndex,
           evaluated.declutterPriority,
         );
+      }
+      if (
+        obj instanceof BatchedSdfTextMesh &&
+        (evaluated.outlineColor != null ||
+          evaluated.outlineOpacity != null ||
+          evaluated.outlineWidth != null ||
+          evaluated.outlineBlur != null)
+      ) {
+        obj.setFeatureOutlineByBatchIndex(batchIndex, {
+          color: evaluated.outlineColor?.toHex(),
+          opacity: evaluated.outlineOpacity ?? undefined,
+          width: evaluated.outlineWidth ?? undefined,
+          blur: evaluated.outlineBlur ?? undefined,
+        });
       }
       if (evaluated.emissive != null && obj instanceof BatchedSdfTextMesh) {
         obj.setFeatureEmissiveByBatchIndex(batchIndex, evaluated.emissive.raw);

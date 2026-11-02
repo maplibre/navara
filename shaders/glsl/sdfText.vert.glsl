@@ -164,6 +164,10 @@ flat varying int vIsColor; // Per-instance flag: glyph is sampled from the color
 flat varying vec3 vColor;
 // Style opacity already scaled by the declutter fade.
 flat varying float vOpacity;
+// Per-feature outline: color, then (opacity, width, blur), width and blur as
+// fractions of the distance-field range.
+flat varying vec3 vOutlineColor;
+flat varying vec3 vOutline;
 flat varying float vBatchID;
 
 void main() {
@@ -207,8 +211,18 @@ void main() {
     float nvr_batchRotation = uRotation;
     bool nvr_batchFlatFacing = uFlatFacing;
     bool nvr_batchRotateWithCamera = uRotateWithCamera;
+    vec3 nvr_batchOutlineColor = vec3(0.0);
+    float nvr_batchOutlineOpacity = 1.0;
+    float nvr_batchOutlineWidth = 0.0;
+    float nvr_batchOutlineBlur = 0.0;
     vColor = vec3(1.0);
     #include "chunks/batch_texture_vertex.glsl"
+    vOutlineColor = nvr_batchOutlineColor;
+    vOutline = vec3(
+        nvr_batchOutlineOpacity,
+        nvr_batchOutlineWidth,
+        nvr_batchOutlineBlur
+    );
 #ifdef NVR_LINE_PLACEMENT
     bool nvr_batchSpreadGlyphs = uSpreadGlyphs;
 #if defined(USE_BATCH_TEXTURE) && defined(USE_BATCH_ORIENTATION)

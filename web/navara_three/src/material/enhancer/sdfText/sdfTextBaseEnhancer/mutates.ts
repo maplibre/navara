@@ -29,9 +29,6 @@ export const createBaseMutates = (
     uSizeInMeters: { value: true },
     uOffsetDepth: { value: true },
     uSdfThreshold: { value: 0.5 },
-    uOutlineWidth: { value: 0.0 },
-    uOutlineColor: { value: new Color(1, 0, 0) },
-    uOutlineOpacity: { value: 1.0 },
     uShowBackground: { value: false },
     uBackgroundColor: { value: new Color(1, 0, 0) },
     uBackgroundOutlineColor: { value: new Color(1, 0, 0) },
@@ -82,9 +79,6 @@ export const createBaseMutates = (
       refs.uTranslateViewport.value = state.translateViewport;
       refs.uSpreadGlyphs.value = state.spreadGlyphs;
       refs.uOffsetDepth.value = state.offsetDepth;
-      refs.uOutlineWidth.value = state.outlineWidth;
-      refs.uOutlineColor.value.set(state.outlineColor);
-      refs.uOutlineOpacity.value = state.outlineOpacity;
       refs.uShowBackground.value = state.showBackground;
       refs.uBackgroundColor.value.set(state.backgroundColor);
       refs.uBackgroundOutlineColor.value.set(state.backgroundOutlineColor);
@@ -102,9 +96,6 @@ export const createBaseMutates = (
       uniforms.uSizeInMeters = refs.uSizeInMeters;
       uniforms.uOffsetDepth = refs.uOffsetDepth;
       uniforms.uSdfThreshold = refs.uSdfThreshold;
-      uniforms.uOutlineWidth = refs.uOutlineWidth;
-      uniforms.uOutlineColor = refs.uOutlineColor;
-      uniforms.uOutlineOpacity = refs.uOutlineOpacity;
       uniforms.uShowBackground = refs.uShowBackground;
       uniforms.uBackgroundColor = refs.uBackgroundColor;
       uniforms.uBackgroundOutlineColor = refs.uBackgroundOutlineColor;

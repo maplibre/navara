@@ -26,9 +26,6 @@ describe("sdfTextBaseEnhancer/mutates", () => {
         translateViewport: true,
         sizeInMeters: true,
         offsetDepth: false,
-        outlineWidth: 0.1,
-        outlineColor: new Color(0x00ff00),
-        outlineOpacity: 0.8,
         showBackground: true,
         backgroundColor: new Color(0x0000ff),
         backgroundOutlineColor: new Color(0xffff00),
@@ -49,9 +46,6 @@ describe("sdfTextBaseEnhancer/mutates", () => {
       expect(uniforms.uRotation?.value).toBeCloseTo(Math.PI / 2);
       expect(uniforms.uSizeInMeters?.value).toBe(true);
       expect(uniforms.uOffsetDepth?.value).toBe(false);
-      expect(uniforms.uOutlineWidth?.value).toBe(0.1);
-      expect(uniforms.uOutlineColor?.value.getHex()).toBe(0x00ff00);
-      expect(uniforms.uOutlineOpacity?.value).toBe(0.8);
       expect(uniforms.uShowBackground?.value).toBe(true);
       expect(uniforms.uBackgroundColor?.value.getHex()).toBe(0x0000ff);
       expect(uniforms.uBackgroundOutlineColor?.value.getHex()).toBe(0xffff00);

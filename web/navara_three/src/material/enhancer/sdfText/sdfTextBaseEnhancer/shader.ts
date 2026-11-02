@@ -1,4 +1,4 @@
-import { SDF_PX_SIZE } from "@navaramap/font";
+import { atlasPaddingPx, SDF_PX_SIZE } from "@navaramap/font";
 import sdfTextFragmentShader from "@shaders/glsl/sdfText.frag.glsl";
 import sdfTextVertexShader from "@shaders/glsl/sdfText.vert.glsl";
 import type { WebGLProgramParametersWithUniforms } from "three";
@@ -55,6 +55,7 @@ export const transformShader = (
   // screen-pixel coverage math from drifting from the worker.
   shader.defines.NVR_SDF_PX_SIZE = SDF_PX_SIZE;
   shader.defines.NVR_SDF_PX_RANGE = sdfRadiusFor(state.useMsdf);
+  shader.defines.NVR_SDF_PX_PADDING = atlasPaddingPx(state.useMsdf);
   shader.defines.NVR_SMALL_TEXT_SS_FULL_PPEM = SMALL_TEXT_SUPERSAMPLE_FULL_PPEM;
   shader.defines.NVR_SMALL_TEXT_SS_END_PPEM = SMALL_TEXT_SUPERSAMPLE_END_PPEM;
   shader.defines.NVR_SMALL_TEXT_DARKEN_MAX_PX = SMALL_TEXT_STEM_DARKEN_MAX_PX;

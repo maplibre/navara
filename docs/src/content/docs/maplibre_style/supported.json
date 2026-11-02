@@ -173,13 +173,13 @@
           "status": "✅"
         },
         "text-halo-color": {
-          "status": "⚠️ Follows zoom, but is the same for every feature in the layer"
+          "status": "✅"
         },
         "text-halo-width": {
-          "status": "⚠️ Follows zoom, but is the same for every feature in the layer"
+          "status": "✅"
         },
         "text-halo-blur": {
-          "status": "❌"
+          "status": "⚠️ Fade is narrowed to end within 12/64 em of the glyph"
         },
         "icon-halo-color": {
           "status": "❌"
@@ -316,7 +316,7 @@
           "status": "✅"
         },
         "text-line-height": {
-          "status": "❌"
+          "status": "✅"
         },
         "visibility": {
           "status": "✅"

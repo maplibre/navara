@@ -11,7 +11,12 @@
  * (delete + addLayer): options resolved when the features are built
  * (`placement`, `spacing`, `geometryTypes`), `highQuality` (fixed per text
  * batch), the label source, and the choices that unset a field (`auto` facing
- * and rotation, no background), which an update cannot express.
+ * and rotation, no background, natural line height), which an update cannot
+ * express.
+ *
+ * `outline from feature` sets each label's halo through the feature
+ * evaluator; material outline edits made afterwards must overwrite only the
+ * field that changed, leaving the per-feature colors in place.
  */
 import ThreeView, {
   type Anchor,
@@ -182,6 +187,8 @@ const text = {
     outlineColor: "#111318",
     outlineWidth: 3,
     outlineOpacity: 1,
+    outlineBlur: 0,
+    outlineFromFeature: false,
     background: false,
     backgroundColor: "#1d3557",
     borderColor: "#ffffff",
@@ -189,7 +196,8 @@ const text = {
   },
   layout: {
     maxWidth: 0,
-    lineHeight: 1,
+    naturalLineHeight: false,
+    lineHeight: 1.2,
     textAlign: "center" as TextAlign,
     letterSpacing: 0,
     anchor: "center" as Anchor,
@@ -278,28 +286,41 @@ const sharedFields = (m: typeof text | typeof billboard) => ({
   emissiveIntensity: m.effects.emissiveIntensity,
 });
 
-const textMaterial = (): TextDescription => ({
-  ...sharedFields(text),
-  text: text.content.text,
-  font: text.content.font,
-  lang: text.content.lang,
-  highQuality: text.content.highQuality,
-  outlineColor: color(text.style.outlineColor),
-  outlineWidth: text.style.outlineWidth,
-  outlineOpacity: text.style.outlineOpacity,
-  ...(text.style.background && {
-    backgroundColor: color(text.style.backgroundColor),
-  }),
-  borderColor: color(text.style.borderColor),
-  borderWidth: text.style.borderWidth,
-  ...text.layout,
-  variableAnchors: VARIABLE_ANCHORS[text.layout.variableAnchors],
-  ...unlessAuto("textFacing", text.orientation.textFacing),
-  keepUpright: text.orientation.keepUpright,
-  maxAngle: text.placement.maxAngle,
-  spreadGlyphs: text.placement.spreadGlyphs,
-  lineOffset: text.placement.lineOffset,
-});
+const textMaterial = (): TextDescription => {
+  const { naturalLineHeight, lineHeight, ...layout } = text.layout;
+  return {
+    ...sharedFields(text),
+    text: text.content.text,
+    font: text.content.font,
+    lang: text.content.lang,
+    highQuality: text.content.highQuality,
+    outlineColor: color(text.style.outlineColor),
+    outlineWidth: text.style.outlineWidth,
+    outlineOpacity: text.style.outlineOpacity,
+    outlineBlur: text.style.outlineBlur,
+    ...(text.style.background && {
+      backgroundColor: color(text.style.backgroundColor),
+    }),
+    borderColor: color(text.style.borderColor),
+    borderWidth: text.style.borderWidth,
+    ...layout,
+    ...(!naturalLineHeight && { lineHeight }),
+    variableAnchors: VARIABLE_ANCHORS[layout.variableAnchors],
+    ...unlessAuto("textFacing", text.orientation.textFacing),
+    keepUpright: text.orientation.keepUpright,
+    maxAngle: text.placement.maxAngle,
+    spreadGlyphs: text.placement.spreadGlyphs,
+    lineOffset: text.placement.lineOffset,
+  };
+};
+
+// Per-feature halos, picked by name length so neighbouring labels differ.
+const FEATURE_OUTLINES = [
+  { outlineColor: color("#e63946"), outlineWidth: 2, outlineBlur: 0 },
+  { outlineColor: color("#2a9d8f"), outlineWidth: 6, outlineBlur: 0 },
+  { outlineColor: color("#f4a261"), outlineWidth: 4, outlineBlur: 6 },
+  { outlineColor: color("#8338ec"), outlineWidth: 8, outlineOpacity: 0.5 },
+];
 
 const billboardMaterial = (): BillboardDescription => ({
   ...sharedFields(billboard),
@@ -339,15 +360,20 @@ const addSymbolLayer = () => {
     text: textMaterial(),
     billboard: billboardMaterial(),
   });
-  // An evaluated text wins over the material's, so the material `text` only
-  // shows with this off.
-  if (text.content.fromFeature) {
+  // Evaluated values win over the material's, so the material `text` only
+  // shows with `fromFeature` off.
+  if (text.content.fromFeature || text.style.outlineFromFeature) {
     layer.on("featureUpdated", ({ evaluator }) => {
       evaluator.evaluate(
-        ({ properties, meshGeomType }) =>
-          meshGeomType === "text"
-            ? { text: (properties?.["name"] as string) ?? "" }
-            : {},
+        ({ properties, meshGeomType }) => {
+          if (meshGeomType !== "text") return {};
+          const name = (properties?.["name"] as string) ?? "";
+          return {
+            ...(text.content.fromFeature && { text: name }),
+            ...(text.style.outlineFromFeature &&
+              FEATURE_OUTLINES[name.length % FEATURE_OUTLINES.length]),
+          };
+        },
         { filters: ["name"] },
       );
     });
@@ -358,6 +384,8 @@ addSymbolLayer();
 
 const REBUILD_KEYS = new Set([
   "fromFeature",
+  "outlineFromFeature",
+  "naturalLineHeight",
   "highQuality",
   "background",
   "textFacing",
@@ -509,15 +537,27 @@ content.addBinding(text.content, "highQuality");
 
 const textStyle = addStyleFolder(textPage, text.style);
 textStyle.addBinding(text.style, "outlineColor");
+// Width and blur are in 1/64 em; the range runs past the 12/64 em the SDF
+// atlas padding allows, to show the clamp.
 textStyle.addBinding(text.style, "outlineWidth", {
+  label: "outlineWidth (1/64 em)",
   min: 0,
-  max: 10,
+  max: 16,
   step: 0.5,
 });
 textStyle.addBinding(text.style, "outlineOpacity", {
   min: 0,
   max: 1,
   step: 0.05,
+});
+textStyle.addBinding(text.style, "outlineBlur", {
+  label: "outlineBlur (1/64 em)",
+  min: 0,
+  max: 16,
+  step: 0.5,
+});
+textStyle.addBinding(text.style, "outlineFromFeature", {
+  label: "outline from feature",
 });
 textStyle.addBinding(text.style, "background");
 textStyle.addBinding(text.style, "backgroundColor");
@@ -535,7 +575,15 @@ layout.addBinding(text.layout, "maxWidth", {
   max: 20,
   step: 0.5,
 });
-layout.addBinding(text.layout, "lineHeight", { min: 0.5, max: 3, step: 0.1 });
+layout.addBinding(text.layout, "naturalLineHeight", {
+  label: "natural line height",
+});
+layout.addBinding(text.layout, "lineHeight", {
+  label: "lineHeight (em)",
+  min: 0.5,
+  max: 3,
+  step: 0.1,
+});
 layout.addBinding(text.layout, "textAlign", { options: OPTIONS.textAlign });
 layout.addBinding(text.layout, "letterSpacing", {
   label: "letterSpacing (em)",

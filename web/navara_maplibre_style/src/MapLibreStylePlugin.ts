@@ -155,7 +155,7 @@ export class MapLibreStylePlugin extends Plugin<ThreeView, ViewContext> {
   private zoomRangeLayers = new Map<Layer, StyleLayer>();
   /**
    * Layers with a layer-level property that follows zoom (a symbol layer's
-   * alignment, halo, ...; a color-relief layer's opacity or resampling), with
+   * alignment, line height, ...; a color-relief layer's opacity or resampling), with
    * what is needed to rebuild their description and the last one applied,
    * serialized without its source.
    */

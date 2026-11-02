@@ -722,6 +722,7 @@ describe("toLayerDescription", () => {
         spreadGlyphs: false,
         declutter: true,
         maxWidth: 10,
+        lineHeight: 1.2,
       });
       expect(text?.geometryTypes).toEqual(["point", "line", "polygon"]);
       expect(billboard).toMatchObject({
@@ -731,6 +732,13 @@ describe("toLayerDescription", () => {
         declutter: true,
       });
       expect(billboard?.geometryTypes).toEqual(["point", "line", "polygon"]);
+    });
+
+    it("passes text-line-height through in ems", () => {
+      expect(
+        buildSymbol({ "text-field": "{name}", "text-line-height": 1.5 }).text
+          ?.lineHeight,
+      ).toBe(1.5);
     });
 
     it("keeps point geometry only when the filter tests the geometry type", () => {
@@ -855,6 +863,24 @@ describe("toLayerDescription", () => {
         ),
       ).toBe(true);
       expect(
+        symbolLayerFollowsZoom(
+          symbolLayer({
+            "text-field": "a",
+            "text-line-height": ["step", ["zoom"], 1.2, 14, 1.5],
+          }),
+        ),
+      ).toBe(true);
+      // Per-feature properties and geometry ones do not need layer.update().
+      expect(
+        symbolLayerFollowsZoom(
+          symbolLayer({
+            "text-field": "a",
+            "text-size": ["interpolate", ["linear"], ["zoom"], 0, 10, 10, 20],
+            "symbol-spacing": ["step", ["zoom"], 100, 14, 300],
+          }),
+        ),
+      ).toBe(false);
+      expect(
         symbolLayerFollowsZoom({
           ...symbolLayer({ "text-field": "a" }),
           paint: {
@@ -869,16 +895,6 @@ describe("toLayerDescription", () => {
             ],
           },
         } as StyleLayer),
-      ).toBe(true);
-      // Per-feature properties and geometry ones do not need layer.update().
-      expect(
-        symbolLayerFollowsZoom(
-          symbolLayer({
-            "text-field": "a",
-            "text-size": ["interpolate", ["linear"], ["zoom"], 0, 10, 10, 20],
-            "symbol-spacing": ["step", ["zoom"], 100, 14, 300],
-          }),
-        ),
       ).toBe(false);
     });
 

@@ -450,9 +450,9 @@ view.addFontFamily({
 
 **Type:** `number | undefined`
 
-**Description:** 複数行テキストの行の高さを、フォント本来の行の高さ（アセンダー − ディセンダー + ラインギャップ）に対する倍率で指定します。
+**Description:** 複数行テキストのベースライン間の距離を em（`size` の倍数）で指定します。MapLibre の `text-line-height` と同じ単位です。未指定の場合はフォント本来の行の高さ（アセンダー − ディセンダー + ラインギャップ）で行を並べるため、行間はフォントごとに異なります。
 
-**Default:** `1.0`
+**Default:** `undefined`（フォント本来の行の高さ）
 
 **Example:**
 
@@ -581,6 +581,25 @@ view.addFontFamily({
 }
 ```
 
+### outlineBlur
+
+**Type:** `number | undefined`
+
+**Description:** アウトラインの外側の縁をぼかす幅を、その縁を中心に [`outlineWidth`](#outlinewidth) と同じ単位で指定します。アウトラインとぼかしはグリフから最大 12/64 em（`highQuality` では 8/64 em）までしか届かず、それを超えるぼかしは収まるように狭められます。フィーチャー評価関数でフィーチャーごとに指定できます。
+
+**Default:** `0.0`
+
+**Example:**
+
+```typescript
+{
+  text: {
+    outlineWidth: 4,
+    outlineBlur: 4
+  }
+}
+```
+
 ### outlineColor
 
 **Type:** `Color | undefined`
@@ -623,7 +642,7 @@ import { Color } from "@navaramap/three";
 
 **Type:** `number | undefined`
 
-**Description:** アウトラインの太さを CSS ピクセル単位で指定します。
+**Description:** アウトラインの太さを 1/64 em 単位、つまり高さ 64 ピクセルで描いたテキスト上のピクセル数で指定します。そのため `size` によらずグリフとの比率が保たれます。16 ピクセルのテキストに 2 ピクセルのアウトラインを付けるには `2 / 16 × 64 = 8` を指定します。アウトラインはグリフから最大 12/64 em（`highQuality` では 8/64 em）まで届きます。フィーチャー評価関数でフィーチャーごとに指定できます。
 
 **Default:** `0.0`
 
@@ -632,7 +651,7 @@ import { Color } from "@navaramap/three";
 ```typescript
 {
   text: {
-    outlineWidth: 2
+    outlineWidth: 8
   }
 }
 ```

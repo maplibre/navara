@@ -46,7 +46,21 @@ type EvaluatedResult = {
   offset?: { x: number; y: number };
   variableAnchors?: VariableAnchor[];
   textAlign?: TextAlign;
+  outlineColor?: Color;
+  outlineOpacity?: number;
+  /** 1/64 em, like `outlineBlur`. */
+  outlineWidth?: number;
+  outlineBlur?: number;
 };
+
+/** Navara's outline unit: pixels of text drawn 64 pixels tall. */
+const OUTLINE_UNITS_PER_EM = 64;
+
+/**
+ * MapLibre fades a halo over `±1.19 × text-halo-blur` around its edge
+ * (`symbol_sdf.fragment.glsl`); Navara's `outlineBlur` is the whole fade.
+ */
+const HALO_BLUR_TO_FADE = 2 * 1.19;
 
 /**
  * Convert MapLibre color value to Navara Color and extract alpha.
@@ -451,6 +465,32 @@ function applyTextTransform(text: string, transform: unknown): string {
 }
 
 /**
+ * Apply `text-halo-*`. MapLibre draws a halo in pixels of the text laid out
+ * at its `text-size` (its shader divides them by the font scale), so they
+ * convert to ems of that size. An unset halo color is transparent.
+ */
+function applyTextHalo(
+  result: EvaluatedResult,
+  paintValues: Record<string, unknown>,
+  textSize: number,
+): void {
+  const color = paintValues["text-halo-color"];
+  const width = paintValues["text-halo-width"];
+  const blur = paintValues["text-halo-blur"];
+  if (color === undefined && width === undefined && blur === undefined) return;
+
+  const halo = color === undefined ? undefined : toNavaraColor(color);
+  if (halo) result.outlineColor = halo.color;
+  result.outlineOpacity = halo?.alpha ?? 0;
+  const toOutlineUnits = (px: unknown) =>
+    typeof px === "number" && Number.isFinite(px) && textSize > 0
+      ? (px / textSize) * OUTLINE_UNITS_PER_EM
+      : 0;
+  result.outlineWidth = toOutlineUnits(width);
+  result.outlineBlur = toOutlineUnits(blur) * HALO_BLUR_TO_FADE;
+}
+
+/**
  * Apply the per-feature placement properties shared by icons and text:
  * `*-anchor`, `*-offset` (multiplied by `offsetScale`), `*-rotate` and
  * `symbol-sort-key`.
@@ -580,6 +620,7 @@ function processSymbolLayer(
       if (typeof textSize === "number" && Number.isFinite(textSize)) {
         result.size = textSize;
       }
+      applyTextHalo(result, paintValues, result.size ?? 16);
 
       // Ems, like Navara's `letterSpacing`; always present (spec default 0).
       const letterSpacing = layoutValues?.["text-letter-spacing"];

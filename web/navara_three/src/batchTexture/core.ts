@@ -223,7 +223,8 @@ function ensureTextureRows(state: BatchTextureState): Float32Array {
 const WHITE = new Color(1, 1, 1);
 const BLACK = new Color(0, 0, 0);
 
-/** Fixed vec3 default: color → white (multiplier identity), emissive → black. */
+/** Fixed vec3 default: color → white (multiplier identity), emissive and
+ *  outline color → black. */
 function vec3Default(key: BatchVec3Key): Color {
   return key === "color" ? WHITE : BLACK;
 }
@@ -275,6 +276,32 @@ function ensureEmissiveSlots(
     state.layout.getScalarSlot("emissiveIntensity") ??
     allocateScalarSlot(state, "emissiveIntensity", 1);
   return { row, intensity };
+}
+
+/**
+ * Slots for a text outline: the color row and its opacity, width and blur
+ * scalars, allocated together so the fragment shader never mixes a written
+ * value with an unbackfilled one. The defaults (black, opaque, zero width and
+ * blur) draw no outline.
+ */
+function ensureOutlineSlots(state: BatchTextureState):
+  | {
+      row: number;
+      opacity: BatchSlot;
+      width: BatchSlot;
+      blur: BatchSlot;
+    }
+  | undefined {
+  const row = ensureVec3Row(state, "outlineColor");
+  if (row == null) return undefined;
+  const scalar = (key: BatchScalarSlotKey, fallback: number) =>
+    state.layout.getScalarSlot(key) ?? allocateScalarSlot(state, key, fallback);
+  return {
+    row,
+    opacity: scalar("outlineOpacity", 1),
+    width: scalar("outlineWidth", 0),
+    blur: scalar("outlineBlur", 0),
+  };
 }
 
 /**
@@ -452,7 +479,7 @@ export function getBatchDataTexture(
 export function readBatchScalar(
   material: Material,
   batchId: number,
-  key: BatchScalarKey,
+  key: BatchScalarSlotKey,
 ): number | undefined {
   const state = getBatchTextureState(material);
   const slot = state?.layout.getScalarSlot(key);
@@ -721,6 +748,39 @@ export function updateBatchAttribute(
           slot.row,
         );
         data[baseIndex + slot.comp] = Number.isFinite(v) ? v : 0;
+        markTexelDirty(texture, baseIndex);
+      }
+      return true;
+    }
+    case "outline": {
+      if (!(value instanceof Array)) return false;
+      const slots = ensureOutlineSlots(state);
+      if (!slots) return false;
+      enableDefine(material, "USE_BATCH_OUTLINE");
+
+      const { texture, data } = textureData(state);
+      const colorBase = batchBaseIndex(
+        state.width,
+        state.groups,
+        batchId,
+        slots.row,
+      );
+      for (let i = 0; i < 3; i++) {
+        data[colorBase + i] = Number.isFinite(value[i]) ? value[i] : 0;
+      }
+      markTexelDirty(texture, colorBase);
+      for (const [slot, v, fallback] of [
+        [slots.opacity, value[3], 1],
+        [slots.width, value[4], 0],
+        [slots.blur, value[5], 0],
+      ] as const) {
+        const baseIndex = batchBaseIndex(
+          state.width,
+          state.groups,
+          batchId,
+          slot.row,
+        );
+        data[baseIndex + slot.comp] = Number.isFinite(v) ? v : fallback;
         markTexelDirty(texture, baseIndex);
       }
       return true;

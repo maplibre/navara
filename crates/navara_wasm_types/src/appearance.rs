@@ -937,11 +937,11 @@ pub struct TextMaterial {
     // pub corner_radius: Option<f32>,
     // pub padding: Option<Vec2>,
     // outline
-    // TODO: support outlineBlur and outlineOffset later.
-    /// Outline blur radius in CSS pixels. Defaults to `0.0`.
-    // #[wasm_bindgen(js_name = outlineBlur)]
-    // #[serde(rename = "outlineBlur")]
-    // pub outline_blur: Option<f32>,
+    /// Width over which the outline's outer edge fades out, centered on that
+    /// edge, in the unit of `outlineWidth`. Defaults to `0.0`.
+    #[wasm_bindgen(js_name = outlineBlur)]
+    #[serde(rename = "outlineBlur")]
+    pub outline_blur: Option<f32>,
     #[wasm_bindgen(js_name = outlineColor)]
     #[serde(rename = "outlineColor")]
     pub outline_color: Option<u32>, // outlineColor Defalut:black
@@ -953,7 +953,9 @@ pub struct TextMaterial {
     #[wasm_bindgen(js_name = outlineOpacity)]
     #[serde(rename = "outlineOpacity")]
     pub outline_opacity: Option<f32>, // outlineOpacity Default:1
-    /// Outline thickness measured in CSS pixels. Defaults to `0.0`.
+    /// Outline thickness in 1/64 em: pixels of text drawn 64 pixels tall, so
+    /// the outline keeps its proportion to the glyphs at any size. Defaults
+    /// to `0.0`.
     #[wasm_bindgen(js_name = outlineWidth)]
     #[serde(rename = "outlineWidth")]
     pub outline_width: Option<f32>,
@@ -980,8 +982,9 @@ pub struct TextMaterial {
     #[wasm_bindgen(js_name = maxWidth)]
     #[serde(rename = "maxWidth")]
     pub max_width: Option<f32>,
-    /// Line height as a multiplier of the font's natural line height
-    /// (ascender − descender + line gap). Defaults to `1.0`.
+    /// Distance between the baselines of a multi-line label, in ems
+    /// (multiples of `size`). Defaults to the font's natural line height
+    /// (ascender − descender + line gap).
     #[wasm_bindgen(js_name = lineHeight)]
     #[serde(rename = "lineHeight")]
     pub line_height: Option<f32>,
@@ -1096,7 +1099,7 @@ impl From<TextMaterial> for navara_material::TextMaterial {
             border_width: val.border_width.unwrap_or(default.border_width),
             // corner_radius: val.corner_radius.unwrap_or(default.corner_radius),
             // padding: val.padding.unwrap_or(default.padding.into()).into(),
-            // outline_blur: val.outline_blur.unwrap_or(default.outline_blur),
+            outline_blur: val.outline_blur.unwrap_or(default.outline_blur),
             outline_color: val.outline_color.unwrap_or(default.outline_color),
             // outline_offset: val
             //     .outline_offset
@@ -1111,7 +1114,7 @@ impl From<TextMaterial> for navara_material::TextMaterial {
             transparent: val.transparent.unwrap_or(default.transparent),
 
             max_width: val.max_width.unwrap_or(default.max_width),
-            line_height: val.line_height.unwrap_or(default.line_height),
+            line_height: val.line_height.or(default.line_height),
             text_align: val.text_align.unwrap_or(default.text_align),
             letter_spacing: val.letter_spacing.unwrap_or(default.letter_spacing),
 
@@ -1164,7 +1167,7 @@ impl<'a> From<&'a navara_material::TextMaterial> for TextMaterial {
             border_width: Some(value.border_width),
             // corner_radius: Some(value.corner_radius),
             // padding: Some(value.padding.into()),
-            // outline_blur: Some(value.outline_blur),
+            outline_blur: Some(value.outline_blur),
             outline_color: Some(value.outline_color),
             // outline_offset: Some(value.outline_offset.into()),
             outline_opacity: Some(value.outline_opacity),
@@ -1176,7 +1179,7 @@ impl<'a> From<&'a navara_material::TextMaterial> for TextMaterial {
             transparent: Some(value.transparent),
 
             max_width: Some(value.max_width),
-            line_height: Some(value.line_height),
+            line_height: value.line_height,
             text_align: Some(value.text_align.clone()),
             letter_spacing: Some(value.letter_spacing),
 
@@ -1230,7 +1233,7 @@ impl TextMaterial {
             border_width: self.border_width.unwrap_or(other.border_width),
             // corner_radius: self.corner_radius.unwrap_or(other.corner_radius),
             // padding: self.padding.unwrap_or(other.padding.into()).into(),
-            // outline_blur: self.outline_blur.unwrap_or(other.outline_blur),
+            outline_blur: self.outline_blur.unwrap_or(other.outline_blur),
             outline_color: self.outline_color.unwrap_or(other.outline_color),
             // outline_offset: self
             //     .outline_offset
@@ -1245,7 +1248,7 @@ impl TextMaterial {
             transparent: self.transparent.unwrap_or(other.transparent),
 
             max_width: self.max_width.unwrap_or(other.max_width),
-            line_height: self.line_height.unwrap_or(other.line_height),
+            line_height: self.line_height.or(other.line_height),
             text_align: self.text_align.clone().unwrap_or(other.text_align.clone()),
             letter_spacing: self.letter_spacing.unwrap_or(other.letter_spacing),
 

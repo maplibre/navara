@@ -23,6 +23,16 @@ export const SDF_PX_SIZE = 64.0;
 export const atlasRangePx = (highQuality: boolean): number =>
   highQuality ? 16.0 : 35.0;
 
+/**
+ * Pixels of distance field a quality's glyph rect keeps around the outline:
+ * how far an outline can reach before the glyph quad's edge cuts it off.
+ *
+ * SDF: `SDF_BUFFER` (12) in `crates/navara_wasm_font_worker/src/atlas.rs`.
+ * MSDF: `MSDF_PADDING_PX` (8) in `crates/navara_wasm_font_worker/src/msdf.rs`.
+ */
+export const atlasPaddingPx = (highQuality: boolean): number =>
+  highQuality ? 8.0 : 12.0;
+
 /** Glyph metrics from either the SDF or the color atlas. */
 export type GlyphMetrics = {
   glyphId: number;

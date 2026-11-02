@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 
 import { DEFAULT_BASE_STATE, updateState } from "./state";
-import { sdfRadiusFor } from "./types";
 
 describe("sdfTextBaseEnhancer / state", () => {
   describe("updateState", () => {
@@ -46,23 +45,6 @@ describe("sdfTextBaseEnhancer / state", () => {
       const pinned = updateState({ rotateWithCamera: false }, flat);
       expect(pinned.flatFacing).toBe(true);
       expect(pinned.rotateWithCamera).toBe(false);
-    });
-
-    it("converts outlineWidth using the current quality's range (SDF default)", () => {
-      const state = updateState({ outlineWidth: 2.0 }, DEFAULT_BASE_STATE);
-      expect(state.outlineWidth).toBeCloseTo(
-        2.0 / sdfRadiusFor(DEFAULT_BASE_STATE.useMsdf),
-      );
-    });
-
-    it("updates outlineColor from hex", () => {
-      const state = updateState({ outlineColor: 0x00ff00 }, DEFAULT_BASE_STATE);
-      expect(state.outlineColor.getHex()).toBe(0x00ff00);
-    });
-
-    it("updates outlineOpacity", () => {
-      const state = updateState({ outlineOpacity: 0.5 }, DEFAULT_BASE_STATE);
-      expect(state.outlineOpacity).toBe(0.5);
     });
 
     it("updates showBackground", () => {
@@ -124,10 +106,10 @@ describe("sdfTextBaseEnhancer / state", () => {
     it("falls back to currentState for missing props", () => {
       const currentState = {
         ...DEFAULT_BASE_STATE,
-        outlineOpacity: 0.25,
+        lineOffset: 4,
       };
       const state = updateState({}, currentState);
-      expect(state.outlineOpacity).toBe(0.25);
+      expect(state.lineOffset).toBe(4);
     });
   });
 });
