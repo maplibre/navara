@@ -115,7 +115,6 @@ const createGeoLayersDef = (
       transparent: false,
       depthTest: true,
       offsetDepth: true,
-      center: { x: 0.0, y: 0.0 },
     },
   },
 
@@ -155,7 +154,7 @@ const createGeoLayersDef = (
       transparent: true,
       url: withBase("example.png"),
       offsetDepth: true,
-      center: { x: 0.0, y: -0.5 },
+      anchor: "bottom",
     },
   },
 
@@ -190,10 +189,7 @@ const createGeoLayersDef = (
       borderWidth: 0.08, // 0 ~ 0.5, the ratio of the border to the height
       // cornerRadius: 0.1, // 0 ~ 0.5, the ratio of the corner radius to the height
       size: 50,
-      center: {
-        x: 0.5,
-        y: 0,
-      },
+      anchor: "bottom",
       // padding: {
       //   x: 10,
       //   y: 0,
@@ -234,10 +230,7 @@ const createGeoLayersDef = (
       highQuality: true,
       // cornerRadius: 0.1, // 0 ~ 0.5, the ratio of the corner radius to the height
       size: 50,
-      center: {
-        x: 0.5,
-        y: 0,
-      },
+      anchor: "bottom",
       // padding: {
       //   x: 10,
       //   y: 0,
@@ -504,11 +497,7 @@ const createGeoLayersDef = (
       color: new Color().setStyle("#ff0000"),
       size: 70.0,
       height: 1,
-      // TODO: This should be abstracted like top-left/center/right, bottom-left/center/right
-      center: {
-        x: 0.0,
-        y: 0.0,
-      },
+      anchor: "bottom-left",
       sizeInMeters: false,
       clampToGround: true,
       depthTest: true,

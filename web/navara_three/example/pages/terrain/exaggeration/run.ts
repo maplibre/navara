@@ -83,7 +83,7 @@ export const run = async (view: ThreeView<CustomDescriptions>) => {
       sizeInMeters: true,
       clampToGround: true,
       color: new Color().setHex(0xff6b2c),
-      center: { x: 0, y: -0.5 },
+      anchor: "bottom",
     },
   });
 

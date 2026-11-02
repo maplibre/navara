@@ -191,10 +191,16 @@
           "status": "❌"
         },
         "icon-translate": {
-          "status": "❌"
+          "status": "⚠️ Follows zoom, but is the same for every feature in the layer. With the `map` anchor it turns with the camera heading but, unlike MapLibre, is not foreshortened by pitch"
+        },
+        "icon-translate-anchor": {
+          "status": "✅"
         },
         "text-translate": {
-          "status": "❌"
+          "status": "⚠️ Follows zoom, but is the same for every feature in the layer. With the `map` anchor it turns with the camera heading but, unlike MapLibre, is not foreshortened by pitch"
+        },
+        "text-translate-anchor": {
+          "status": "✅"
         }
       },
       "layout": {
@@ -217,16 +223,25 @@
           "status": "✅"
         },
         "text-anchor": {
-          "status": "❌"
+          "status": "✅"
         },
         "icon-anchor": {
-          "status": "⚠️ Follows zoom, but is the same for every feature in the layer"
+          "status": "✅"
         },
         "text-offset": {
-          "status": "❌"
+          "status": "✅"
+        },
+        "text-variable-anchor": {
+          "status": "⚠️ With overlap allowed and every anchor taken, the label overlaps at the anchor it is at rather than the first"
+        },
+        "text-variable-anchor-offset": {
+          "status": "⚠️ With overlap allowed and every anchor taken, the label overlaps at the anchor it is at rather than the first"
+        },
+        "text-radial-offset": {
+          "status": "✅"
         },
         "icon-offset": {
-          "status": "❌"
+          "status": "✅"
         },
         "text-rotate": {
           "status": "✅"
@@ -250,7 +265,7 @@
           "status": "⚠️ Follows zoom, but is the same for every feature in the layer"
         },
         "text-justify": {
-          "status": "⚠️ Follows zoom, but is the same for every feature in the layer; auto is centered"
+          "status": "✅"
         },
         "text-max-angle": {
           "status": "✅"

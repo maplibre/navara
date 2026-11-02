@@ -30,6 +30,7 @@ import {
   type GeometryType,
   VALID_GEOMETRY_TYPES,
 } from "../mesh";
+import type { Anchor, TextAlign, VariableAnchor } from "../type";
 
 type AvailableMaterialProperty = ExtractProperties<
   PointMaterial &
@@ -87,6 +88,19 @@ export type EvaluatableMaterialProperty = {
    *  clockwise seen from the front; along a line, of each glyph about its own
    *  centre. Overrides the material's `rotation`. */
   rotation: number;
+  /** Part of this label/sprite placed at its anchor point. Overrides the
+   *  material's `anchor`. */
+  anchor: Anchor;
+  /** Shift of this label/sprite from its anchor point, x right and y down:
+   *  in ems for text, in the unit of `size` for points and billboards.
+   *  Overrides the material's `offset`. */
+  offset: { x: number; y: number };
+  /** Placements the declutter pass picks from for this label (for text), in
+   *  order. Overrides the material's `variableAnchors`. */
+  variableAnchors: VariableAnchor[];
+  /** Line justification of this label (for text). Overrides the material's
+   *  `textAlign`. */
+  textAlign: TextAlign;
   /** Emissive color expression (for polygons/3D Tiles models/points/billboards/text). */
   emissive: AvailableMaterialProperty["emissiveColor"];
   /** Emissive intensity expression (for polygons/3D Tiles models/points/billboards/text). */
@@ -113,6 +127,10 @@ type EvaluatedMaterialProperty = {
   rotateWithCamera: boolean;
   spreadGlyphs: boolean;
   rotation: number;
+  anchor: Anchor;
+  offset: { x: number; y: number };
+  variableAnchors: VariableAnchor[];
+  textAlign: TextAlign;
   emissive: Color;
   emissiveIntensity: number;
 };
@@ -482,11 +500,19 @@ export class FeatureEvaluator {
       const evaluated = f(info);
       this.applyEvaluatedValues(batchIndex, evaluated);
     };
+    const evaluateAll = () => {
+      if (options?.filters) {
+        this.readFilteredFeatureProperties(options.filters, evaluate);
+      } else {
+        this.readFeatureProperties(evaluate);
+      }
+    };
 
-    if (options?.filters) {
-      this.readFilteredFeatureProperties(options.filters, evaluate);
+    // Labels lay out once, after every value that shapes their layout is in.
+    if (this.obj instanceof BatchedSdfTextMesh) {
+      this.obj.deferLayout(evaluateAll);
     } else {
-      this.readFeatureProperties(evaluate);
+      evaluateAll();
     }
   }
 
@@ -533,6 +559,16 @@ export class FeatureEvaluator {
       if (evaluated.rotation != null) {
         obj.setFeatureRotationByBatchIndex(batchIndex, evaluated.rotation);
       }
+      if (evaluated.anchor != null) {
+        obj.setFeatureAnchorByBatchIndex(batchIndex, evaluated.anchor);
+      }
+      if (evaluated.offset != null) {
+        obj.setFeatureOffsetByBatchIndex(
+          batchIndex,
+          evaluated.offset.x,
+          evaluated.offset.y,
+        );
+      }
       if (evaluated.emissive != null) {
         obj.setFeatureEmissiveByBatchIndex(batchIndex, evaluated.emissive.raw);
       }
@@ -561,8 +597,9 @@ export class FeatureEvaluator {
       if (evaluated.height != null) {
         obj.setFeatureHeightByBatchIndex(batchIndex, evaluated.height);
       }
-      // Before `text`: glyph pieces and spacing are baked into the layout, so
-      // setting them first lays a newly-texted label out once instead of twice.
+      // Before `text`: glyph pieces, spacing and placement are baked into the
+      // layout, so a newly-texted label is laid out with them already set.
+      // A label with text re-lays out once, at the end of `evaluate`.
       if (evaluated.spreadGlyphs != null && obj instanceof BatchedSdfTextMesh) {
         obj.setFeatureSpreadGlyphsByBatchIndex(
           batchIndex,
@@ -576,6 +613,28 @@ export class FeatureEvaluator {
         obj.setFeatureLetterSpacingByBatchIndex(
           batchIndex,
           evaluated.letterSpacing,
+        );
+      }
+      if (evaluated.anchor != null && obj instanceof BatchedSdfTextMesh) {
+        obj.setFeatureAnchorByBatchIndex(batchIndex, evaluated.anchor);
+      }
+      if (
+        evaluated.variableAnchors != null &&
+        obj instanceof BatchedSdfTextMesh
+      ) {
+        obj.setFeatureVariableAnchorsByBatchIndex(
+          batchIndex,
+          evaluated.variableAnchors,
+        );
+      }
+      if (evaluated.textAlign != null && obj instanceof BatchedSdfTextMesh) {
+        obj.setFeatureTextAlignByBatchIndex(batchIndex, evaluated.textAlign);
+      }
+      if (evaluated.offset != null && obj instanceof BatchedSdfTextMesh) {
+        obj.setFeatureOffsetByBatchIndex(
+          batchIndex,
+          evaluated.offset.x,
+          evaluated.offset.y,
         );
       }
       if (evaluated.text != null && obj instanceof BatchedSdfTextMesh) {

@@ -23,7 +23,6 @@ export const createBaseMutates = (
   rtcCenter?: [number, number, number],
 ): SdfTextBaseMutates => {
   const refs: SdfTextBaseRefs = {
-    uCenter: { value: new Vector2(0.5, 0.0) },
     uFlatFacing: { value: false },
     uRotateWithCamera: { value: true },
     uRotation: { value: 0 },
@@ -67,17 +66,20 @@ export const createBaseMutates = (
     uPathData: { value: null },
     uPathTexSize: { value: new Vector2(1, 1) },
     uLineOffset: { value: 0 },
+    uTranslate: { value: new Vector2(0, 0) },
+    uTranslateViewport: { value: false },
     uSpreadGlyphs: { value: false },
   };
 
   return {
     update: (state: SdfTextBaseState) => {
-      refs.uCenter.value.set(state.center[0], state.center[1]);
       refs.uFlatFacing.value = state.flatFacing;
       refs.uRotateWithCamera.value = state.rotateWithCamera;
       refs.uRotation.value = state.rotation;
       refs.uSizeInMeters.value = state.sizeInMeters;
       refs.uLineOffset.value = state.lineOffset;
+      refs.uTranslate.value.set(state.translate[0], state.translate[1]);
+      refs.uTranslateViewport.value = state.translateViewport;
       refs.uSpreadGlyphs.value = state.spreadGlyphs;
       refs.uOffsetDepth.value = state.offsetDepth;
       refs.uOutlineWidth.value = state.outlineWidth;
@@ -94,7 +96,6 @@ export const createBaseMutates = (
     },
 
     updateUniforms: (uniforms) => {
-      uniforms.uCenter = refs.uCenter;
       uniforms.uFlatFacing = refs.uFlatFacing;
       uniforms.uRotateWithCamera = refs.uRotateWithCamera;
       uniforms.uRotation = refs.uRotation;
@@ -131,6 +132,8 @@ export const createBaseMutates = (
       uniforms.uPathData = refs.uPathData;
       uniforms.uPathTexSize = refs.uPathTexSize;
       uniforms.uLineOffset = refs.uLineOffset;
+      uniforms.uTranslate = refs.uTranslate;
+      uniforms.uTranslateViewport = refs.uTranslateViewport;
       uniforms.uSpreadGlyphs = refs.uSpreadGlyphs;
       if (refs.batchDataTexture) {
         uniforms.batchDataTexture = refs.batchDataTexture;

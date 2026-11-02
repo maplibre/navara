@@ -109,6 +109,47 @@ export type TextFacing = Facing;
 export type Overlap = "never" | "always" | "cooperative";
 
 /**
+ * Part of a label or sprite placed at its anchor point — MapLibre's
+ * `text-anchor` / `icon-anchor`. The value of `anchor` on text, billboard and
+ * point materials.
+ */
+export type Anchor =
+  | "center"
+  | "left"
+  | "right"
+  | "top"
+  | "bottom"
+  | "top-left"
+  | "top-right"
+  | "bottom-left"
+  | "bottom-right";
+
+/**
+ * One placement a label may take — an entry of MapLibre's
+ * `text-variable-anchor-offset`: the part of the block placed at the anchor
+ * point, and the shift after it in ems, x right and y down. An entry of
+ * `variableAnchors` on the text material.
+ */
+export type VariableAnchor = {
+  anchor: Anchor;
+  offset?: { x: number; y: number };
+};
+
+/**
+ * Horizontal alignment of the lines of a multi-line label — MapLibre's
+ * `text-justify`. `"auto"` aligns towards the horizontal side of the text's
+ * `anchor`.
+ */
+export type TextAlign = "left" | "center" | "right" | "auto";
+
+/**
+ * Frame of a label's or sprite's `translate` — MapLibre's
+ * `*-translate-anchor`. `"map"` turns it with the camera heading so +x points
+ * east and +y south; `"viewport"` keeps it on the screen axes.
+ */
+export type TranslateAnchor = "map" | "viewport";
+
+/**
  * Helper type to narrow the material fields that wasm-bindgen generates as
  * bare `string`s to their literal unions, and its typed arrays to the plain
  * arrays the layer description accepts. One recursive pass covers them all.
@@ -122,11 +163,20 @@ type ConvertStringUnionFields<T> = {
         ? LineCap | Extract<T[K], undefined>
         : K extends "overlap"
           ? Overlap | Extract<T[K], undefined>
-          : K extends "dashArray" | "declutterPadding"
-            ? number[] | Extract<T[K], undefined>
-            : T[K] extends object | undefined
-              ? ConvertStringUnionFields<T[K]> | Extract<T[K], undefined>
-              : T[K];
+          : K extends "anchor"
+            ? Anchor | Extract<T[K], undefined>
+            : K extends "textAlign"
+              ? TextAlign | Extract<T[K], undefined>
+              : K extends "translateAnchor"
+                ? TranslateAnchor | Extract<T[K], undefined>
+                : K extends "variableAnchors"
+                  ? VariableAnchor[] | Extract<T[K], undefined>
+                  : K extends "dashArray" | "declutterPadding"
+                    ? number[] | Extract<T[K], undefined>
+                    : T[K] extends object | undefined
+                      ? | ConvertStringUnionFields<T[K]>
+                        | Extract<T[K], undefined>
+                      : T[K];
 };
 
 /**

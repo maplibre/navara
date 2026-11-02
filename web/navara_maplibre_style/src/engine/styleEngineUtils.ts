@@ -2,6 +2,8 @@
  * Shared utilities for StyleEngine implementations.
  */
 
+import { expression } from "@maplibre/maplibre-gl-style-spec";
+
 import { LAYOUT_SPECS_BY_TYPE } from "./layoutSpecs";
 import { PAINT_SPECS_BY_TYPE } from "./paintSpecs";
 import type { LayerType, PropertySpec, StyleValue } from "./types";
@@ -66,34 +68,27 @@ export function getTypeDefault(type: PropertySpec["type"]): StyleValue {
   }
 }
 
+const { isExpression } = expression;
+
+/** Property types whose constant value is an array. */
+const ARRAY_TYPES: ReadonlySet<string> = new Set([
+  "array",
+  "variableAnchorOffsetCollection",
+]);
+
 /**
- * Check if an array expression looks like a literal value rather than an expression.
- *
- * Literal arrays include:
- * - Font paths: ["/fonts/custom.ttf"]
- * - Font names with spaces: ["Open Sans Regular"]
- * - Font names starting with uppercase: ["Roboto"]
- *
- * Expression arrays have lowercase operators as first element: ["get", "prop"]
+ * Whether an array style value starting with a string is a literal of an
+ * array-typed property rather than an expression: its first element is no
+ * expression operator, as MapLibre decides it. Covers font stacks
+ * (`["Open Sans Regular"]`) and enum arrays (`text-variable-anchor:
+ * ["top", "bottom"]`, a `text-variable-anchor-offset` collection). For any
+ * other type such an array is an unknown expression and must fail.
  */
-export function isLiteralArray(expr: unknown): boolean {
-  if (!Array.isArray(expr) || expr.length === 0) {
-    return false;
-  }
-
-  const firstElement = expr[0];
-  if (typeof firstElement !== "string") {
-    return false;
-  }
-
-  // Check if it looks like a literal value rather than an expression operator:
-  // - Starts with "/" (path)
-  // - Contains spaces (font names like "Open Sans Regular")
-  // - Starts with uppercase (font names)
-  // But NOT if it's a known expression operator (they're lowercase, no spaces, no slashes)
+export function isLiteralArray(expr: unknown, spec: PropertySpec): boolean {
   return (
-    firstElement.startsWith("/") ||
-    firstElement.includes(" ") ||
-    /^[A-Z]/.test(firstElement)
+    ARRAY_TYPES.has(spec.type) &&
+    Array.isArray(expr) &&
+    typeof expr[0] === "string" &&
+    !isExpression(expr)
   );
 }

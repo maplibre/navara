@@ -67,9 +67,9 @@ export class DeclutterManager {
   private _lastRunAt = Number.NEGATIVE_INFINITY;
   private _lastStepAt = Number.NaN;
 
-  /** Shown candidates of the most recent pass, keyed by content, as flat xyz
-   *  anchor triplets. Read by {@link wasRecentlyShown} when a tile swap
-   *  activates a replacement batch. */
+  /** Shown candidates of the most recent pass, keyed by content, as flat
+   *  `[x, y, z, variant]` quads. Read by {@link recentlyShownVariant} when a
+   *  tile swap activates a replacement batch. */
   private _shownByContent = new Map<string, number[]>();
 
   // Reused per-pass scratch to keep steady-state allocations low.
@@ -129,30 +129,32 @@ export class DeclutterManager {
   }
 
   /**
-   * Whether the most recent pass showed `contentKey` anchored within
-   * {@link DeclutterManager.HANDOFF_TOLERANCE_M} of (x, y, z) — i.e. an
-   * equivalent label (typically the swapped-out tile's copy) already holds
-   * this screen space. A batch activating in a tile swap uses this to seed
-   * such labels as granted instead of fading them in from hidden, which
-   * would blink the whole tile's labels out for a pass-plus-fade.
+   * The variant the most recent pass showed `contentKey` with, anchored
+   * within {@link DeclutterManager.HANDOFF_TOLERANCE_M} of (x, y, z), or
+   * `undefined` if it showed none — i.e. whether an equivalent label
+   * (typically the swapped-out tile's copy) already holds this screen space.
+   * A batch activating in a tile swap uses this to seed such labels as
+   * granted, at the same variable anchor, instead of fading them in from
+   * hidden, which would blink the whole tile's labels out for a
+   * pass-plus-fade.
    */
-  wasRecentlyShown(
+  recentlyShownVariant(
     contentKey: string,
     x: number,
     y: number,
     z: number,
-  ): boolean {
+  ): number | undefined {
     const anchors = this._shownByContent.get(contentKey);
-    if (!anchors) return false;
+    if (!anchors) return undefined;
     const tol = DeclutterManager.HANDOFF_TOLERANCE_M;
     const tolSq = tol * tol;
-    for (let i = 0; i < anchors.length; i += 3) {
+    for (let i = 0; i < anchors.length; i += 4) {
       const dx = anchors[i] - x;
       const dy = anchors[i + 1] - y;
       const dz = anchors[i + 2] - z;
-      if (dx * dx + dy * dy + dz * dz <= tolSq) return true;
+      if (dx * dx + dy * dy + dz * dz <= tolSq) return anchors[i + 3];
     }
-    return false;
+    return undefined;
   }
 
   /**
@@ -282,6 +284,10 @@ export class DeclutterManager {
       input[o + 22] = c.flatFacing ? 1 : 0;
       input[o + 23] = c.rotateWithCamera ? 1 : 0;
       input[o + 24] = c.rotation;
+      input[o + 25] = c.translate[0];
+      input[o + 26] = c.translate[1];
+      input[o + 27] = c.translateViewport ? 0 : 1;
+      input[o + 28] = c.variants ?? 1;
     }
 
     // The pass may run before the renderer refreshed matrixWorldInverse, so
@@ -310,22 +316,29 @@ export class DeclutterManager {
       DeclutterManager.HYSTERESIS_PX,
     );
 
-    // Apply results as fade targets. Order is irrelevant — applyDeclutter is
-    // idempotent per handle — so iterate in candidate order, not sorted order.
-    // Rebuild the shown-content registry from the same results.
+    // Apply results as fade targets, one per label: the row of its group the
+    // pass showed, or the one in use if none. Order is irrelevant —
+    // applyDeclutter is idempotent per handle — so iterate in candidate
+    // order, not sorted order. Rebuild the shown-content registry from the
+    // same results.
     this._shownByContent.clear();
-    for (let i = 0; i < n; i++) {
-      const c = candidates[i];
-      const isHidden = hidden[i] !== 0;
-      c.owner.applyDeclutter(c.handle, isHidden);
+    for (let i = 0; i < n;) {
+      const rows = Math.max(1, candidates[i].variants ?? 1);
+      let shown = i;
+      while (shown < i + rows && hidden[shown] !== 0) shown++;
+      const isHidden = shown === i + rows;
+      const c = candidates[isHidden ? i : shown];
+      const variant = c.variant ?? 0;
+      c.owner.applyDeclutter(c.handle, isHidden, variant);
       if (!isHidden && c.contentKey) {
         let anchors = this._shownByContent.get(c.contentKey);
         if (!anchors) {
           anchors = [];
           this._shownByContent.set(c.contentKey, anchors);
         }
-        anchors.push(c.anchorX, c.anchorY, c.anchorZ);
+        anchors.push(c.anchorX, c.anchorY, c.anchorZ, variant);
       }
+      i += rows;
     }
 
     candidates.length = 0;

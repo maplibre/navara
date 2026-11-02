@@ -69,7 +69,7 @@ const layer = view.addLayer({
   billboard: {
     size: 64,
     sizeInMeters: false,
-    center: { x: 0, y: -0.5 },
+    anchor: "bottom",
     clampToGround: true,
   },
 });

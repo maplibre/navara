@@ -55,6 +55,25 @@
     nvr_batchRotateWithCamera = mod(nvr_batchOrientation, 2.0) >= 0.5;
   #endif
 
+  #ifdef USE_BATCH_ANCHOR
+    // Packed 2h + 6v, h and v in {0, 0.5, 1}; see anchorCode in
+    // web/navara_three/src/material/anchor.ts. The +0.5 keeps floor() off the
+    // exact multiples of 3.
+    float nvr_batchAnchorCode = getBatchTexel(batchId, BATCHED_TEXTURE_ROW_ANCHOR)[BATCHED_TEXTURE_COMP_ANCHOR];
+    nvr_batchAnchor = vec2(
+      mod(nvr_batchAnchorCode, 3.0) * 0.5 - 0.5,
+      0.5 - floor((nvr_batchAnchorCode + 0.5) / 3.0) * 0.5
+    );
+  #endif
+
+  #ifdef USE_BATCH_OFFSET
+    // Both halves are always allocated together (see ensureOffsetSlots).
+    nvr_batchOffset = vec2(
+      getBatchTexel(batchId, BATCHED_TEXTURE_ROW_OFFSET_X)[BATCHED_TEXTURE_COMP_OFFSET_X],
+      getBatchTexel(batchId, BATCHED_TEXTURE_ROW_OFFSET_Y)[BATCHED_TEXTURE_COMP_OFFSET_Y]
+    );
+  #endif
+
   #ifdef USE_BATCH_SIZE
     // Negative = fall back to the material size (see SCALAR_FALLBACK in
     // web/navara_three/src/batchTexture/core.ts)

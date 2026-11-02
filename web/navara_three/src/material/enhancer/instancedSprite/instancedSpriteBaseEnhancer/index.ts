@@ -22,7 +22,7 @@ import type {
  * Factory function to create an instancedSprite base enhancer.
  *
  * This enhancer handles:
- * - Scale, center, sizeInMeters, offsetDepth
+ * - Scale, anchor, offset, sizeInMeters, offsetDepth
  * - Alpha test for billboard mode
  * - Picking
  * - RTE (Relative-To-Eye) support for high-precision coordinates

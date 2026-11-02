@@ -33,6 +33,12 @@
 //! | 22     | flatFacing | non-zero = the quad lies on the globe surface |
 //! | 23     | rotateWithCamera | non-zero = the quad reads left to right on screen |
 //! | 24     | rotation | radians, clockwise from the front |
+//! | 25,26  | translateX/Y | screen px the drawn quad is moved by, +Y down |
+//! | 27     | translateMap | non-zero = the translate turns with the camera heading (+X east, +Y south) |
+//! | 28     | variants | rows in the label's group on its first row, `0.0` on the rows after it |
+//!
+//! A label with variable anchors arrives as a group of contiguous rows, one
+//! per placement it may take, the one in use first; only one of them is shown.
 
 use std::collections::HashMap;
 
@@ -42,7 +48,7 @@ use wasm_bindgen::prelude::*;
 use crate::line_label::{basis_box, quad_screen_basis};
 
 /// Number of `f64` values per candidate in the packed input slice.
-pub const CANDIDATE_STRIDE: usize = 25;
+pub const CANDIDATE_STRIDE: usize = 29;
 
 /// Decode the packed `overlap` field.
 fn overlap_from_code(code: f64) -> Overlap {
@@ -154,8 +160,22 @@ fn project_candidate(c: &[f64], ctx: &ProjectionContext, out: &mut [f64; 4]) -> 
     let cy = p[1] * vx + p[5] * vy + p[9] * vz + p[13];
     let cw = p[3] * vx + p[7] * vy + p[11] * vz + p[15];
 
-    let sx = (cx / cw + 1.0) * 0.5 * ctx.width_px;
-    let sy = (1.0 - cy / cw) * 0.5 * ctx.height_px;
+    let mut sx = (cx / cw + 1.0) * 0.5 * ctx.width_px;
+    let mut sy = (1.0 - cy / cw) * 0.5 * ctx.height_px;
+
+    // Mirror of nvr_translateOffset (shaders/glsl/chunks/quad_orientation.glsl):
+    // a screen-pixel shift, turned with the camera heading when map-anchored.
+    let (tx, ty) = (c[25], c[26]);
+    if tx != 0.0 || ty != 0.0 {
+        if c[27] != 0.0 {
+            let (right, up) = quad_screen_basis(c, ctx.view, false, false, 0.0);
+            sx += tx * right.0 - ty * up.0;
+            sy -= tx * right.1 - ty * up.1;
+        } else {
+            sx += tx;
+            sy += ty;
+        }
+    }
 
     // Mirror of nvr_pxToWorld (shaders/glsl/chunks/pixelToWorld.glsl), inverted:
     // pixels per world meter at the anchor's view depth. `|viewZ|` (here `-vz`,
@@ -349,7 +369,8 @@ impl ScreenCollisionGrid {
 }
 
 /// Run one placement pass. Returns a `hidden` flag (0 or 1) per candidate, in the
-/// same order as the input slice.
+/// same order as the input slice. Of a group of variable-anchor rows, at most
+/// one is shown: the first that fits.
 ///
 /// `candidates` is a packed `f64` slice of `n * CANDIDATE_STRIDE` values (see the
 /// module docs); `view` and `proj` are column-major 4×4 matrices (16 values each).
@@ -418,7 +439,9 @@ pub fn declutter_place(
     // camera-independent tiebreak (anchor position, then index) keeps fresh ties
     // deterministic — array order would reshuffle as tiles load and make labels
     // flicker.
-    let mut order: Vec<usize> = (0..n).collect();
+    let mut order: Vec<usize> = (0..n)
+        .filter(|&i| candidates[i * CANDIDATE_STRIDE + 28] != 0.0)
+        .collect();
     order.sort_by(|&a, &b| {
         let ca = &candidates[a * CANDIDATE_STRIDE..];
         let cb = &candidates[b * CANDIDATE_STRIDE..];
@@ -456,7 +479,8 @@ pub fn declutter_place(
     });
 
     let partners = pair_partners(candidates);
-    let judge = |grid: &ScreenCollisionGrid, i: usize| {
+    // `test_overlap` is what the box is tested with; it claims with its own.
+    let judge = |grid: &ScreenCollisionGrid, i: usize, test_overlap: Overlap| {
         let c = &candidates[i * CANDIDATE_STRIDE..(i + 1) * CANDIDATE_STRIDE];
         let overlap = overlap_from_code(c[11]);
         let o = i * 4;
@@ -473,17 +497,48 @@ pub fn declutter_place(
         // labels need their full padded box free before they may appear.
         let claim = if placeable[i] {
             let shrink = if c[10] != 0.0 { hysteresis_px } else { 0.0 };
-            grid.test(padded[0], padded[1], padded[2], padded[3], shrink, overlap)
+            grid.test(
+                padded[0],
+                padded[1],
+                padded[2],
+                padded[3],
+                shrink,
+                test_overlap,
+            )
         } else {
             Claim::OutsideArea
         };
         Judged {
-            fits: claim == Claim::Claimed || overlap == Overlap::Always,
+            fits: claim == Claim::Claimed || test_overlap == Overlap::Always,
             claims: claim == Claim::Claimed && c[12] == 0.0,
             standalone: c[21] != 0.0,
             padded,
             overlap,
         }
+    };
+
+    // The row of a label's group it is placed with, judged. MapLibre's
+    // placement passes: every row first as if the label could overlap
+    // nothing, then, if it may overlap, with its own mode. The row in use
+    // leads, so a label only moves when it must; if none fits, it stays.
+    let choose = |grid: &ScreenCollisionGrid, i: usize| {
+        let c = &candidates[i * CANDIDATE_STRIDE..(i + 1) * CANDIDATE_STRIDE];
+        let rows = i..i + c[28] as usize;
+        let overlap = overlap_from_code(c[11]);
+        if rows.len() == 1 {
+            return (i, judge(grid, i, overlap));
+        }
+        let passes = if overlap == Overlap::Never {
+            &[Overlap::Never][..]
+        } else {
+            &[Overlap::Never, overlap][..]
+        };
+        passes
+            .iter()
+            .flat_map(|&pass| rows.clone().map(move |row| (row, pass)))
+            .map(|(row, pass)| (row, judge(grid, row, pass)))
+            .find(|(_, judged)| judged.fits)
+            .unwrap_or_else(|| (i, judge(grid, i, overlap)))
     };
 
     let mut grid = ScreenCollisionGrid::new(width_px, height_px);
@@ -501,16 +556,19 @@ pub fn declutter_place(
         // A label and its billboard are both judged before either claims
         // space, so they never collide with each other, and each one shows
         // only if its partner does too, unless it is standalone.
-        let mut a = judge(&grid, i);
-        let mut pair = partners[i].map(|p| (p, judge(&grid, p)));
-        if let Some((_, b)) = &mut pair {
-            let fits_a = a.fits;
-            a.fits &= b.fits || a.standalone;
+        done[i] = true;
+        let mut a = choose(&grid, i);
+        let mut b = partners[i].map(|p| {
+            done[p] = true;
+            choose(&grid, p)
+        });
+        if let Some((_, b)) = &mut b {
+            let fits_a = a.1.fits;
+            a.1.fits &= b.fits || a.1.standalone;
             b.fits &= fits_a || b.standalone;
         }
-        for (k, j) in [Some((i, a)), pair].into_iter().flatten() {
-            done[k] = true;
-            hidden[k] = u8::from(!j.fits);
+        for (row, j) in [Some(a), b].into_iter().flatten() {
+            hidden[row] = u8::from(!j.fits);
             if j.fits && j.claims {
                 let [min_x, min_y, max_x, max_y] = j.padded;
                 grid.insert(min_x, min_y, max_x, max_y, j.overlap);
@@ -549,7 +607,7 @@ fn pair_partners(candidates: &[f64]) -> Vec<Option<usize>> {
     for i in 0..n {
         let c = &candidates[i * CANDIDATE_STRIDE..(i + 1) * CANDIDATE_STRIDE];
         let role = c[20] as usize;
-        if role == 0 {
+        if role == 0 || c[28] == 0.0 {
             continue;
         }
         let key = [c[18], c[19]].map(f64::to_bits);
@@ -687,6 +745,10 @@ mod tests {
             0.0, // flatFacing
             1.0, // rotateWithCamera
             0.0, // rotation
+            0.0, // translateX
+            0.0, // translateY
+            0.0, // translateMap
+            1.0, // variants
         ]
     }
 
@@ -1331,5 +1393,155 @@ mod tests {
             Claim::Claimed
         );
         assert_eq!(claim(&mut g, 100.0, 10.0, 140.0, 30.0, 0.0), Claim::Claimed);
+    }
+    #[test]
+    fn viewport_translate_moves_the_box_in_screen_pixels() {
+        let ctx = context_90();
+        let mut c = proj_candidate(-100.0, 0.0, -10.0, 10.0, -5.0, 5.0, false);
+        let mut out = [0.0; 4];
+        c[25] = 12.0;
+        c[26] = -7.0;
+        assert!(project_candidate(&c, &ctx, &mut out));
+        assert!((out[0] - 402.0).abs() < 1e-3);
+        assert!((out[1] - 288.0).abs() < 1e-3);
+        assert!((out[2] - 422.0).abs() < 1e-3);
+        assert!((out[3] - 298.0).abs() < 1e-3);
+    }
+
+    /// The `place` camera turned a quarter about its view axis: screen right is
+    /// world -Z (south at the anchor) and screen up is world +Y (east).
+    fn turned_context<'a>(view: &'a [f64], proj: &'a [f64]) -> ProjectionContext<'a> {
+        let (_, _, cx, cy, cz, near, w, h, fov) = camera();
+        ProjectionContext {
+            view,
+            proj,
+            camera_x: cx,
+            camera_y: cy,
+            camera_z: cz,
+            near,
+            width_px: w,
+            height_px: h,
+            fov_rad: fov,
+        }
+    }
+
+    #[test]
+    fn map_translate_turns_with_the_camera_heading() {
+        let (_, proj, ..) = camera();
+        #[rustfmt::skip]
+        let world = [
+            0.0, 0.0, -1.0, 0.0,
+            0.0, 1.0, 0.0, 0.0,
+            1.0, 0.0, 0.0, 0.0,
+            2.0 * R, 0.0, 0.0, 1.0,
+        ];
+        let view = invert_rigid(&world);
+        let ctx = turned_context(&view, &proj);
+
+        let mut c = label(R, 0.0, 0.0, 0.0, false);
+        let mut base = [0.0; 4];
+        project_candidate(&c, &ctx, &mut base);
+
+        // 10 px east, which this camera shows as screen up.
+        c[25] = 10.0;
+        c[27] = 1.0;
+        let mut out = [0.0; 4];
+        project_candidate(&c, &ctx, &mut out);
+        assert!((out[0] - base[0]).abs() < 1e-6);
+        assert!((out[1] - (base[1] - 10.0)).abs() < 1e-6);
+
+        // Anchored to the viewport, the same translate stays screen right.
+        c[27] = 0.0;
+        project_candidate(&c, &ctx, &mut out);
+        assert!((out[0] - (base[0] + 10.0)).abs() < 1e-6);
+        assert!((out[1] - base[1]).abs() < 1e-6);
+    }
+
+    /// A label's variable-anchor rows as the manager packs them: the group
+    /// size on the first row, `0` on the rest.
+    fn variants<const K: usize>(
+        mut rows: [[f64; CANDIDATE_STRIDE]; K],
+    ) -> [[f64; CANDIDATE_STRIDE]; K] {
+        for (k, row) in rows.iter_mut().enumerate() {
+            row[28] = if k == 0 { K as f64 } else { 0.0 };
+        }
+        rows
+    }
+
+    /// A high-priority label covering the screen x range `[min_x, max_x]`
+    /// around the anchor, and a two-row label whose first row overlaps it
+    /// and second row sits clear to the left.
+    fn blocked_label(min_x: f64, max_x: f64, is_shown: bool) -> Vec<[f64; CANDIDATE_STRIDE]> {
+        let mut blocker = label(R, 0.0, 0.0, 5.0, false);
+        blocker[4] = min_x;
+        blocker[5] = max_x;
+        let mut left = label(R, 0.0, 0.0, 1.0, false);
+        left[4] = -60.0;
+        left[5] = -40.0;
+        let [current, left] = variants([label(R, 0.0, 0.0, 1.0, is_shown), left]);
+        vec![blocker, current, left]
+    }
+
+    #[test]
+    fn a_blocked_label_takes_its_next_anchor() {
+        assert_eq!(place(&blocked_label(5.0, 30.0, false)), vec![0, 1, 0]);
+    }
+
+    #[test]
+    fn a_label_with_a_free_anchor_stays_there() {
+        assert_eq!(place(&blocked_label(100.0, 130.0, false)), vec![0, 0, 1]);
+    }
+
+    #[test]
+    fn a_shown_label_keeps_its_anchor_under_a_marginal_overlap() {
+        // 4 px of overlap, inside the hysteresis shrink.
+        assert_eq!(place(&blocked_label(10.0, 30.0, true)), vec![0, 0, 1]);
+        assert_eq!(place(&blocked_label(10.0, 30.0, false)), vec![0, 1, 0]);
+    }
+
+    #[test]
+    fn a_label_blocked_at_every_anchor_is_hidden() {
+        assert_eq!(place(&blocked_label(-70.0, 30.0, false)), vec![0, 1, 1]);
+    }
+
+    #[test]
+    fn an_overlapping_label_still_prefers_a_free_anchor() {
+        let mut rows = blocked_label(5.0, 30.0, false);
+        rows[1] = with_overlap(rows[1], Overlap::Always, false);
+        rows[2] = with_overlap(rows[2], Overlap::Always, false);
+        assert_eq!(place(&rows), vec![0, 1, 0]);
+        // With every anchor blocked it overlaps at the one in use.
+        let mut rows = blocked_label(-70.0, 30.0, false);
+        rows[1] = with_overlap(rows[1], Overlap::Always, false);
+        rows[2] = with_overlap(rows[2], Overlap::Always, false);
+        assert_eq!(place(&rows), vec![0, 0, 1]);
+    }
+
+    #[test]
+    fn a_billboard_shows_with_the_anchor_its_label_takes() {
+        let mut rows = blocked_label(5.0, 30.0, false);
+        rows[1] = paired(rows[1], 7.0, 3.0, LABEL, false);
+        rows[2] = paired(rows[2], 7.0, 3.0, LABEL, false);
+        let mut icon = paired(label(R, 0.0, 0.0, 1.0, false), 7.0, 3.0, BILLBOARD, false);
+        icon[6] = -40.0;
+        icon[7] = -20.0;
+        rows.push(icon);
+        assert_eq!(place(&rows), vec![0, 1, 0, 0]);
+        // Blocked at every anchor, the label takes its billboard down.
+        rows[0][4] = -70.0;
+        assert_eq!(place(&rows), vec![0, 1, 1, 1]);
+    }
+
+    #[test]
+    fn a_translated_label_collides_where_it_is_drawn() {
+        // Two labels 40 px apart; moving the second 40 px back onto the first
+        // makes them collide.
+        let a = label(R, 0.0, 0.0, 1.0, false);
+        let mut b = label(R, 0.0, 0.0, 0.0, false);
+        b[4] = 30.0;
+        b[5] = 50.0;
+        assert_eq!(place(&[a, b]), vec![0, 0]);
+        b[25] = -40.0;
+        assert_eq!(place(&[a, b]), vec![0, 1]);
     }
 }

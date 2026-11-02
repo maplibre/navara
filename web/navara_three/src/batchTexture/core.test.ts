@@ -614,3 +614,60 @@ describe("orientation and rotation attributes", () => {
     expect(material.userData.defines).toBeUndefined();
   });
 });
+
+describe("anchor and offset attributes", () => {
+  const SPRITE_SCALARS = [
+    "height",
+    "size",
+    "rotation",
+    "orientation",
+    "anchor",
+    "offsetX",
+    "offsetY",
+  ] as const;
+  const defaults = {
+    rotation: 0,
+    flatFacing: false,
+    rotateWithCamera: true,
+    anchor: 7,
+    offset: [3, -4] as const,
+  };
+
+  test("a new anchor slot backfills the material's anchor code", () => {
+    const { material } = setupBatchMaterial(4, [...SPRITE_SCALARS]);
+    expect(updateBatchAttribute(material, 1, "anchor", 0, defaults)).toBe(true);
+
+    expect(material.userData.defines.USE_BATCH_ANCHOR).toBe(true);
+    expect(readBatchScalar(material, 1, "anchor")).toBe(0);
+    expect(readBatchScalar(material, 2, "anchor")).toBe(7);
+  });
+
+  test("the offset halves are allocated and backfilled together", () => {
+    const { material } = setupBatchMaterial(4, [...SPRITE_SCALARS]);
+    updateBatchAttribute(material, 0, "offset", [10, 20], defaults);
+
+    expect(material.userData.defines.USE_BATCH_OFFSET).toBe(true);
+    expect(readBatchScalar(material, 0, "offsetX")).toBe(10);
+    expect(readBatchScalar(material, 0, "offsetY")).toBe(20);
+    expect(readBatchScalar(material, 3, "offsetX")).toBe(3);
+    expect(readBatchScalar(material, 3, "offsetY")).toBe(-4);
+  });
+
+  test("a non-finite offset component falls back to zero", () => {
+    const { material } = setupBatchMaterial(4, [...SPRITE_SCALARS]);
+    updateBatchAttribute(material, 0, "offset", [Number.NaN, 5]);
+    expect(readBatchScalar(material, 0, "offsetX")).toBe(0);
+    expect(readBatchScalar(material, 0, "offsetY")).toBe(5);
+  });
+
+  test("text does not declare the slots, so the write is ignored", () => {
+    const { material } = setupBatchMaterial(4, [
+      "height",
+      "size",
+      "rotation",
+      "orientation",
+    ]);
+    expect(updateBatchAttribute(material, 0, "anchor", 0)).toBe(false);
+    expect(updateBatchAttribute(material, 0, "offset", [1, 1])).toBe(false);
+  });
+});

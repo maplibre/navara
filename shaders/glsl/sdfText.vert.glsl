@@ -143,8 +143,11 @@ uniform bool uRotateWithCamera;
 uniform float uRotation;
 uniform float uFovRad;
 uniform float uScreenHeightPx;
-uniform vec2 uCenter;
 uniform bool uShowBackground;
+// Screen-pixel translate of the whole label, x right and y down; see
+// nvr_translateOffset.
+uniform vec2 uTranslate;
+uniform bool uTranslateViewport;
 
 // Varyings
 varying vec2 vAtlasUv;
@@ -215,8 +218,10 @@ void main() {
 
     float fontSize = max(batchSize, 0.0);
     float textWidth = box.x;
-    float textHeight = box.y;
     vec2 bgYBounds = box.zw;
+    // Where the anchor and offset move the block, in ems (see anchorShiftEm
+    // in layout.ts).
+    vec2 shift = vec2(posHigh.w, posLow.w);
 
     vOpacity = nvr_vOpacity * (1.0 - declutterHide);
 
@@ -259,8 +264,14 @@ void main() {
     if (!uSizeInMeters) {
         scaleFactor = nvr_pxToWorld(fontSize, uFovRad, uScreenHeightPx, vec3(0.0, 0.0, mvPosition.z), vec3(0.0, 0.0, 0.0));
     }
-
-    vec2 center = clamp(uCenter, vec2(-0.5), vec2(0.5)); // Ensure center is within the bounds of the sprite
+    // Added to the final position, after the along-line walk has measured the
+    // path from the true anchor.
+    vec3 translateOffset = nvr_translateOffset(
+        absTransformed,
+        uTranslate,
+        uTranslateViewport,
+        nvr_pxToWorld(1.0, uFovRad, uScreenHeightPx, vec3(0.0, 0.0, mvPosition.z), vec3(0.0, 0.0, 0.0))
+    );
 
     vec3 axisRight;
     vec3 axisUp;
@@ -310,7 +321,7 @@ void main() {
         // reading as a word. Only the joins between words take up the curvature.
         //
         // Quads are never bent vertex by vertex either way: that would shear them.
-        wordCenterEm = glyphWordCenter - center.x * textWidth;
+        wordCenterEm = glyphWordCenter + shift.x;
         float sMeters = wordCenterEm * scaleFactor * dir;
 
         vec3 eastWorld, northWorld, normalWorld;
@@ -398,9 +409,7 @@ void main() {
         // rides in glyphOffset.x (start) / glyphSize.x (end); mix() returns
         // exactly those at the corners, so neighbouring strips share edges.
         float bgU = mix(glyphOffset.x, glyphSize.x, position.x + 0.5);
-        vec2 bgLocalPos = vec2(bgU, position.y + 0.5) * vec2(textWidth, bgHeight) + vec2(0.0, bgYBounds.x);
-        bgLocalPos.x -= center.x * textWidth;
-        bgLocalPos.y -= center.y * textHeight;
+        vec2 bgLocalPos = vec2(bgU, position.y + 0.5) * vec2(textWidth, bgHeight) + vec2(0.0, bgYBounds.x) + shift;
 
         vec4 newMvPosition = mvPosition + vec4(nvr_quadOffset(
             bgLocalPos * scaleFactor,
@@ -411,6 +420,7 @@ void main() {
             addHeight
         ), 0.0);
 
+        newMvPosition.xyz += translateOffset;
         gl_Position = projectionMatrix * newMvPosition;
 
         // Glyph outlines draw over the background only because they sit at
@@ -437,11 +447,7 @@ void main() {
         // position.xy is the unit quad [-0.5, 0.5].
         // glyphOffset is the glyph bbox min corner (left/bottom), so remap
         // the centered quad to [0,1] before applying glyph size/offset.
-        vec2 localPos = (position.xy + vec2(0.5)) * glyphSize + glyphOffset;
-
-        // Apply centering: shift entire text block by anchor point
-        localPos.x -= center.x * textWidth;
-        localPos.y -= center.y * textHeight;
+        vec2 localPos = (position.xy + vec2(0.5)) * glyphSize + glyphOffset + shift;
 
         // The walk placed this glyph's WORD on the curve, so what is left is
         // the offset from the word's centre, laid along the word's single
@@ -454,8 +460,8 @@ void main() {
             // path_box bounds the spun glyphs about the same pivot.
             if (nvr_batchRotation != 0.0) {
                 vec2 pivot = vec2(
-                    glyphOffset.x + 0.5 * glyphSize.x - center.x * textWidth - wordCenterEm,
-                    0.5 * (bgYBounds.x + bgYBounds.y) - center.y * textHeight
+                    glyphOffset.x + 0.5 * glyphSize.x + shift.x - wordCenterEm,
+                    0.5 * (bgYBounds.x + bgYBounds.y) + shift.y
                 );
                 vec2 d = localPos - pivot;
                 float s = sin(nvr_batchRotation);
@@ -473,6 +479,7 @@ void main() {
             absTransformed,
             addHeight
         ), 0.0);
+        newMvPosition.xyz += translateOffset;
 
         gl_Position = projectionMatrix * newMvPosition;
 

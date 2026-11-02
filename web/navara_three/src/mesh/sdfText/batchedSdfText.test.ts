@@ -12,7 +12,9 @@ import {
   readBatchVec3,
   unpackOrientation,
 } from "../../batchTexture";
+import type { DeclutterCandidate } from "../../declutter/types";
 import type { EventContext } from "../../event/context";
+import type { Anchor, VariableAnchor } from "../../type";
 
 import { BatchedSdfTextMesh } from "./batchedSdfText";
 import { LabelRow, type LabelDataTexture } from "./labelData";
@@ -307,6 +309,247 @@ describe("BatchedSdfTextMesh letter spacing", () => {
   });
 });
 
+// "AB" lays out 1 em wide in a font whose line box spans [-0.2, 0.8] em, so
+// a centred label shifts by (-0.5, -0.3).
+describe("BatchedSdfTextMesh anchor and offset", () => {
+  const shiftOf = (mesh: BatchedSdfTextMesh, slot: number) => [
+    store(mesh).getComponent(slot, LabelRow.POSITION_HIGH, 3),
+    store(mesh).getComponent(slot, LabelRow.POSITION_LOW, 3),
+  ];
+  const labels = (mesh: BatchedSdfTextMesh) =>
+    (mesh as unknown as { _labels: unknown[] })._labels;
+
+  it("writes the centred block's shift to the position rows", () => {
+    const { mesh } = makeMesh();
+    mesh.setTextByBatchIndex(0, "AB");
+    const [x, y] = shiftOf(mesh, 0);
+    expect(x).toBeCloseTo(-0.5);
+    expect(y).toBeCloseTo(-0.3);
+  });
+
+  it("moves a feature's label by its own anchor and offset without re-shaping", () => {
+    const { mesh, fontManager } = makeMesh();
+    mesh.setTextByBatchIndex(0, "AB");
+    mesh.setTextByBatchIndex(1, "AB");
+    const shapes = fontManager.shapeText.mock.calls.length;
+
+    mesh.setFeatureAnchorByBatchIndex(0, "top-left");
+    mesh.setFeatureOffsetByBatchIndex(0, 1, 2);
+    const [x, y] = shiftOf(mesh, 0);
+    expect(x).toBeCloseTo(1);
+    expect(y).toBeCloseTo(-2.8);
+    expect(fontManager.shapeText.mock.calls.length).toBe(shapes);
+    // The other feature keeps the material's placement.
+    expect(shiftOf(mesh, 1)[0]).toBeCloseTo(-0.5);
+  });
+
+  it("ignores a per-feature anchor that names no anchor", () => {
+    const { mesh } = makeMesh();
+    mesh.setTextByBatchIndex(0, "AB");
+    mesh.setFeatureAnchorByBatchIndex(0, "middle" as Anchor);
+    expect(shiftOf(mesh, 0)[0]).toBeCloseTo(-0.5);
+  });
+
+  it("lays out once when the anchor and text change in one evaluation", () => {
+    const { mesh, fontManager } = makeMesh(material({ textAlign: "auto" }));
+    mesh.setTextByBatchIndex(0, "AB");
+    const shapes = fontManager.shapeText.mock.calls.length;
+    mesh.deferLayout(() => {
+      mesh.setFeatureAnchorByBatchIndex(0, "left");
+      mesh.setTextByBatchIndex(0, "BA");
+    });
+    expect(fontManager.shapeText.mock.calls.length).toBe(shapes + 1);
+    expect(shiftOf(mesh, 0)[0]).toBeCloseTo(0);
+  });
+
+  it("lays out a deferred anchor change once the evaluation ends", () => {
+    const { mesh, fontManager } = makeMesh(material({ textAlign: "auto" }));
+    mesh.setTextByBatchIndex(0, "AB");
+    const shapes = fontManager.shapeText.mock.calls.length;
+    mesh.deferLayout(() => {
+      mesh.setFeatureAnchorByBatchIndex(0, "right");
+      expect(fontManager.shapeText.mock.calls.length).toBe(shapes);
+    });
+    expect(fontManager.shapeText.mock.calls.length).toBe(shapes + 1);
+    expect(shiftOf(mesh, 0)[0]).toBeCloseTo(-1);
+  });
+
+  it("keeps the shift when the anchor position is rewritten", () => {
+    const { mesh } = makeMesh();
+    mesh.setTextByBatchIndex(0, "AB");
+    mesh.setFeatureAnchorByBatchIndex(0, "right");
+    (mesh as unknown as { _writeAnchor(r: unknown): void })._writeAnchor(
+      labels(mesh)[0],
+    );
+    expect(shiftOf(mesh, 0)[0]).toBeCloseTo(-1);
+  });
+
+  it("re-lays out on an anchor change only when the justification follows it", () => {
+    const { mesh, fontManager } = makeMesh(material({ textAlign: "auto" }));
+    mesh.setTextByBatchIndex(0, "AB");
+    let shapes = fontManager.shapeText.mock.calls.length;
+    mesh.setFeatureAnchorByBatchIndex(0, "left");
+    expect(fontManager.shapeText.mock.calls.length).toBe(shapes + 1);
+
+    mesh.setFeatureTextAlignByBatchIndex(0, "left");
+    shapes = fontManager.shapeText.mock.calls.length;
+    mesh.setFeatureAnchorByBatchIndex(0, "top-left");
+    expect(fontManager.shapeText.mock.calls.length).toBe(shapes);
+  });
+
+  it("keeps per-feature placement through an unchanged material", async () => {
+    const { mesh } = makeMesh();
+    mesh.setTextByBatchIndex(0, "AB");
+    mesh.setFeatureAnchorByBatchIndex(0, "left");
+
+    await mesh._update(textMeshEvent(material()));
+    expect(shiftOf(mesh, 0)[0]).toBeCloseTo(0);
+  });
+
+  it("applies a changed material anchor and offset to every label", async () => {
+    const { mesh } = makeMesh();
+    mesh.setTextByBatchIndex(0, "AB");
+    mesh.setTextByBatchIndex(1, "AB");
+    mesh.setFeatureAnchorByBatchIndex(0, "left");
+
+    await mesh._update(
+      textMeshEvent(
+        material({
+          anchor: "bottom",
+          offset: { x: 0, y: -1 },
+        } as unknown as Partial<NavaraTextMaterial>),
+      ),
+    );
+    for (const slot of [0, 1]) {
+      const [x, y] = shiftOf(mesh, slot);
+      expect(x).toBeCloseTo(-0.5);
+      expect(y).toBeCloseTo(0.2 + 1);
+    }
+  });
+});
+
+// Same font as above: "AB" is 1 em wide in a line box spanning [-0.2, 0.8]
+// em, so a left anchor shifts it by (0, -0.3) and a right one by (-1, -0.3).
+describe("BatchedSdfTextMesh variable anchors", () => {
+  type Candidate = DeclutterCandidate & { variants: number; variant: number };
+  const shiftOf = (mesh: BatchedSdfTextMesh) => [
+    store(mesh).getComponent(0, LabelRow.POSITION_HIGH, 3),
+    store(mesh).getComponent(0, LabelRow.POSITION_LOW, 3),
+  ];
+  const sides: VariableAnchor[] = [
+    { anchor: "left" },
+    { anchor: "right", offset: { x: 0, y: 1 } },
+    { anchor: "center" },
+  ];
+  function labelWithSides(mat = material()) {
+    const made = makeMesh(mat);
+    made.mesh.setTextByBatchIndex(0, "AB");
+    made.mesh.setFeatureVariableAnchorsByBatchIndex(0, sides);
+    return made;
+  }
+
+  it("places a label by its first anchor until declutter picks another", () => {
+    const { mesh } = labelWithSides();
+    expect(shiftOf(mesh)[0]).toBeCloseTo(0);
+
+    mesh.applyDeclutter(0, false, 1);
+    const [x, y] = shiftOf(mesh);
+    expect(x).toBeCloseTo(-1);
+    expect(y).toBeCloseTo(-1.3);
+  });
+
+  it("keeps a hidden label at the anchor it had", () => {
+    const { mesh } = labelWithSides();
+    mesh.applyDeclutter(0, true, 1);
+    expect(shiftOf(mesh)[0]).toBeCloseTo(0);
+  });
+
+  it("offers declutter one row per anchor, the one in use first", () => {
+    const { mesh } = labelWithSides();
+    mesh.applyDeclutter(0, false, 2);
+    const out: DeclutterCandidate[] = [];
+    mesh.collectDeclutterCandidates(out);
+
+    const rows = out as Candidate[];
+    expect(rows.map((c) => [c.variants, c.variant, c.isShown])).toEqual([
+      [3, 2, true],
+      [0, 0, false],
+      [0, 1, false],
+    ]);
+    // Each row is the block moved by its own anchor, at 16 px.
+    expect(rows.map((c) => c.minX)).toEqual([-8, 0, -16]);
+    // The right anchor's offset is 1 em down.
+    expect(rows[2].minY - rows[1].minY).toBeCloseTo(-16);
+  });
+
+  it("stays at the anchor in use when the list is evaluated again", () => {
+    const { mesh } = labelWithSides();
+    mesh.applyDeclutter(0, false, 1);
+    mesh.setFeatureVariableAnchorsByBatchIndex(0, [
+      { anchor: "right" },
+      { anchor: "left" },
+    ]);
+    const [x, y] = shiftOf(mesh);
+    expect(x).toBeCloseTo(-1);
+    expect(y).toBeCloseTo(-0.3);
+  });
+
+  it("re-lays out a move only when the justification follows the anchor", () => {
+    const auto = labelWithSides(material({ textAlign: "auto" }));
+    let shapes = auto.fontManager.shapeText.mock.calls.length;
+    auto.mesh.applyDeclutter(0, false, 1);
+    expect(auto.fontManager.shapeText.mock.calls.length).toBe(shapes + 1);
+
+    const centred = labelWithSides();
+    shapes = centred.fontManager.shapeText.mock.calls.length;
+    centred.mesh.applyDeclutter(0, false, 1);
+    expect(centred.fontManager.shapeText.mock.calls.length).toBe(shapes);
+  });
+
+  it("drops per-feature entries that name no anchor", () => {
+    const { mesh } = makeMesh();
+    mesh.setTextByBatchIndex(0, "AB");
+    mesh.setFeatureVariableAnchorsByBatchIndex(0, [
+      { anchor: "Top" as Anchor },
+      ...sides,
+    ]);
+    const out: DeclutterCandidate[] = [];
+    mesh.collectDeclutterCandidates(out);
+    expect(out).toHaveLength(3);
+    expect(shiftOf(mesh)[0]).toBeCloseTo(0);
+  });
+
+  it("keeps a layer that may overlap freely in declutter for its anchors", () => {
+    const { mesh } = makeMesh(
+      material({
+        overlap: "always",
+        ignorePlacement: true,
+        standalone: true,
+      } as unknown as Partial<NavaraTextMaterial>),
+    );
+    mesh.setTextByBatchIndex(0, "AB");
+    const out: DeclutterCandidate[] = [];
+    mesh.collectDeclutterCandidates(out);
+    expect(out).toHaveLength(0);
+
+    mesh.setFeatureVariableAnchorsByBatchIndex(0, sides);
+    mesh.collectDeclutterCandidates(out);
+    expect(out).toHaveLength(3);
+    // Shown before it joined, so the pass takes it as an incumbent.
+    expect(out[0].isShown).toBe(true);
+  });
+
+  it("takes over the anchor a swapped-out tile showed its label at", () => {
+    const { mesh } = labelWithSides();
+    (mesh.ctx as { declutter?: unknown }).declutter = {
+      markDirty: vi.fn(),
+      recentlyShownVariant: vi.fn(() => 1),
+    };
+    mesh.setActive(true);
+    expect(shiftOf(mesh)[0]).toBeCloseTo(-1);
+  });
+});
+
 // The evaluator applies `show` before `text`. A show:false for a feature with
 // no label yet must survive until the text setter creates the label — labels
 // stay lazily allocated, so the intent is parked, not applied.
@@ -524,7 +767,7 @@ describe("BatchedSdfTextMesh deferred font preparation", () => {
       register: vi.fn(),
       unregister: vi.fn(),
       markDirty: vi.fn(),
-      wasRecentlyShown: vi.fn(() => false),
+      recentlyShownVariant: vi.fn(() => undefined),
     };
     const mesh = new BatchedSdfTextMesh(
       makeCtx(fontManager, declutter),

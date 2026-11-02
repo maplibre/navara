@@ -111,6 +111,55 @@ fn parse_overlap(value: &Option<String>) -> Option<navara_material::Overlap> {
     }
 }
 
+/// Parse a JS-facing anchor name, warning on an unknown value so the caller
+/// keeps the material's current value.
+fn parse_anchor(value: &Option<String>) -> Option<navara_material::Anchor> {
+    let name = value.as_ref()?;
+    match navara_material::Anchor::parse(name) {
+        Some(a) => Some(a),
+        None => {
+            bevy_log::warn!(
+                "anchor: unknown value {name:?} (expected \"center\", \"left\", \"right\", \"top\", \"bottom\", \"top-left\", \"top-right\", \"bottom-left\" or \"bottom-right\")"
+            );
+            None
+        }
+    }
+}
+
+/// Convert JS-facing variable anchors, dropping (with a warning from
+/// [`parse_anchor`]) any entry whose anchor is unknown.
+fn parse_variable_anchors(
+    value: &Option<Vec<VariableAnchor>>,
+) -> Option<Vec<navara_material::VariableAnchor>> {
+    let entries = value.as_ref()?;
+    Some(
+        entries
+            .iter()
+            .filter_map(|entry| {
+                Some(navara_material::VariableAnchor {
+                    anchor: parse_anchor(&Some(entry.anchor.clone()))?,
+                    offset: entry.offset.map_or(navara_math::Vec2::ZERO, Into::into),
+                })
+            })
+            .collect(),
+    )
+}
+
+/// Parse a JS-facing translate frame name, warning on an unknown value so the
+/// caller keeps the material's current value.
+fn parse_translate_anchor(value: &Option<String>) -> Option<navara_material::TranslateAnchor> {
+    let name = value.as_ref()?;
+    match navara_material::TranslateAnchor::parse(name) {
+        Some(a) => Some(a),
+        None => {
+            bevy_log::warn!(
+                "translateAnchor: unknown value {name:?} (expected \"map\" or \"viewport\")"
+            );
+            None
+        }
+    }
+}
+
 #[wasm_bindgen]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PointMaterial {
@@ -138,7 +187,7 @@ pub struct PointMaterial {
     #[serde(rename = "rotateWithCamera")]
     pub rotate_with_camera: Option<bool>,
     /// Rotation of the point within its own plane, about its anchor point, in
-    /// degrees, clockwise seen from the front. `center` decides where inside
+    /// degrees, clockwise seen from the front. `anchor` decides where inside
     /// the quad the pivot sits. Defaults to `0.0`.
     pub rotation: Option<f32>,
     /// How anchors are derived from line and polygon geometry: `"point"` (the
@@ -163,9 +212,25 @@ pub struct PointMaterial {
     #[wasm_bindgen(js_name = rotateToLine)]
     #[serde(rename = "rotateToLine")]
     pub rotate_to_line: Option<bool>,
-    /// anchor point of the sprite, range is (-0.5, -0.5) to (0.5, 0.5).
-    /// Default is (0.0, 0.0) which means the center of the sprite.
-    pub center: Option<Vec2>,
+    /// Part of the quad placed at the anchor point: `"center"` (default),
+    /// `"left"`, `"right"`, `"top"`, `"bottom"`, `"top-left"`, `"top-right"`,
+    /// `"bottom-left"` or `"bottom-right"`, as MapLibre's `icon-anchor`.
+    #[wasm_bindgen(getter_with_clone)]
+    pub anchor: Option<String>,
+    /// Shift from the anchor point, x right and y down, in the unit of `size`
+    /// (meters when `sizeInMeters`, pixels otherwise). Lies in the quad's own
+    /// plane, so it turns with `rotation`. Defaults to `(0, 0)`.
+    pub offset: Option<Vec2>,
+    /// Screen-pixel shift of the drawn quad, x right and y down, applied after
+    /// projection so it stays the same number of pixels at any distance, as
+    /// MapLibre's `icon-translate`. Defaults to `(0, 0)`.
+    pub translate: Option<Vec2>,
+    /// Frame `translate` is measured in: `"map"` (default) turns it with the
+    /// camera heading so +x points east and +y south; `"viewport"` keeps it on
+    /// the screen axes. MapLibre's `icon-translate-anchor`.
+    #[wasm_bindgen(getter_with_clone, js_name = translateAnchor)]
+    #[serde(rename = "translateAnchor")]
+    pub translate_anchor: Option<String>,
     pub height: Option<f32>,
     #[wasm_bindgen(js_name = sizeInMeters)]
     #[serde(rename = "sizeInMeters")]
@@ -258,7 +323,11 @@ impl From<PointMaterial> for navara_material::PointMaterial {
             spacing: val.spacing.unwrap_or(default.spacing),
             rotate_to_line: val.rotate_to_line.unwrap_or(default.rotate_to_line),
             color: val.color.unwrap_or(default.color),
-            center: val.center.unwrap_or(default.center.into()).into(),
+            anchor: parse_anchor(&val.anchor).unwrap_or(default.anchor),
+            offset: val.offset.unwrap_or(default.offset.into()).into(),
+            translate: val.translate.unwrap_or(default.translate.into()).into(),
+            translate_anchor: parse_translate_anchor(&val.translate_anchor)
+                .unwrap_or(default.translate_anchor),
             height: val.height.unwrap_or(default.height),
             size_in_meters: val.size_in_meters.unwrap_or(default.size_in_meters),
             clamp_to_ground: val.clamp_to_ground.unwrap_or(default.clamp_to_ground),
@@ -294,7 +363,10 @@ impl<'a> From<&'a navara_material::PointMaterial> for PointMaterial {
             spacing: Some(value.spacing),
             rotate_to_line: Some(value.rotate_to_line),
             color: Some(value.color),
-            center: Some(value.center.into()),
+            anchor: Some(value.anchor.as_str().to_string()),
+            offset: Some(value.offset.into()),
+            translate: Some(value.translate.into()),
+            translate_anchor: Some(value.translate_anchor.as_str().to_string()),
             height: Some(value.height),
             size_in_meters: Some(value.size_in_meters),
             clamp_to_ground: Some(value.clamp_to_ground),
@@ -329,7 +401,11 @@ impl PointMaterial {
             placement: parse_placement(&self.placement).unwrap_or(other.placement),
             spacing: self.spacing.unwrap_or(other.spacing),
             rotate_to_line: self.rotate_to_line.unwrap_or(other.rotate_to_line),
-            center: self.center.unwrap_or(other.center.into()).into(),
+            anchor: parse_anchor(&self.anchor).unwrap_or(other.anchor),
+            offset: self.offset.unwrap_or(other.offset.into()).into(),
+            translate: self.translate.unwrap_or(other.translate.into()).into(),
+            translate_anchor: parse_translate_anchor(&self.translate_anchor)
+                .unwrap_or(other.translate_anchor),
             height: self.height.unwrap_or(other.height),
             size_in_meters: self.size_in_meters.unwrap_or(other.size_in_meters),
             clamp_to_ground: self.clamp_to_ground.unwrap_or(other.clamp_to_ground),
@@ -388,7 +464,7 @@ pub struct BillboardMaterial {
     #[serde(rename = "rotateWithCamera")]
     pub rotate_with_camera: Option<bool>,
     /// Rotation of the sprite within its own plane, about its anchor point,
-    /// in degrees, clockwise seen from the front. `center` decides where
+    /// in degrees, clockwise seen from the front. `anchor` decides where
     /// inside the sprite the pivot sits. Defaults to `0.0`.
     pub rotation: Option<f32>,
     /// How anchors are derived from line and polygon geometry: `"point"` (the
@@ -414,9 +490,25 @@ pub struct BillboardMaterial {
     #[wasm_bindgen(js_name = rotateToLine)]
     #[serde(rename = "rotateToLine")]
     pub rotate_to_line: Option<bool>,
-    /// anchor point of the sprite, range is (-0.5, -0.5) to (0.5, 0.5).
-    /// Default is (0.0, 0.0) which means the center of the sprite.
-    pub center: Option<Vec2>,
+    /// Part of the quad placed at the anchor point: `"center"` (default),
+    /// `"left"`, `"right"`, `"top"`, `"bottom"`, `"top-left"`, `"top-right"`,
+    /// `"bottom-left"` or `"bottom-right"`, as MapLibre's `icon-anchor`.
+    #[wasm_bindgen(getter_with_clone)]
+    pub anchor: Option<String>,
+    /// Shift from the anchor point, x right and y down, in the unit of `size`
+    /// (meters when `sizeInMeters`, pixels otherwise). Lies in the quad's own
+    /// plane, so it turns with `rotation`. Defaults to `(0, 0)`.
+    pub offset: Option<Vec2>,
+    /// Screen-pixel shift of the drawn quad, x right and y down, applied after
+    /// projection so it stays the same number of pixels at any distance, as
+    /// MapLibre's `icon-translate`. Defaults to `(0, 0)`.
+    pub translate: Option<Vec2>,
+    /// Frame `translate` is measured in: `"map"` (default) turns it with the
+    /// camera heading so +x points east and +y south; `"viewport"` keeps it on
+    /// the screen axes. MapLibre's `icon-translate-anchor`.
+    #[wasm_bindgen(getter_with_clone, js_name = translateAnchor)]
+    #[serde(rename = "translateAnchor")]
+    pub translate_anchor: Option<String>,
     pub height: Option<f32>,
     #[wasm_bindgen(getter_with_clone)]
     pub url: Option<String>,
@@ -424,6 +516,13 @@ pub struct BillboardMaterial {
     #[serde(rename = "sizeInMeters")]
     /// Whether the size is specified in meters. If false, the size is in pixels. Default is true.
     pub size_in_meters: Option<bool>,
+    /// Whether `size` scales the image's own pixel height instead of being the
+    /// quad's height, like MapLibre's `icon-size`: `1` draws the image at its
+    /// natural size. `offset` keeps the unit `sizeInMeters` gives it. Default
+    /// is false.
+    #[wasm_bindgen(js_name = sizeRelativeToImage)]
+    #[serde(rename = "sizeRelativeToImage")]
+    pub size_relative_to_image: Option<bool>,
     #[wasm_bindgen(js_name = clampToGround)]
     #[serde(rename = "clampToGround")]
     pub clamp_to_ground: Option<bool>,
@@ -521,10 +620,17 @@ impl From<BillboardMaterial> for navara_material::BillboardMaterial {
             placement: parse_placement(&val.placement).unwrap_or(default.placement),
             spacing: val.spacing.unwrap_or(default.spacing),
             rotate_to_line: val.rotate_to_line.unwrap_or(default.rotate_to_line),
-            center: val.center.unwrap_or(default.center.into()).into(),
+            anchor: parse_anchor(&val.anchor).unwrap_or(default.anchor),
+            offset: val.offset.unwrap_or(default.offset.into()).into(),
+            translate: val.translate.unwrap_or(default.translate.into()).into(),
+            translate_anchor: parse_translate_anchor(&val.translate_anchor)
+                .unwrap_or(default.translate_anchor),
             height: val.height.unwrap_or(default.height),
             url: val.url.unwrap_or(default.url),
             size_in_meters: val.size_in_meters.unwrap_or(default.size_in_meters),
+            size_relative_to_image: val
+                .size_relative_to_image
+                .unwrap_or(default.size_relative_to_image),
             clamp_to_ground: val.clamp_to_ground.unwrap_or(default.clamp_to_ground),
             depth_test: val.depth_test.unwrap_or(default.depth_test),
             backface_culling: val.backface_culling.unwrap_or(default.backface_culling),
@@ -554,7 +660,10 @@ impl<'a> From<&'a navara_material::BillboardMaterial> for BillboardMaterial {
             show: Some(value.show),
             size: Some(value.size),
             color: Some(value.color),
-            center: Some(value.center.into()),
+            anchor: Some(value.anchor.as_str().to_string()),
+            offset: Some(value.offset.into()),
+            translate: Some(value.translate.into()),
+            translate_anchor: Some(value.translate_anchor.as_str().to_string()),
             billboard_facing: value.billboard_facing.map(|f| f.as_str().to_string()),
             rotate_with_camera: value.rotate_with_camera,
             rotation: Some(value.rotation),
@@ -564,6 +673,7 @@ impl<'a> From<&'a navara_material::BillboardMaterial> for BillboardMaterial {
             height: Some(value.height),
             url: Some(value.url.clone()),
             size_in_meters: Some(value.size_in_meters),
+            size_relative_to_image: Some(value.size_relative_to_image),
             clamp_to_ground: Some(value.clamp_to_ground),
             depth_test: Some(value.depth_test),
             backface_culling: Some(value.backface_culling),
@@ -602,10 +712,17 @@ impl BillboardMaterial {
             placement: parse_placement(&self.placement).unwrap_or(other.placement),
             spacing: self.spacing.unwrap_or(other.spacing),
             rotate_to_line: self.rotate_to_line.unwrap_or(other.rotate_to_line),
-            center: self.center.unwrap_or(other.center.into()).into(),
+            anchor: parse_anchor(&self.anchor).unwrap_or(other.anchor),
+            offset: self.offset.unwrap_or(other.offset.into()).into(),
+            translate: self.translate.unwrap_or(other.translate.into()).into(),
+            translate_anchor: parse_translate_anchor(&self.translate_anchor)
+                .unwrap_or(other.translate_anchor),
             height: self.height.unwrap_or(other.height),
             url: self.url.clone().unwrap_or(other.url.clone()),
             size_in_meters: self.size_in_meters.unwrap_or(other.size_in_meters),
+            size_relative_to_image: self
+                .size_relative_to_image
+                .unwrap_or(other.size_relative_to_image),
             clamp_to_ground: self.clamp_to_ground.unwrap_or(other.clamp_to_ground),
             depth_test: self.depth_test.unwrap_or(other.depth_test),
             backface_culling: self.backface_culling.unwrap_or(other.backface_culling),
@@ -630,6 +747,28 @@ impl BillboardMaterial {
     }
 }
 
+/// One placement a label may take, as an entry of MapLibre's
+/// `text-variable-anchor-offset`.
+#[wasm_bindgen]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VariableAnchor {
+    /// Part of the text block placed at the anchor point, as `anchor`.
+    #[wasm_bindgen(getter_with_clone)]
+    pub anchor: String,
+    /// Shift from the anchor point, x right and y down, in ems. Defaults to
+    /// `(0, 0)`.
+    pub offset: Option<Vec2>,
+}
+
+impl From<&navara_material::VariableAnchor> for VariableAnchor {
+    fn from(value: &navara_material::VariableAnchor) -> Self {
+        VariableAnchor {
+            anchor: value.anchor.as_str().to_string(),
+            offset: Some(value.offset.into()),
+        }
+    }
+}
+
 #[wasm_bindgen]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TextMaterial {
@@ -637,7 +776,35 @@ pub struct TextMaterial {
     /// size in pixels/meters (units are determined by `sizeInMeters`).
     pub size: Option<f32>,
     pub color: Option<u32>,
-    pub center: Option<Vec2>,
+    /// Part of the text block placed at the anchor point: `"center"`
+    /// (default), `"left"`, `"right"`, `"top"`, `"bottom"`, `"top-left"`,
+    /// `"top-right"`, `"bottom-left"` or `"bottom-right"`, as MapLibre's
+    /// `text-anchor`. The block is as wide as its widest line and one line
+    /// height tall per line.
+    #[wasm_bindgen(getter_with_clone)]
+    pub anchor: Option<String>,
+    /// Shift from the anchor point, x right and y down, in ems (multiples of
+    /// `size`), as MapLibre's `text-offset`. Lies in the label's own plane, so
+    /// it turns with `rotation`. Defaults to `(0, 0)`.
+    pub offset: Option<Vec2>,
+    /// Placements the declutter pass tries in order, keeping the first whose
+    /// box is free, as MapLibre's `text-variable-anchor-offset`. The one in
+    /// use is tried first, so a label only moves when it must. Overrides
+    /// `anchor` and `offset` when not empty, except along a line. Without
+    /// declutter the first is used.
+    #[wasm_bindgen(getter_with_clone, js_name = variableAnchors)]
+    #[serde(rename = "variableAnchors")]
+    pub variable_anchors: Option<Vec<VariableAnchor>>,
+    /// Screen-pixel shift of the drawn label, x right and y down, applied after
+    /// projection so it stays the same number of pixels at any distance, as
+    /// MapLibre's `text-translate`. Defaults to `(0, 0)`.
+    pub translate: Option<Vec2>,
+    /// Frame `translate` is measured in: `"map"` (default) turns it with the
+    /// camera heading so +x points east and +y south; `"viewport"` keeps it on
+    /// the screen axes. MapLibre's `text-translate-anchor`.
+    #[wasm_bindgen(getter_with_clone, js_name = translateAnchor)]
+    #[serde(rename = "translateAnchor")]
+    pub translate_anchor: Option<String>,
     /// Plane the label lies in: the screen (`"upright"`, never foreshortened)
     /// or the globe surface around its anchor (`"flat"`), following its
     /// curvature so it reads as painted on the surface. MapLibre's
@@ -652,7 +819,7 @@ pub struct TextMaterial {
     /// degrees, clockwise seen from the front. Applied on top of whatever
     /// orientation `textFacing` and `rotateWithCamera` resolve to: it spins a
     /// billboard on screen and turns a surface label like a compass bearing.
-    /// `center` decides where inside the text the pivot sits. Along a line
+    /// `anchor` decides where inside the text the pivot sits. Along a line
     /// each glyph spins about its own point on the line, as MapLibre's
     /// `text-rotate` does, except for a straight label (`rotateWithCamera`
     /// without `spreadGlyphs`), which turns as a whole. Defaults to `0.0`.
@@ -819,7 +986,8 @@ pub struct TextMaterial {
     #[serde(rename = "lineHeight")]
     pub line_height: Option<f32>,
     /// Horizontal alignment of lines within a multi-line block:
-    /// `"left"`, `"center"` (default), or `"right"`.
+    /// `"left"`, `"center"` (default), `"right"`, or `"auto"`, which aligns
+    /// towards the horizontal side of `anchor` (MapLibre's `text-justify`).
     #[wasm_bindgen(getter_with_clone, js_name = textAlign)]
     #[serde(rename = "textAlign")]
     pub text_align: Option<String>,
@@ -899,7 +1067,13 @@ impl From<TextMaterial> for navara_material::TextMaterial {
             show: val.show.unwrap_or(default.show),
             size: val.size.unwrap_or(default.size),
             color: val.color.unwrap_or(default.color),
-            center: val.center.unwrap_or(default.center.into()).into(),
+            anchor: parse_anchor(&val.anchor).unwrap_or(default.anchor),
+            offset: val.offset.unwrap_or(default.offset.into()).into(),
+            variable_anchors: parse_variable_anchors(&val.variable_anchors)
+                .unwrap_or(default.variable_anchors),
+            translate: val.translate.unwrap_or(default.translate.into()).into(),
+            translate_anchor: parse_translate_anchor(&val.translate_anchor)
+                .unwrap_or(default.translate_anchor),
             text_facing: parse_facing("textFacing", &val.text_facing),
             rotate_with_camera: val.rotate_with_camera,
             rotation: val.rotation.unwrap_or(default.rotation),
@@ -963,7 +1137,11 @@ impl<'a> From<&'a navara_material::TextMaterial> for TextMaterial {
             show: Some(value.show),
             size: Some(value.size),
             color: Some(value.color),
-            center: Some(value.center.into()),
+            anchor: Some(value.anchor.as_str().to_string()),
+            offset: Some(value.offset.into()),
+            variable_anchors: Some(value.variable_anchors.iter().map(Into::into).collect()),
+            translate: Some(value.translate.into()),
+            translate_anchor: Some(value.translate_anchor.as_str().to_string()),
             text_facing: value.text_facing.map(|f| f.as_str().to_string()),
             rotate_with_camera: value.rotate_with_camera,
             rotation: Some(value.rotation),
@@ -1023,7 +1201,13 @@ impl TextMaterial {
             show: self.show.unwrap_or(other.show),
             size: self.size.unwrap_or(other.size),
             color: self.color.unwrap_or(other.color),
-            center: self.center.unwrap_or(other.center.into()).into(),
+            anchor: parse_anchor(&self.anchor).unwrap_or(other.anchor),
+            offset: self.offset.unwrap_or(other.offset.into()).into(),
+            variable_anchors: parse_variable_anchors(&self.variable_anchors)
+                .unwrap_or_else(|| other.variable_anchors.clone()),
+            translate: self.translate.unwrap_or(other.translate.into()).into(),
+            translate_anchor: parse_translate_anchor(&self.translate_anchor)
+                .unwrap_or(other.translate_anchor),
             text_facing: parse_facing("textFacing", &self.text_facing).or(other.text_facing),
             rotate_with_camera: self.rotate_with_camera.or(other.rotate_with_camera),
             rotation: self.rotation.unwrap_or(other.rotation),
@@ -2539,8 +2723,11 @@ pub struct HillshadeMaterial {
 
 #[cfg(test)]
 mod test {
-    use super::{TextMaterial, parse_facing, parse_geometry_types, parse_padding};
-    use navara_material::{Facing, SourceGeometryType};
+    use super::{
+        TextMaterial, VariableAnchor, parse_anchor, parse_facing, parse_geometry_types,
+        parse_padding, parse_translate_anchor, parse_variable_anchors,
+    };
+    use navara_material::{Anchor, Facing, SourceGeometryType};
 
     #[test]
     fn parse_padding_expands_like_css() {
@@ -2592,6 +2779,51 @@ mod test {
             parse_geometry_types(&Some(vec!["Line".to_string(), "polyline".to_string()])),
             Some(vec![])
         );
+    }
+
+    #[test]
+    fn parse_anchor_round_trips_every_name() {
+        for name in [
+            "center",
+            "left",
+            "right",
+            "top",
+            "bottom",
+            "top-left",
+            "top-right",
+            "bottom-left",
+            "bottom-right",
+        ] {
+            let anchor = parse_anchor(&Some(name.to_string())).unwrap();
+            assert_eq!(anchor.as_str(), name);
+        }
+        assert_eq!(parse_anchor(&Some("middle".to_string())), None);
+        assert_eq!(parse_anchor(&None), None);
+    }
+
+    #[test]
+    fn parse_translate_anchor_reads_the_js_names() {
+        for name in ["map", "viewport"] {
+            let anchor = parse_translate_anchor(&Some(name.to_string())).unwrap();
+            assert_eq!(anchor.as_str(), name);
+        }
+        assert_eq!(parse_translate_anchor(&Some("screen".to_string())), None);
+    }
+
+    #[test]
+    fn parse_variable_anchors_drops_unknown_anchors() {
+        let entry = |anchor: &str, offset| VariableAnchor {
+            anchor: anchor.to_string(),
+            offset,
+        };
+        let parsed = parse_variable_anchors(&Some(vec![
+            entry("top", Some(crate::Vec2 { x: 0.0, y: 1.5 })),
+            entry("middle", None),
+            entry("left", None),
+        ]))
+        .unwrap();
+        let anchors: Vec<_> = parsed.iter().map(|v| (v.anchor, v.offset.y)).collect();
+        assert_eq!(anchors, vec![(Anchor::Top, 1.5), (Anchor::Left, 0.0)]);
     }
 
     #[test]

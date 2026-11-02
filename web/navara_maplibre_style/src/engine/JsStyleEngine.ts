@@ -124,7 +124,7 @@ export class JsStyleEngine implements StyleEngine {
       // If compilation fails and this looks like a literal array (paths, font names, etc.),
       // treat it as a constant value instead of throwing.
       // This handles cases like text-font: ["/fonts/custom.ttf"] or ["Font Name"] which are valid literals.
-      if (isLiteralArray(expr)) {
+      if (isLiteralArray(expr, spec)) {
         const constantValue = expr as unknown as T;
         return () => constantValue;
       }
