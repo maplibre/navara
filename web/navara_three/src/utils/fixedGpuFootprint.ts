@@ -115,6 +115,68 @@ function isAllocated(renderer: unknown, target: WebGLRenderTarget): boolean {
   return properties.get(target).__webglFramebuffer !== undefined;
 }
 
+/** One render target of the fixed stack, as listed by {@link listRenderTargets}. */
+export type RenderTargetEntry = {
+  /** The pass that owns the target, or `"composer"` for the ping-pong buffers. */
+  owner: string;
+  target: WebGLRenderTarget;
+  /** Nominal bytes once allocated (see {@link estimateFixedGpuBytes}). */
+  bytes: number;
+  /** Whether the GPU has allocated the target yet (lazily, on first use). */
+  allocated: boolean;
+};
+
+/**
+ * Lists every render target of the fixed (screen-sized, non-tile) stack: the
+ * composer's ping-pong and depth buffers plus every render target reachable
+ * from the given passes and their effects. A target reachable from several
+ * passes is attributed to the first one in order.
+ */
+export function listRenderTargets(
+  composer: EffectComposer,
+  passes: Iterable<{ name: string; pass: Pass }>,
+): RenderTargetEntry[] {
+  const targets = new Set<WebGLRenderTarget>();
+  const visited = new Set<object>();
+  const owners = new Map<WebGLRenderTarget, string>();
+
+  const collect = (owner: string, value: unknown, depth: number) => {
+    collectRenderTargets(value, targets, visited, depth);
+    for (const target of targets) {
+      if (!owners.has(target)) owners.set(target, owner);
+    }
+  };
+
+  collect("composer", composer.inputBuffer, 0);
+  collect("composer", composer.outputBuffer, 0);
+  // Stable-depth target (postprocessing >= 6.39); private, hence the cast.
+  collect(
+    "composer",
+    (composer as unknown as { depthRenderTarget?: WebGLRenderTarget | null })
+      .depthRenderTarget,
+    0,
+  );
+
+  for (const { name, pass } of passes) {
+    collect(name, pass, 3);
+  }
+
+  const renderer = (
+    composer as unknown as { getRenderer?: () => unknown }
+  ).getRenderer?.();
+
+  const entries: RenderTargetEntry[] = [];
+  for (const target of targets) {
+    entries.push({
+      owner: owners.get(target) ?? "composer",
+      target,
+      bytes: renderTargetBytes(target),
+      allocated: isAllocated(renderer, target),
+    });
+  }
+  return entries;
+}
+
 /**
  * Estimates the resident GPU bytes of the fixed (screen-sized, non-tile)
  * render-target stack: the composer's ping-pong and depth buffers plus every
@@ -129,34 +191,11 @@ function isAllocated(renderer: unknown, target: WebGLRenderTarget): boolean {
  */
 export function estimateFixedGpuBytes(
   composer: EffectComposer,
-  passes: Iterable<Pass>,
+  passes: Iterable<{ name: string; pass: Pass }>,
 ): number {
-  const targets = new Set<WebGLRenderTarget>();
-  const visited = new Set<object>();
-
-  collectRenderTargets(composer.inputBuffer, targets, visited, 0);
-  collectRenderTargets(composer.outputBuffer, targets, visited, 0);
-  // Stable-depth target (postprocessing >= 6.39); private, hence the cast.
-  collectRenderTargets(
-    (composer as unknown as { depthRenderTarget?: WebGLRenderTarget | null })
-      .depthRenderTarget,
-    targets,
-    visited,
-    0,
-  );
-
-  for (const pass of passes) {
-    collectRenderTargets(pass, targets, visited, 3);
-  }
-
-  const renderer = (
-    composer as unknown as { getRenderer?: () => unknown }
-  ).getRenderer?.();
-
   let bytes = 0;
-  for (const target of targets) {
-    if (!isAllocated(renderer, target)) continue;
-    bytes += renderTargetBytes(target);
+  for (const entry of listRenderTargets(composer, passes)) {
+    if (entry.allocated) bytes += entry.bytes;
   }
   return bytes;
 }

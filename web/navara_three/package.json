@@ -61,6 +61,7 @@
   },
   "devDependencies": {
     "@navaramap/three-default-descs": "workspace:*",
+    "@navaramap/three-debug": "workspace:*",
     "@navaramap/three-default-plugin": "workspace:*",
     "@navaramap/three-plugins": "workspace:*",
     "@navaramap/three-react": "workspace:*",

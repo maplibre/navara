@@ -1,0 +1,18 @@
+{
+  "extends": "../tsconfig.common.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "paths": {
+      "@navaramap/three-debug": ["./src"],
+      "@navaramap/three": ["../navara_three/src"],
+      "@navaramap/three-api": ["../navara_three_api/src"],
+      "@navaramap/core": ["../navara_core/src"],
+      "@navaramap/worker": ["../navara_worker/src"],
+      "@navaramap/font": ["../navara_font/src"],
+      "@navaramap/three-csm": ["../navara_three_csm/src"],
+      "@shaders/*": ["../../shaders"]
+    }
+  },
+  "include": ["src"],
+  "exclude": ["./dist", "./node_modules"]
+}

@@ -1,4 +1,4 @@
-import { EventHandler } from "@navaramap/core";
+import { EventHandler, type JobDispatcher } from "@navaramap/core";
 import type { Core } from "@navaramap/engine";
 import {
   reserveWorkerCore,
@@ -23,6 +23,7 @@ import type { CustomRenderPass } from "../passes";
 import type { Scenes } from "../scene";
 import type { MeshCache } from "../type";
 import type { CommonUniforms, RefThree } from "../uniforms";
+import type { RenderTargetEntry } from "../utils/fixedGpuFootprint";
 
 import type { EffectHandle, LightHandle, MeshHandle } from "./BaseHandle";
 import type { EffectDesc } from "./EffectDesc";
@@ -58,6 +59,18 @@ type ViewContextEvents = {
    * changed after creation. The view re-derives the G-buffer configuration.
    */
   gbufferRequirementsChanged: () => void;
+  /** Emitted when a pass is added to, inserted into or removed from the pipeline. */
+  passesChanged: () => void;
+};
+
+/** In-flight frontend jobs of one kind (see `guide/FRONTEND_JOB_PROTOCOL.md`). */
+export type JobKindStats = {
+  /** The job handler's name (`"tileMesh"`, `"dataRequester"`, ...). */
+  name: string;
+  /** Live jobs of this kind, settled ones included. */
+  jobs: number;
+  /** Jobs whose `start` or `change` call has not settled yet. */
+  inFlight: number;
 };
 
 /**
@@ -89,6 +102,7 @@ export class ViewContext extends EventHandler<ViewContextEvents> {
     private _core: Core,
     private _meshes: MeshCache,
     private _commonUniforms: CommonUniforms,
+    private _dispatcher: JobDispatcher,
   ) {
     super();
 
@@ -126,6 +140,24 @@ export class ViewContext extends EventHandler<ViewContextEvents> {
   /** Get a post-processing pass by name. */
   getPass(name: string): PostProcessingPass | undefined {
     return this.renderPassOrchestrator.getPass(name);
+  }
+
+  /** Names of every registered pass, in render order. */
+  getPassNames(): string[] {
+    return this.renderPassOrchestrator.getPassNames();
+  }
+
+  /**
+   * Every render target of the fixed (screen-sized) stack, attributed to the
+   * pass that owns it. Snapshot: a pass-list change or resize replaces targets.
+   */
+  getRenderTargets(): RenderTargetEntry[] {
+    return this.renderPassOrchestrator.listRenderTargets();
+  }
+
+  /** Per-kind counts of the frontend jobs the engine has in flight. */
+  getJobStats(): JobKindStats[] {
+    return this._dispatcher.stats();
   }
 
   /** Add a post-processing pass to the end of the pipeline. */

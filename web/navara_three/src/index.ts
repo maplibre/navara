@@ -266,6 +266,8 @@ export {
 export * from "@navaramap/three-api";
 export * from "./Color";
 export { type BlendMode, blendFunction, createReplacer } from "./utils";
+export type { RenderTargetEntry } from "./utils/fixedGpuFootprint";
+
 export { Atmosphere, type AtmosphereOptions } from "./atmosphere";
 export type { Quality } from "./quality";
 export type { CustomObject3DEventMap } from "./object3DEvent";
@@ -456,6 +458,24 @@ export type MapPointerEvent = {
   map: XYZ;
 } & PointerEvent;
 
+/** Timings of one animation-loop tick, delivered by the `frame` event. */
+export type FrameTiming = {
+  /** The tick's `DOMHighResTimeStamp`. */
+  time: number;
+  /** Ticks since the loop started. */
+  tick: number;
+  /** Whether this tick rendered a frame. */
+  rendered: boolean;
+  /** `Core.update()`: the WASM tick. */
+  updateMs: number;
+  /** Reading the engine's events and running the frontend job handlers. */
+  eventsMs: number;
+  /** The render pass pipeline (0 when nothing was rendered). */
+  renderMs: number;
+  /** The whole tick, feature updates and idle bookkeeping included. */
+  totalMs: number;
+};
+
 /**
  * Event types emitted by ThreeView. Subscribe using `view.on(eventName, callback)`.
  */
@@ -494,6 +514,13 @@ export type ViewEvents = {
   preRender: (t: number) => void;
   /** Emitted after rendering. With `animation: true`, fires every frame. Receives `DOMHighResTimeStamp` as a timestamp. */
   postRender: (t: number) => void;
+  /**
+   * Emitted at the end of every animation-loop tick, rendered or not, with
+   * the tick's timings. The same object is reused across ticks: copy what you
+   * keep. Timings are taken only while at least one listener is registered.
+   */
+  frame: (timing: FrameTiming) => void;
+
   /** @private Emitted when terrain height sampling completes. */
   _sample_terrain_height_received: (ev: TerrainHeightUpdatedEvent) => void;
   /** @private Emitted when an observed terrain height range changes. */
@@ -520,6 +547,8 @@ export type ViewEvents = {
   click: (event: MapPointerEvent) => void;
   /** Emitted when the engine becomes idle (no Rust-side events and no in-flight fetch / worker / mesh job for `idleThreshold` ms; jobs stalled for 10 s stop counting). */
   idle: () => void;
+  /** Emitted when a source is registered through `addSource`, with its description. */
+  sourceAdded: (source: Source, description: SourceDescription) => void;
 };
 
 /**
@@ -558,6 +587,20 @@ export default class ThreeView<
   private _fontManager = new FontManager(FontWorkerURL);
   private _options: Options;
   private _stats: RendererStats | undefined;
+  /** Whether a `frame` listener exists; timings are taken only then. */
+  private _profiling = false;
+  private _frameTick = 0;
+  /** Reused across ticks (see the `frame` event). */
+  private _frameTiming: FrameTiming = {
+    time: 0,
+    tick: 0,
+    rendered: false,
+    updateMs: 0,
+    eventsMs: 0,
+    renderMs: 0,
+    totalMs: 0,
+  };
+
   private _eventDisposer: (() => void) | undefined;
   private _disposed = false;
   private _renderFlag: RenderFlag = {
@@ -1094,8 +1137,12 @@ export default class ThreeView<
     });
 
     this.renderPassOrchestrator.setSize(width, height);
-    this.renderPassOrchestrator.onPassesChanged = () =>
+    this.renderPassOrchestrator.onPassesChanged = () => {
       this._scheduleFixedGpuBytesReport();
+      // The context exists once `init()` has run; the built-in passes are
+      // registered after it, so nothing is missed before then.
+      (this.viewContext as ViewContext | undefined)?.emit("passesChanged");
+    };
 
     // Background color
     const bgColor = options.backgroundColor
@@ -1121,7 +1168,6 @@ export default class ThreeView<
       if (t) {
         this._stats = new RendererStats(
           {
-            beginRender: () => this._renderer.info.reset(),
             endRender: () => ({
               ...this._renderer.info.render,
               memGeometries: this._renderer.info.memory.geometries,
@@ -1596,8 +1642,10 @@ export default class ThreeView<
       this._core,
       this._meshes,
       this._uniforms,
+      this._dispatcher,
     );
     this.registries = new Registries(this, this.viewContext);
+
     this.viewContext.on("gbufferRequirementsChanged", this._syncGBuffers);
     this.viewContext._setRegistries(this.registries);
     this.eventContext = new EventContext({
@@ -2107,7 +2155,15 @@ export default class ThreeView<
     this.emit("preUpdate", updatedAt);
 
     this._syncWorkerPool();
+    const timing = this._profiling ? this._frameTiming : undefined;
+    let t = timing ? performance.now() : 0;
     this._core?.update(updatedAt);
+    if (timing) {
+      const now = performance.now();
+      timing.updateMs = now - t;
+      timing.eventsMs = 0;
+      t = now;
+    }
 
     const events = this._core?.readEvents();
     if (!events || !this._core) {
@@ -2119,6 +2175,7 @@ export default class ThreeView<
     processEvent(this.eventContext, events);
 
     events?.free();
+    if (timing) timing.eventsMs = performance.now() - t;
 
     // Evict JS-side `InMemoryBufferStore` entries whose WASM `External` handles
     // Rust freed this frame (tile destroy, DataRequester removal, ...), keeping
@@ -2306,7 +2363,9 @@ export default class ThreeView<
     invariant(s.type);
     const sourceId = this._core.addSource(s);
 
-    return new Source(sourceId, s.type, this._core);
+    const source = new Source(sourceId, s.type, this._core);
+    this.emit("sourceAdded", source, s);
+    return source;
   }
 
   /**
@@ -2364,6 +2423,9 @@ export default class ThreeView<
       throw error;
     }
 
+    // View listeners bound for this descriptor, removed on delete.
+    const unwire: (() => void)[] = [];
+
     // Initialize the mesh; hooks are wired once the instance exists.
     this._trackAsyncCreate("mesh", meshDesc, meshDesc.onCreate(), () => {
       // If deleted while an async creation was loading, nothing to wire.
@@ -2371,11 +2433,15 @@ export default class ThreeView<
 
       // Set up update listener
       if (meshDesc.update) {
-        this.on("preRender", meshDesc.update.bind(meshDesc));
+        const update = meshDesc.update.bind(meshDesc);
+        this.on("preRender", update);
+        unwire.push(() => this.off("preRender", update));
       }
 
       if (meshDesc.onResize) {
-        this.on("resize", meshDesc.onResize.bind(meshDesc));
+        const onResize = meshDesc.onResize.bind(meshDesc);
+        this.on("resize", onResize);
+        unwire.push(() => this.off("resize", onResize));
 
         const canvasSize = this._getCanvasSize();
         if (canvasSize) {
@@ -2391,7 +2457,10 @@ export default class ThreeView<
 
     const l = new MeshHandle(meshDesc);
 
-    l.on("deleted", this.forceUpdate);
+    l.on("deleted", () => {
+      for (const off of unwire) off();
+      this.forceUpdate();
+    });
 
     // Store the mesh descriptor
     this.layersManager.add(l);
@@ -2431,6 +2500,9 @@ export default class ThreeView<
     // Create light descriptor instance
     const lightDesc = this.registries.light.create(lightType, config);
 
+    // View listeners bound for this descriptor, removed on delete.
+    const unwire: (() => void)[] = [];
+
     // Initialize the light; hooks are wired once the instance exists.
     this._trackAsyncCreate("light", lightDesc, lightDesc.onCreate(), () => {
       // Deleted while an async creation was loading — nothing to wire.
@@ -2438,7 +2510,9 @@ export default class ThreeView<
 
       // Set up update listener if the descriptor has an update method
       if (lightDesc.update) {
-        this.on("preRender", lightDesc.update.bind(lightDesc));
+        const update = lightDesc.update.bind(lightDesc);
+        this.on("preRender", update);
+        unwire.push(() => this.off("preRender", update));
       }
 
       // Trigger re-render
@@ -2449,7 +2523,10 @@ export default class ThreeView<
 
     const l = new LightHandle(lightDesc);
 
-    l.on("deleted", this.forceUpdate);
+    l.on("deleted", () => {
+      for (const off of unwire) off();
+      this.forceUpdate();
+    });
 
     // Store the light descriptor
     this.layersManager.add(l);
@@ -2500,7 +2577,10 @@ export default class ThreeView<
     // and recompiles shaders when the derived configuration actually changes,
     // so tune effects via `update()` rather than re-adding them.
     this._syncGBuffers();
+    // View listeners bound for this descriptor, removed on delete.
+    const unwire: (() => void)[] = [];
     l.on("deleted", () => {
+      for (const off of unwire) off();
       this._syncGBuffers();
       this.forceUpdate();
     });
@@ -2512,7 +2592,9 @@ export default class ThreeView<
 
       // Set up update listener if the descriptor has an update method
       if (effectDesc.update) {
-        this.on("preRender", effectDesc.update.bind(effectDesc));
+        const update = effectDesc.update.bind(effectDesc);
+        this.on("preRender", update);
+        unwire.push(() => this.off("preRender", update));
       }
 
       // Trigger re-render
@@ -3234,6 +3316,13 @@ export default class ThreeView<
     const idleThreshold = this._options.idleThreshold ?? 100;
     const loop: XRFrameRequestCallback = (time) => {
       if (this._disposed) return;
+      // `info.autoReset` is off, so the counters hold this tick's totals
+      // (nested drape bakes and the pick debug canvas included) for `frame`
+      // listeners and the debug stats overlay.
+      this._renderer.info.reset();
+      this._profiling = (this.size("frame") ?? 0) > 0;
+      const timing = this._profiling ? this._frameTiming : undefined;
+      const t0 = timing ? performance.now() : 0;
       this._stats?.begin();
 
       this._forceFeatureUpdates(time);
@@ -3242,8 +3331,15 @@ export default class ThreeView<
       // Batch texture writes accumulated during event processing above are
       // turned into partial GPU uploads here, before the render consumes them.
       flushBatchTextureUpdates(this._renderer);
-      if (updated || this._renderFlag.forceUpdate || this._renderFlag.animation)
+      const rendered =
+        updated || this._renderFlag.forceUpdate || this._renderFlag.animation;
+      if (rendered) {
+        const t = timing ? performance.now() : 0;
         this._render(time);
+        if (timing) timing.renderMs = performance.now() - t;
+      } else if (timing) {
+        timing.renderMs = 0;
+      }
       this._renderFlag.forceUpdate = false;
 
       // In-flight jobs keep the view busy even when the engine emits
@@ -3270,6 +3366,14 @@ export default class ThreeView<
       }
 
       this._stats?.end();
+      this._frameTick++;
+      if (timing) {
+        timing.time = time;
+        timing.tick = this._frameTick;
+        timing.rendered = rendered;
+        timing.totalMs = performance.now() - t0;
+        this.emit("frame", timing);
+      }
     };
     this._renderer.setAnimationLoop(loop);
   }

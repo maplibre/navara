@@ -7,6 +7,8 @@
       "@navaramap/three-default-descs": ["../navara_three_default_descs/src"],
       "@navaramap/three-default-plugin": ["../navara_three_default_plugin/src"],
       "@navaramap/three-plugins": ["../navara_three_plugins/src"],
+      "@navaramap/three-debug": ["../navara_three_debug/src"],
+
       "@navaramap/maplibre-style": ["../navara_maplibre_style/src"],
       "@navaramap/three-api": ["../navara_three_api/src"],
       "@navaramap/core": ["../navara_core/src"],

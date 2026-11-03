@@ -462,7 +462,35 @@ class MyEffectDesc extends EffectDesc<...> {
 registered key (e.g. inherit the sun's intensity/direction);
 `_getEffects/_getLights/_getMeshes` iterate them all.
 
-## 10. Lightweight skybox
+## 10. Instrumentation hooks
+
+`ThreeView` and `ViewContext` expose what `@navaramap/three-debug`'s
+profiler reads; nothing in the pipeline depends on them.
+
+- **`renderer.info` is reset by the main loop**, as its first statement each
+  tick (`info.autoReset` is off). Counters read later in the tick, from a
+  `frame` listener or the `options.debug` stats overlay, are that tick's
+  totals, nested drape/composite renders and pick draws included.
+  `info.render.frame` is never reset (`navara_three_csm` keys on it).
+- **`frame` ViewEvent**: emitted at the end of every tick, rendered or not,
+  with a `FrameTiming` (`updateMs` = `Core.update`, `eventsMs` = reading the
+  events and running the job handlers, `renderMs` = the composer, `totalMs`
+  = the tick). The timings are taken only while a listener is registered;
+  the object is reused across ticks.
+- **Pass listing**: `ViewContext.getPassNames()` (pipeline order),
+  `getPass(name)`, and the `passesChanged` context event after every add,
+  insert or remove. A pass's cost is measured by wrapping its `render` as an
+  own property on the instance: postprocessing's composer looks `pass.render`
+  up on each call, and restoring the saved descriptor (or deleting the own
+  property) undoes the wrap. One `EXT_disjoint_timer_query_webgl2` query may
+  be open at a time, so GPU time is summed per pass, never nested.
+- **`getRenderTargets()`** lists the fixed render-target stack with its
+  owning pass (`utils/fixedGpuFootprint.ts`, the same walk that feeds the
+  memory ledger's `fixed_gpu_bytes`). `getJobStats()` is the dispatcher's
+  per-kind in-flight counts.
+
+## 11. Lightweight skybox
+
 
 `SkyBoxMeshDesc` renders a single fullscreen triangle at far depth in the
 `opaque` scene with premultiplied normal alpha blending. Its shaders approximate the sky

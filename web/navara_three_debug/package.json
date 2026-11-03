@@ -1,0 +1,46 @@
+{
+  "name": "@navaramap/three-debug",
+  "type": "module",
+  "version": "0.0.0",
+  "main": "dist/index.umd.cjs",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "src",
+    "dist"
+  ],
+  "scripts": {
+    "type-check": "tsc && tsc -p tsconfig.node.json",
+    "build": "pnpm type-check && vite build --watch=false",
+    "build:dev": "vite build --mode development",
+    "build:dev:watch": "pnpm build:dev --watch",
+    "test": "vitest --passWithNoTests --watch=false",
+    "lint": "eslint . --fix",
+    "lint:check": "eslint .",
+    "format": "prettier --write --ignore-path ../../.gitignore .",
+    "format:check": "prettier --check --ignore-path ../../.gitignore ."
+  },
+  "license": "MIT OR Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/maplibre/navara.git",
+    "directory": "web/navara_three_debug"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "peerDependencies": {
+    "@navaramap/three": "workspace:*",
+    "postprocessing": ">=6.38.0",
+    "three": ">=0.183.0"
+  },
+  "dependencies": {
+    "tweakpane": "4.0.5"
+  },
+  "devDependencies": {
+    "@navaramap/three": "workspace:*",
+    "@types/three": "0.186.0",
+    "postprocessing": "6.39.5",
+    "three": "0.186.1"
+  }
+}

@@ -390,6 +390,9 @@ importers:
         specifier: 2.36.1
         version: 2.36.1(three@0.186.1)
     devDependencies:
+      '@navaramap/three-debug':
+        specifier: workspace:*
+        version: link:../navara_three_debug
       '@navaramap/three-default-descs':
         specifier: workspace:*
         version: link:../navara_three_default_descs
@@ -523,6 +526,25 @@ importers:
       '@types/three':
         specifier: 0.186.0
         version: 0.186.0
+      three:
+        specifier: 0.186.1
+        version: 0.186.1
+
+  web/navara_three_debug:
+    dependencies:
+      tweakpane:
+        specifier: 4.0.5
+        version: 4.0.5
+    devDependencies:
+      '@navaramap/three':
+        specifier: workspace:*
+        version: link:../navara_three
+      '@types/three':
+        specifier: 0.186.0
+        version: 0.186.0
+      postprocessing:
+        specifier: 6.39.5
+        version: 6.39.5(three@0.186.1)
       three:
         specifier: 0.186.1
         version: 0.186.1
