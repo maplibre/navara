@@ -226,7 +226,7 @@ Increasing `particleCount` makes the effect more realistic, but may impact perfo
 
 ## Adding Water Surfaces (Terrain Water Mask)
 
-Cesium quantized-mesh tiles can carry a **water mask** next to the mesh. Request it with `requestWaterMask: true` on the source and Navara shades the masked pixels as water. The result is a reflective, low-roughness surface that catches the sun glint and picks up environment and [SSR](#combining-with-ssr-screen-space-reflections) reflections. No extra source or layer is needed.
+Cesium quantized-mesh tiles can carry a **water mask** next to the mesh. Request it with `requestWaterMask: true` on the source and Navara shades the masked pixels as water. The masked pixels get the same waves as a `water` material, shaped by the terrain layer's `waveStrength` and `waveDirection`, and reflect the sky, the sun, and [SSR](#combining-with-ssr-screen-space-reflections) reflections. No extra source or layer is needed.
 
 ```typescript
 const terrainSource = view.addSource({
@@ -419,5 +419,5 @@ view.setCamera({ lng: 139.88, lat: 35.42, height: 2800, heading: 250, pitch: -16
 - **3D Tiles models**: Adjust `roughness`/`metalness` and properly enable `castShadow`/`receiveShadow`
 - **Time of day adjustment**: Set the time with an ISO string including a timezone offset, e.g. `new Date("2026-01-01T08:00:00+09:00")`
 - **Weather switching**: Rain and snow can be toggled using the `.visible` property
-- **Water surface adjustment**: Adjust wave motion with `waterSpeed` and `waterScaleNormal`
+- **Water surface adjustment**: Set each layer's waves with `waveStrength` and `waveDirection`, and scale their height with `waveExaggeration`
 :::

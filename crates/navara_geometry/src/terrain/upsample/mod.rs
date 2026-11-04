@@ -245,11 +245,13 @@ const WATERMASK_SIZE: usize = 256;
 /// Crop a parent quantized-mesh watermask to one child quadrant.
 ///
 /// A uniform mask (1 byte) is inherited as-is. A 256x256 grid is cropped to
-/// the child's 128x128 quadrant and upscaled back to 256x256 with nearest
-/// neighbor, so the child mask keeps the same layout a directly decoded mask
-/// has. Row 0 is the NORTH edge (masks are uploaded with `flipY` and sampled
-/// at tile UVs where v=0 is the south edge), so a north child reads the first
-/// 128 rows. Returns `None` for unexpected sizes.
+/// the child's 128x128 quadrant and upscaled back to 256x256 bilinearly at the
+/// child's texel centers, so the child mask keeps the same layout a directly
+/// decoded mask has. Bilinear doubling is Chaikin subdivision, so over
+/// repeated levels the 0.5 contour (the shader's threshold) converges to a
+/// smooth curve. Row 0 is the NORTH edge (masks are uploaded with
+/// `flipY` and sampled at tile UVs where v=0 is the south edge), so a north
+/// child reads the first 128 rows. Returns `None` for unexpected sizes.
 pub fn upsample_watermask(parent: &[u8], is_east: bool, is_north: bool) -> Option<Vec<u8>> {
     match parent.len() {
         1 => Some(vec![parent[0]]),
@@ -257,12 +259,27 @@ pub fn upsample_watermask(parent: &[u8], is_east: bool, is_north: bool) -> Optio
             const HALF: usize = WATERMASK_SIZE / 2;
             let src_row0 = if is_north { 0 } else { HALF };
             let src_col0 = if is_east { HALF } else { 0 };
+            // A child texel center sits a quarter parent texel from the
+            // nearest parent center: weight 3/4 there and 1/4 on the neighbor
+            // toward it, clamped at the parent's edges.
+            let taps = |child: usize, origin: usize| {
+                let near = origin + child / 2;
+                let far = if child.is_multiple_of(2) {
+                    near.saturating_sub(1)
+                } else {
+                    (near + 1).min(WATERMASK_SIZE - 1)
+                };
+                (near, far)
+            };
             let mut out = vec![0u8; WATERMASK_SIZE * WATERMASK_SIZE];
             for y in 0..WATERMASK_SIZE {
-                let src_row = (src_row0 + y / 2) * WATERMASK_SIZE;
-                let dst_row = y * WATERMASK_SIZE;
+                let (row_near, row_far) = taps(y, src_row0);
                 for x in 0..WATERMASK_SIZE {
-                    out[dst_row + x] = parent[src_row + src_col0 + x / 2];
+                    let (col_near, col_far) = taps(x, src_col0);
+                    let at = |row: usize, col: usize| f32::from(parent[row * WATERMASK_SIZE + col]);
+                    let near = 0.75 * at(row_near, col_near) + 0.25 * at(row_near, col_far);
+                    let far = 0.75 * at(row_far, col_near) + 0.25 * at(row_far, col_far);
+                    out[y * WATERMASK_SIZE + x] = (0.75 * near + 0.25 * far).round() as u8;
                 }
             }
             Some(out)
@@ -1007,29 +1024,47 @@ mod test {
         ] {
             let child = super::upsample_watermask(&parent, is_east, is_north).unwrap();
             assert_eq!(child.len(), SIZE * SIZE);
-            assert!(
-                child.iter().all(|&v| v == expected),
-                "quadrant (east={}, north={}) should be uniformly {}",
-                is_east,
-                is_north,
-                expected
-            );
+            // Away from the parent's quadrant boundary the child is uniform;
+            // the texels along it blend with the neighboring quadrant.
+            let inner_row = if is_north { SIZE - 1 } else { 0 };
+            let inner_col = if is_east { 0 } else { SIZE - 1 };
+            for y in 0..SIZE {
+                for x in 0..SIZE {
+                    if y == inner_row || x == inner_col {
+                        continue;
+                    }
+                    assert_eq!(
+                        child[y * SIZE + x],
+                        expected,
+                        "quadrant (east={is_east}, north={is_north}) at ({x}, {y})"
+                    );
+                }
+            }
+            assert_ne!(child[inner_row * SIZE + SIZE / 2], expected);
         }
     }
 
     #[test]
-    fn it_should_upscale_cropped_watermask_with_nearest_neighbor() {
+    fn it_should_upscale_cropped_watermask_bilinearly() {
         const SIZE: usize = 256;
-        // Single water texel at the parent's northwest corner (row 0, col 0).
+        // Single water texel in the parent's northwest quadrant (row 10, col 20).
         let mut parent = vec![0u8; SIZE * SIZE];
-        parent[0] = 255;
+        parent[10 * SIZE + 20] = 255;
 
         let child = super::upsample_watermask(&parent, false, true).unwrap();
 
-        // The NW child doubles that texel into a 2x2 block at its own NW corner.
+        // The texel covers child rows/cols 2·i and 2·i + 1 at weight 3/4 each
+        // way, and spreads 1/4 into the next child texel on either side.
+        let weight = |child: usize, parent: usize| -> f32 {
+            match child as isize - 2 * parent as isize {
+                0 | 1 => 0.75,
+                -1 | 2 => 0.25,
+                _ => 0.0,
+            }
+        };
         for y in 0..SIZE {
             for x in 0..SIZE {
-                let expected = if x < 2 && y < 2 { 255 } else { 0 };
+                let expected = (255.0 * weight(y, 10) * weight(x, 20)).round() as u8;
                 assert_eq!(child[y * SIZE + x], expected, "at ({}, {})", x, y);
             }
         }

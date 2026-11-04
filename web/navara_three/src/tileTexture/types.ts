@@ -27,7 +27,8 @@ export type DirtyReason =
   | "texture-binding"
   | "vector-revision"
   | "raster-revision"
-  | "hillshade";
+  | "hillshade"
+  | "watermask";
 
 /**
  * A composite atlas is a single MRT render target (count=3) with three named

@@ -10,7 +10,7 @@ import type {
 } from "@navaramap/engine";
 import BranchFreeTernary from "@shaders/glsl/chunks/branchFreeTernary.glsl?raw";
 import SpecularParsFragment from "@shaders/glsl/chunks/spucular_pars_fragment.glsl";
-import WaterParsFragment from "@shaders/glsl/chunks/water_pars_fragment.glsl?raw";
+import WaterParsFragment from "@shaders/glsl/chunks/water_pars_fragment.glsl";
 import {
   BufferAttribute,
   BufferGeometry,
@@ -47,9 +47,11 @@ import {
   GBUFFER_PHONG_ROUGHNESS,
   generateTileCommonInjection,
   generateTileMapFragment,
+  generateTileNormalBufferReplacement,
   generateTileNormalFragmentMaps,
+  generateTileOutgoingLight,
   TILE_EMISSIVE_EFFECT_BUFFER_REPLACEMENT,
-  TILE_NORMAL_BUFFER_REPLACEMENT,
+  generateTileWaterDefines,
   TILE_PICK_FRAGMENT_OVERRIDE,
   TILE_VERTEX_INJECTIONS,
   applyLitOption,
@@ -73,6 +75,10 @@ import {
   updateTextureFragmentIndex,
   removeTextureFragmentIndex,
 } from "../../utils/textureFragmentIndex";
+import {
+  DEFAULT_WAVE_CONDITIONS,
+  type WaterWavesRef,
+} from "../../water/waterState";
 import type { PickableMesh } from "../pickableMesh";
 import { releaseGeometryArraysAfterUpload } from "../releaseGeometryArrays";
 
@@ -157,6 +163,7 @@ export class TileMesh
   // is acquired in the constructor) — a tile that never drapes therefore
   // never reports. Assigned in the constructor once `atlasBytes` is known.
   private reportedDrapeGpuBytes: number;
+  private _waterMaskWaves: WaterWavesRef | undefined;
 
   readonly ctx: EventContext;
 
@@ -195,7 +202,6 @@ export class TileMesh
     const additionalTexturesInUse =
       textureOptions.additionalTexturesInUse ?? {};
     let numAdditionalTextures = 0;
-    if (additionalTexturesInUse.waterTexture) numAdditionalTextures++;
     if (additionalTexturesInUse.colorMapTexture) numAdditionalTextures++;
 
     this.numTexturizedVector =
@@ -305,6 +311,14 @@ export class TileMesh
     );
   };
 
+  /** The waves of the watermask's water, held for as long as the tile lives. */
+  private waterMaskWaves(): WaterWavesRef {
+    this._waterMaskWaves ??= this.ctx.uniforms.water.createWaves(
+      DEFAULT_WAVE_CONDITIONS,
+    );
+    return this._waterMaskWaves;
+  }
+
   /**
    * Feature flags for the **main** TileMesh shader (atlas-sampling side): drives
    * its program cache key and which normal/specular branches compile. Sourced
@@ -314,17 +328,17 @@ export class TileMesh
   private computeFeatures(): CompositeFeatures {
     const ud = this.material.userData;
     // Only slots that are still shown count: bindVectorSlots sets shows=0 when a
-    // slot loses its representative mesh but leaves the per-slot waters/elevation heatmap
+    // slot loses its representative mesh but leaves the per-slot water/elevation heatmap
     // uniforms at their previous values, so a disappeared layer would otherwise
     // keep its shader feature (e.g. water) compiled in. Mirrors the shows gate in
     // buildCompositeLayers.
     const shows: number[] = ud.shows?.value ?? [];
-    const waters = ud.waters?.value as boolean[] | undefined;
+    const waterParams = ud.waterParams?.value as Vector2[] | undefined;
     const elevationHeatmaps = ud.isElevationHeatmaps?.value as
       boolean[] | undefined;
     return {
       hasHillshade: ud.defines?.USE_HILLSHADE === 1,
-      hasWater: !!waters?.some((v, i) => v === true && shows[i] === 1),
+      hasWater: !!waterParams?.some((v, i) => v.y > 0 && shows[i] === 1),
       hasElevationHeatmap: !!elevationHeatmaps?.some(
         (v, i) => v === true && shows[i] === 1,
       ),
@@ -364,7 +378,7 @@ export class TileMesh
       ud.elevationRGBScalersAndBoundaries?.value ?? [];
     const elevationDecoderOffsets: Vector4[] =
       ud.elevationDecoderOffsets?.value ?? [];
-    const waters: boolean[] = ud.waters?.value ?? [];
+    const waterParams: Vector2[] = ud.waterParams?.value ?? [];
     const boundary = this.texturizedSceneIndexFrom;
 
     const layers: CompositeLayer[] = [];
@@ -433,7 +447,7 @@ export class TileMesh
             uvScale,
             color: colors[absSlot] ?? new Color(),
             opacity: opacities[absSlot] ?? 1,
-            water: waters[absSlot] ?? false,
+            water: (waterParams[absSlot]?.y ?? 0) > 0,
             reproject: slotReproject,
           });
         }
@@ -546,6 +560,9 @@ export class TileMesh
       UnsignedByteType,
     );
     texture.flipY = true;
+    // The composite's B-spline lookup weighs texels through the filter.
+    texture.minFilter = LinearFilter;
+    texture.magFilter = LinearFilter;
     texture.needsUpdate = true;
     this.userData.watermask = {
       data,
@@ -560,6 +577,8 @@ export class TileMesh
    * (same entity, same tile handle) and reports it as `mesh_geometry_replaced`
    * rather than `mesh_updated`, so material, textures, atlas and drape state
    * are left alone; only geometry, shadow mesh, bounds and watermask change.
+   * A changed watermask rebakes the atlas, and recompiles the program when it
+   * appears or disappears.
    * Touching the material path here would blank the tile until its drape is
    * baked again.
    */
@@ -567,6 +586,7 @@ export class TileMesh
     const outgoing = this.geometry;
     const outgoingShadow = this.shadowMesh?.geometry;
     const hadNormalAttribute = !!this.userData.hasNormalAttribute;
+    const hadWatermask = this.userData.watermask != null;
     // Shadow flags carry over from the mesh being replaced: the skirt-bearing
     // main mesh never casts, its terrain-only shadow mesh does.
     const castShadow = this.shadowMesh?.castShadow ?? this.castShadow;
@@ -593,6 +613,15 @@ export class TileMesh
         ? 1
         : 0;
       this.material.needsUpdate = true;
+    }
+
+    const hasWatermask = this.userData.watermask != null;
+    if (hadWatermask !== hasWatermask) {
+      // `hasWatermask` decides whether the water surface is compiled in.
+      this.material.needsUpdate = true;
+    }
+    if (hadWatermask || hasWatermask) {
+      this.compositor.markDirty(this.handle, "watermask");
     }
   }
 
@@ -916,7 +945,6 @@ export class TileMesh
       value: 0,
     };
 
-    m.userData.uTime = uniforms.time;
     m.userData.fillQuadrants = { value: this.fillQuadrants };
 
     m.userData.defines = {
@@ -940,7 +968,7 @@ export class TileMesh
     m.userData.uNormalAtlas = { value: atlasOutputs.normal };
 
     m.customProgramCacheKey = () =>
-      "TILE" + JSON.stringify(this.computeFeatures());
+      `TILE${this.numTexturizedVector}${JSON.stringify(this.computeFeatures())}`;
 
     m.onBeforeCompile = (shader) => {
       shader.defines ??= {};
@@ -959,11 +987,11 @@ export class TileMesh
       shader.uniforms.uColors = m.userData.colors;
       shader.uniforms.uReflectivities = m.userData.reflectivities;
       shader.uniforms.uRoughnesses = m.userData.roughnesses;
-      shader.uniforms.uWaterScaleNormals = m.userData.waterScaleNormals;
-      shader.uniforms.uWaterSpeeds = m.userData.waterSpeeds;
+      shader.uniforms.uWaterParams = m.userData.waterParams;
+      shader.uniforms.uWaterMaskColor = m.userData.waterMaskColor;
+      shader.uniforms.uWaterMaskExaggeration = m.userData.waterMaskExaggeration;
       shader.uniforms.uShininesses = m.userData.shininesses;
       shader.uniforms.uSpecularStrengths = m.userData.specularStrengths;
-      shader.uniforms.uApplyWaterNormals = m.userData.applyWaterNormals;
       shader.uniforms.uSpeculars = m.userData.speculars;
       shader.uniforms.uEmissiveIntensities = m.userData.emissiveIntensities;
       shader.uniforms.uEmissiveColors = m.userData.emissiveColors;
@@ -972,10 +1000,14 @@ export class TileMesh
       // arrays + winIdx indexing instead).
       shader.uniforms.uEffectIdsMask = { value: 0 };
       shader.uniforms.uEmissiveIntensity = { value: 0 };
-      shader.uniforms.uWaterNormalMap = uniforms.waterTexture;
+      const hasWaterSurface = features.hasWater || features.hasWatermask;
+      if (useNormal && hasWaterSurface) {
+        Object.assign(shader.uniforms, uniforms.water.uniforms, {
+          nvrWaterWaves: m.userData.waterWaves,
+        });
+      }
       shader.uniforms.uHillshadeExaggeration = m.userData.hillshadeExaggeration;
       shader.uniforms.uIor = { value: 1.33333 };
-      shader.uniforms.uTime = m.userData.uTime;
       shader.uniforms.uFillQuadrants = m.userData.fillQuadrants;
       shader.uniforms.uTerrainExaggeration = uniforms.terrainExaggeration;
 
@@ -1013,7 +1045,7 @@ ${generateTileCommonInjection(maxTextures)}
           `
         #include <lights_lambert_pars_fragment>
 
-        ${WaterParsFragment}
+        ${hasWaterSurface ? `${generateTileWaterDefines(features.hasWater, this.numTexturizedVector, this.texturizedSceneIndexFrom)}\n${WaterParsFragment}` : ""}
         ${SpecularParsFragment}
         ${BranchFreeTernary}
         `,
@@ -1021,7 +1053,7 @@ ${generateTileCommonInjection(maxTextures)}
         )
         .replace(
           "#include <map_fragment>",
-          generateTileMapFragment(maxTextures, features),
+          generateTileMapFragment(maxTextures),
         )
         .replaceWithCondition(
           "#include <normal_fragment_maps>",
@@ -1032,7 +1064,7 @@ ${generateTileCommonInjection(maxTextures)}
           "vec3 outgoingLight = reflectedLight.directDiffuse + reflectedLight.indirectDiffuse + totalEmissiveRadiance;",
           `
           vec3 outgoingLight = reflectedLight.directDiffuse + reflectedLight.indirectDiffuse + totalEmissiveRadiance;
-          outgoingLight += specular;
+          ${generateTileOutgoingLight(features)}
         `,
           useNormal,
         )
@@ -1040,7 +1072,7 @@ ${generateTileCommonInjection(maxTextures)}
           "#include <envmap_fragment>",
           createReplacer(ShaderChunk.envmap_fragment).replace(
             "outgoingLight += envColor.xyz * specularStrength * reflectivity;",
-            "outgoingLight += nvr_branchFreeTernary(useSpecular, vec3(0.0), envColor.xyz * specularStrength * tileReflectivity);",
+            "outgoingLight += nvr_branchFreeTernary(useSpecular || tileWater, vec3(0.0), envColor.xyz * specularStrength * tileReflectivity);",
           ).source,
           useNormal,
         )
@@ -1054,7 +1086,7 @@ ${generateTileCommonInjection(maxTextures)}
         )
         .replaceWithCondition(
           GBUFFER_NORMAL_WRITE_BASIC,
-          TILE_NORMAL_BUFFER_REPLACEMENT,
+          generateTileNormalBufferReplacement(features),
           useNormal,
         )
         .replace(
@@ -1219,20 +1251,24 @@ ${generateTileCommonInjection(maxTextures)}
         value: [...new Array(maxTextures)].fill(GBUFFER_PHONG_ROUGHNESS),
       };
     }
-    if (!m.userData.waters) {
-      m.userData.waters = {
-        value: [...new Array(maxTextures)].fill(false),
+    if (!m.userData.waterParams) {
+      m.userData.waterParams = {
+        value: [...new Array(maxTextures)].map(() => new Vector2()),
       };
     }
-    if (!m.userData.waterScaleNormals) {
-      m.userData.waterScaleNormals = {
-        value: [...new Array(maxTextures)].fill(0),
+    // The watermask's and then one per vector slot, which `VectorDrapeResolver`
+    // binds. The shader reads a slot's entry only when that slot is water.
+    if (!m.userData.waterWaves) {
+      const { waves } = this.waterMaskWaves();
+      m.userData.waterWaves = {
+        value: new Array(this.numTexturizedVector + 1).fill(waves),
       };
     }
-    if (!m.userData.waterSpeeds) {
-      m.userData.waterSpeeds = {
-        value: [...new Array(maxTextures)].fill(0),
-      };
+    if (!m.userData.waterMaskColor) {
+      m.userData.waterMaskColor = { value: new Vector4() };
+    }
+    if (!m.userData.waterMaskExaggeration) {
+      m.userData.waterMaskExaggeration = { value: 1 };
     }
     if (!m.userData.shininesses) {
       m.userData.shininesses = {
@@ -1241,11 +1277,6 @@ ${generateTileCommonInjection(maxTextures)}
     }
     if (!m.userData.specularStrengths) {
       m.userData.specularStrengths = {
-        value: [...new Array(maxTextures)].fill(0),
-      };
-    }
-    if (!m.userData.applyWaterNormals) {
-      m.userData.applyWaterNormals = {
         value: [...new Array(maxTextures)].fill(0),
       };
     }
@@ -1445,6 +1476,24 @@ ${generateTileCommonInjection(maxTextures)}
 
     // Hillshade exaggeration (applied during normal map sampling in shader)
     m.userData.hillshadeExaggeration.value = mat.hillshadeExaggeration;
+
+    const waterMaskWaves = this.waterMaskWaves();
+    waterMaskWaves.set({
+      strength: mat.waveStrength,
+      direction: mat.waveDirection,
+      scale: "ocean",
+    });
+    m.userData.waterWaves.value[0] = waterMaskWaves.waves;
+    m.userData.waterMaskExaggeration.value = mat.waveExaggeration;
+
+    // The terrain layer's body color for the watermask's water.
+    const waterMaskColor: Vector4 = m.userData.waterMaskColor.value;
+    if (mat.waterMaskColor === undefined) {
+      waterMaskColor.w = 0;
+    } else {
+      const color = new Color().setHex(mat.waterMaskColor);
+      waterMaskColor.set(color.r, color.g, color.b, 1);
+    }
 
     const prevHillshade = m.userData.defines.USE_HILLSHADE;
     const newHillshade = m.userData.isHillshades.value.some(
@@ -1767,6 +1816,7 @@ ${generateTileCommonInjection(maxTextures)}
 
     // Release the watermask DataTexture (one per tile, RedFormat 1×1 or 256×256).
     this.userData.watermask?.texture?.dispose();
+    this._waterMaskWaves?.dispose();
 
     // Clean up from tileMapByHandle, unless an incoming mesh replacing this
     // one has already claimed the handle (see `reportDrapeGpuBytesIfChanged`).

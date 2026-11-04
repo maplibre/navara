@@ -233,8 +233,7 @@ export class PolygonMeshDesc extends MeshDescWithSelectiveEffect<
       },
       water: {
         ...this.waterProps(style),
-        timeUniform: this.ctx.getTimeUniform() as { value: number },
-        skyEnvMap: this.ctx.getSkyEnvMapTextureUniform().value,
+        getWaterState: () => this.ctx.getWaterState(),
       },
     });
     this.enhancer = enhancer;
@@ -284,11 +283,12 @@ export class PolygonMeshDesc extends MeshDescWithSelectiveEffect<
   private waterProps(style: PolygonMeshStyle) {
     return {
       water: style.water,
-      waterScaleNormal: style.waterScaleNormal,
-      waterSpeed: style.waterSpeed,
+      waveExaggeration: style.waveExaggeration,
+      waterScale: style.waterScale,
+      waveStrength: style.waveStrength,
+      waveDirection: style.waveDirection,
       shininess: style.shininess,
       specularStrength: style.specularStrength,
-      applyWaterNormal: style.applyWaterNormal,
       specular: style.specular,
       ior: style.ior,
     };
@@ -455,6 +455,7 @@ export class PolygonMeshDesc extends MeshDescWithSelectiveEffect<
 
       if (clamped !== wasClamped) {
         releaseFeatureMaterial(this.ctx, this._instance.material);
+        this.enhancer.mutates().water.dispose();
         this._instance.customDepthMaterial?.dispose();
         const { material, enhancer } = this.createMaterial(style);
         this._instance.material = material;
@@ -519,6 +520,7 @@ export class PolygonMeshDesc extends MeshDescWithSelectiveEffect<
     if (this._instance) {
       this._instance.geometry.dispose();
       releaseFeatureMaterial(this.ctx, this._instance.material);
+      this.enhancer?.mutates().water.dispose();
       this._instance.customDepthMaterial?.dispose();
       this.setDepthPrePass(this._instance, false);
     }

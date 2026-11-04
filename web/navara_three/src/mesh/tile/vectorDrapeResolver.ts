@@ -386,12 +386,17 @@ export class VectorDrapeResolver implements DrapeResolver {
       // Use PolygonMesh getters that expose material enhancer state
       m.userData.reflectivities.value[lastIdx] = mesh.reflectivity;
       m.userData.roughnesses.value[lastIdx] = mesh.roughness;
-      m.userData.waters.value[lastIdx] = mesh.water;
-      m.userData.waterScaleNormals.value[lastIdx] = mesh.waterScaleNormal;
-      m.userData.waterSpeeds.value[lastIdx] = mesh.waterSpeed;
+      m.userData.waterParams.value[lastIdx].set(
+        mesh.waveExaggeration,
+        mesh.water ? 1 : 0,
+      );
+      if (mesh.water) {
+        m.userData.waterWaves.value[
+          1 + lastIdx - this.host.texturizedSceneIndexFrom
+        ] = mesh.waterWaves;
+      }
       m.userData.shininesses.value[lastIdx] = mesh.shininess;
       m.userData.specularStrengths.value[lastIdx] = mesh.specularStrength;
-      m.userData.applyWaterNormals.value[lastIdx] = mesh.applyWaterNormal;
       m.userData.speculars.value[lastIdx] = mesh.specular;
       m.userData.emissiveIntensities.value[lastIdx] = mesh.emissiveIntensity;
       m.userData.emissiveColors.value[lastIdx].set(mesh.emissiveColor);

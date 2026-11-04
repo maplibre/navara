@@ -111,7 +111,7 @@ Descriptor の種類に応じて、対応する基底クラスを継承して実
 | `ctx.getGlobeDepthTextureUniform()`       | `ctx.getGlobeDepthTexture()` のテクスチャ |
 | `ctx.getGlobeNormalTextureUniform()`      | `ctx.getGlobeNormalTexture()` のテクスチャ。サンプリングするには `globeNormal` を必要なバッファとして宣言します |
 | `ctx.getSkyEnvMapTextureUniform()`        | 空の環境マップ |
-| `ctx.getWaterTextureUniform()`            | 共通の水面法線マップ。view を `waterTexture.enabled` で作成していない場合、値は `null` です |
+| `ctx.getWaterState()`                     | 水面のシェーダーチャンクが使うビューの水面の状態。`uniforms` は水面のマテリアルが共有するもので、`createWaves(conditions)` は 1 つの水面の波を保持します。`uniforms` を最初に読むと波のテクスチャを生成します |
 | `ctx.getViewportAndPixelRatioUniform()`   | `[width, height, pixelRatio]`。ビューポートのサイズは CSS ピクセル単位です |
 | `ctx.getFrustumNearFarUniform()`          | カメラの `[near, far]` |
 | `ctx.getFrustumRatioUniform()`            | ニア平面上でのカメラのフラスタムの `[top, bottom, right, left]` |
