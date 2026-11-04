@@ -1,29 +1,28 @@
-import type { Feature, Geometry, Point, Position } from "geojson";
-import { Vector3 } from "three";
+import type { Geometry, Position } from "geojson";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
-  buildTraffic,
+  OPEN_MAP_TILES,
+  ROADS,
+  openMapTilesBuilding,
+  openMapTilesRoad,
+} from "./roads";
+import {
   chebyshev,
   createTileStreamer,
-  lampsAlongLine,
   loadRoadNetwork,
   readRoads,
   readTallBuildings,
   tileCenter,
   tileCoordinate,
   tileKey,
-  tileLights,
-  type LampProperties,
   type Road,
-  type RoadNetwork,
   type TallBuilding,
   type TileCoordinate,
   type TileLayer,
-} from "./streetTiles";
+} from "./tiles";
 
 const TOKYO = { lng: 139.762, lat: 35.672 };
-const METERS_PER_DEGREE = 111320;
 const TILE = { x: 0, y: 0 };
 
 /** A decoded tile layer built from plain features. */
@@ -40,12 +39,6 @@ const layerOf = (
     }),
   }),
 });
-
-/** An east-west line on the equator, `meters` long. */
-const eastLine = (meters: number): Position[] => [
-  [0, 0],
-  [meters / METERS_PER_DEGREE, 0],
-];
 
 const flush = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
 
@@ -122,11 +115,16 @@ describe("readRoads", () => {
         },
       ]),
       TILE,
+      {
+        layer: "transportation",
+        read: openMapTilesRoad,
+        properties: undefined,
+      },
       out,
     );
     expect(out).toEqual([
       {
-        roadClass: "primary",
+        style: ROADS.primary,
         oneway: 1,
         line: [
           [0, 0],
@@ -134,7 +132,7 @@ describe("readRoads", () => {
         ],
       },
       {
-        roadClass: "minor",
+        style: ROADS.minor,
         oneway: 0,
         line: [
           [0, 0],
@@ -142,13 +140,83 @@ describe("readRoads", () => {
         ],
       },
       {
-        roadClass: "minor",
+        style: ROADS.minor,
         oneway: 0,
         line: [
           [0, 1],
           [1, 1],
         ],
       },
+    ]);
+  });
+});
+
+describe("readRoads properties", () => {
+  it("shows the reader only the listed properties, as the road layer does", () => {
+    const seen: Record<string, unknown>[] = [];
+    const out: Road[] = [];
+    readRoads(
+      layerOf([
+        {
+          properties: { highway: "main", access: "private", name: "x" },
+          geometry: {
+            type: "LineString",
+            coordinates: [
+              [0, 0],
+              [1, 1],
+            ],
+          },
+        },
+      ]),
+      TILE,
+      {
+        layer: "roads",
+        read: (properties) => {
+          seen.push(properties);
+          return { roadClass: "primary" };
+        },
+        properties: ["highway", "oneway"],
+      },
+      out,
+    );
+    // Listed names only, each present even when the feature lacks it.
+    expect(seen).toEqual([{ highway: "main", oneway: undefined }]);
+  });
+});
+
+describe("road classes", () => {
+  it("give each road the style of the class its reader picks", () => {
+    const line = (
+      kind: string,
+    ): { properties: Record<string, unknown>; geometry: Geometry } => ({
+      properties: { kind },
+      geometry: {
+        type: "LineString",
+        coordinates: [
+          [0, 0],
+          [1, 1],
+        ],
+      },
+    });
+    const out: Road[] = [];
+    readRoads(
+      layerOf([line("main"), line("local"), line("footway")]),
+      TILE,
+      {
+        layer: "roads",
+        read: ({ kind }) =>
+          kind === "main"
+            ? { roadClass: "primary", oneway: 1 }
+            : kind === "local"
+              ? { roadClass: "minor" }
+              : undefined,
+        properties: undefined,
+      },
+      out,
+    );
+    expect(out.map(({ style, oneway }) => ({ style, oneway }))).toEqual([
+      { style: ROADS.primary, oneway: 1 },
+      { style: ROADS.minor, oneway: 0 },
     ]);
   });
 });
@@ -172,6 +240,14 @@ describe("readTallBuildings", () => {
           geometry: { type: "Polygon", coordinates: square(0, 0) },
         },
         {
+          properties: { render_height: Number.NaN },
+          geometry: { type: "Polygon", coordinates: square(0, 0) },
+        },
+        {
+          properties: { render_height: 120 },
+          geometry: { type: "Polygon", coordinates: [[[5, 5]]] },
+        },
+        {
           properties: { render_height: 50 },
           geometry: { type: "Polygon", coordinates: square(0, 0) },
         },
@@ -184,6 +260,7 @@ describe("readTallBuildings", () => {
         },
       ]),
       TILE,
+      openMapTilesBuilding,
       out,
     );
     expect(out).toEqual([
@@ -201,7 +278,12 @@ describe("loadRoadNetwork", () => {
     const { signal } = new AbortController();
 
     await expect(
-      loadRoadNetwork("https://t/{z}/{x}/{y}.pbf", { x: 1, y: 2 }, signal),
+      loadRoadNetwork(
+        "https://t/{z}/{x}/{y}.pbf",
+        { x: 1, y: 2 },
+        OPEN_MAP_TILES,
+        signal,
+      ),
     ).rejects.toThrow("failed (404)");
     expect(fetchMock).toHaveBeenCalledWith("https://t/14/1/2.pbf", { signal });
   });
@@ -257,6 +339,29 @@ describe("createTileStreamer", () => {
     await flush();
     expect(remove).toHaveBeenCalledWith(tileKey(center));
     expect(streamer.tiles.has(tileKey(center))).toBe(false);
+  });
+
+  it("keeps a tile asked for again while its earlier, aborted load settles", async () => {
+    const loads: { signal: AbortSignal; resolve: () => void }[] = [];
+    const add = vi.fn(
+      (tile: TileCoordinate, signal: AbortSignal) =>
+        new Promise<string>((resolve) => {
+          loads.push({ signal, resolve: () => resolve(tileKey(tile)) });
+        }),
+    );
+    const streamer = createTileStreamer(0, add, vi.fn());
+    const center = tileCoordinate(TOKYO.lng, TOKYO.lat);
+    const far = tileCenter({ x: center.x + 10, y: center.y });
+
+    streamer.update(TOKYO.lng, TOKYO.lat); // loads[0]: the tile
+    streamer.update(far.lng, far.lat); // loads[0] aborted, loads[1]: far
+    streamer.update(TOKYO.lng, TOKYO.lat); // loads[2]: the tile again
+    loads[0].resolve(); // the aborted load settles late
+    await flush();
+
+    // The second load of the tile is still tracked, so dispose aborts it.
+    streamer.dispose();
+    expect(loads[2].signal.aborted).toBe(true);
   });
 
   it("logs a failed tile once and asks for it again on the next move", async () => {
@@ -320,110 +425,5 @@ describe("createTileStreamer", () => {
     expect(remove).toHaveBeenCalledTimes(3);
     expect(streamer.tiles.size).toBe(0);
     expect(error).not.toHaveBeenCalled();
-  });
-});
-
-describe("lampsAlongLine", () => {
-  it("spaces lamps along the line, alternating sides", () => {
-    const out: Feature<Point, LampProperties>[] = [];
-    lampsAlongLine(eastLine(100), 30, 5, () => 0, out);
-
-    const along = out.map((f) => f.geometry.coordinates[0] * METERS_PER_DEGREE);
-    expect(along.map((m) => Math.round(m))).toEqual([0, 30, 60, 90]);
-    const sides = out.map((f) => Math.sign(f.geometry.coordinates[1]));
-    expect(sides).toEqual([-1, 1, -1, 1]);
-    expect(out.every((f) => f.properties.kind === "lamp")).toBe(true);
-  });
-
-  it("starts at a random carry and draws warm lamps from the same source", () => {
-    const out: Feature<Point, LampProperties>[] = [];
-    lampsAlongLine(eastLine(100), 30, 5, () => 0.9, out);
-
-    const along = out.map((f) => f.geometry.coordinates[0] * METERS_PER_DEGREE);
-    expect(along.map((m) => Math.round(m))).toEqual([27, 57, 87]);
-    expect(out.every((f) => f.properties.kind === "warm")).toBe(true);
-  });
-});
-
-describe("tileLights", () => {
-  const network: RoadNetwork = {
-    roads: [{ roadClass: "primary", oneway: 0, line: eastLine(100) }],
-    tallBuildings: [{ lng: 1, lat: 2, height: 120 }],
-  };
-
-  it("adds a beacon above every tall roof and the same lamps every time", () => {
-    const lights = tileLights(network);
-    expect(lights.beacons.features).toEqual([
-      {
-        type: "Feature",
-        geometry: { type: "Point", coordinates: [1, 2] },
-        properties: { height: 122 },
-      },
-    ]);
-    expect(lights.lamps.features.length).toBeGreaterThan(0);
-    expect(tileLights(network)).toEqual(lights);
-  });
-});
-
-describe("buildTraffic", () => {
-  const project = ({
-    lng,
-    lat,
-    height,
-  }: {
-    lng: number;
-    lat: number;
-    height: number;
-  }) => new Vector3(lng * METERS_PER_DEGREE, lat * METERS_PER_DEGREE, height);
-  const ORIGIN = new Vector3();
-  const segment = (oneway: number, meters = 350): Road => ({
-    roadClass: "primary",
-    oneway,
-    line: eastLine(meters),
-  });
-  /** Sign of each car's travel along the x axis. */
-  const headings = (data: ReturnType<typeof buildTraffic>) =>
-    Array.from(data.phase, (_, i) =>
-      Math.sign(data.end[i * 3] - data.start[i * 3]),
-    );
-
-  it("places cars both ways on a two-way road at the class speed", () => {
-    const data = buildTraffic([segment(0)], ORIGIN, project);
-    const cars = data.phase.length;
-    expect(cars).toBeGreaterThan(0);
-    expect(data.start.length).toBe(cars * 3);
-    expect(data.end.length).toBe(cars * 3);
-    expect(data.speed.length).toBe(cars);
-    expect(headings(data)).toContain(1);
-    expect(headings(data)).toContain(-1);
-    for (const speed of data.speed) {
-      expect(speed).toBeGreaterThanOrEqual(12 * 0.7);
-      expect(speed).toBeLessThanOrEqual(12 * 1.3);
-    }
-  });
-
-  it("keeps a one-way road to its direction", () => {
-    expect(headings(buildTraffic([segment(1)], ORIGIN, project))).not.toContain(
-      -1,
-    );
-    expect(
-      headings(buildTraffic([segment(-1)], ORIGIN, project)),
-    ).not.toContain(1);
-  });
-
-  it("skips classes without traffic and segments under a meter", () => {
-    const rail = { ...segment(0), roadClass: "rail" };
-    expect(buildTraffic([rail], ORIGIN, project).phase.length).toBe(0);
-    expect(buildTraffic([segment(0, 0.5)], ORIGIN, project).phase.length).toBe(
-      0,
-    );
-  });
-
-  it("stores the positions relative to the origin", () => {
-    const origin = new Vector3(5, 7, 0);
-    const absolute = buildTraffic([segment(1)], ORIGIN, project);
-    const relative = buildTraffic([segment(1)], origin, project);
-    expect(relative.start[0]).toBeCloseTo(absolute.start[0] - 5);
-    expect(relative.start[1]).toBeCloseTo(absolute.start[1] - 7);
   });
 });

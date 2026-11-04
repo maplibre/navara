@@ -2,13 +2,18 @@
  * StreetLightsPlugin — Navara Plugin for street lamps, roof beacons and
  * traffic at night.
  *
- * Draws dark road surfaces over an OpenMapTiles-schema vector source
- * ({@link StreetLightsPlugin.addRoads}), then streams the zoom-14 tiles of the
- * same tile set in around a position ({@link StreetLightsPlugin.start} and
- * {@link StreetLightsPlugin.follow}) to place street lamps along every road,
- * a red beacon on every roof 90 m or higher, and cars that drive the road
+ * Hides everything but the roads on a road layer the caller styled
+ * ({@link StreetLightsPlugin.addRoads}), then streams the zoom-14 tiles of
+ * the same tile set in around a position ({@link StreetLightsPlugin.start}
+ * and {@link StreetLightsPlugin.follow}) to place street lamps along every
+ * road, a red beacon on every tall roof, and cars that drive the road
  * segments. The tiles are fetched a second time by this plugin: the engine
  * decodes them for rendering but exposes no feature geometry.
+ *
+ * The tiles are read through {@link StreetLightsConfig.roads} and
+ * {@link StreetLightsConfig.buildings}, which default to the OpenMapTiles
+ * schema; another schema needs its own {@link RoadReader} and
+ * {@link BuildingReader}.
  *
  * The lamps and beacons are `point` layers that take part in the selective
  * effects given to `start()`, such as the built-in `selectiveBloom`. The cars
@@ -19,7 +24,7 @@
  * ## Usage
  *
  * ```ts
- * import ThreeView from "@navaramap/three";
+ * import ThreeView, { Color } from "@navaramap/three";
  * import type { SelectiveBloomEffectDesc } from "@navaramap/three-default-descs";
  * import {
  *   DefaultPlugin,
@@ -56,7 +61,14 @@
  *   url: "https://tiles.openfreemap.org/planet",
  * });
  *
- * streetLights.addRoads(streets);
+ * // Dark road surfaces; the plugin hides every class that carries no lights.
+ * const roads = view.addLayer({
+ *   type: "vector",
+ *   source: streets,
+ *   sourceLayers: ["transportation"],
+ *   polyline: { color: new Color().setStyle("#15171c"), clampToGround: true },
+ * });
+ * streetLights.addRoads(roads);
  * streetLights.start({ tileTemplate, effectIds: [bloom.id] });
  * view.on("postUpdate", () => {
  *   const { lng, lat } = view.camera.positionGeographic;
@@ -79,24 +91,74 @@ import {
   type ViewContext,
 } from "@navaramap/three";
 
+import { buildTraffic, mulberry32, tileLights, tileSeed } from "./placement";
 import {
-  buildTraffic,
-  createTileStreamer,
-  loadRoadNetwork,
-  roadStyle,
-  tileCenter,
-  tileLights,
-  type RoadNetwork,
-  type TileCoordinate,
-  type TileStreamer,
-} from "./streetTiles";
+  OPEN_MAP_TILES,
+  readRoadFeature,
+  type BuildingReader,
+  type RoadReader,
+  type RoadSchema,
+  type TileSchema,
+} from "./roads";
 import {
   StreetTrafficMeshDesc,
   type StreetTrafficDescriptions,
   type StreetTrafficOptions,
 } from "./StreetTrafficMeshDesc";
+import {
+  createTileStreamer,
+  loadRoadNetwork,
+  tileCenter,
+  type RoadNetwork,
+  type TileCoordinate,
+  type TileStreamer,
+} from "./tiles";
 
 type View = ThreeView<StreetTrafficDescriptions>;
+
+export {
+  type BuildingReader,
+  type Oneway,
+  type RoadClass,
+  type RoadReader,
+} from "./roads";
+
+export type StreetLightsRoads = {
+  /**
+   * Tile layer holding the road centerlines.
+   * @defaultValue "transportation"
+   */
+  layer?: string;
+} & (
+  | {
+      /** The OpenMapTiles reader: `class` is the road class, `oneway` the direction. */
+      read?: undefined;
+      properties?: undefined;
+    }
+  | {
+      /** Reads one road feature's properties. */
+      read: RoadReader;
+      /**
+       * Properties the reader needs. The reader sees only these, both on the
+       * road layer and when the lamps and cars are placed. All properties
+       * when omitted.
+       */
+      properties?: string[];
+    }
+);
+
+export type StreetLightsBuildings = {
+  /**
+   * Tile layer holding the building footprints.
+   * @defaultValue "building"
+   */
+  layer?: string;
+  /**
+   * Reads one building feature's properties.
+   * @defaultValue the OpenMapTiles reader: `render_height`, with a beacon from 90 m up
+   */
+  read?: BuildingReader;
+};
 
 export type StreetLightsConfig = {
   /**
@@ -107,10 +169,12 @@ export type StreetLightsConfig = {
    */
   radius?: number;
   traffic?: StreetTrafficOptions;
+  roads?: StreetLightsRoads;
+  buildings?: StreetLightsBuildings;
 };
 
 export type StreetLightsStartOptions = {
-  /** A `{z}/{x}/{y}` tile URL of an OpenMapTiles-schema tile set. */
+  /** A `{z}/{x}/{y}` tile URL of the tile set the road layer shows. */
   tileTemplate: string;
   /**
    * Selective effects the lamps and beacons take part in, such as a bloom.
@@ -122,6 +186,10 @@ export type StreetLightsStartOptions = {
 export type StreetLightsUpdate = {
   traffic?: StreetTrafficOptions;
 };
+
+// Mixed with the tile coordinate, so each tile places its lights the same way
+// each time it streams in.
+const PLACEMENT_SEED = 7;
 
 const LIGHT_COLORS = {
   lamp: new Color().setStyle("#fff6e0"),
@@ -137,6 +205,13 @@ const LIGHT_COLORS = {
  */
 type Flags = { visible: boolean; lightsOn: boolean };
 
+/** A road layer given to `addRoads()` and the handlers attached to it. */
+type Surface = {
+  layer: Layer;
+  apply: (event: { evaluator: FeatureEvaluator }) => void;
+  forget: () => void;
+};
+
 const lampEvaluator =
   (flags: Flags) =>
   ({ evaluator }: { evaluator: FeatureEvaluator }) => {
@@ -145,12 +220,8 @@ const lampEvaluator =
         if (!flags.visible || !flags.lightsOn) return { show: false };
         switch (properties?.kind) {
           case "lamp":
-            return {
-              show: true,
-              color: LIGHT_COLORS.lamp,
-              emissive: LIGHT_COLORS.lamp,
-              size: 3,
-            };
+            // The layer's material gives the plain lamp's look.
+            return { show: true };
           case "warm":
             return {
               show: true,
@@ -179,17 +250,18 @@ const beaconEvaluator =
   };
 
 const surfaceEvaluator =
-  (flags: Flags) =>
+  (flags: Flags, roads: RoadSchema) =>
   ({ evaluator }: { evaluator: FeatureEvaluator }) => {
     evaluator.evaluate(
       ({ properties }) => {
-        if (!flags.visible) return { show: false };
-        const style = roadStyle(properties?.class);
-        if (!style) return { show: false };
+        const road = flags.visible
+          ? readRoadFeature(roads, properties ?? {})
+          : undefined;
+        if (!road) return { show: false };
 
-        return { show: true, width: style.width };
+        return { show: true, width: road.style.width };
       },
-      { filters: ["class"] },
+      { filters: roads.properties },
     );
   };
 
@@ -213,15 +285,38 @@ const removeTile = (tile: StreetTile) => {
 export class StreetLightsPlugin extends Plugin<View, ViewContext> {
   private view?: View;
   private streamer?: TileStreamer<StreetTile>;
-  private surfaces: Layer[] = [];
+  private surfaces: Surface[] = [];
   private readonly radius: number;
+  private readonly schema: TileSchema;
   private readonly traffic: StreetTrafficOptions;
   private readonly flags: Flags = { visible: true, lightsOn: true };
   private effectIds: string[] = [];
 
-  constructor({ radius = 2, traffic = {} }: StreetLightsConfig = {}) {
+  constructor({
+    radius = 2,
+    traffic = {},
+    roads = {},
+    buildings = {},
+  }: StreetLightsConfig = {}) {
     super();
     this.radius = radius;
+    this.schema = {
+      // A reader and the properties it reads come together: the defaults
+      // as a pair, or the caller's as a pair.
+      roads: {
+        layer: roads.layer ?? OPEN_MAP_TILES.roads.layer,
+        ...(roads.read
+          ? { read: roads.read, properties: roads.properties }
+          : {
+              read: OPEN_MAP_TILES.roads.read,
+              properties: OPEN_MAP_TILES.roads.properties,
+            }),
+      },
+      buildings: {
+        layer: buildings.layer ?? OPEN_MAP_TILES.buildings.layer,
+        read: buildings.read ?? OPEN_MAP_TILES.buildings.read,
+      },
+    };
     this.traffic = { ...traffic };
   }
 
@@ -239,23 +334,36 @@ export class StreetLightsPlugin extends Plugin<View, ViewContext> {
     return this.view;
   }
 
-  /** Dark road surfaces over the OpenMapTiles `transportation` layer of `source`. */
-  addRoads(source: Source): Layer {
-    const surface = this.requireView().addLayer({
-      type: "vector",
-      source,
-      sourceLayers: ["transportation"],
-      polyline: {
-        color: new Color().setStyle("#15171c"),
-        width: 1,
-        clampToGround: true,
-      },
-    });
-    const apply = surfaceEvaluator(this.flags);
-    surface.on("featureCreated", apply);
-    surface.on("featureUpdated", apply);
-    this.surfaces.push(surface);
-    return surface;
+  /**
+   * Takes a polyline layer over the road centerlines as the road surfaces:
+   * every feature the road reader skips is hidden, the rest get the width of
+   * their style, and `setVisible()` covers the layer. The layer's own
+   * material gives the color and the clamping; it must show the tile layer
+   * `roads.layer` names, so give it `sourceLayers: [roads.layer]`: other
+   * line layers can carry the same properties (OpenMapTiles
+   * `transportation_name` does) and would be drawn as roads too. The layer
+   * stays the caller's to delete. While the
+   * plugin holds it, its `show` and `width` are the plugin's; `dispose()`
+   * detaches the plugin, but the values it already set stay on the features
+   * (Navara cannot clear evaluated values), so delete the layer or evaluate
+   * it again yourself afterwards. Giving the same layer again does nothing.
+   */
+  addRoads(layer: Layer): void {
+    this.requireView();
+    if (this.surfaces.some((surface) => surface.layer === layer)) return;
+    const apply = surfaceEvaluator(this.flags, this.schema.roads);
+    // Deleted by the caller: let go of it.
+    const forget = () => {
+      this.surfaces = this.surfaces.filter(
+        (surface) => surface.layer !== layer,
+      );
+    };
+    layer.on("featureCreated", apply);
+    layer.on("featureUpdated", apply);
+    layer.once("deleted", forget);
+    this.surfaces.push({ layer, apply, forget });
+    // Features the layer already holds get the evaluator too.
+    layer.forceUpdate();
   }
 
   /**
@@ -269,8 +377,17 @@ export class StreetLightsPlugin extends Plugin<View, ViewContext> {
     this.effectIds = effectIds;
     this.streamer = createTileStreamer<StreetTile>(
       this.radius,
-      async (tile, signal) =>
-        this.addTile(tile, await loadRoadNetwork(tileTemplate, tile, signal)),
+      async (tile, signal) => {
+        const network = await loadRoadNetwork(
+          tileTemplate,
+          tile,
+          this.schema,
+          signal,
+        );
+        // Aborted after the tile arrived: build nothing for it.
+        if (signal.aborted) throw signal.reason;
+        return this.addTile(tile, network);
+      },
       removeTile,
     );
   }
@@ -287,7 +404,7 @@ export class StreetLightsPlugin extends Plugin<View, ViewContext> {
   setVisible(visible: boolean): void {
     if (this.flags.visible === visible) return;
     this.flags.visible = visible;
-    for (const surface of this.surfaces) surface.forceUpdate();
+    for (const { layer } of this.surfaces) layer.forceUpdate();
     this.refreshTiles();
   }
 
@@ -306,10 +423,17 @@ export class StreetLightsPlugin extends Plugin<View, ViewContext> {
     }
   }
 
-  /** Drops every layer and mesh the plugin added. */
+  /**
+   * Drops every layer and mesh the plugin added, and detaches from the road
+   * layers given to `addRoads()`, which stay the caller's.
+   */
   dispose(): void {
     this.stopStreaming();
-    for (const surface of this.surfaces) surface.delete();
+    for (const { layer, apply, forget } of this.surfaces) {
+      layer.off("featureCreated", apply);
+      layer.off("featureUpdated", apply);
+      layer.off("deleted", forget);
+    }
     this.surfaces = [];
     this.view = undefined;
   }
@@ -332,29 +456,47 @@ export class StreetLightsPlugin extends Plugin<View, ViewContext> {
     }
   }
 
-  /** Street lamps, roof beacons and traffic for one tile's road network. */
-  private addTile(tile: TileCoordinate, network: RoadNetwork): StreetTile {
-    const view = this.requireView();
-    const lights = tileLights(network);
-
-    // Sized in meters so the far field thins out with distance instead of
-    // piling fixed-size sprites into a sheet.
-    const lampSource = view.addSource({ type: "geojson", data: lights.lamps });
-    const lamps = view.addLayer({
+  /**
+   * A layer of glowing points, the lamps or the beacons, that takes part in
+   * the selective effects given to `start()`. Sized in meters so the far
+   * field thins out with distance instead of piling fixed-size sprites into
+   * a sheet.
+   */
+  private addLightLayer(
+    source: Source,
+    light: { color: Color; size: number; clampToGround: boolean },
+  ): Layer {
+    return this.requireView().addLayer({
       type: "vector",
-      source: lampSource,
+      source,
       point: {
-        size: 3,
+        size: light.size,
         sizeInMeters: true,
         pointFacing: "upright",
-        clampToGround: true,
+        clampToGround: light.clampToGround,
         height: 0,
         declutter: false,
-        color: LIGHT_COLORS.lamp,
-        emissiveColor: LIGHT_COLORS.lamp,
+        color: light.color,
+        emissiveColor: light.color,
         emissiveIntensity: 1,
         effectIds: this.effectIds,
       },
+    });
+  }
+
+  /** Street lamps, roof beacons and traffic for one tile's road network. */
+  private addTile(tile: TileCoordinate, network: RoadNetwork): StreetTile {
+    const view = this.requireView();
+    const lights = tileLights(
+      network,
+      mulberry32(tileSeed(PLACEMENT_SEED, tile, 0)),
+    );
+
+    const lampSource = view.addSource({ type: "geojson", data: lights.lamps });
+    const lamps = this.addLightLayer(lampSource, {
+      color: LIGHT_COLORS.lamp,
+      size: 3,
+      clampToGround: true,
     });
     const applyLamp = lampEvaluator(this.flags);
     lamps.on("featureCreated", applyLamp);
@@ -364,21 +506,10 @@ export class StreetLightsPlugin extends Plugin<View, ViewContext> {
       type: "geojson",
       data: lights.beacons,
     });
-    const beacons = view.addLayer({
-      type: "vector",
-      source: beaconSource,
-      point: {
-        size: 2,
-        sizeInMeters: true,
-        pointFacing: "upright",
-        clampToGround: false,
-        height: 0,
-        declutter: false,
-        color: LIGHT_COLORS.beacon,
-        emissiveColor: LIGHT_COLORS.beacon,
-        emissiveIntensity: 1,
-        effectIds: this.effectIds,
-      },
+    const beacons = this.addLightLayer(beaconSource, {
+      color: LIGHT_COLORS.beacon,
+      size: 2,
+      clampToGround: false,
     });
     const applyBeacon = beaconEvaluator(this.flags);
     beacons.on("featureCreated", applyBeacon);
@@ -394,7 +525,12 @@ export class StreetLightsPlugin extends Plugin<View, ViewContext> {
     });
     const traffic = view.addMesh<StreetTrafficMeshDesc>({
       streetTraffic: {
-        data: buildTraffic(network.roads, origin, geodeticToVector3),
+        data: buildTraffic(
+          network.roads,
+          origin,
+          geodeticToVector3,
+          mulberry32(tileSeed(PLACEMENT_SEED, tile, 1)),
+        ),
         ...this.traffic,
       },
       position: { x: origin.x, y: origin.y, z: origin.z },

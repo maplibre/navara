@@ -58,7 +58,7 @@ TileJSON 3.0.0 ドキュメントを取得し、`addSource()` を通じて単一
 
 ### StreetLightsPlugin
 
-OpenMapTiles スキーマのベクトルタイルセットのズーム 14 のタイルを位置の周辺にストリーミングし、道路に沿った街灯、高いビルの屋上の赤い灯、道路の区間を走る車を、`addRoads()` で描いた暗い路面の上に配置するプラグインです。街灯と屋上灯は `start()` に渡した Selective Effect（組み込みの Bloom など）に参加します。詳細は [StreetLightsPlugin](../streetlightsplugin/) を参照してください。
+ベクトルタイルセット（デフォルトは OpenMapTiles スキーマ、他のスキーマは独自のリーダーで対応）のズーム 14 のタイルを位置の周辺にストリーミングし、道路に沿った街灯、高いビルの屋上の赤い灯、道路の区間を走る車を配置するプラグインです。`addRoads()` は呼び出し側の道路レイヤーを受け取り、灯りを持たないフィーチャーを非表示にします。街灯と屋上灯は `start()` に渡した Selective Effect（組み込みの Bloom など）に参加します。詳細は [StreetLightsPlugin](../streetlightsplugin/) を参照してください。
 
 ## 使い方
 

@@ -44,8 +44,14 @@ export {
 export {
   StreetLightsPlugin,
   type StreetLightsConfig,
+  type StreetLightsRoads,
+  type StreetLightsBuildings,
   type StreetLightsStartOptions,
   type StreetLightsUpdate,
+  type Oneway,
+  type RoadClass,
+  type RoadReader,
+  type BuildingReader,
 } from "./StreetLightsPlugin";
 
 export {
@@ -55,4 +61,4 @@ export {
   type StreetTrafficMeshConfig,
   type StreetTrafficMeshUpdate,
   type StreetTrafficDescriptions,
-} from "./StreetTrafficMeshDesc";
+} from "./StreetLightsPlugin/StreetTrafficMeshDesc";

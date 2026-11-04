@@ -2,17 +2,19 @@ import ThreeView, { type ViewContext } from "@navaramap/three";
 import { Vector3 } from "three";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { StreetLightsPlugin } from "./StreetLightsPlugin";
+import { OPEN_MAP_TILES, ROADS } from "./roads";
+import {
+  StreetTrafficMeshDesc,
+  type StreetTrafficDescriptions,
+} from "./StreetTrafficMeshDesc";
 import {
   loadRoadNetwork,
   tileCenter,
   tileCoordinate,
   type RoadNetwork,
-} from "./streetTiles";
-import {
-  StreetTrafficMeshDesc,
-  type StreetTrafficDescriptions,
-} from "./StreetTrafficMeshDesc";
+} from "./tiles";
+
+import { StreetLightsPlugin } from "./index";
 
 // Importing the real @navaramap/three touches WASM/os at module load, which
 // fails in the test environment. The plugin needs `Plugin`, `MeshDesc` and
@@ -49,8 +51,8 @@ vi.mock("@navaramap/three", () => ({
 /* eslint-enable @typescript-eslint/no-extraneous-class */
 
 // The tile fetch is the only network access; everything else runs as is.
-vi.mock("./streetTiles", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("./streetTiles")>()),
+vi.mock("./tiles", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./tiles")>()),
   loadRoadNetwork: vi.fn(),
 }));
 
@@ -59,7 +61,7 @@ const TEMPLATE = "https://t/{z}/{x}/{y}.pbf";
 const NETWORK: RoadNetwork = {
   roads: [
     {
-      roadClass: "primary",
+      style: ROADS.primary,
       oneway: 0,
       line: [
         [TOKYO.lng, TOKYO.lat],
@@ -69,34 +71,51 @@ const NETWORK: RoadNetwork = {
   ],
   tallBuildings: [{ lng: TOKYO.lng, lat: TOKYO.lat, height: 120 }],
 };
-// The plugin never reads the context.
-const NO_CTX = {} as ViewContext;
+// ViewContext has private members, so no object literal can satisfy it
+// structurally. The cast is the repo's pattern for a context a test never
+// reads (navara_three core/MeshDesc.test.ts, EffectDesc.test.ts and
+// navara_maplibre_style MapLibreStylePlugin.test.ts); the plugin reads none
+// of it.
+const NO_CTX: ViewContext = {} as ViewContext;
 
 type EvaluateFn = (feature: {
   properties?: Record<string, unknown>;
   batchId: number;
 }) => Record<string, unknown>;
 type LayerEvent = {
-  evaluator: { evaluate: (fn: EvaluateFn, options?: unknown) => void };
+  evaluator: {
+    evaluate: (fn: EvaluateFn, options?: { filters?: string[] }) => void;
+  };
 };
 
 /** A layer that records its handlers so a test can run the evaluator. */
 const makeFakeLayer = () => {
   const handlers = new Map<string, (event: LayerEvent) => void>();
+  let filters: string[] | undefined;
+  let onDeleted: () => void = () => {};
   return {
     on: vi.fn((event: string, handler: (event: LayerEvent) => void) => {
       handlers.set(event, handler);
     }),
+    off: vi.fn(),
+    once: vi.fn((event: string, handler: () => void) => {
+      if (event === "deleted") onDeleted = handler;
+    }),
     forceUpdate: vi.fn(),
-    delete: vi.fn(),
+    delete: vi.fn(() => onDeleted()),
+    /** The `filters` the registered evaluator asked for. */
+    get filters() {
+      return filters;
+    },
     /** Runs the registered evaluator on one feature's properties. */
-    evaluate: (properties: Record<string, unknown>) => {
+    evaluate(properties: Record<string, unknown>) {
       const handler = handlers.get("featureCreated");
       if (!handler) throw new Error("no evaluator registered");
       let result: Record<string, unknown> | undefined;
       handler({
         evaluator: {
-          evaluate: (fn) => {
+          evaluate: (fn, options) => {
+            filters = options?.filters;
             result = fn({ properties, batchId: 0 });
           },
         },
@@ -161,12 +180,9 @@ afterEach(() => {
 describe("StreetLightsPlugin lifecycle", () => {
   it("throws before init() and before start()", async () => {
     const { view } = makeFakeView();
-    const source = view.addSource({
-      type: "geojson",
-      data: { type: "FeatureCollection", features: [] },
-    });
+    const roads = view.addLayer({ type: "vector", source: "roads" });
     const plugin = new StreetLightsPlugin();
-    expect(() => plugin.addRoads(source)).toThrow(/view\.init\(\)/);
+    expect(() => plugin.addRoads(roads)).toThrow(/view\.init\(\)/);
     expect(() => plugin.start({ tileTemplate: TEMPLATE })).toThrow(
       /view\.init\(\)/,
     );
@@ -187,35 +203,114 @@ describe("StreetLightsPlugin lifecycle", () => {
 });
 
 describe("StreetLightsPlugin.addRoads", () => {
-  it("adds a clamped polyline layer sized per road class", async () => {
+  it("hides the features without lights and sizes the rest per road class", async () => {
     const { view, layers } = makeFakeView();
     const plugin = new StreetLightsPlugin();
     await plugin.init(view, NO_CTX);
-    const source = view.addSource({
-      type: "geojson",
-      data: { type: "FeatureCollection", features: [] },
-    });
+    const roads = view.addLayer({ type: "vector", source: "roads" });
 
-    plugin.addRoads(source);
+    plugin.addRoads(roads);
 
-    expect(view.addLayer).toHaveBeenCalledWith({
-      type: "vector",
-      source,
-      sourceLayers: ["transportation"],
-      polyline: expect.objectContaining({ width: 1, clampToGround: true }),
-    });
     const [surface] = layers;
+    expect(surface.on).toHaveBeenCalledWith(
+      "featureCreated",
+      expect.any(Function),
+    );
+    expect(surface.on).toHaveBeenCalledWith(
+      "featureUpdated",
+      expect.any(Function),
+    );
     expect(surface.evaluate({ class: "primary" })).toEqual({
       show: true,
       width: 4.5,
     });
     expect(surface.evaluate({ class: "rail" })).toEqual({ show: false });
+    expect(surface.filters).toEqual(["class", "oneway"]);
+    // Features the layer held before addRoads() are re-evaluated.
+    expect(surface.forceUpdate).toHaveBeenCalledTimes(1);
 
     plugin.setVisible(false);
-    expect(surface.forceUpdate).toHaveBeenCalledTimes(1);
+    expect(surface.forceUpdate).toHaveBeenCalledTimes(2);
     expect(surface.evaluate({ class: "primary" })).toEqual({ show: false });
     plugin.setVisible(false);
-    expect(surface.forceUpdate).toHaveBeenCalledTimes(1);
+    expect(surface.forceUpdate).toHaveBeenCalledTimes(2);
+
+    // Giving the same layer again adds no second evaluator.
+    plugin.addRoads(roads);
+    expect(surface.on).toHaveBeenCalledTimes(2);
+
+    // Deleted by its creator: the plugin lets go of it.
+    roads.delete();
+    plugin.dispose();
+    expect(surface.delete).toHaveBeenCalledTimes(1);
+    expect(surface.off).not.toHaveBeenCalled();
+  });
+
+  it("takes a property list only together with a reader", () => {
+    // The default reader brings its own list; a list alone would starve it.
+    const roads = { properties: ["oneway"] };
+    // @ts-expect-error properties without read
+    expect(new StreetLightsPlugin({ roads })).toBeDefined();
+  });
+
+  it("pairs a custom reader with its own property list, or none", async () => {
+    const { view, layers } = makeFakeView();
+    const plugin = new StreetLightsPlugin({
+      roads: {
+        read: () => ({ roadClass: "minor" }),
+        properties: ["class", "oneway"],
+      },
+    });
+    await plugin.init(view, NO_CTX);
+    plugin.addRoads(view.addLayer({ type: "vector", source: "roads" }));
+    layers[0].evaluate({ class: "primary" });
+    expect(layers[0].filters).toEqual(["class", "oneway"]);
+
+    const custom = new StreetLightsPlugin({
+      roads: { read: () => ({ roadClass: "minor" }) },
+    });
+    await custom.init(view, NO_CTX);
+    custom.addRoads(view.addLayer({ type: "vector", source: "roads" }));
+    layers[1].evaluate({ anything: 1 });
+    expect(layers[1].filters).toBeUndefined();
+  });
+
+  it("reads the roads through the configured reader", async () => {
+    const { view, layers } = makeFakeView();
+    const plugin = new StreetLightsPlugin({
+      roads: {
+        layer: "roads",
+        read: (properties) =>
+          properties.highway === "main" ? { roadClass: "primary" } : undefined,
+      },
+      buildings: {
+        layer: "buildings",
+        read: (properties) =>
+          typeof properties.height === "number" ? properties.height : undefined,
+      },
+    });
+    await plugin.init(view, NO_CTX);
+    plugin.addRoads(view.addLayer({ type: "vector", source: "roads" }));
+
+    const [surface] = layers;
+    expect(surface.evaluate({ highway: "main" })).toEqual({
+      show: true,
+      width: 4.5,
+    });
+    expect(surface.evaluate({ class: "primary" })).toEqual({ show: false });
+
+    vi.mocked(loadRoadNetwork).mockResolvedValue(NETWORK);
+    plugin.start({ tileTemplate: TEMPLATE });
+    plugin.follow(TOKYO.lng, TOKYO.lat);
+    expect(loadRoadNetwork).toHaveBeenCalledWith(
+      TEMPLATE,
+      tileCoordinate(TOKYO.lng, TOKYO.lat),
+      expect.objectContaining({
+        roads: expect.objectContaining({ layer: "roads" }),
+        buildings: expect.objectContaining({ layer: "buildings" }),
+      }),
+      expect.any(AbortSignal),
+    );
   });
 });
 
@@ -226,6 +321,7 @@ describe("StreetLightsPlugin streaming", () => {
     expect(loadRoadNetwork).toHaveBeenCalledWith(
       TEMPLATE,
       tileCoordinate(TOKYO.lng, TOKYO.lat),
+      OPEN_MAP_TILES,
       expect.any(AbortSignal),
     );
     // One source each for the lamps and the beacons.
@@ -258,10 +354,8 @@ describe("StreetLightsPlugin streaming", () => {
     expect(meshes).toHaveLength(1);
 
     const [lamps, beacons] = layers;
-    expect(lamps.evaluate({ kind: "lamp" })).toMatchObject({
-      show: true,
-      size: 3,
-    });
+    // Plain lamps keep the material's look; warm ones are recolored.
+    expect(lamps.evaluate({ kind: "lamp" })).toEqual({ show: true });
     expect(lamps.evaluate({ kind: "warm" })).toMatchObject({
       show: true,
       size: 2.5,
@@ -337,13 +431,32 @@ describe("StreetLightsPlugin streaming", () => {
     expect(sources[0].delete).toHaveBeenCalledTimes(1);
   });
 
+  it("builds nothing for a tile whose load was aborted after it arrived", async () => {
+    const { plugin, view } = await started();
+    let arrive: (network: RoadNetwork) => void = () => {};
+    vi.mocked(loadRoadNetwork).mockImplementationOnce(
+      () =>
+        new Promise<RoadNetwork>((resolve) => {
+          arrive = resolve;
+        }),
+    );
+    const east = tileEast(1);
+    plugin.follow(east.lng, east.lat);
+    const added = vi.mocked(view.addSource).mock.calls.length;
+
+    // Moving on aborts the load; the data still arrives afterwards.
+    const far = tileEast(5);
+    vi.mocked(loadRoadNetwork).mockImplementation(() => new Promise(() => {}));
+    plugin.follow(far.lng, far.lat);
+    arrive(NETWORK);
+    await flush();
+    expect(view.addSource).toHaveBeenCalledTimes(added);
+  });
+
   it("dispose() drops everything and stops the tiles still loading", async () => {
     const { plugin, view, layers, sources, meshes } = await started();
-    const source = view.addSource({
-      type: "geojson",
-      data: { type: "FeatureCollection", features: [] },
-    });
-    plugin.addRoads(source);
+    const roads = view.addLayer({ type: "vector", source: "roads" });
+    plugin.addRoads(roads);
 
     // A tile still loading when the plugin goes away.
     let settle: (network: RoadNetwork) => void = () => {};
@@ -355,12 +468,17 @@ describe("StreetLightsPlugin streaming", () => {
     );
     const east = tileEast(1);
     plugin.follow(east.lng, east.lat);
-    const signal = vi.mocked(loadRoadNetwork).mock.lastCall?.[2];
+    const signal = vi.mocked(loadRoadNetwork).mock.lastCall?.[3];
 
     plugin.dispose();
 
     expect(signal?.aborted).toBe(true);
-    for (const layer of layers) expect(layer.delete).toHaveBeenCalledTimes(1);
+    const [lamps, beacons, surface] = layers;
+    expect(lamps.delete).toHaveBeenCalledTimes(1);
+    expect(beacons.delete).toHaveBeenCalledTimes(1);
+    // The road layer stays the caller's: detached, not deleted.
+    expect(surface.delete).not.toHaveBeenCalled();
+    expect(surface.off).toHaveBeenCalledTimes(3);
     expect(sources[0].delete).toHaveBeenCalledTimes(1);
     expect(sources[1].delete).toHaveBeenCalledTimes(1);
     expect(meshes[0].delete).toHaveBeenCalledTimes(1);
@@ -369,6 +487,6 @@ describe("StreetLightsPlugin streaming", () => {
     settle(NETWORK);
     await flush();
     expect(view.addSource).toHaveBeenCalledTimes(added);
-    expect(() => plugin.addRoads(source)).toThrow(/view\.init\(\)/);
+    expect(() => plugin.addRoads(roads)).toThrow(/view\.init\(\)/);
   });
 });

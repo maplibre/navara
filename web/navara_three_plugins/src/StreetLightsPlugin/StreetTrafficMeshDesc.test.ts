@@ -43,12 +43,18 @@ const data = (): StreetTrafficData => ({
   speed: new Float32Array([10, 12]),
 });
 
-// The desc reads the camera's field of view and the viewport uniform only.
-const view = { camera: { raw: { fov: 60 } } } as ThreeView;
+// ThreeView and ViewContext have private members, so no object literal can
+// satisfy them structurally. The casts follow the repo's pattern for test
+// stand-ins (navara_three core/MeshDesc.test.ts, EffectDesc.test.ts and
+// navara_maplibre_style MapLibreStylePlugin.test.ts); the desc reads only the
+// camera's field of view and the viewport uniform.
+const view: ThreeView = { camera: { raw: { fov: 60 } } } as ThreeView;
 const viewport: { value: [number, number, number] | null | undefined } = {
   value: [1200, 750, 2],
 };
-const ctx = { getViewportAndPixelRatioUniform: () => viewport } as ViewContext;
+const ctx: ViewContext = {
+  getViewportAndPixelRatioUniform: () => viewport,
+} as ViewContext;
 
 const create = (options: { speed?: number; size?: number } = {}) => {
   const desc = new StreetTrafficMeshDesc(view, ctx, {

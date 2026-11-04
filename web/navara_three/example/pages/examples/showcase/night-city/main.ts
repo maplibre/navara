@@ -52,8 +52,6 @@ view.setCamera({ ...START, height: 350, heading: 35, pitch: -14, roll: 0 });
 const scene = defaultPlugin.addDefaultPhotorealScene();
 scene.stars.update({ stars: { pointSize: 2, intensity: STARS_INTENSITY } });
 view.addLight({ ambient: { intensity: 0.08 } });
-// `hour` is local solar time where the camera is, so it means the same over
-// Tokyo and over New York.
 let hour = 20;
 let hourLng = START.lng;
 const setHour = (lng: number) => {
@@ -62,10 +60,8 @@ const setHour = (lng: number) => {
 };
 setHour(START.lng);
 
-// Both run right after the MRT pass, the later one first: with the bloom
-// added first, the windows are drawn before the bloom composite. Only the
-// lamps and beacons bloom: the windows (a post pass) and the traffic
-// (additive points) write no emissive for it to read.
+// Both insert right after the MRT pass, so the one added later runs first:
+// adding the bloom first draws the windows before the bloom composite.
 const bloom = view.addEffect<SelectiveBloomEffectDesc>({
   selectiveBloom: { strength: BLOOM_STRENGTH, radius: 0.75, threshold: 0.5 },
 });
@@ -81,7 +77,6 @@ const osm = view.addSource({
 view.addLayer({ type: "raster", source: osm });
 view.attribution?.add([TILE_DATASETS.openstreetmap]);
 
-// The TileJSON also names the tile URL template the streets stream from.
 let tileTemplate = "";
 tilejson.on("loaded", ({ tilejson: document }) => {
   tileTemplate = document.tiles[0];
@@ -122,12 +117,17 @@ const extrude = ({ evaluator }: { evaluator: FeatureEvaluator }) =>
 buildings.on("featureCreated", extrude);
 buildings.on("featureUpdated", extrude);
 
-streets.addRoads(openfreemap);
-// Lamps, beacons and traffic stream in around the camera; the lamps and beacons bloom.
+// Dark road surfaces; the plugin hides every class that carries no lights.
+const roads = view.addLayer({
+  type: "vector",
+  source: openfreemap,
+  sourceLayers: ["transportation"],
+  polyline: { color: new Color().setStyle("#15171c"), clampToGround: true },
+});
+streets.addRoads(roads);
 streets.start({ tileTemplate, effectIds: [bloom.id] });
 
-// Lights come on through civil twilight: fully on with the sun 6° below the
-// horizon, off once it is 3° above.
+// Lights come on through civil twilight: sun from 3° above to 6° below.
 const LIGHTS_ON_BELOW = Math.sin((-6 * Math.PI) / 180);
 const LIGHTS_OFF_ABOVE = Math.sin((3 * Math.PI) / 180);
 const currentDarkness = () => {
@@ -146,7 +146,6 @@ let darkness = 1;
 // postUpdate only fires on state changes, so the sun's clock triggers it too.
 const refresh = () => {
   const { lng, lat, height } = view.camera.positionGeographic;
-  // Keeps the slider's solar hour as the camera crosses longitudes.
   if (Math.abs(lng - hourLng) > 0.5) setHour(lng);
   const nextLod = height < DETAIL_MAX_ALTITUDE ? "street" : "aerial";
   if (nextLod === "street") streets.follow(lng, lat);
