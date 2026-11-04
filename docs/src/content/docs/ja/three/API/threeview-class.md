@@ -478,38 +478,6 @@ const view = new ThreeView({
 SSE 乗数の範囲は実行時にも [`setSseMultiplierRange()`](../threeview-functions#setssemultiplierrange) で変更できます。
 :::
 
-### waterTexture
-
-**Type:** `{ enabled: boolean; url?: string } | undefined`
-
-**Description:** 共有水テクスチャの設定。有効にすると、水エフェクトを使用するすべてのメッシュで単一の水ノーマルテクスチャが共有されます。これにより、各メッシュが個別にテクスチャを読み込むよりも効率的になります。
-
-**Default:** 省略時は無効です（`{ enabled: true }` を渡した場合にのみ共有水テクスチャが読み込まれます）。
-
-```typescript
-type WaterTextureOptions = {
-  enabled: boolean; // 水テクスチャの共有を有効にするかどうか
-  url?: string; // カスタム水ノーマルテクスチャの URL（省略時はビルトインテクスチャを使用）
-};
-```
-
-**Example:**
-
-```typescript
-// ビルトインテクスチャを使用
-const view = new ThreeView({
-  waterTexture: { enabled: true },
-});
-
-// カスタムテクスチャを使用する場合
-const viewWithCustomWater = new ThreeView({
-  waterTexture: {
-    enabled: true,
-    url: "https://example.com/water-normal.png",
-  },
-});
-```
-
 ### GlobeOptions
 
 **Type:** `GlobeOptions`

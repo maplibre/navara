@@ -35,7 +35,7 @@ For details on the atmosphere system, see the [Atmosphere class](../../../three/
 
 **Description:** Specifies whether to display the sun.
 
-**Default:** `true`
+**Default:** `true`, or `false` when `envMap` is set
 
 **Example:**
 
@@ -53,7 +53,7 @@ For details on the atmosphere system, see the [Atmosphere class](../../../three/
 
 **Description:** Specifies whether to display the moon.
 
-**Default:** `true`
+**Default:** `true`, or `false` when `envMap` is set
 
 **Example:**
 
@@ -123,7 +123,7 @@ For details on the atmosphere system, see the [Atmosphere class](../../../three/
 
 **Type:** `boolean`
 
-**Description:** Specifies whether to render as an environment map.
+**Description:** Specifies whether to render as an environment map. An environment map leaves out the sun and moon unless `sun` or `moon` is set, because a disc that small appears as a square on smooth water. Water adds the reflected sun itself.
 
 **Default:** `false`
 

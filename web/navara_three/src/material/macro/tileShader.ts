@@ -20,24 +20,17 @@ import { GBUFFER_PHONG_ROUGHNESS } from "../gbufferLayout";
 export type TileShaderFeatures = {
   /** Atlas has a hillshade normal that should override the default normal. */
   hasHillshade: boolean;
-  /** Some layer uses Water material → emit the water specular branch. */
+  /** Some layer uses Water material → emit the water surface. */
   hasWater: boolean;
   /**
-   * Quantized-mesh watermask is present (source requested `requestWaterMask`).
-   * Emits the ocean reflectivity fallback in the map fragment.
+   * Quantized-mesh watermask is present (source requested `requestWaterMask`),
+   * which also makes the ocean a water surface.
    */
   hasWatermask: boolean;
 };
 
-/** Water's reflectance at normal incidence, i.e. `IorToFresnel0(1.333)`. */
-export const WATERMASK_OCEAN_REFLECTIVITY = 0.02;
-
-/**
- * Carries the wave slopes, since nothing puts waves in the watermask normal:
- * Cox-Munk mean square slope for a gentle breeze, `roughness = mss^(1/4)`.
- * ref: https://oceanopticsbook.info/view/surfaces/cox-munk-sea-surface-slope-statistics
- */
-export const WATERMASK_OCEAN_ROUGHNESS = 0.4;
+const hasWaterSurface = (features: TileShaderFeatures) =>
+  features.hasWater || features.hasWatermask;
 
 /**
  * Goes after `#include <common>` in the fragment shader. Declares the three
@@ -58,28 +51,34 @@ export function generateTileCommonInjection(numTextures: number): string {
   uniform vec3 uColors[${numTextures}];
   uniform float uReflectivities[${numTextures}];
   uniform float uRoughnesses[${numTextures}];
-  uniform float uWaterScaleNormals[${numTextures}];
-  uniform float uWaterSpeeds[${numTextures}];
+  // x: wave exaggeration, y: 1 when the slot is water.
+  uniform vec2 uWaterParams[${numTextures}];
+  // The watermask's water body color; a = 1 when the terrain layer sets one.
+  uniform vec4 uWaterMaskColor;
+  uniform float uWaterMaskExaggeration;
   uniform float uShininesses[${numTextures}];
   uniform float uSpecularStrengths[${numTextures}];
-  uniform float uApplyWaterNormals[${numTextures}];
   uniform bool uSpeculars[${numTextures}];
   uniform float uEmissiveIntensities[${numTextures}];
   uniform vec3 uEmissiveColors[${numTextures}];
   uniform float uEffectIdsMasks[${numTextures}];
 
-  uniform sampler2D uWaterNormalMap;
   uniform float uHillshadeExaggeration;
   uniform float uPickable;
   uniform float uIor;
-  uniform float uTime;
 
   varying vec2 vOrigUv;
-  // vPosition is declared by WaterParsFragment when useNormal=true; for the
-  // Basic-material path no fragment-side code reads it, so omitting the
-  // declaration here avoids a redefinition error when both are present.
+  varying vec3 vPosition;
   `;
 }
+
+/**
+ * Goes before the water chunk. A tile holds the waves of its last draped water
+ * layer and those of the watermask's water, whose body surrounds the layers.
+ */
+export const TILE_WATER_DEFINES = `#define NVR_WATER_WAVES_COUNT 2
+#define TILE_LAYER_WAVES 0
+#define TILE_WATERMASK_WAVES 1`;
 
 /**
  * Goes in place of `#include <map_fragment>`. Reads the three atlas textures
@@ -91,23 +90,7 @@ export function generateTileCommonInjection(numTextures: number): string {
  * generateTileEmissiveBuffer below to decide what gets written to the
  * emissive/effect MRT attachments).
  */
-export function generateTileMapFragment(
-  maxTextures: number,
-  features: TileShaderFeatures,
-): string {
-  // Watermask ocean pixels: `useWater` fired from the tile-wide watermask but
-  // the winning slot (raster imagery, or none on open ocean) carries zeroed
-  // reflectivity/roughness – override them with the default ocean appearance
-  // so the deferred specular term, SSR and the envmap apply to the sea. Mirrors
-  // the shininess/specularStrength fallback above. A texturized winner keeps its
-  // own params: a vector layer drawn over water should not turn reflective.
-  const watermaskReflectivityFallback = features.hasWatermask
-    ? `
-  if (useWater && !hasSlotWaterParams) {
-    tileReflectivity = ${WATERMASK_OCEAN_REFLECTIVITY.toFixed(4)};
-    tileRoughness    = ${WATERMASK_OCEAN_ROUGHNESS.toFixed(4)};
-  }`
-    : "";
+export function generateTileMapFragment(maxTextures: number): string {
   return `
   // The color atlas is linear-filtered for display, but the pick pass reads
   // encoded batch ids out of atlasColor: interpolating id colors at feature
@@ -166,31 +149,23 @@ export function generateTileMapFragment(
   float tileReflectivity      = hasWinner ? uReflectivities[winIdx]      : 0.0;
   float tileRoughness         = hasWinner ? uRoughnesses[winIdx]         : ${GBUFFER_PHONG_ROUGHNESS.toFixed(4)};
 
-  // TODO: Support water material
-  float waterScaleNormal      = hasWinner ? uWaterScaleNormals[winIdx]   : 0.0;
-  float waterSpeed            = hasWinner ? uWaterSpeeds[winIdx]         : 0.0;
-  // Per-slot water specular params only exist for vector (texturized) water
-  // layers. When useWater comes from the tile-wide quantized-mesh watermask
-  // instead, the winning slot is a raster imagery layer (attr.g == 0) that
-  // carries no water params — so fall back to the default water appearance,
-  // the same one the no-winner open-ocean path uses. Without this a raster tile
-  // draped over a watermask would index the raster slot's zeroed params and the
-  // water glint would vanish under the imagery.
-  bool hasSlotWaterParams     = hasWinner && isTexturizedLayer;
-  float waterShininess        = hasSlotWaterParams ? uShininesses[winIdx]       : 50.0;
-  float waterSpecularStrength = hasSlotWaterParams ? uSpecularStrengths[winIdx]  : 1.0;
-  float applyWaterNormals     = hasWinner ? uApplyWaterNormals[winIdx]   : 0.0;
-  // The watermask flags water independently of which slot wins the blend, so its
-  // specular must survive a (non-water) raster winner. OR it in rather than
-  // letting the winner's own specular flag gate it — otherwise a draped raster
-  // imagery slot (uSpeculars == false) suppresses the watermask water entirely.
-  bool  useSpecular           = (!isTexturizedLayer && useWater) || (hasWinner && uSpeculars[winIdx]);
-${watermaskReflectivityFallback}
+  // attr.r ORs the watermask into every winner's water flag, so a vector
+  // winner is water only through its own flag (y). Raster winners and open
+  // ocean have no wave params and are the watermask's water.
+  vec2 tileWaterParams = (hasWinner && isTexturizedLayer) ? uWaterParams[winIdx] : vec2(uWaterMaskExaggeration, 1.0);
+  bool tileWater = useWater && tileWaterParams.y > 0.5;
+  float tileWaveExaggeration = tileWaterParams.x;
+  // Water no vector layer owns is the watermask's.
+  bool watermaskWater = tileWater && !(hasWinner && isTexturizedLayer);
+  float tileShininess         = hasWinner ? uShininesses[winIdx]       : 0.0;
+  float tileSpecularStrength  = hasWinner ? uSpecularStrengths[winIdx] : 0.0;
+  bool  useSpecular           = !tileWater && hasWinner && uSpeculars[winIdx];
   float tileEmissiveIntensity = (hasWinner && isTexturizedLayer) ? uEmissiveIntensities[winIdx] : 0.0;
   vec3  tileEmissiveColor     = (hasWinner && isTexturizedLayer) ? uEmissiveColors[winIdx]      : vec3(0.0);
   float tileEffectIdsMask     = (hasWinner && isTexturizedLayer) ? uEffectIdsMasks[winIdx]      : 0.0;
 
   diffuseColor.rgb = atlasColor.rgb + diffuseColor.rgb * (1.0 - atlasColor.a);
+  diffuseColor.rgb = mix(diffuseColor.rgb, uWaterMaskColor.rgb, watermaskWater ? uWaterMaskColor.a : 0.0);
   `;
 }
 
@@ -226,42 +201,27 @@ export function generateTileNormalFragmentMaps(
     `
     : "";
 
-  const waterBlock = features.hasWater
-    ? `
+  const specularBlock = `
     if (useSpecular) {
       specular = computeSpecular(
         vViewPosition,
         origNormal,
-        waterShininess,
-        waterSpecularStrength,
-        uIor
-      );
-    } else if (useWater) {
-      specular = computeWaterSpecular(
-        uWaterNormalMap,
-        (vPosition.xy + vPosition.zy + vPosition.xz) / 3.0 * waterScaleNormal,
-        uTime * waterSpeed,
-        vViewPosition,
-        normalMatrix,
-        origNormal,
-        waterShininess,
-        waterSpecularStrength,
-        diffuseColor.rgb,
-        normal
-      );
-    }
-    `
-    : `
-    if (useSpecular) {
-      specular = computeSpecular(
-        vViewPosition,
-        origNormal,
-        waterShininess,
-        waterSpecularStrength,
+        tileShininess,
+        tileSpecularStrength,
         uIor
       );
     }
     `;
+  const waterBlock = hasWaterSurface(features)
+    ? `
+    // Outside the branch: the coordinate takes screen derivatives.
+    NvrWaterCoord nvr_waterCoord = nvrWaterCoord(vViewPosition);
+    NvrWaterSurface nvr_waterSurface;
+    if (tileWater) {
+      nvr_waterSurface = nvrWaterSurface(nvr_waterCoord, origNormal, tileWaveExaggeration, watermaskWater ? TILE_WATERMASK_WAVES : TILE_LAYER_WAVES);
+    }
+    `
+    : "";
 
   return `
   #if USE_VERTEX_NORMAL && !USE_HILLSHADE
@@ -273,19 +233,46 @@ export function generateTileNormalFragmentMaps(
   ${hillshadeBlock}
   vec3 origNormal = vec3(normal);
   vec3 specular = vec3(0.0);
+  ${specularBlock}
   ${waterBlock}
   `;
 }
 
 /**
- * `normalBuffer = …` replacement for the MRT pass. Identical to legacy
- * behaviour: applyWaterNormals mixes the perturbed normal into the geometric
- * one before packing.
+ * Goes after the `outgoingLight` declaration: water replaces the lit color
+ * with what its surface lets through and reflects, other pixels add their
+ * specular.
  */
-export const TILE_NORMAL_BUFFER_REPLACEMENT = `
-vec3 finalNormal = mix(origNormal, normalize(origNormal * 0.7 + normal), applyWaterNormals);
-GBUFFER_WRITE_NORMAL(finalNormal, tileReflectivity, tileRoughness)
+export function generateTileOutgoingLight(
+  features: TileShaderFeatures,
+): string {
+  return hasWaterSurface(features)
+    ? `
+    if (tileWater) {
+      outgoingLight = nvrWaterShade(nvr_waterSurface, vViewPosition, origNormal, outgoingLight);
+    } else {
+      outgoingLight += specular;
+    }
+    `
+    : "outgoingLight += specular;";
+}
+
+/** `normalBuffer = …` replacement for the MRT pass. */
+export function generateTileNormalBufferReplacement(
+  features: TileShaderFeatures,
+): string {
+  return hasWaterSurface(features)
+    ? `
+if (tileWater) {
+  GBUFFER_WRITE_NORMAL(nvr_waterSurface.gbufferNormal, NVR_WATER_F0, nvr_waterSurface.gbufferRoughness)
+} else {
+  GBUFFER_WRITE_NORMAL(origNormal, tileReflectivity, tileRoughness)
+}
+`
+    : `
+GBUFFER_WRITE_NORMAL(origNormal, tileReflectivity, tileRoughness)
 `;
+}
 
 /**
  * Effect/emissive write replacement, via the `GBUFFER_WRITE_EFFECT*` macros

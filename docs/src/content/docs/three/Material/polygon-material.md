@@ -9,24 +9,6 @@ sidebar:
 
 ## Properties
 
-### applyWaterNormal
-
-**Type:** `boolean | undefined`
-
-**Description:** Specifies whether to apply a water normal map.
-
-**Default:** `undefined`
-
-**Example:**
-
-```typescript
-{
-  polygon: {
-    applyWaterNormal: false
-  }
-}
-```
-
 ### castShadow
 
 **Type:** `boolean | undefined`
@@ -199,7 +181,7 @@ import { Color } from "@navaramap/three";
 
 **Type:** `number | undefined`
 
-**Description:** Specifies the Index of Refraction. Affects the refraction of light passing through the material.
+**Description:** Specifies the index of refraction of the `specular` highlight's Fresnel term. Has no effect on water.
 
 **Default:** `undefined`
 
@@ -363,7 +345,7 @@ import { Color } from "@navaramap/three";
 
 **Type:** `number | undefined`
 
-**Description:** Specifies the reflectance at normal incidence (F0) that SSR and the aerial perspective's `specular` term read, for example `0.02` for water. Values below `0.01` disable both. It also weights the environment map when one is set.
+**Description:** Specifies the reflectance at normal incidence (F0) that SSR and the aerial perspective's `specular` term read. Water uses `0.02` regardless. Values below `0.01` disable both. It also weights the environment map when one is set.
 
 **Default:** `undefined`
 
@@ -418,7 +400,7 @@ import { Color } from "@navaramap/three";
 
 **Type:** `number | undefined`
 
-**Description:** Specifies the shininess of the material.
+**Description:** Specifies the shininess of the `specular` highlight. Has no effect on water.
 
 **Default:** `undefined`
 
@@ -454,7 +436,7 @@ import { Color } from "@navaramap/three";
 
 **Type:** `boolean | undefined`
 
-**Description:** Specifies whether to enable the specular effect. When enabled, the `shininess` and `specularStrength` values are used.
+**Description:** Specifies whether to enable the specular effect. When enabled, the `shininess` and `specularStrength` values are used. Has no effect on water.
 
 **Default:** `undefined`
 
@@ -472,7 +454,7 @@ import { Color } from "@navaramap/three";
 
 **Type:** `number | undefined`
 
-**Description:** Specifies the intensity of specular highlights.
+**Description:** Specifies the intensity of the `specular` highlight. Has no effect on water.
 
 **Default:** `undefined`
 
@@ -544,7 +526,7 @@ import { Color } from "@navaramap/three";
 
 **Type:** `boolean | undefined`
 
-**Description:** Specifies whether to apply a water surface material to the polygon. May slow down mesh loading.
+**Description:** Specifies whether to render the polygon as a water surface. Its waves follow [`waveStrength`](#wavestrength) and [`waveDirection`](#wavedirection). They keep their size in meters and are visible up close, and from about 2 km away the surface reads as one uniformly rough plane under the sun's glitter. The surface reflects the sky with a Fresnel term and the sun with its own highlight, so `reflectivity`, `roughness`, `shininess`, `specularStrength`, `specular`, and `ior` have no effect on it. Waves move only while frames render, for example with `ThreeView.animation` on.
 
 **Default:** `undefined`
 
@@ -558,38 +540,78 @@ import { Color } from "@navaramap/three";
 }
 ```
 
-### waterScaleNormal
+### waveExaggeration
 
 **Type:** `number | undefined`
 
-**Description:** Specifies the scale of the water surface normals. Smaller values make the water surface rougher.
+**Description:** Scales the slopes of the water's waves, keeping their size and speed. `0` makes a still, mirror-like surface. Only used when `water` is enabled.
 
-**Default:** `undefined`
+**Default:** `1`
 
 **Example:**
 
 ```typescript
 {
   polygon: {
-    waterScaleNormal: 2.0
+    water: true,
+    waveExaggeration: 0.5
   }
 }
 ```
 
-### waterSpeed
+### waterScale
 
-**Type:** `number | undefined`
+**Type:** `"ocean" | "large" | "medium" | "small" | undefined`
 
-**Description:** Specifies the speed of water waves.
+**Description:** Extent of the water body. Waves grow with the open distance across the water, so a smaller body gets shorter, finer waves at the same `waveStrength`. `"ocean"` grows the waves as far as `waveStrength` allows. `"large"` assumes about 20 km of open water, such as a bay or a large lake. `"medium"` assumes about 2 km, such as a lake or a wide river. `"small"` assumes about 200 m, such as a river or a pond. The slope of the waves still follows `waveStrength`. Only used when `water` is enabled.
 
-**Default:** `undefined`
+**Default:** `"ocean"`
 
 **Example:**
 
 ```typescript
 {
   polygon: {
-    waterSpeed: 0.003
+    water: true,
+    waterScale: "small"
+  }
+}
+```
+
+### waveStrength
+
+**Type:** `number | undefined`
+
+**Description:** Sets the size, steepness, and speed of the waves. About `1` is a calm ripple, `5` is moderate, and `20` is a storm. To change only their height, use [`waveExaggeration`](#waveexaggeration). Water layers with `clampToGround` that overlap in one terrain tile take the waves of the last one added (`waveExaggeration` stays per layer), so their waves can switch at tile borders. Only used when `water` is enabled.
+
+**Default:** `5`
+
+**Example:**
+
+```typescript
+{
+  polygon: {
+    water: true,
+    waveStrength: 12
+  }
+}
+```
+
+### waveDirection
+
+**Type:** `number | undefined`
+
+**Description:** The direction the waves travel, in degrees clockwise from north. Only used when `water` is enabled.
+
+**Default:** `0`
+
+**Example:**
+
+```typescript
+{
+  polygon: {
+    water: true,
+    waveDirection: 225
   }
 }
 ```

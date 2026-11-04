@@ -52,7 +52,7 @@ type SupportedMaterial = WaterSupportedMaterial;
  * // Mount with separated base and water props
  * enhancer.mount({
  *   base: { color: 0xff0000, useRTE: true },
- *   water: { water: true, waterScaleNormal: 0.5 },
+ *   water: { water: true, waveExaggeration: 0.5 },
  * });
  *
  * // Get state directly via states() - refresh after updates

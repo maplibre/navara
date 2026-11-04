@@ -1236,6 +1236,59 @@ mod tests {
     }
 
     #[test]
+    fn terrain_water_mask_color_survives_other_updates() {
+        let old = terrain_desc(navara_material::TerrainMaterial {
+            water_mask_color: Some(0x0a2236),
+            ..Default::default()
+        });
+        let mut desc = TerrainSourceLayerDescription {
+            terrain: Some(serde_json::from_str(r#"{"receiveShadow": true}"#).unwrap()),
+            ..Default::default()
+        };
+
+        let merged = desc.appearance(Some(&old));
+
+        assert_eq!(merged.water_mask_color, Some(0x0a2236));
+        assert!(merged.receive_shadow);
+    }
+
+    #[test]
+    fn terrain_wave_strength_survives_other_updates() {
+        let old = terrain_desc(navara_material::TerrainMaterial {
+            wave_strength: 12.0,
+            wave_direction: 90.0,
+            wave_exaggeration: 0.5,
+            ..Default::default()
+        });
+        let mut desc = TerrainSourceLayerDescription {
+            terrain: Some(serde_json::from_str(r#"{"waveDirection": 45}"#).unwrap()),
+            ..Default::default()
+        };
+
+        let merged = desc.appearance(Some(&old));
+
+        assert_eq!(merged.wave_strength, 12.0);
+        assert_eq!(merged.wave_exaggeration, 0.5);
+        assert_eq!(merged.wave_direction, 45.0);
+    }
+
+    #[test]
+    fn terrain_water_mask_color_clears_with_null() {
+        let old = terrain_desc(navara_material::TerrainMaterial {
+            water_mask_color: Some(0x0a2236),
+            ..Default::default()
+        });
+        let mut desc = TerrainSourceLayerDescription {
+            terrain: Some(serde_json::from_str(r#"{"waterMaskColor": null}"#).unwrap()),
+            ..Default::default()
+        };
+
+        let merged = desc.appearance(Some(&old));
+
+        assert_eq!(merged.water_mask_color, None);
+    }
+
+    #[test]
     fn terrain_exaggeration_updates_independently() {
         let old = terrain_desc(navara_material::TerrainMaterial {
             exaggeration: 3.0,

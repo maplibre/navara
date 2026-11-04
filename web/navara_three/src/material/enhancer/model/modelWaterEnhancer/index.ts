@@ -3,6 +3,13 @@ import type { WebGLProgramParametersWithUniforms } from "three";
 import invariant from "tiny-invariant";
 
 import type { MaterialEnhancer } from "../../MaterialEnhancer";
+import {
+  applyWaterMaterialConfig,
+  createWaterMutates,
+  DEFAULT_WATER_PROPS,
+  DEFAULT_WATER_STATE,
+  updateWaterState,
+} from "../../water";
 import type {
   ModelBaseMutates,
   ModelBaseProps,
@@ -14,14 +21,7 @@ import {
   AVAILABLE_SHADERS,
   type SupportedMaterial as WaterSupportedMaterial,
 } from "./material";
-import { applyWaterMaterialConfig } from "./material";
-import { createWaterMutates } from "./mutates";
 import { transformWaterShader } from "./shader";
-import {
-  DEFAULT_WATER_PROPS,
-  DEFAULT_WATER_STATE,
-  updateWaterState,
-} from "./state";
 import type {
   ModelWaterCombinedMutates,
   ModelWaterCombinedStates,
@@ -84,15 +84,8 @@ export function createModelWaterEnhancer(
       // Create mutates (refs are created inside with default values)
       mutates = createWaterMutates();
       mutates.update(state);
-      // Handle external refs (identity doesn't change after mount)
-      if (waterProps.waterNormalMap) {
-        mutates.setWaterNormalMap(waterProps.waterNormalMap, state.useWater);
-      }
-      if (waterProps.timeUniform) {
-        mutates.setTimeUniform(waterProps.timeUniform);
-      }
-      if (waterProps.skyEnvMapUniform) {
-        mutates.setSkyEnvMapUniform(waterProps.skyEnvMapUniform);
+      if (waterProps.getWaterState) {
+        mutates.setWaterState(waterProps.getWaterState);
       }
 
       // Apply material configuration (side effect)
@@ -116,12 +109,8 @@ export function createModelWaterEnhancer(
         const prevUseWater = state.useWater;
         state = updateWaterState(props.water, state);
         mutates.update(state);
-        // Handle external refs (identity doesn't change, only set once)
-        if (props.water.timeUniform) {
-          mutates.setTimeUniform(props.water.timeUniform);
-        }
-        if (props.water.skyEnvMapUniform) {
-          mutates.setSkyEnvMapUniform(props.water.skyEnvMapUniform);
+        if (props.water.getWaterState) {
+          mutates.setWaterState(props.water.getWaterState);
         }
 
         // Apply material configuration (side effect)

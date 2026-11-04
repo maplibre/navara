@@ -131,6 +131,48 @@ terrainLayer.update({
 });
 ```
 
+### waterMaskColor
+
+**Type:** `Color | undefined`
+
+**Description:** Body color of the water that the source's watermask marks, which requires `requestWaterMask` on a `quantized-mesh` source. The water shows this color beneath its sky and sun reflections. When it is not set, the imagery or the globe color beneath the water is used, and aerial imagery often shows the open sea in a bright flat blue. A dark color such as `#0d1c2c` matches deep open water. Passing `undefined` uses the imagery or the globe color beneath the water.
+
+```typescript
+terrainLayer.update({
+  terrain: { waterMaskColor: new Color().setStyle("#0d1c2c") },
+});
+```
+
+### waveExaggeration
+
+**Type:** `number | undefined`
+
+**Description:** Scales the slopes of the waves on the water that the source's watermask marks, keeping their size and speed. `0` makes a still, mirror-like surface. It requires `requestWaterMask` on a `quantized-mesh` source.
+
+**Default:** `1`
+
+### waveStrength
+
+**Type:** `number | undefined`
+
+**Description:** Sets the size, steepness, and speed of the waves on the water that the source's watermask marks, which requires `requestWaterMask` on a `quantized-mesh` source. About `1` is a calm ripple, `5` is moderate, and `20` is a storm.
+
+**Default:** `5`
+
+### waveDirection
+
+**Type:** `number | undefined`
+
+**Description:** The direction the waves on the watermask's water travel, in degrees clockwise from north.
+
+**Default:** `0`
+
+```typescript
+terrainLayer.update({
+  terrain: { waveStrength: 12, waveDirection: 225 },
+});
+```
+
 ## Combining with other layers
 
 A terrain layer provides only the 3D surface. Drape imagery or shaded relief on top with a [`raster`](../../../three/layer/raster-layer/) layer:

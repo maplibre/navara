@@ -343,7 +343,7 @@ graph LR
 
 The **absolute** slot index is carried through and baked into the composite
 shader as `winningSlot`, so the main shader can still index its per-slot uniform
-arrays (reflectivity, water speed, …) by the winner decoded from the atlas. The
+arrays (reflectivity, water params, …) by the winner decoded from the atlas. The
 `SlotPlan` and the derived `CompositeFeatures` are everything the bake needs.
 
 ## 4. Baking the atlas
@@ -516,19 +516,39 @@ like hillshade) and an optional **watermask** extension. The watermask is a
 slot-independent global rather than a per-slot layer: `tileWatermaskEnhancer`
 declares it in `globalUniformDecls`, samples it once in `postLoop`, and OR's the
 result into `isWater`. So even an open-ocean tile with no raster/vector overlays
-still bakes water into `attr.r` for the main shader's reflection — which is why
-the bake runs for a watermask-only tile even though it has zero slots.
+still bakes water into `attr.r` for the main shader — which is why the bake runs
+for a watermask-only tile even though it has zero slots.
 
-Because raster imagery now drapes on quantized-mesh tiles, a watermask tile can
-also have a **winning raster slot**. The watermask flags water independently of
-which slot wins the blend, so the main shader (`generateTileMapFragment`) OR's
-`useWater` into `useSpecular` rather than gating it on the winner's own specular
-flag — otherwise a draped raster slot (`uSpeculars == false`) would suppress the
-watermask glint. Per-slot water specular params (`shininess`,
-`specularStrength`) only exist for **vector** water layers, so when the winner is
-a raster slot the shader falls back to the default water appearance (the same
-one the no-winner open-ocean path uses) instead of reading the raster slot's
-zeroed params.
+**Smoothing.** The mask is binary at its texel size, so it is read through a
+cubic B-spline (four bilinear fetches on a `LinearFilter` texture) and
+thresholded at 0.5. The water's edge then follows curves, one-texel-wide
+channels survive (2/3 at their center) and isolated texels drop out (4/9).
+Children below the last level with a mask crop the parent's quadrant and double
+it bilinearly (`upsample_watermask`, Chaikin subdivision), so repeated levels
+converge to a smooth 0.5 contour. Two limits remain: the result is baked into
+the `NearestFilter` attr atlas, so its texel size still shows as a fine step,
+and a tile cannot read its neighbor's mask, so an edge crossing a tile border
+can shift by under a mask texel there.
+
+**Winner rules.** A watermask tile can also have a **winning raster slot**, and
+`attr.r` ORs the watermask into whatever slot wins. The main shader
+(`generateTileMapFragment`) therefore decides `tileWater` as follows:
+
+- A raster winner (or no winner, open ocean) is water whenever `attr.r` says so
+  and takes the watermask's waves (the terrain layer's `waveExaggeration`,
+  `waveStrength` and `waveDirection`).
+- A vector winner is water only through the water flag (y) of its per-slot
+  `uWaterParams` and takes its `waveExaggeration` (x), so a non-water vector
+  layer drawn over the sea stays dry. Its waves are those of the tile's last
+  draped water layer ([WATER.md](WATER.md)).
+- Water pixels go through the shared water chunk ([WATER.md](WATER.md)) with
+  the winner's color as the body color. The terrain layer's `waterMaskColor`
+  (`RasterTileInternalMaterial.water_mask_color` → `uWaterMaskColor.rgb`, alpha
+  1 when set) replaces that color on the watermask's water (no vector winner).
+
+The water branch compiles when `hasWater || hasWatermask`, so a
+`replaceGeometry` that adds or removes the watermask recompiles the tile, and
+any watermask change rebakes its atlas.
 
 ## N:M draping: stitching and Mercator reprojection
 
