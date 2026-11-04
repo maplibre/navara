@@ -390,10 +390,11 @@ export class VectorDrapeResolver implements DrapeResolver {
         mesh.waveExaggeration,
         mesh.water ? 1 : 0,
       );
-      // Slots ascend with the layer order, so the last water layer's waves
-      // stay and a tile has one set of waves for all its draped water. The
-      // layer entry of TILE_WATER_DEFINES.
-      if (mesh.water) m.userData.waterWaves.value[0] = mesh.waterWaves;
+      if (mesh.water) {
+        m.userData.waterWaves.value[
+          1 + lastIdx - this.host.texturizedSceneIndexFrom
+        ] = mesh.waterWaves;
+      }
       m.userData.shininesses.value[lastIdx] = mesh.shininess;
       m.userData.specularStrengths.value[lastIdx] = mesh.specularStrength;
       m.userData.speculars.value[lastIdx] = mesh.specular;

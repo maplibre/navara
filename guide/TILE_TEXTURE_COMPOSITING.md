@@ -539,8 +539,8 @@ can shift by under a mask texel there.
   `waveStrength` and `waveDirection`).
 - A vector winner is water only through the water flag (y) of its per-slot
   `uWaterParams` and takes its `waveExaggeration` (x), so a non-water vector
-  layer drawn over the sea stays dry. Its waves are those of the tile's last
-  draped water layer ([WATER.md](WATER.md)).
+  layer drawn over the sea stays dry. It reads the waves of its own slot
+  ([WATER.md](WATER.md)).
 - Water pixels go through the shared water chunk ([WATER.md](WATER.md)) with
   the winner's color as the body color. The terrain layer's `waterMaskColor`
   (`RasterTileInternalMaterial.water_mask_color` → `uWaterMaskColor.rgb`, alpha

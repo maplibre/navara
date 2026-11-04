@@ -582,7 +582,7 @@ import { Color } from "@navaramap/three";
 
 **Type:** `number | undefined`
 
-**Description:** Sets the size, steepness, and speed of the waves. About `1` is a calm ripple, `5` is moderate, and `20` is a storm. To change only their height, use [`waveExaggeration`](#waveexaggeration). Water layers with `clampToGround` that overlap in one terrain tile take the waves of the last one added (`waveExaggeration` stays per layer), so their waves can switch at tile borders. Only used when `water` is enabled.
+**Description:** Sets the size, steepness, and speed of the waves. About `1` is a calm ripple, `5` is moderate, and `20` is a storm. To change only their height, use [`waveExaggeration`](#waveexaggeration). Only used when `water` is enabled.
 
 **Default:** `5`
 

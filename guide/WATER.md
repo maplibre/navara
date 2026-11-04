@@ -30,7 +30,7 @@ total slope statistics at every distance.
 | Surface                          | Where it calls the chunk                                       | Per-surface inputs                                |
 | -------------------------------- | -------------------------------------------------------------- | ------------------------------------------------- |
 | Terrain watermask sea and rivers | `material/macro/tileShader.ts` (`tileWater`, `watermaskWater`) | ocean scale, `terrain.waveExaggeration`, `waveStrength`, `waveDirection`, `waterMaskColor` |
-| Vector layers draped on terrain  | `tileShader.ts`, the winning slot's `uWaterParams[N]`          | `water`, `waveExaggeration` per slot; waves per tile (section 2) |
+| Vector layers draped on terrain  | `tileShader.ts`, the winning slot's `uWaterParams[N]`          | `water`, `waveExaggeration` and waves per slot (section 2) |
 | Polygon meshes                   | `material/enhancer/polygon/polygonWaterEnhancer`               | `uWaveExaggeration`, and waves from `waveStrength`, `waveDirection`, `waterScale` |
 | Model meshes                     | `material/enhancer/model/modelWaterEnhancer`                   | `uWaveExaggeration`, and waves from `waveStrength`, `waveDirection`, `waterScale` |
 
@@ -73,11 +73,15 @@ their number.
 Materials read `uniform NvrWaterWaves nvrWaterWaves[NVR_WATER_WAVES_COUNT]`:
 
 - Polygon and model materials hold one set, at index 0.
-- The tile shader has two (`TILE_WATER_DEFINES`), because uniforms per slot
-  would crowd its budget (about 187 vectors in use, and some mobile GPUs allow
-  224). Index 0 is the last draped water layer's set, which all draped water
-  in the tile uses. Index 1 is the watermask's, so a river polygon in a tile
-  does not change the sea around it into river waves.
+- The tile shader holds one per vector slot plus the watermask's
+  (`generateTileWaterDefines`). Index 0 is the watermask's, and a vector winner
+  reads `1 + winIdx - TILE_FIRST_VECTOR_SLOT`. One pixel reads one entry, so
+  the array costs uniform rows and no texture reads. A tile without a water
+  layer compiles the watermask's entry alone, since each entry adds uniform
+  upload per tile. With 5 vector slots, the shader takes about 145 rows under
+  the GLSL ES packing rules, against a 224 minimum. Counting array elements
+  overstates this: `float` arrays share rows with the free columns of `vec3`
+  and `vec2` arrays.
 - The GLSL functions take an index, not the struct. Passing the struct copies
   it, which cost 2 to 5 ms at 3200×1800 of water.
 
@@ -304,11 +308,6 @@ the same mean square slope.
   - It cost about +4 ms per frame at 1600×900 with water filling the screen,
     even when blend weights let cell interiors read one corner only.
   - It is not used.
-- **Waves per tile.** Draped water layers overlapping in one terrain tile share
-  the last layer's waves, so `waveStrength`, `waveDirection` and
-  `waterScale` can switch at tile borders. `waveExaggeration` stays per slot. A
-  river split into draped sections by direction takes one direction within a
-  tile.
 - **No moon reflection.** The env map holds no moon by default and the shading
   has no analytic moon. Setting `moon: true` on the env map mesh brings it back
   as a square texel.

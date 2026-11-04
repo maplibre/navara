@@ -51,7 +51,7 @@ import {
   generateTileNormalFragmentMaps,
   generateTileOutgoingLight,
   TILE_EMISSIVE_EFFECT_BUFFER_REPLACEMENT,
-  TILE_WATER_DEFINES,
+  generateTileWaterDefines,
   TILE_PICK_FRAGMENT_OVERRIDE,
   TILE_VERTEX_INJECTIONS,
   applyLitOption,
@@ -968,7 +968,7 @@ export class TileMesh
     m.userData.uNormalAtlas = { value: atlasOutputs.normal };
 
     m.customProgramCacheKey = () =>
-      "TILE" + JSON.stringify(this.computeFeatures());
+      `TILE${this.numTexturizedVector}${JSON.stringify(this.computeFeatures())}`;
 
     m.onBeforeCompile = (shader) => {
       shader.defines ??= {};
@@ -1045,7 +1045,7 @@ ${generateTileCommonInjection(maxTextures)}
           `
         #include <lights_lambert_pars_fragment>
 
-        ${hasWaterSurface ? `${TILE_WATER_DEFINES}\n${WaterParsFragment}` : ""}
+        ${hasWaterSurface ? `${generateTileWaterDefines(features.hasWater, this.numTexturizedVector, this.texturizedSceneIndexFrom)}\n${WaterParsFragment}` : ""}
         ${SpecularParsFragment}
         ${BranchFreeTernary}
         `,
@@ -1256,12 +1256,13 @@ ${generateTileCommonInjection(maxTextures)}
         value: [...new Array(maxTextures)].map(() => new Vector2()),
       };
     }
-    // In TILE_WATER_DEFINES order. The layer entry is the watermask's until
-    // `VectorDrapeResolver` binds a layer; a shader without a water layer
-    // never reads it.
+    // The watermask's and then one per vector slot, which `VectorDrapeResolver`
+    // binds. The shader reads a slot's entry only when that slot is water.
     if (!m.userData.waterWaves) {
       const { waves } = this.waterMaskWaves();
-      m.userData.waterWaves = { value: [waves, waves] };
+      m.userData.waterWaves = {
+        value: new Array(this.numTexturizedVector + 1).fill(waves),
+      };
     }
     if (!m.userData.waterMaskColor) {
       m.userData.waterMaskColor = { value: new Vector4() };
@@ -1482,7 +1483,7 @@ ${generateTileCommonInjection(maxTextures)}
       direction: mat.waveDirection,
       scale: "ocean",
     });
-    m.userData.waterWaves.value[1] = waterMaskWaves.waves;
+    m.userData.waterWaves.value[0] = waterMaskWaves.waves;
     m.userData.waterMaskExaggeration.value = mat.waveExaggeration;
 
     // The terrain layer's body color for the watermask's water.

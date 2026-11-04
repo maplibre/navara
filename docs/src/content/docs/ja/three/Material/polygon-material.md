@@ -582,7 +582,7 @@ import { Color } from "@navaramap/three";
 
 **Type:** `number | undefined`
 
-**Description:** 波の大きさ、急さ、速さを決めます。`1` 程度で穏やかなさざ波、`5` で標準、`20` で荒天になります。高さだけを変えるには [`waveExaggeration`](#waveexaggeration) を使います。`clampToGround` の水面レイヤーが 1 つの地形タイルで重なると、最後に追加されたレイヤーの波になります（`waveExaggeration` はレイヤーごとのままです）。そのため、タイルの境界で波が切り替わることがあります。`water` が有効なときだけ使われます。
+**Description:** 波の大きさ、急さ、速さを決めます。`1` 程度で穏やかなさざ波、`5` で標準、`20` で荒天になります。高さだけを変えるには [`waveExaggeration`](#waveexaggeration) を使います。`water` が有効なときだけ使われます。
 
 **Default:** `5`
 

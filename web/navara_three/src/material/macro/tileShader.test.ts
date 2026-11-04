@@ -127,9 +127,9 @@ describe("generateTileNormalFragmentMaps", () => {
       ...features,
     });
     expect(src).toContain("nvrWaterSurface(");
-    // A river in the tile must not turn the sea around it into river waves.
-    expect(src).toContain(
-      "watermaskWater ? TILE_WATERMASK_WAVES : TILE_LAYER_WAVES",
+    // The sea keeps its waves around a river, and each layer keeps its own.
+    expect(src.includes("1 + winIdx - TILE_FIRST_VECTOR_SLOT")).toBe(
+      "hasWater" in features,
     );
     // The coordinate takes derivatives, so it stays outside the branch.
     expect(src.indexOf("nvrWaterCoord(")).toBeLessThan(

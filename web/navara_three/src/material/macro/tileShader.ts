@@ -73,12 +73,17 @@ export function generateTileCommonInjection(numTextures: number): string {
 }
 
 /**
- * Goes before the water chunk. A tile holds the waves of its last draped water
- * layer and those of the watermask's water, whose body surrounds the layers.
+ * Goes before the water chunk. `nvrWaterWaves` holds the watermask's waves and
+ * then those of each vector slot, in slot order. Without a water layer the
+ * watermask's are the only ones, which saves uploading the others per tile.
  */
-export const TILE_WATER_DEFINES = `#define NVR_WATER_WAVES_COUNT 2
-#define TILE_LAYER_WAVES 0
-#define TILE_WATERMASK_WAVES 1`;
+export const generateTileWaterDefines = (
+  hasWater: boolean,
+  numVectorSlots: number,
+  firstVectorSlot: number,
+): string => `#define NVR_WATER_WAVES_COUNT ${hasWater ? numVectorSlots + 1 : 1}
+#define TILE_WATERMASK_WAVES 0
+#define TILE_FIRST_VECTOR_SLOT ${firstVectorSlot}`;
 
 /**
  * Goes in place of `#include <map_fragment>`. Reads the three atlas textures
@@ -218,7 +223,11 @@ export function generateTileNormalFragmentMaps(
     NvrWaterCoord nvr_waterCoord = nvrWaterCoord(vViewPosition);
     NvrWaterSurface nvr_waterSurface;
     if (tileWater) {
-      nvr_waterSurface = nvrWaterSurface(nvr_waterCoord, origNormal, tileWaveExaggeration, watermaskWater ? TILE_WATERMASK_WAVES : TILE_LAYER_WAVES);
+      nvr_waterSurface = nvrWaterSurface(nvr_waterCoord, origNormal, tileWaveExaggeration, ${
+        features.hasWater
+          ? "watermaskWater ? TILE_WATERMASK_WAVES : 1 + winIdx - TILE_FIRST_VECTOR_SLOT"
+          : "TILE_WATERMASK_WAVES"
+      });
     }
     `
     : "";
