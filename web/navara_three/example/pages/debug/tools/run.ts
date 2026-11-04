@@ -28,7 +28,10 @@ export const run = async () => {
   const attribution = view.attribution;
 
   await view.init();
+  // DevTools hook for poking the view from the console on this debug page.
+  (globalThis as { __navaraView?: unknown }).__navaraView = view;
   defaultPlugin.addDefaultPhotorealScene();
+
   view.addLight({ ambient: { intensity: 0.6 } });
 
   view.setCamera({

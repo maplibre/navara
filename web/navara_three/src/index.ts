@@ -549,6 +549,10 @@ export type ViewEvents = {
   idle: () => void;
   /** Emitted when a source is registered through `addSource`, with its description. */
   sourceAdded: (source: Source, description: SourceDescription) => void;
+  /** Emitted when a resource layer is added through `addLayer`. */
+  layerAdded: (layer: Layer) => void;
+  /** Emitted when a resource layer is deleted, after its `deleted` event. */
+  layerRemoved: (layer: Layer) => void;
 };
 
 /**
@@ -2339,6 +2343,7 @@ export default class ThreeView<
     const layer = new Layer(
       layerId,
       this._core,
+      normalized,
       this._convertColorsToNumbers.bind(this),
     );
     this.layersManager.add(layer);
@@ -2346,9 +2351,28 @@ export default class ThreeView<
     this._syncColorMap(layerId, l);
     // `layer.update()` and `updateLayerById()` both emit "updated".
     layer.on("updated", (desc) => this._syncColorMap(layerId, desc));
-    layer.on("deleted", () => this._syncColorMap(layerId, undefined));
+    layer.on("deleted", () => {
+      this._syncColorMap(layerId, undefined);
+      this.emit("layerRemoved", layer);
+    });
+    this.emit("layerAdded", layer);
 
     return layer;
+  }
+
+  /** The resource layers currently added, in insertion order. */
+  get layers(): Iterable<Layer> {
+    return this.layersManager.getResourceLayers();
+  }
+
+  /**
+   * The registered description of a source, as the engine holds it, or
+   * `undefined` for an unknown id.
+   */
+  getSourceDescription(source: SourceRef): SourceDescription | undefined {
+    const sourceId = source instanceof Source ? source.id : source;
+    return this._core?.getSourceDescription(sourceId) as
+      SourceDescription | undefined;
   }
 
   /**

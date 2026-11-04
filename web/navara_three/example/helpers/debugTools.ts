@@ -1,9 +1,14 @@
 import type ThreeView from "@navaramap/three";
-import { DebugPanel, ProfilerPlugin } from "@navaramap/three-debug";
+import {
+  DebugPanel,
+  LayerDebuggerPlugin,
+  ProfilerPlugin,
+} from "@navaramap/three-debug";
 
 export type DebugTools = {
   panel: DebugPanel;
   profiler: ProfilerPlugin;
+  layers: LayerDebuggerPlugin;
 };
 
 /**
@@ -23,5 +28,11 @@ export function installDebugTools(
   const panel = new DebugPanel();
   const profiler = new ProfilerPlugin({ panel, enabled: wants("profiler") });
   view.addPlugin(profiler);
-  return { panel, profiler };
+  const layers = new LayerDebuggerPlugin({
+    panel,
+    profiler,
+    enabled: wants("layers"),
+  });
+  view.addPlugin(layers);
+  return { panel, profiler, layers };
 }

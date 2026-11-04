@@ -14,6 +14,7 @@ import type {
 } from "three";
 import invariant from "tiny-invariant";
 
+import type { Layer } from "../layer";
 import type { LayersManager } from "../layersManager";
 import { LineDashAtlas, type LineCap } from "../lineDash";
 import { type ResolvedGBufferOptions } from "../material/gbufferLayout";
@@ -406,6 +407,11 @@ export class ViewContext extends EventHandler<ViewContextEvents> {
   /** @internal Iterate over all registered mesh descriptors. */
   _getMeshes(): Generator<MeshHandle> {
     return this.layersManager.getMeshDescs();
+  }
+
+  /** @internal Iterate over the resource layers. */
+  _getLayers(): Generator<Layer> {
+    return this.layersManager.getResourceLayers();
   }
 
   /**

@@ -25,3 +25,9 @@ export {
   type BlitCorner,
   type BlitMode,
 } from "./profiler/DebugBlitPass";
+export {
+  LayerDebuggerPlugin,
+  type LayerDebuggerPluginOptions,
+} from "./layers/LayerDebuggerPlugin";
+export { LayerEditor, describeLayerAsCode } from "./layers/layerEditor";
+export { collectLayerCosts, type LayerCost } from "./layers/layerCost";

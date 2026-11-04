@@ -11,7 +11,15 @@ for shipping inside an application.
   pipeline's textures (G-buffer attachments, depth copies, any render target),
   and a frame capture that downloads as JSON.
 
-More tools (layer debugger, camera tools) follow the same shape.
+- **`LayerDebuggerPlugin`**: the view's resource layers with their resident
+  cost (objects, triangles, geometry and texture bytes) and, with a
+  `ProfilerPlugin` passed in, their network traffic; a settings form generated
+  from each layer's description (`layer.description`, the description passed
+  to `addLayer` with every `update()` merged in; fields never set take the
+  engine's defaults and can be added through "set field"); solo / hide,
+  wireframe, bounding-box, delete / re-add and copy-as-code actions.
+
+Camera tools follow in the same shape.
 
 ## Usage
 
@@ -42,7 +50,6 @@ profiler.enabled = true;
 
 Every graph's label carries its live value and the graph's top, as
 `name value/top`; hovering the graph shows the value under the pointer.
-
 
 | Section        | Source                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
 | -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |

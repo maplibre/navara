@@ -324,11 +324,15 @@ export class ProfilerPlugin extends DebugPlugin {
     }
     this.passes.beginTick(timing.tick + 1);
 
-    this.draws.calls = info.render.calls;
-    this.draws.triangles = info.render.triangles;
-    this.draws.points = info.render.points;
-    this.draws.lines = info.render.lines;
+    // Draw counts describe the last rendered frame: an idle tick draws nothing.
+    if (timing.rendered) {
+      this.draws.calls = info.render.calls;
+      this.draws.triangles = info.render.triangles;
+      this.draws.points = info.render.points;
+      this.draws.lines = info.render.lines;
+    }
     this.draws.geometries = info.memory.geometries;
+
     this.draws.textures = info.memory.textures;
     const programs = info.programs?.length ?? 0;
     this.draws.programDelta = programs - this.programCount;
