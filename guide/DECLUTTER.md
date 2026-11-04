@@ -159,6 +159,9 @@ export type DeclutterCandidate = {
   pairRole: "label" | "billboard";
   standalone: boolean; // may show while its pair partner is hidden
   flatFacing: boolean; rotateWithCamera: boolean; rotation: number; // quad orientation
+  translate: readonly [number, number]; translateViewport: boolean; // screen-px shift
+  variants?: number;   // variable anchors: group size on the first row, 0 after
+  variant?: number;    // participant's tag for the row, handed back
   owner: DeclutterParticipant;
   handle: number;      // label slot (text) or instance index (sprites)
   contentKey?: string; // label text; feeds the tile-swap handoff
@@ -174,7 +177,10 @@ shaders' `nvr_quadBasis`, so a rotated, flat, or map-aligned quad claims the
 box it is drawn over. For an along-line candidate it is the screen-axis box of
 the turned label or quad, as step 0 resolved it, in the same units, with a
 screen-aligned orientation. The kernel projects and scales both the same
-way. A text label created since the last pass has no line box yet and falls
+way, then moves the projected anchor by the material's `translate`: by the
+screen pixels as given for `translateViewport`, otherwise turned with the
+camera heading (`quad_screen_basis` with the map-aligned upright basis), as
+the shaders' `nvr_translateOffset` moves the drawn quad. A text label created since the last pass has no line box yet and falls
 back to its unrotated block.
 
 Any mesh type that wants to participate — batched SDF text, instanced sprites
@@ -185,7 +191,7 @@ Any mesh type that wants to participate — batched SDF text, instanced sprites
 | `prepareDeferredLabels?(camera)` | once, at pass start | start preparation for parked labels now in view |
 | `placeLineLabels?(camera, heightPx)` | once, at pass start, before collection | along-line level, fit, flip and box ([step 0](#0-line-placement)) |
 | `collectDeclutterCandidates(out)` | once per pass | append this mesh's visible, declutter-enabled labels |
-| `applyDeclutter(handle, hidden)` | once per candidate, every pass | set the fade *target* for this label |
+| `applyDeclutter(handle, hidden, variant)` | once per label, every pass | set the fade *target* for this label, and the variable anchor it is placed with |
 | `stepDeclutterFade(deltaMs)` | every `update()` call | advance actual visibility toward the target; returns `true` while still fading |
 
 This keeps the manager itself geometry-agnostic — it never touches a
@@ -193,22 +199,24 @@ This keeps the manager itself geometry-agnostic — it never touches a
 
 **Tile-swap handoff.** After applying results, the manager files every shown
 candidate's anchor under its `contentKey`. When a tile swap activates a
-replacement batch, `setActive` asks `wasRecentlyShown(text, anchor)` for each
-label. A label whose identical text was shown within `HANDOFF_TOLERANCE_M`
-starts granted rather than fading in from hidden. Without that, every swap
+replacement batch, `setActive` asks `recentlyShownVariant(text, anchor)` for
+each label. A label whose identical text was shown within
+`HANDOFF_TOLERANCE_M` starts granted rather than fading in from hidden, at
+the variable anchor it was shown with. Without that, every swap
 would blink the tile's labels out for a pass plus a fade.
 
 Once collected, each candidate is flattened into the kernel's packed input: a
-`Float64Array` with `CANDIDATE_STRIDE = 25` values per candidate
+`Float64Array` with `CANDIDATE_STRIDE = 29` values per candidate
 (`declutter/kernel.ts`), in the field order the Rust side reads — anchor (3),
 `addHeight`, the four box edges, `sizeInMeters`, `priority`, `isShown`,
 `overlap`, `ignorePlacement`, `rank`, `padding` (4), `pairGroup`,
 `featureIndex`, `pairRole`, `standalone`, `flatFacing`, `rotateWithCamera`,
-`rotation`. Booleans become `0.0`/`1.0`; `overlap` becomes
+`rotation`, `translate` (2), `translateMap` (`!translateViewport`), `variants`
+(`1` when omitted). Booleans become `0.0`/`1.0`; `overlap` becomes
 `0`/`1`/`2` (never/always/cooperative, `OVERLAP_CODES`). The buffer is reused across passes and grown only when the
 label count rises. The kernel returns a `Uint8Array` of `hidden` flags, one per
-candidate in input order, which the manager feeds straight back to
-`applyDeclutter`.
+candidate in input order. The manager hands each label one result: the row of
+its group the pass showed, or its first row if none.
 
 ## 2. Projecting to screen space
 
@@ -377,6 +385,28 @@ is no pair: the label and billboard are placed independently and, like any
 two candidates, block each other where they overlap. The MapLibre plugin sets
 the label's `standalone` from `icon-optional` and the billboard's from
 `text-optional`, so MapLibre's defaults (`false`) pair them fully.
+
+### Variable anchors
+
+A text label with `variableAnchors` (MapLibre's `text-variable-anchor` and
+`text-variable-anchor-offset`) is collected as one row per placement, the
+block's box shifted for each, contiguous and with the placement in use first.
+The first row carries `variants = k` and `isShown`; the rest carry `0` and are
+never sorted or paired on their own. At the group's turn, `choose` in
+`declutter.rs` runs MapLibre's placement passes: every row tested as `never`,
+then, if the label's overlap mode allows overlap, every row again with that
+mode. The first row that fits is the one judged with the pair partner, shown
+and claimed; if none fits, the label is judged at its first row. Because the
+placement in use leads, a label moves only when its spot is taken (MapLibre's
+`prevAnchor`), and the hysteresis shrink applies to it alone. Unlike MapLibre,
+which falls back to the first anchor in the list, a label that overlaps at
+every anchor stays where it is.
+
+The text batch writes the chosen placement's shift (and re-lays out the glyphs
+if `textAlign: "auto"` moves the justification) in `applyDeclutter`, before
+the frame renders. A hidden label keeps its placement. A label that has more
+than one variable anchor participates even with `always` overlap,
+`ignorePlacement` and `standalone`, since it can still pick a free anchor.
 
 ## Hysteresis: why labels don't flicker
 

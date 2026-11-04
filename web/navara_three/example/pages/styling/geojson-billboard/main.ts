@@ -89,7 +89,7 @@ const run = async () => {
         depthTest: true,
         url: withBase("example.png"),
         transparent: true,
-        center: { x: 0.0, y: -0.5 },
+        anchor: "bottom",
       },
     });
 

@@ -48,6 +48,12 @@ function scalarDefault(key: BatchScalarKey): number {
     // Upright + following the camera, matching the material defaults.
     case "orientation":
       return packOrientation(false, true);
+    // `anchorCode("center")`.
+    case "anchor":
+      return 4.0;
+    case "offsetX":
+    case "offsetY":
+      return 0.0;
   }
 }
 
@@ -379,6 +385,43 @@ function ensureOrientationSlot(
   );
 }
 
+/** Slot of the per-feature anchor, backfilled like {@link ensureRotationSlot}. */
+function ensureAnchorSlot(
+  state: BatchTextureState,
+  defaults: Partial<BatchAttributeDefaults> | undefined,
+): BatchSlot | undefined {
+  if (!state.supported.has("anchor")) return undefined;
+  return (
+    state.layout.getScalarSlot("anchor") ??
+    allocateScalarSlot(
+      state,
+      "anchor",
+      defaults?.anchor ?? scalarDefault("anchor"),
+    )
+  );
+}
+
+/**
+ * Slots of the per-feature offset. Both halves are allocated together, so the
+ * shader never reads one written component beside an unbackfilled one; they
+ * backfill like {@link ensureRotationSlot}.
+ */
+function ensureOffsetSlots(
+  state: BatchTextureState,
+  defaults: Partial<BatchAttributeDefaults> | undefined,
+): { x: BatchSlot; y: BatchSlot } | undefined {
+  if (!state.supported.has("offsetX") || !state.supported.has("offsetY")) {
+    return undefined;
+  }
+  const x =
+    state.layout.getScalarSlot("offsetX") ??
+    allocateScalarSlot(state, "offsetX", defaults?.offset?.[0] ?? 0);
+  const y =
+    state.layout.getScalarSlot("offsetY") ??
+    allocateScalarSlot(state, "offsetY", defaults?.offset?.[1] ?? 0);
+  return { x, y };
+}
+
 /**
  * Whether an attribute's slot has already been allocated on this material.
  *
@@ -639,6 +682,47 @@ export function updateBatchAttribute(
       );
       data[baseIndex + slot.comp] = Number.isFinite(value) ? value : 0;
       markTexelDirty(texture, baseIndex);
+      return true;
+    }
+    case "anchor": {
+      if (typeof value !== "number") return false;
+      const slot = ensureAnchorSlot(state, defaults);
+      if (!slot) return false;
+      enableDefine(material, "USE_BATCH_ANCHOR");
+
+      const { texture, data } = textureData(state);
+      const baseIndex = batchBaseIndex(
+        state.width,
+        state.groups,
+        batchId,
+        slot.row,
+      );
+      data[baseIndex + slot.comp] = Number.isFinite(value)
+        ? value
+        : scalarDefault("anchor");
+      markTexelDirty(texture, baseIndex);
+      return true;
+    }
+    case "offset": {
+      if (!(value instanceof Array)) return false;
+      const slots = ensureOffsetSlots(state, defaults);
+      if (!slots) return false;
+      enableDefine(material, "USE_BATCH_OFFSET");
+
+      const { texture, data } = textureData(state);
+      for (const [slot, v] of [
+        [slots.x, value[0]],
+        [slots.y, value[1]],
+      ] as const) {
+        const baseIndex = batchBaseIndex(
+          state.width,
+          state.groups,
+          batchId,
+          slot.row,
+        );
+        data[baseIndex + slot.comp] = Number.isFinite(v) ? v : 0;
+        markTexelDirty(texture, baseIndex);
+      }
       return true;
     }
     case "height":

@@ -241,6 +241,10 @@ export type SymbolPaint = {
   "text-opacity"?: ValueExpression;
   "text-halo-color"?: ValueExpression;
   "text-halo-width"?: ValueExpression;
+  "text-translate"?: ValueExpression;
+  "text-translate-anchor"?: ValueExpression;
+  "icon-translate"?: ValueExpression;
+  "icon-translate-anchor"?: ValueExpression;
 };
 
 /**
@@ -333,7 +337,8 @@ export type PropertySpec = {
     | "array"
     | "formatted"
     | "resolvedImage"
-    | "padding";
+    | "padding"
+    | "variableAnchorOffsetCollection";
   default?: unknown;
   minimum?: number;
   maximum?: number;

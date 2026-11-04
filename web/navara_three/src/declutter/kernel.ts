@@ -22,7 +22,8 @@ export type DeclutterKernel = {
    * @param proj Column-major projection matrix, 16.
    * @param horizonMinHeight Height (never positive) the ellipsoid is shrunk
    *   by for horizon culling, as the renderer's `nvrHorizonMinHeight`.
-   * @returns One `hidden` flag (`0`/`1`) per candidate, in input order.
+   * @returns One `hidden` flag (`0`/`1`) per candidate, in input order; of
+   *   a variable-anchor group at most one row is shown.
    */
   place(
     candidates: Float64Array,
@@ -47,10 +48,11 @@ export type DeclutterKernel = {
  * Layout: `[anchorX, anchorY, anchorZ, addHeight, minX, maxX, minY, maxY,
  * sizeInMeters, priority, isShown, overlap, ignorePlacement, rank, paddingTop,
  * paddingRight, paddingBottom, paddingLeft, pairGroup, featureIndex, pairRole,
- * standalone, flatFacing, rotateWithCamera, rotation]`, with `overlap` coded by
+ * standalone, flatFacing, rotateWithCamera, rotation, translateX, translateY,
+ * translateMap, variants]`, with `overlap` coded by
  * {@link OVERLAP_CODES} and `pairRole` by {@link PAIR_ROLE_CODES}.
  */
-export const CANDIDATE_STRIDE = 25;
+export const CANDIDATE_STRIDE = 29;
 
 /** Kernel codes for a candidate's pair role; `0` is unpaired. */
 export const PAIR_ROLE_CODES = { label: 1, billboard: 2 } as const;

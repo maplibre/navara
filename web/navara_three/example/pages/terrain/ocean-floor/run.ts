@@ -116,7 +116,7 @@ export const run = async (view: ThreeView<CustomDescriptions>) => {
       size: 20,
       sizeInMeters: false,
       clampToGround: true,
-      center: { x: 0.5, y: 1.4 },
+      anchor: "top",
       outlineColor: new Color().setStyle("#000000"),
       outlineWidth: 3,
       declutter: false,

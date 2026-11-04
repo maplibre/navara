@@ -119,7 +119,6 @@ const layers = KINDS.map((kind) => {
             outlineColor: new Color().setStyle("#000000"),
             outlineWidth: 3,
             size: 210,
-            center: { x: 0.5, y: 0.5 },
           },
         }
       : kind === "billboard"

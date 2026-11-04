@@ -17,7 +17,17 @@ export type InstancedSpriteBaseProps = {
 
   // Mutable state
   scale?: number;
-  center?: [number, number];
+  /** The anchor's position on the quad, corners at ±0.5, y up
+   *  (`spriteCenter` in `material/anchor.ts`). */
+  anchor?: [number, number];
+  /** Shift from the anchor point, x right and y down, in the unit of the
+   *  size. */
+  offset?: [number, number];
+  /** Screen-pixel shift of the drawn quad, x right and y down. */
+  translate?: [number, number];
+  /** `true` keeps `translate` on the screen axes; `false` turns it with the
+   *  camera heading (MapLibre's `*-translate-anchor: map`). */
+  translateViewport?: boolean;
   /** `false` (the default) keeps the quad in the screen plane; `true` lays it
    *  on the globe surface around the anchor, wrapped to its curvature.
    *  Material-level default; per-feature overrides come from the batch data
@@ -30,6 +40,8 @@ export type InstancedSpriteBaseProps = {
    *  clockwise seen from the front. Converted to radians in state. */
   rotation?: number;
   sizeInMeters?: boolean;
+  /** `scale` multiplies the image's pixel height (billboards only). */
+  sizeRelativeToImage?: boolean;
   offsetDepth?: boolean;
   alphaTest?: number;
   pickable?: boolean;
@@ -75,11 +87,15 @@ export type InstancedSpriteBaseState = Readonly<{
 
   // Mutable
   scale: number;
-  center: [number, number];
+  anchor: [number, number];
+  offset: [number, number];
+  translate: [number, number];
+  translateViewport: boolean;
   flatFacing: boolean;
   rotateWithCamera: boolean;
   rotation: number; // pre-converted: degrees -> radians
   sizeInMeters: boolean;
+  sizeRelativeToImage: boolean;
   offsetDepth: boolean;
   alphaTest: number;
   pickable: boolean;
@@ -117,11 +133,15 @@ export type InstancedSpriteBaseRefs = {
   uColor: UniformValue<Color>;
   uOpacity: UniformValue<number>;
   uAddHeight: UniformValue<number>;
-  uCenter: UniformValue<Vector2>;
+  uAnchor: UniformValue<Vector2>;
+  uOffset: UniformValue<Vector2>;
+  uTranslate: UniformValue<Vector2>;
+  uTranslateViewport: UniformValue<boolean>;
   uFlatFacing: UniformValue<boolean>;
   uRotateWithCamera: UniformValue<boolean>;
   uRotation: UniformValue<number>;
   uSizeInMeters: UniformValue<boolean>;
+  uSizeRelativeToImage: UniformValue<boolean>;
   uOffsetDepth: UniformValue<boolean>;
   uAlphaTest: UniformValue<number>;
   uFarPlane: UniformValue<number>;

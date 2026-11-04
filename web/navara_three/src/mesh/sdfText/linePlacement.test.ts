@@ -36,7 +36,8 @@ function path(stepMeters: number, realLineMeters: number): LinePath {
   };
 }
 
-/** A label whose ink spans exactly its advance box unless told otherwise. */
+/** A label whose ink spans exactly its advance box unless told otherwise,
+ *  centred on its anchor with the baseline on it. */
 function label(over: Partial<PackableLabel> = {}): PackableLabel {
   const widthEm = over.widthEm ?? 4;
   return {
@@ -45,7 +46,7 @@ function label(over: Partial<PackableLabel> = {}): PackableLabel {
     anchor: new Float64Array([1, 2, 3]),
     addHeight: 0,
     widthEm,
-    heightEm: 1,
+    shiftEm: [-widthEm / 2, 0],
     minYEm: 0,
     maxYEm: 1,
     minXEm: 0,
@@ -61,7 +62,6 @@ const options = {
   sizeInMeters: true,
   maxAngleDeg: 45,
   keepUpright: true,
-  center: [0.5, 0] as const,
   lineOffset: 0,
   readFlip: () => false,
   readOrientation: () => ({
@@ -159,10 +159,9 @@ describe("label width", () => {
     // The kernel stretches the spacing for a label longer than it, measured
     // end to end as MapLibre does — not by the side that reaches furthest.
     const p = path(10, 500);
-    const l = label({ widthEm: 7 });
-    const offCentre = { ...options, center: [0, 0] as const };
-    expect(packLineLabelFits([l], p, offCentre)[10]).toBe(7);
-    expect(packLineLabels([l], p, offCentre).labels[21]).toBe(7);
+    const l = label({ widthEm: 7, shiftEm: [0, 0] });
+    expect(packLineLabelFits([l], p, options)[10]).toBe(7);
+    expect(packLineLabels([l], p, options).labels[21]).toBe(7);
   });
 
   it("measures glyphs that overhang their advance by their ink", () => {
@@ -185,7 +184,7 @@ describe("label width", () => {
 
     // Off-centre, the ink is measured from the same origin as the advance:
     // anchored at the left edge, it reaches 0.2 em back and 1.2 em forward.
-    const left = packLineLabels([l], p, { ...options, center: [0, 0] }).labels;
+    const left = packLineLabels([{ ...l, shiftEm: [0, 0] }], p, options).labels;
     expect(left[13]).toBeCloseTo(-0.2 * 16, 5);
     expect(left[14]).toBeCloseTo(1.2 * 16, 5);
   });
@@ -304,19 +303,28 @@ describe("packing shape", () => {
 });
 
 describe("anchor and offset", () => {
-  // The shader lays text over [-cx·w, (1 - cx)·w] around the anchor, so an
-  // off-centre anchor leaves one side needing more line than half the width.
+  // The shader lays text over [shiftX, w + shiftX] around the anchor, so an
+  // off-centre anchor or an x offset leaves one side needing more line than
+  // half the width.
   it("fits the longer side of an off-centre label", () => {
     const p = path(10, 500);
-    const at = (cx: number) => ({ ...options, center: [cx, 0] as const });
-    for (const [cx, reach] of [
-      [0.5, 2],
+    for (const [shiftX, reach] of [
+      [-2, 2],
       [0, 4],
-      [-0.5, 6],
+      [2, 6],
     ]) {
-      expect(packLineLabelFits([label()], p, at(cx))[4]).toBe(reach);
-      expect(packLineLabels([label()], p, at(cx)).labels[4]).toBe(reach);
+      const l = label({ shiftEm: [shiftX, 0] });
+      expect(packLineLabelFits([l], p, options)[4]).toBe(reach);
+      expect(packLineLabels([l], p, options).labels[4]).toBe(reach);
     }
+  });
+
+  it("moves the box by the vertical shift", () => {
+    const p = path(10, 500);
+    const l = label({ shiftEm: [-2, -0.5], minYEm: -0.2, maxYEm: 0.8 });
+    const box = packLineLabels([l], p, options).labels;
+    expect(box[15]).toBeCloseTo((-0.2 - 0.5) * 10, 5);
+    expect(box[16]).toBeCloseTo((0.8 - 0.5) * 10, 5);
   });
 
   it("sends the anchor's height to both phases", () => {

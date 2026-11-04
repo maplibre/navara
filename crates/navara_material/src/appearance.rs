@@ -234,6 +234,99 @@ impl Overlap {
     }
 }
 
+/// Part of a label or sprite placed at its anchor point (MapLibre's
+/// `text-anchor` / `icon-anchor`).
+///
+/// For a sprite it names a point on the quad's edge or its middle. For text
+/// it names a point on the block's box: as wide as its widest line, and
+/// spanning one line height per line, centered on the font's midline.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Anchor {
+    #[default]
+    Center,
+    Left,
+    Right,
+    Top,
+    Bottom,
+    TopLeft,
+    TopRight,
+    BottomLeft,
+    BottomRight,
+}
+
+impl Anchor {
+    /// Parse the JS-facing name (`"center" | "left" | … | "bottom-right"`).
+    pub fn parse(value: &str) -> Option<Self> {
+        match value {
+            "center" => Some(Self::Center),
+            "left" => Some(Self::Left),
+            "right" => Some(Self::Right),
+            "top" => Some(Self::Top),
+            "bottom" => Some(Self::Bottom),
+            "top-left" => Some(Self::TopLeft),
+            "top-right" => Some(Self::TopRight),
+            "bottom-left" => Some(Self::BottomLeft),
+            "bottom-right" => Some(Self::BottomRight),
+            _ => None,
+        }
+    }
+
+    /// JS-facing name of this anchor.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Center => "center",
+            Self::Left => "left",
+            Self::Right => "right",
+            Self::Top => "top",
+            Self::Bottom => "bottom",
+            Self::TopLeft => "top-left",
+            Self::TopRight => "top-right",
+            Self::BottomLeft => "bottom-left",
+            Self::BottomRight => "bottom-right",
+        }
+    }
+}
+
+/// One placement a label may take: the part of the block placed at the anchor
+/// point and the shift after it (MapLibre's `text-variable-anchor-offset`
+/// entry).
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub struct VariableAnchor {
+    pub anchor: Anchor,
+    /// Shift from the anchor point, x right and y down, in ems.
+    pub offset: Vec2,
+}
+
+/// Frame a label's or sprite's `translate` is measured in (MapLibre's
+/// `*-translate-anchor`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum TranslateAnchor {
+    /// Turns with the map: +x points east and +y south on screen.
+    #[default]
+    Map,
+    /// Fixed to the screen: +x right and +y down.
+    Viewport,
+}
+
+impl TranslateAnchor {
+    /// Parse the JS-facing name (`"map" | "viewport"`).
+    pub fn parse(value: &str) -> Option<Self> {
+        match value {
+            "map" => Some(Self::Map),
+            "viewport" => Some(Self::Viewport),
+            _ => None,
+        }
+    }
+
+    /// JS-facing name of this frame.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Map => "map",
+            Self::Viewport => "viewport",
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum Appearance {
     Point(PointMaterial),
@@ -298,8 +391,7 @@ pub struct PointMaterial {
     /// [`TextMaterial::rotate_with_camera`] — the semantics are identical.
     pub rotate_with_camera: Option<bool>,
     /// Rotation of the point within its own plane, about its anchor point,
-    /// in degrees, clockwise seen from the front. `center` decides where
-    /// inside the quad the pivot sits. Default `0.0`.
+    /// in degrees, clockwise seen from the front. Default `0.0`.
     pub rotation: f32,
     /// How anchors are derived from line and polygon geometry. See
     /// [`TextMaterial::placement`]. Default [`Placement::Point`].
@@ -311,7 +403,18 @@ pub struct PointMaterial {
     /// sprite turns with the line it sits on. Only used by
     /// [`Placement::Line`]/[`Placement::LineCenter`]. Default `true`.
     pub rotate_to_line: bool,
-    pub center: Vec2,
+    /// Part of the quad placed at the anchor point. Default [`Anchor::Center`].
+    pub anchor: Anchor,
+    /// Shift from the anchor point, x right and y down, in the unit of `size`
+    /// (meters when `size_in_meters`, pixels otherwise). Lies in the quad's
+    /// own plane, so it turns with `rotation`. Default `(0, 0)`.
+    pub offset: Vec2,
+    /// Screen-pixel shift of the drawn quad, x right and y down, applied after
+    /// projection so it stays the same number of pixels at any distance
+    /// (MapLibre's `icon-translate`). Default `(0, 0)`.
+    pub translate: Vec2,
+    /// Frame `translate` is measured in. Default [`TranslateAnchor::Map`].
+    pub translate_anchor: TranslateAnchor,
     pub height: f32,
     pub size_in_meters: bool,
     pub clamp_to_ground: bool,
@@ -368,7 +471,10 @@ impl Default for PointMaterial {
             placement: Placement::Point,
             spacing: 250.0,
             rotate_to_line: true,
-            center: Vec2::new(0.0, 0.),
+            anchor: Anchor::Center,
+            offset: Vec2::ZERO,
+            translate: Vec2::ZERO,
+            translate_anchor: TranslateAnchor::Map,
             clamp_to_ground: true,
             height: 1.,
             size_in_meters: true,
@@ -413,8 +519,7 @@ pub struct BillboardMaterial {
     /// [`TextMaterial::rotate_with_camera`] — the semantics are identical.
     pub rotate_with_camera: Option<bool>,
     /// Rotation of the sprite within its own plane, about its anchor point,
-    /// in degrees, clockwise seen from the front. `center` decides where
-    /// inside the sprite the pivot sits. Default `0.0`.
+    /// in degrees, clockwise seen from the front. Default `0.0`.
     pub rotation: f32,
     /// How anchors are derived from line and polygon geometry. See
     /// [`TextMaterial::placement`]. Default [`Placement::Point`].
@@ -426,10 +531,26 @@ pub struct BillboardMaterial {
     /// sprite turns with the line it sits on. Only used by
     /// [`Placement::Line`]/[`Placement::LineCenter`]. Default `true`.
     pub rotate_to_line: bool,
-    pub center: Vec2,
+    /// Part of the quad placed at the anchor point. Default [`Anchor::Center`].
+    pub anchor: Anchor,
+    /// Shift from the anchor point, x right and y down, in the unit of `size`
+    /// (meters when `size_in_meters`, pixels otherwise). Lies in the quad's
+    /// own plane, so it turns with `rotation`. Default `(0, 0)`.
+    pub offset: Vec2,
+    /// Screen-pixel shift of the drawn quad, x right and y down, applied after
+    /// projection so it stays the same number of pixels at any distance
+    /// (MapLibre's `icon-translate`). Default `(0, 0)`.
+    pub translate: Vec2,
+    /// Frame `translate` is measured in. Default [`TranslateAnchor::Map`].
+    pub translate_anchor: TranslateAnchor,
     pub height: f32,
     pub url: String,
     pub size_in_meters: bool,
+    /// `size` scales the image's own pixel height instead of being the quad's
+    /// height (MapLibre's `icon-size`): `1.0` draws the image at its natural
+    /// size, in pixels, or a meter per image pixel with `size_in_meters`.
+    /// `offset` stays in the unit of `size_in_meters`. Default `false`.
+    pub size_relative_to_image: bool,
     pub clamp_to_ground: bool,
     pub depth_test: bool,
     /// Cull faces seen from behind. Off by default. Only a flat quad has a
@@ -491,11 +612,15 @@ impl Default for BillboardMaterial {
             placement: Placement::Point,
             spacing: 250.0,
             rotate_to_line: true,
-            center: Vec2::new(0.0, 0.),
+            anchor: Anchor::Center,
+            offset: Vec2::ZERO,
+            translate: Vec2::ZERO,
+            translate_anchor: TranslateAnchor::Map,
             clamp_to_ground: true,
             height: 1.,
             url: "".to_string(),
             size_in_meters: true,
+            size_relative_to_image: false,
             depth_test: true,
             backface_culling: false,
             offset_depth: true,
@@ -532,7 +657,24 @@ pub struct TextMaterial {
     pub show: bool,
     pub size: f32,
     pub color: u32,
-    pub center: Vec2,
+    /// Part of the text block placed at the anchor point. Default
+    /// [`Anchor::Center`].
+    pub anchor: Anchor,
+    /// Shift from the anchor point, x right and y down, in ems (multiples of
+    /// `size`). Lies in the label's own plane, so it turns with `rotation`.
+    /// Default `(0, 0)`.
+    pub offset: Vec2,
+    /// Placements the declutter pass tries in order, keeping the first whose
+    /// box is free; the one in use is tried first, so a label only moves when
+    /// it must. Overrides `anchor` and `offset` when not empty, except along a
+    /// line. Without declutter the first is used. Default empty.
+    pub variable_anchors: Vec<VariableAnchor>,
+    /// Screen-pixel shift of the drawn label, x right and y down, applied after
+    /// projection so it stays the same number of pixels at any distance
+    /// (MapLibre's `text-translate`). Default `(0, 0)`.
+    pub translate: Vec2,
+    /// Frame `translate` is measured in. Default [`TranslateAnchor::Map`].
+    pub translate_anchor: TranslateAnchor,
     /// Plane the label's quad lies in. See [`Facing`]; `None` resolves from
     /// `rotate_with_camera`.
     pub text_facing: Option<Facing>,
@@ -540,7 +682,7 @@ pub struct TextMaterial {
     /// degrees, clockwise seen from the front. Applied on top of whatever
     /// orientation `text_facing` and `rotate_with_camera` resolve to, so it
     /// spins a billboard on screen and turns a surface label like a compass
-    /// bearing. `center` decides where inside the text the pivot sits. Along
+    /// bearing. `anchor` decides where inside the text the pivot sits. Along
     /// a line each glyph spins about its own point on the line instead,
     /// except for a straight label, which turns as a whole. Default `0.0`.
     pub rotation: f32,
@@ -638,7 +780,8 @@ pub struct TextMaterial {
     /// (ascender − descender + line gap). Default `1.0`.
     pub line_height: f32,
     /// Horizontal alignment of lines within a multi-line block:
-    /// `"left"`, `"center"` (default), or `"right"`.
+    /// `"left"`, `"center"` (default), `"right"`, or `"auto"`, which aligns
+    /// towards the horizontal side of `anchor`.
     pub text_align: String,
     /// Extra space between characters, in ems (multiples of `size`). Applied
     /// between shaping clusters, never after the last one, so alignment is
@@ -690,7 +833,11 @@ impl Default for TextMaterial {
             show: true,
             size: 10.0,
             color: 0xffffff,
-            center: Vec2::new(0.5, 0.),
+            anchor: Anchor::Center,
+            offset: Vec2::ZERO,
+            variable_anchors: Vec::new(),
+            translate: Vec2::ZERO,
+            translate_anchor: TranslateAnchor::Map,
             text_facing: None,
             rotate_with_camera: None,
             rotation: 0.0,

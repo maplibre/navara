@@ -8,7 +8,6 @@ describe("sdfTextBaseEnhancer / state", () => {
     it("initializes state from props with defaults", () => {
       const state = updateState({ offsetDepth: false }, DEFAULT_BASE_STATE);
       expect(state.offsetDepth).toBe(false);
-      expect(state.center).toEqual([0.5, 0.0]);
       expect(state.sizeInMeters).toBe(true);
     });
 
@@ -16,11 +15,6 @@ describe("sdfTextBaseEnhancer / state", () => {
       const currentState = { ...DEFAULT_BASE_STATE, useRTE: true };
       const state = updateState({ useRTE: false }, currentState);
       expect(state.useRTE).toBe(true);
-    });
-
-    it("updates center", () => {
-      const state = updateState({ center: [0.0, 0.5] }, DEFAULT_BASE_STATE);
-      expect(state.center).toEqual([0.0, 0.5]);
     });
 
     it("updates sizeInMeters", () => {
@@ -131,11 +125,9 @@ describe("sdfTextBaseEnhancer / state", () => {
       const currentState = {
         ...DEFAULT_BASE_STATE,
         outlineOpacity: 0.25,
-        center: [1, 2] as [number, number],
       };
       const state = updateState({}, currentState);
       expect(state.outlineOpacity).toBe(0.25);
-      expect(state.center).toEqual([1, 2]);
     });
   });
 });

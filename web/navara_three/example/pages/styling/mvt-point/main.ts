@@ -87,7 +87,7 @@ const run = async () => {
         sizeInMeters: true,
         clampToGround: true,
         color: new Color().setStyle("#ff0000"),
-        center: { x: 0, y: -0.5 },
+        anchor: "bottom",
       },
     });
 

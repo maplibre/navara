@@ -139,17 +139,27 @@ New attributes reuse one of these patterns rather than inventing new ones:
   material state into backfills or add shader-side fallback machinery for
   them). The texture allocation is zero-filled, so a non-zero default must
   be actively backfilled.
+- **Uniform-backed backfill** (the exception): `rotation`, `orientation`, and
+  sprites' `anchor`/`offset` backfill the **material's** value, passed in as
+  `BatchAttributeDefaults`. Their material value lives in a uniform, and
+  `USE_BATCH_*` is material-wide, so the first per-feature write would
+  otherwise snap every unstyled feature from the uniform to a constant. The
+  mesh writes a changed material value through to every feature once the slot
+  exists (`_writeThroughOrientation` / `_writeThroughPlacement`).
 - **Packed components**: Two half-attributes can share one component with a
   sign/bias encoding. Writes to one half unpack, merge, and repack so the
   other half survives. `show`/`opacity` use `sign(show) * (1 + opacity)`,
   where the +1 bias keeps the sign unambiguous at opacity 0
   (`packShowOpacity`). Packing also keeps the pair a single texel fetch.
+  A small enum packs the same way: a sprite's `anchor` is `2h + 6v` (0..8,
+  `anchorCode`), decoded with `mod`/`floor` in the shader.
 - **Paired slots**: Attributes the shader folds into one varying are
   allocated together on the first write of either, so the fold never mixes a
   written value with an uninitialized one. `emissive` (vec3) +
   `emissiveIntensity` (scalar) fold to `nvr_vEmissive = rgb × intensity` in
   the vertex stage; the pair backfills `(black, 1)` — dark, with intensity
-  kept a usable identity multiplier.
+  kept a usable identity multiplier. A sprite's `offset` is two scalars,
+  `offsetX` + `offsetY`, written together as one public attribute.
 - **Sentinels**: A reserved out-of-range value can mean "fall back to the
   material default" when 0 is a legal styled value (e.g. `lineWidth < 0`,
   `size < 0`).

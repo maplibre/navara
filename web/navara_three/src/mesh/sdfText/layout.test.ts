@@ -7,7 +7,13 @@ import {
 } from "@navaramap/font";
 import { describe, expect, it } from "vitest";
 
-import { breakLines, buildLabelLayout, lineWidthFu } from "./layout";
+import {
+  anchorShiftEm,
+  breakLines,
+  buildLabelLayout,
+  lineWidthFu,
+  resolveTextAlign,
+} from "./layout";
 
 /** Build a glyph run from a compact spec: one entry per glyph. `cont` marks a
  *  glyph continuing the previous glyph's shaping cluster. */
@@ -490,5 +496,86 @@ describe("letter spacing", () => {
       const layout = buildLabelLayout(run, { ...base, letterSpacing: 0.1 });
       expect(layout.widthEm).toBeCloseTo(0.3);
     });
+  });
+});
+
+describe("anchor box", () => {
+  /** Every glyph a 100-unit advance with a 10-unit quad, in a font whose
+   *  ascender/descender put its midline at 0.3 em. */
+  function shaped(text: string, lineGap = 0): ShapeTextResult {
+    const run = fromText(text);
+    return {
+      glyphs: run,
+      metrics: run.map((g) => ({
+        glyphId: g.glyphId,
+        fontIndex: 0,
+        compositeKey: g.compositeKey,
+        atlasX: 0,
+        atlasY: 0,
+        atlasW: 10,
+        atlasH: 10,
+        bearingX: 0,
+        bearingY: 0,
+        isColor: false,
+      })),
+      unitsPerEm: 1000,
+      ascender: 800,
+      descender: -200,
+      lineGap,
+      allowsLetterSpacing: true,
+    };
+  }
+  const base = {
+    maxWidth: 0,
+    lineHeight: 1,
+    textAlign: 0,
+    spreadGlyphs: false,
+  };
+
+  it("spans one line height around the font's midline for one line", () => {
+    const layout = buildLabelLayout(shaped("ab"), base);
+    expect(layout.topEm).toBeCloseTo(0.8);
+    expect(layout.bottomEm).toBeCloseTo(-0.2);
+  });
+
+  it("adds one line pitch, gap and multiplier included, per extra line", () => {
+    // Pitch = (800 + 200 + 200) / 1000 × 1.5 = 1.8 em, centred on 0.3.
+    const layout = buildLabelLayout(shaped("a\nb\nc", 200), {
+      ...base,
+      lineHeight: 1.5,
+    });
+    expect(layout.topEm).toBeCloseTo(0.3 + 0.9);
+    expect(layout.bottomEm).toBeCloseTo(0.3 - 0.9 - 2 * 1.8);
+  });
+});
+
+describe("anchorShiftEm", () => {
+  // A 4 em wide block from 1 em above the first baseline to 2 em below it.
+  const shift = (anchor: Parameters<typeof anchorShiftEm>[0], x = 0, y = 0) =>
+    anchorShiftEm(anchor, x, y, 4, 1, -2);
+
+  it("puts the named point of the box on the anchor", () => {
+    expect(shift("top-left")).toEqual([0, -1]);
+    expect(shift("bottom-right")).toEqual([-4, 2]);
+    expect(shift("center")).toEqual([-2, 0.5]);
+    expect(shift("left")).toEqual([0, 0.5]);
+    expect(shift("top")).toEqual([-2, -1]);
+  });
+
+  it("applies the offset x right and y down", () => {
+    expect(shift("center", 1, 2)).toEqual([-1, -1.5]);
+  });
+});
+
+describe("resolveTextAlign", () => {
+  it("follows the anchor's horizontal side for auto", () => {
+    expect(resolveTextAlign("auto", "top-left")).toBe(0);
+    expect(resolveTextAlign("auto", "bottom")).toBe(0.5);
+    expect(resolveTextAlign("auto", "right")).toBe(1);
+  });
+
+  it("ignores the anchor otherwise", () => {
+    expect(resolveTextAlign("left", "right")).toBe(0);
+    expect(resolveTextAlign(undefined, "left")).toBe(0.5);
   });
 });

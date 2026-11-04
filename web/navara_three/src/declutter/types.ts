@@ -59,6 +59,21 @@ export type DeclutterCandidate = {
   flatFacing: boolean;
   rotateWithCamera: boolean;
   rotation: number;
+  /** Screen pixels the drawn quad is moved by after projection, x right and
+   *  y down, and whether that stays on the screen axes or turns with the
+   *  camera heading — the material's resolved `translate` (see
+   *  `resolveTranslate`). */
+  translate: readonly [number, number];
+  translateViewport: boolean;
+  /**
+   * A label with variable anchors is one candidate per placement it may
+   * take, contiguous and the one in use first; the pass shows at most one.
+   * `variants` is the group's size on its first candidate and `0` on the
+   * rest, `variant` the participant's tag for each, handed back to
+   * `applyDeclutter`. Omitted, a group of one tagged `0`.
+   */
+  variants?: number;
+  variant?: number;
   /** Whether the label is currently shown (its fade target is "visible").
    *  Feeds placement hysteresis: shown labels win equal-priority ties and
    *  tolerate marginal overlaps, so slow camera drift doesn't make near-tied
@@ -82,7 +97,8 @@ export type DeclutterCandidate = {
 export type DeclutterSettings = {
   /** Whether the material's labels take part in the pass at all. A
    *  standalone `always` label that ignores placement can neither lose nor
-   *  block, so it stays out like a `declutter: false` one. */
+   *  block, so it stays out like a `declutter: false` one — unless it has
+   *  variable anchors, and with them a free one to pick. */
   participates: boolean;
   rank: number;
   priority: number;
@@ -100,11 +116,12 @@ export type DeclutterParticipant = {
    */
   collectDeclutterCandidates: (out: DeclutterCandidate[]) => void;
   /**
-   * Apply a placement result as the label's fade *target*. Must be cheap and
-   * idempotent — the pass calls it for every candidate on every run, most
-   * often with an unchanged value.
+   * Apply a placement result as the label's fade *target*, and the
+   * `variant` it is placed with (see {@link DeclutterCandidate.variants}).
+   * Must be cheap and idempotent — the pass calls it for every label on
+   * every run, most often with an unchanged value.
    */
-  applyDeclutter: (handle: number, hidden: boolean) => void;
+  applyDeclutter: (handle: number, hidden: boolean, variant: number) => void;
   /**
    * Advance this participant's hide factors toward their targets by
    * `deltaMs / DECLUTTER_FADE_MS`. Called by the manager every update while

@@ -7,7 +7,8 @@ describe("instancedSpriteBaseEnhancer / state", () => {
     it("initializes state from props with defaults", () => {
       const state = updateState({ scale: 50 }, DEFAULT_BASE_STATE);
       expect(state.scale).toBe(50);
-      expect(state.center).toEqual([0.0, 0.0]);
+      expect(state.anchor).toEqual([0.0, 0.0]);
+      expect(state.offset).toEqual([0.0, 0.0]);
       expect(state.sizeInMeters).toBe(true);
     });
 
@@ -28,14 +29,27 @@ describe("instancedSpriteBaseEnhancer / state", () => {
       expect(state.scale).toBe(200);
     });
 
-    it("updates center", () => {
-      const state = updateState({ center: [0.5, 0.5] }, DEFAULT_BASE_STATE);
-      expect(state.center).toEqual([0.5, 0.5]);
+    it("updates anchor and offset", () => {
+      const state = updateState(
+        { anchor: [0.5, -0.5], offset: [2, 3] },
+        DEFAULT_BASE_STATE,
+      );
+      expect(state.anchor).toEqual([0.5, -0.5]);
+      expect(state.offset).toEqual([2, 3]);
     });
 
     it("updates sizeInMeters", () => {
       const state = updateState({ sizeInMeters: false }, DEFAULT_BASE_STATE);
       expect(state.sizeInMeters).toBe(false);
+    });
+
+    it("updates sizeRelativeToImage", () => {
+      expect(DEFAULT_BASE_STATE.sizeRelativeToImage).toBe(false);
+      const state = updateState(
+        { sizeRelativeToImage: true },
+        DEFAULT_BASE_STATE,
+      );
+      expect(state.sizeRelativeToImage).toBe(true);
     });
 
     it("updates offsetDepth", () => {
@@ -78,11 +92,11 @@ describe("instancedSpriteBaseEnhancer / state", () => {
       const currentState = {
         ...DEFAULT_BASE_STATE,
         scale: 42,
-        center: [1, 2] as [number, number],
+        anchor: [0.5, 0.5] as [number, number],
       };
       const state = updateState({}, currentState);
       expect(state.scale).toBe(42);
-      expect(state.center).toEqual([1, 2]);
+      expect(state.anchor).toEqual([0.5, 0.5]);
     });
   });
 });

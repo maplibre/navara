@@ -56,6 +56,8 @@ uniform float uScale;
 uniform vec3 uColor;
 uniform float uOpacity;
 uniform bool uSizeInMeters;
+// `uScale` multiplies the image's pixel height instead of being the quad's.
+uniform bool uSizeRelativeToImage;
 // Material-level orientation defaults. Per-feature overrides arrive through
 // the batch data texture (USE_BATCH_ORIENTATION / USE_BATCH_ROTATION), so
 // these are what a sprite uses until something writes its own value.
@@ -64,7 +66,13 @@ uniform bool uRotateWithCamera;
 // Radians, clockwise seen from the front; converted from the material's
 // degrees on the CPU.
 uniform float uRotation;
-uniform vec2 uCenter;
+// The anchor's position on the quad (corners at ±0.5, y up), and the shift
+// from the anchor point (x right, y down) in the unit of the size.
+uniform vec2 uAnchor;
+uniform vec2 uOffset;
+// Screen-pixel translate, x right and y down; see nvr_translateOffset.
+uniform vec2 uTranslate;
+uniform bool uTranslateViewport;
 uniform float uFovRad;
 uniform float uScreenHeightPx;
 
@@ -84,6 +92,8 @@ void main() {
     float nvr_batchRotation = uRotation;
     bool nvr_batchFlatFacing = uFlatFacing;
     bool nvr_batchRotateWithCamera = uRotateWithCamera;
+    vec2 nvr_batchAnchor = uAnchor;
+    vec2 nvr_batchOffset = uOffset;
     vColor = uColor;
     #include "chunks/batch_texture_vertex.glsl"
 
@@ -139,20 +149,27 @@ void main() {
 #endif
 
     mvPosition += mvr_getMvHeightOffset(absTransformed, addHeight);
-    vec2 center = clamp(uCenter, vec2(-0.5), vec2(0.5)); // Ensure center is within the bounds of the sprite
-
     // Use per-feature size when set (>= 0.0). A negative value means "use uScale".
     float scale = batchSize >= 0.0 ? batchSize : uScale;
     float clampedScale = max(0.0, scale); // Prevent negative scaling
+    // Height of the quad in the unit of the size.
+    float quadHeight = clampedScale;
+    // World units per unit of size: the offset shares the size's unit.
+    float sizeUnit = 1.0;
 #ifdef BILLBOARD
     // Per-instance image aspect from the atlas rect (guard empty rects).
     float aspect = instanceUvRect.w > 0.0 ? instanceUvRect.z / instanceUvRect.w : 1.0;
+    if (uSizeRelativeToImage) {
+        quadHeight *= instanceUvRect.w;
+    }
 #else
     float aspect = 1.0;
 #endif
+    float worldPerPx = nvr_pxToWorld(1.0, uFovRad, uScreenHeightPx, vec3(0.0, 0.0, mvPosition.z), vec3(0.0, 0.0, 0.0));
     if (!uSizeInMeters) {
-        clampedScale = nvr_pxToWorld(clampedScale, uFovRad, uScreenHeightPx, vec3(0.0, 0.0, mvPosition.z), vec3(0.0, 0.0, 0.0));
+        sizeUnit = worldPerPx;
     }
+    vec3 translateOffset = nvr_translateOffset(absTransformed, uTranslate, uTranslateViewport, worldPerPx);
 
     // The quad's axes: view-space x/y for a plain billboard, otherwise a pair
     // derived from the anchor's east-north-up frame or the camera heading
@@ -171,7 +188,8 @@ void main() {
         axisUp
     );
 
-    vec2 localPos = (position.xy - center) * vec2(aspect, 1.0) * clampedScale;
+    vec2 localPos = ((position.xy - nvr_batchAnchor) * vec2(aspect, 1.0) * quadHeight
+        + vec2(nvr_batchOffset.x, -nvr_batchOffset.y)) * sizeUnit;
     mvPosition.xyz += nvr_quadOffset(
         localPos,
         axisRight,
@@ -180,6 +198,7 @@ void main() {
         absTransformed,
         addHeight
     );
+    mvPosition.xyz += translateOffset;
 
     gl_Position = projectionMatrix * mvPosition;
     vFragDepth = gl_Position.w + 1.0;

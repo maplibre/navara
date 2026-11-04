@@ -19,6 +19,20 @@ const getIdFromProperties = (properties: Nullable<Record<string, unknown>>) => {
 
 export type MaterialDesc = Exclude<LayerDescription, { type: "terrain" }>;
 
+const ANCHOR_OPTIONS = Object.fromEntries(
+  [
+    "center",
+    "left",
+    "right",
+    "top",
+    "bottom",
+    "top-left",
+    "top-right",
+    "bottom-left",
+    "bottom-right",
+  ].map((anchor) => [anchor, anchor]),
+);
+
 const selectedFeatures = new Set<string>();
 const selectedBatchIds = new Set<number>();
 
@@ -182,7 +196,8 @@ export const addCtrlPanel = (
     borderColor: "#f8e43c",
     borderWidth: 0.0,
     cornerRadius: 0.0,
-    center: { x: 0, y: 0 },
+    anchor: "center",
+    offset: { x: 0, y: 0 },
     padding: { x: 0, y: 0 },
     transparent: false,
 
@@ -399,9 +414,12 @@ export const addCtrlPanel = (
         material.cornerRadius = paneParams.cornerRadius;
       }
 
-      if ("center" in material) {
-        material.center.x = paneParams.center.x;
-        material.center.y = paneParams.center.y;
+      if ("anchor" in material) {
+        material.anchor = paneParams.anchor;
+      }
+
+      if ("offset" in material) {
+        material.offset = { ...paneParams.offset };
       }
 
       if ("padding" in material) {
@@ -645,10 +663,18 @@ function createParamCtrl(
       );
     }
 
-    if ("center" in material) {
-      paneParams.center.x = material.center.x;
-      paneParams.center.y = material.center.y;
-      f.addBinding(paneParams, "center").on("change", changeFunc);
+    if ("anchor" in material) {
+      paneParams.anchor = material.anchor ?? "center";
+      f.addBinding(paneParams, "anchor", { options: ANCHOR_OPTIONS }).on(
+        "change",
+        changeFunc,
+      );
+    }
+
+    if ("offset" in material) {
+      paneParams.offset.x = material.offset?.x ?? 0;
+      paneParams.offset.y = material.offset?.y ?? 0;
+      f.addBinding(paneParams, "offset").on("change", changeFunc);
     }
 
     if ("padding" in material) {

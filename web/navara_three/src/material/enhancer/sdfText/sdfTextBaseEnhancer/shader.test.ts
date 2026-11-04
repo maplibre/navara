@@ -193,7 +193,6 @@ describe("sdfTextBaseEnhancer shader", () => {
 
   it("should assign batch-wide uniforms to shader.uniforms", () => {
     const shader = transform({ outlineOpacity: 0.25 });
-    expect(shader.uniforms.uCenter).toBeDefined();
     expect(shader.uniforms.uOutlineOpacity?.value).toBe(0.25);
     expect(shader.uniforms.nvr_uPickable).toBeDefined();
   });
