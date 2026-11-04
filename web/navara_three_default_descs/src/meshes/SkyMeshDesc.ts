@@ -66,6 +66,8 @@ export class SkyMeshDesc extends MeshDesc<
       if (updates.sky.envMap !== undefined) {
         this.config.sky.envMap = updates.sky.envMap;
         this.onPassKeyChange();
+        this._skyMesh.sun = this.config.sky.sun ?? !updates.sky.envMap;
+        this._skyMesh.moon = this.config.sky.moon ?? !updates.sky.envMap;
       }
 
       // Update individual properties

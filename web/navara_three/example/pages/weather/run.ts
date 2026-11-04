@@ -222,9 +222,6 @@ const addWaterControl = (view: ThreeView<CustomDescriptions>, pane: Pane) => {
       receiveShadow: true,
       height: -20,
       water: true,
-      waterScaleNormal: 2.0,
-      waterSpeed: 0.003,
-      specular: true,
     },
   };
 

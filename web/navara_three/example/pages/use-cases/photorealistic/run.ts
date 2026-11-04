@@ -103,10 +103,6 @@ export const run = async (view: ThreeView<CustomDescriptions>) => {
       // Heights come from the evaluator, so the polygons must not drape.
       clampToGround: false,
       water: true,
-      applyWaterNormal: true,
-      reflectivity: 0.3,
-      waterScaleNormal: 0.3,
-      specular: true,
       receiveShadow: true,
       // Each cell is a slab (see the evaluator); shading its sides like the
       // surface hides the steps between neighboring cells' levels.

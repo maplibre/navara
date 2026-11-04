@@ -156,7 +156,7 @@ there unconverted, so a model's metalness reaches readers as its F0 as is:
 | model / 3D Tiles glTF (`MeshStandard`/`Physical`)                    | real `metalnessFactor`                                                   | real `roughnessFactor`                                         |
 | polygon                                                              | `reflectivity` ref, **default 0**                                        | `roughness` ref, **default `GBUFFER_PHONG_ROUGHNESS`**         |
 | terrain tile, `useNormal` on                                         | `tileReflectivity`, **default 0**                                        | draped slot's roughness, **default `GBUFFER_PHONG_ROUGHNESS`** |
-| terrain watermask ocean                                              | 0.02 (water's F0)                                                        | 0.4 (Cox-Munk wave slopes)                                     |
+| water (watermask sea, `water` polygon/model)                         | 0.02 (water's F0), whatever `reflectivity` says                          | `mss^(1/4)` of the wave slopes the normal leaves out           |
 | terrain tile, `useNormal` off (`MeshBasicMaterial`)                  | 0                                                                        | 1.0, and **RG is NaN** (no `normal` attribute)                 |
 | polyline, outline, sprite, SDF text, points, custom `ShaderMaterial` | 0                                                                        | 1.0                                                            |
 | any other Lambert/Basic/Phong                                        | 0 (three's `reflectivity` is an env-map weight, not an F0)               | 1.0                                                            |
@@ -462,7 +462,18 @@ class MyEffectDesc extends EffectDesc<...> {
 registered key (e.g. inherit the sun's intensity/direction);
 `_getEffects/_getLights/_getMeshes` iterate them all.
 
-## 10. Lightweight skybox
+## 10. Water surface
+
+Every water surface (the tile shader's water slots and watermask sea,
+`polygonWaterEnhancer`, `modelWaterEnhancer`) calls the same chunk,
+`shaders/glsl/chunks/water_pars_fragment.glsl`, with uniforms owned by
+`WaterState` (`src/water/waterState.ts`, one per view in
+`CommonUniforms.water`). It replaces the surface's lit color in the forward
+pass and writes its own normal and roughness to the G-buffer. The wave model,
+level of detail, shading, sky env map and invariants are in
+[WATER.md](WATER.md).
+
+## 11. Lightweight skybox
 
 `SkyBoxMeshDesc` renders a single fullscreen triangle at far depth in the
 `opaque` scene with premultiplied normal alpha blending. Its shaders approximate the sky

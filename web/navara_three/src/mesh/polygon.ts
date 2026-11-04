@@ -26,6 +26,7 @@ import { applyLitOption, createShadowDepthMaterial } from "../material";
 import type { PolygonMaterialProps } from "../material/enhancer/polygon";
 import { createPolygonMaterialEnhancer } from "../material/enhancer/polygon/polygonMaterialEnhancer";
 import type { DrapeBakedMesh } from "../tileTexture/types";
+import type { WaterWaves } from "../water/waterState";
 
 import {
   BatchedFeatureMesh,
@@ -255,31 +256,6 @@ export class PolygonMesh
     return this._enhancedMaterial;
   }
 
-  private enableWater() {
-    if (!this._enhancedMaterial) return;
-
-    const { base, water } = this._enhancedMaterial.states();
-
-    // Disable water normal map if water is off or texturized
-    if (!water.useWater || base.isTexturized) {
-      this._enhancedMaterial.update({ water: { waterNormalMap: null } });
-      return;
-    }
-
-    // Skip if not visible or already has water texture
-    if (!this.visible || water.waterNormalMap) {
-      return;
-    }
-
-    // Use shared water texture from CommonUniforms (must be enabled via Options.waterTexture.enabled)
-    if (this.ctx.uniforms?.waterTexture.value) {
-      this._enhancedMaterial.update({
-        water: { waterNormalMap: this.ctx.uniforms.waterTexture.value },
-      });
-      this.material.needsUpdate = true;
-    }
-  }
-
   private initMaterial(mesh: NavaraPolygonMesh, useRTE: boolean) {
     const uniforms = this.ctx.uniforms;
     const meshMaterial = mesh.material;
@@ -327,15 +303,15 @@ export class PolygonMesh
       },
       water: {
         water: meshMaterial.water,
-        waterScaleNormal: meshMaterial.waterScaleNormal,
-        waterSpeed: meshMaterial.waterSpeed,
+        waveExaggeration: meshMaterial.waveExaggeration,
+        waterScale: meshMaterial.waterScale,
+        waveStrength: meshMaterial.waveStrength,
+        waveDirection: meshMaterial.waveDirection,
         shininess: meshMaterial.shininess,
         specularStrength: meshMaterial.specularStrength,
-        applyWaterNormal: meshMaterial.applyWaterNormal,
         specular: meshMaterial.specular,
         ior: meshMaterial.ior,
-        timeUniform: uniforms.time as { value: number },
-        skyEnvMap: uniforms.tSkyEnvMap.value,
+        getWaterState: () => uniforms.water,
       },
     };
 
@@ -359,8 +335,6 @@ export class PolygonMesh
       this.onBeforeRender = callback;
       this.onBeforeShadow = callback;
     }
-
-    this.enableWater();
 
     // Set up custom program cache key based on config flags that affect shader defines
     material.customProgramCacheKey = enhancer.programCacheKey;
@@ -432,11 +406,12 @@ export class PolygonMesh
       },
       water: {
         water: !!material.water,
-        waterScaleNormal: material.waterScaleNormal,
-        waterSpeed: material.waterSpeed,
+        waveExaggeration: material.waveExaggeration,
+        waterScale: material.waterScale,
+        waveStrength: material.waveStrength,
+        waveDirection: material.waveDirection,
         shininess: material.shininess,
         specularStrength: material.specularStrength,
-        applyWaterNormal: material.applyWaterNormal,
         specular: material.specular,
         ior: material.ior,
       },
@@ -446,7 +421,6 @@ export class PolygonMesh
     enhancer.update(updateProps);
 
     // Post-update actions
-    this.enableWater();
     this._updateDepthPrePass(
       !isTexturized && !!material.transparent && !!material.depthPrePass,
     );
@@ -626,20 +600,18 @@ export class PolygonMesh
   }
 
   /** Properties for material state used by TileMesh for texturized scene rendering */
-  get waterScaleNormal(): number {
-    return this.getEnhancer().states().water.waterScaleNormal;
+  get waveExaggeration(): number {
+    return this.getEnhancer().states().water.waveExaggeration;
   }
-  get waterSpeed(): number {
-    return this.getEnhancer().states().water.waterSpeed;
+  /** The surface's waves; undefined unless it is water. */
+  get waterWaves(): WaterWaves | undefined {
+    return this.getEnhancer().mutates().water.waves();
   }
   get shininess(): number {
     return this.getEnhancer().states().water.shininess;
   }
   get specularStrength(): number {
     return this.getEnhancer().states().water.specularStrength;
-  }
-  get applyWaterNormal(): boolean {
-    return this.getEnhancer().states().water.applyWaterNormal;
   }
   get specular(): boolean {
     return this.getEnhancer().states().water.specular;
@@ -675,5 +647,6 @@ export class PolygonMesh
 
     this.ctx.viewContext.removeShadowMaterial(this.material);
     this.customDepthMaterial?.dispose();
+    this._enhancedMaterial?.mutates().water.dispose();
   }
 }

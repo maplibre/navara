@@ -225,9 +225,11 @@ if(uClampToGround) {
   outgoingLight = diffuseColor.xyz;
 } else {
   outgoingLight = reflectedLight.directDiffuse + reflectedLight.indirectDiffuse + totalEmissiveRadiance;
+${POLYGON_BASE_SHADER_MARKERS.fragment.OUTGOING_LIGHT_START}
   if(!uIsTexturized) {
     outgoingLight += specular;
   }
+${POLYGON_BASE_SHADER_MARKERS.fragment.OUTGOING_LIGHT_END}
 }
 `,
     )
@@ -246,8 +248,10 @@ if (nvr_uPickable > 0.0 && diffuseColor.a > 0.0) {
       `
 ${POLYGON_BASE_SHADER_MARKERS.fragment.FINAL_NORMAL_START}
 vec3 finalNormal = origNormal;
+float finalReflectivity = reflectivity;
+float finalRoughness = roughnessFactor;
 ${POLYGON_BASE_SHADER_MARKERS.fragment.FINAL_NORMAL_END}
-GBUFFER_WRITE_NORMAL(finalNormal, reflectivity, roughnessFactor)
+GBUFFER_WRITE_NORMAL(finalNormal, finalReflectivity, finalRoughness)
 `,
     ).source;
 };
