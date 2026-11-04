@@ -113,13 +113,13 @@ follow(lng: number, lat: number): void
 
 Keeps the tiles within `radius` of the tile containing the position loaded, nearest first, and drops the tiles that fell out of range. Nothing happens while the position stays inside the same tile, so it is cheap to call on every `postUpdate`. Must be called **after** `start()`. Otherwise the call throws.
 
-### setVisible(visible)
+### setVisible(visible, part?)
 
 ```typescript
-setVisible(visible: boolean): void
+setVisible(visible: boolean, part?: StreetLightsPart): void
 ```
 
-Shows or hides the whole street-level detail: road surfaces, lamps, beacons and traffic. Use it to switch the detail off above an altitude where it no longer reads.
+Shows or hides one `part` of the street-level detail, or all of them (road surfaces, lamps, beacons and traffic) when `part` is omitted. Use all of them to switch the detail off above an altitude where it no longer reads, and a part to drop, for example, the traffic alone.
 
 ### setLightsOn(on)
 
@@ -254,6 +254,14 @@ type StreetLightsStartOptions = {
 | -------------- | ---------- | ------- | ----------------------------------------------------------------------------------------------- |
 | `tileTemplate` | `string`   |         | A `{z}/{x}/{y}` tile URL of the tile set the road layer shows, as listed in its TileJSON document. |
 | `effectIds`    | `string[]` | `[]`    | Selective effects the lamps and beacons take part in, such as a bloom.                           |
+
+### StreetLightsPart
+
+```typescript
+type StreetLightsPart = "roads" | "lamps" | "beacons" | "traffic";
+```
+
+A part of the street-level detail that [`setVisible()`](#setvisiblevisible-part) can hide on its own.
 
 ### StreetLightsUpdate
 

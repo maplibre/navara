@@ -407,6 +407,43 @@ describe("StreetLightsPlugin streaming", () => {
     expect(meshes[1].update).toHaveBeenCalledWith({ visible: true });
   });
 
+  it("hides one part on its own, or all of them without a part", async () => {
+    const { plugin, view, layers, meshes } = await started();
+    const roads = view.addLayer({ type: "vector", source: "roads" });
+    plugin.addRoads(roads);
+    const [lamps, beacons, surface] = layers;
+    vi.mocked(surface.forceUpdate).mockClear();
+
+    plugin.setVisible(false, "traffic");
+    expect(meshes[0].update).toHaveBeenCalledWith({ visible: false });
+    expect(lamps.evaluate({ kind: "lamp" })).toEqual({ show: true });
+    // Only a change to the roads re-evaluates the road layer.
+    expect(surface.forceUpdate).not.toHaveBeenCalled();
+
+    plugin.setVisible(false, "lamps");
+    expect(lamps.evaluate({ kind: "lamp" })).toEqual({ show: false });
+    expect(beacons.evaluate({ height: 122 })).toMatchObject({ show: true });
+
+    // Without a part, every part follows: the last call wins.
+    plugin.setVisible(true);
+    expect(meshes[0].update).toHaveBeenLastCalledWith({ visible: true });
+    expect(lamps.evaluate({ kind: "lamp" })).toEqual({ show: true });
+    expect(surface.forceUpdate).not.toHaveBeenCalled();
+
+    plugin.setVisible(false, "roads");
+    expect(surface.forceUpdate).toHaveBeenCalledTimes(1);
+    expect(surface.evaluate({ class: "primary" })).toEqual({ show: false });
+
+    // A tile that streams in later starts with the part hidden.
+    plugin.setVisible(false, "traffic");
+    const east = tileEast(1);
+    plugin.follow(east.lng, east.lat);
+    await flush();
+    expect(view.addMesh).toHaveBeenLastCalledWith(
+      expect.objectContaining({ visible: false }),
+    );
+  });
+
   it("passes traffic updates to the loaded tiles and the ones to come", async () => {
     const { plugin, view, meshes } = await started();
 

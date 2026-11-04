@@ -113,13 +113,13 @@ follow(lng: number, lat: number): void
 
 位置を含むタイルから `radius` 以内のタイルを近い順に読み込んだ状態に保ち、範囲外になったタイルを破棄します。位置が同じタイル内にとどまる間は何もしないため、毎 `postUpdate` で呼び出しても軽量です。`start()` の**後に**呼び出す必要があります。それ以外の場合はエラーをスローします。
 
-### setVisible(visible)
+### setVisible(visible, part?)
 
 ```typescript
-setVisible(visible: boolean): void
+setVisible(visible: boolean, part?: StreetLightsPart): void
 ```
 
-街路レベルの細部全体（路面、街灯、屋上灯、車）の表示と非表示を切り替えます。細部が判別できなくなる高度以上で消すために使います。
+街路レベルの細部のうち `part` で指定した部分の表示と非表示を切り替えます。`part` を省略すると、すべての部分（路面、街灯、屋上灯、車）を切り替えます。すべての部分は細部が判別できなくなる高度以上で消すために、個別の部分は車だけを消すといった用途に使います。
 
 ### setLightsOn(on)
 
@@ -254,6 +254,14 @@ type StreetLightsStartOptions = {
 | -------------- | ---------- | ---------- | ------------------------------------------------------------------------------------------------------ |
 | `tileTemplate` | `string`   |            | 路面レイヤーが表示しているタイルセットの `{z}/{x}/{y}` タイル URL。TileJSON ドキュメントに記載されているものです。 |
 | `effectIds`    | `string[]` | `[]`       | 街灯と屋上灯が参加する Selective Effect（Bloom など）。                                                 |
+
+### StreetLightsPart
+
+```typescript
+type StreetLightsPart = "roads" | "lamps" | "beacons" | "traffic";
+```
+
+[`setVisible()`](#setvisiblevisible-part) で個別に非表示にできる、街路レベルの細部の部分です。
 
 ### StreetLightsUpdate
 

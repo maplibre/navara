@@ -47,6 +47,7 @@ export {
   type StreetLightsRoads,
   type StreetLightsBuildings,
   type StreetLightsStartOptions,
+  type StreetLightsPart,
   type StreetLightsUpdate,
   type Oneway,
   type RoadClass,
