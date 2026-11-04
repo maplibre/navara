@@ -151,9 +151,9 @@ uniform bool uTranslateViewport;
 
 // Varyings
 varying vec2 vAtlasUv;
-// Bounds of the current glyph's atlas rectangle. Small-text supersampling in
-// the fragment shader clamps taps to these bounds so they cannot read a
-// neighboring packed glyph.
+// Bounds of the current glyph's atlas rectangle. The fragment shader clamps
+// samples to these bounds so they cannot read a neighboring packed glyph, and
+// extrapolates the distance field past them.
 flat varying vec2 vAtlasUvMin;
 flat varying vec2 vAtlasUvMax;
 varying float vFragDepth;
@@ -164,10 +164,11 @@ flat varying int vIsColor; // Per-instance flag: glyph is sampled from the color
 flat varying vec3 vColor;
 // Style opacity already scaled by the declutter fade.
 flat varying float vOpacity;
-// Per-feature outline: color, then (opacity, width, blur), width and blur as
-// fractions of the distance-field range.
+// Per-feature outline: color, then (opacity, width, blur, reach), width and
+// blur as fractions of the distance-field range, reach the same for the
+// distance from the glyph outline to its quad's edge.
 flat varying vec3 vOutlineColor;
-flat varying vec3 vOutline;
+flat varying vec4 vOutline;
 flat varying float vBatchID;
 
 void main() {
@@ -219,10 +220,11 @@ void main() {
     #include "chunks/batch_texture_vertex.glsl"
     vOutlineColor = nvr_batchOutlineColor;
     // 1/64 em is one atlas pixel; the fragment stage works in range fractions.
-    vOutline = vec3(
+    vOutline = vec4(
         nvr_batchOutlineOpacity,
         nvr_batchOutlineWidth / float(NVR_SDF_PX_RANGE),
-        nvr_batchOutlineBlur / float(NVR_SDF_PX_RANGE)
+        nvr_batchOutlineBlur / float(NVR_SDF_PX_RANGE),
+        float(NVR_SDF_PX_PADDING) / float(NVR_SDF_PX_RANGE)
     );
 #ifdef NVR_LINE_PLACEMENT
     bool nvr_batchSpreadGlyphs = uSpreadGlyphs;
@@ -275,17 +277,15 @@ void main() {
     // Compute scale factor: when sizeInMeters is off, convert pixel size to
     // world units so text maintains constant screen-pixel size at any distance.
     // Normalized text height is 1.0, so no fontSizeWorld division is needed.
-    float scaleFactor = fontSize;
-    if (!uSizeInMeters) {
-        scaleFactor = nvr_pxToWorld(fontSize, uFovRad, uScreenHeightPx, vec3(0.0, 0.0, mvPosition.z), vec3(0.0, 0.0, 0.0));
-    }
+    float worldPerPx = nvr_pxToWorld(1.0, uFovRad, uScreenHeightPx, vec3(0.0, 0.0, mvPosition.z), vec3(0.0, 0.0, 0.0));
+    float scaleFactor = uSizeInMeters ? fontSize : fontSize * worldPerPx;
     // Added to the final position, after the along-line walk has measured the
     // path from the true anchor.
     vec3 translateOffset = nvr_translateOffset(
         absTransformed,
         uTranslate,
         uTranslateViewport,
-        nvr_pxToWorld(1.0, uFovRad, uScreenHeightPx, vec3(0.0, 0.0, mvPosition.z), vec3(0.0, 0.0, 0.0))
+        worldPerPx
     );
 
     vec3 axisRight;
@@ -458,11 +458,36 @@ void main() {
         vBackGroundRatio = textWidth / bgHeight; // Pass the aspect ratio of the background sprite to the fragment shader for proper corner radius scaling
     } else {
         vBackGroundSprite = 0;
+
+        // Atlas pixels to grow the quad by on every side, so an outline, its
+        // fade and half a screen pixel of antialiasing reaching past the atlas
+        // padding still land on it. Outline widths are atlas pixels, and half
+        // a screen pixel is SIZE / 2 / ppem of them (ppem floored as the
+        // fragment stage floors its pixel range). Nothing draws past half the
+        // field's range, where the fragment stage caps the reach.
+        float quadGrowPx = 0.0;
+        if (vIsColor == 0 && (nvr_batchOutlineWidth > 0.0 || nvr_batchOutlineBlur > 0.0)) {
+            float ppem = max(
+                scaleFactor / worldPerPx,
+                float(NVR_SDF_PX_SIZE) / float(NVR_SDF_PX_RANGE)
+            );
+            float reachPx = min(
+                nvr_batchOutlineWidth + 0.5 * nvr_batchOutlineBlur +
+                    0.5 * float(NVR_SDF_PX_SIZE) / ppem,
+                0.5 * float(NVR_SDF_PX_RANGE)
+            );
+            quadGrowPx = max(ceil(reachPx) - float(NVR_SDF_PX_PADDING), 0.0);
+        }
+        vOutline.w += quadGrowPx / float(NVR_SDF_PX_RANGE);
+        // One atlas pixel is 1/SIZE em on both axes.
+        vec2 quadGrowEm = vec2(quadGrowPx / float(NVR_SDF_PX_SIZE));
+
         // --- Per-glyph vertex position ---
         // position.xy is the unit quad [-0.5, 0.5].
         // glyphOffset is the glyph bbox min corner (left/bottom), so remap
         // the centered quad to [0,1] before applying glyph size/offset.
-        vec2 localPos = (position.xy + vec2(0.5)) * glyphSize + glyphOffset + shift;
+        vec2 localPos = (position.xy + vec2(0.5)) * (glyphSize + 2.0 * quadGrowEm) +
+            glyphOffset - quadGrowEm + shift;
 
         // The walk placed this glyph's WORD on the curve, so what is left is
         // the offset from the word's centre, laid along the word's single
@@ -504,7 +529,7 @@ void main() {
         vec2 atlasSize = vIsColor == 1 ? uColorAtlasSize : uSdfAtlasSize;
         vAtlasUvMin = glyphUvRect.xy / atlasSize;
         vAtlasUvMax = glyphUvRect.zw / atlasSize;
-        vAtlasUv = mix(vAtlasUvMin, vAtlasUvMax, uv);
+        vAtlasUv = mix(glyphUvRect.xy - quadGrowPx, glyphUvRect.zw + quadGrowPx, uv) / atlasSize;
     }
 
     // vFragDepth is view distance in meters (log-encoded in the fragment

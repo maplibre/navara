@@ -24,8 +24,8 @@ export const atlasRangePx = (highQuality: boolean): number =>
   highQuality ? 16.0 : 35.0;
 
 /**
- * Pixels of distance field a quality's glyph rect keeps around the outline:
- * how far an outline can reach before the glyph quad's edge cuts it off.
+ * Pixels of distance field a quality's glyph rect keeps around the outline.
+ * The text shader grows a glyph's quad past it for wider outlines.
  *
  * SDF: `SDF_BUFFER` (12) in `crates/navara_wasm_font_worker/src/atlas.rs`.
  * MSDF: `MSDF_PADDING_PX` (8) in `crates/navara_wasm_font_worker/src/msdf.rs`.

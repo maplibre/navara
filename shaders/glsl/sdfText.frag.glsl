@@ -43,10 +43,11 @@ flat varying int vIsColor;
 flat varying vec3 vColor;
 // Style opacity already scaled by the declutter fade.
 flat varying float vOpacity;
-// Per-feature outline: color, then (opacity, width, blur), width and blur as
-// fractions of the distance-field range.
+// Per-feature outline: color, then (opacity, width, blur, reach), width and
+// blur as fractions of the distance-field range, reach the same for the
+// distance from the glyph outline to its quad's edge.
 flat varying vec3 vOutlineColor;
-flat varying vec3 vOutline;
+flat varying vec4 vOutline;
 flat varying float vBatchID;
 
 // Uniforms — batch-wide only.
@@ -82,13 +83,15 @@ float nvr_screenPxRange() {
 // corners when large enough, then falls back to alpha's topology-safe true SDF
 // as the glyph becomes too small for independent color edges to survive.
 vec2 nvr_sampleDistances(vec2 atlasUv, float msdfDetail) {
-    // The worker packs one zero-valued texel around every SDF glyph and the
-    // glyph bounds identify the inner edge of that padding ring. Clamp to the
-    // boundary itself: bilinear filtering then mixes with the transparent
-    // padding texel while still being unable to reach a neighbouring glyph.
-    // Moving the clamp half a texel inward would instead repeat the outermost
-    // distance texel, making the rectangular glyph quad faintly visible.
-    vec2 clampedUv = clamp(atlasUv, vAtlasUvMin, vAtlasUvMax);
+    // Clamp to the outermost texel centers, so bilinear filtering never
+    // reaches past the glyph's rect, and continue the field beyond them by
+    // the distance from the clamped point: an upper bound on the true
+    // distance, so a quad grown past the rect (see the vertex shader) draws a
+    // halo that never overshoots.
+    vec2 halfTexel = 0.5 / uSdfAtlasSize;
+    vec2 clampedUv = clamp(atlasUv, vAtlasUvMin + halfTexel, vAtlasUvMax - halfTexel);
+    float beyond =
+        length((atlasUv - clampedUv) * uSdfAtlasSize) / float(NVR_SDF_PX_RANGE);
 
     #ifdef USE_MSDF
         vec4 sampleValue = texture2D(uAtlas, clampedUv);
@@ -97,10 +100,10 @@ vec2 nvr_sampleDistances(vec2 atlasUv, float msdfDetail) {
             sampleValue.g,
             sampleValue.b
         );
-        return vec2(mix(sampleValue.a, msdf, msdfDetail), sampleValue.a);
+        return vec2(mix(sampleValue.a, msdf, msdfDetail), sampleValue.a) - beyond;
     #else
         float sdf = texture2D(uAtlas, clampedUv).r;
-        return vec2(sdf, sdf);
+        return vec2(sdf, sdf) - beyond;
     #endif
 }
 
@@ -205,11 +208,14 @@ void main() {
         float msdfDetail = 0.0;
     #endif
 
-    // Distance from the glyph edge to its quad's edge, less the AA half-width:
-    // an outline or fade reaching past it would draw the quad's rectangle.
+    // How far an outline and its fade may reach, less the AA half-width: to
+    // the quad's edge, past which it would draw the quad's rectangle, and to
+    // where the field saturates (value 0, uSdfThreshold below the edge),
+    // past which a saturated texel would read as nearer than it is. The
+    // vertex shader sizes the quad for the outline, so the first only binds
+    // where its screen-pixel estimate falls short (a steeply tilted label).
     float outlineReach = max(
-        float(NVR_SDF_PX_PADDING) / float(NVR_SDF_PX_RANGE) -
-            0.5 / screenPxRange,
+        min(vOutline.w, uSdfThreshold) - 0.5 / screenPxRange,
         0.0
     );
     float outlineWidth = clamp(vOutline.y, 0.0, outlineReach);

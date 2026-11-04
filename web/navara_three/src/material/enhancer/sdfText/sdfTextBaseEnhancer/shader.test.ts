@@ -90,14 +90,15 @@ describe("sdfTextBaseEnhancer shader", () => {
       });
     });
 
-    it("uses UV-derived coverage and clamps supersamples to the padded glyph boundary", () => {
+    it("uses UV-derived coverage and extrapolates past the clamped glyph rect", () => {
       expect(sdfTextFragmentShader).toContain("nvr_screenPxRange()");
       expect(sdfTextFragmentShader).toContain("nvr_edgeCoverage(");
+      // Clamping to the outer texel centres would repeat their value as a
+      // plateau that outlines the quad; the field must keep falling past it.
       expect(sdfTextFragmentShader).toContain(
-        "clamp(atlasUv, vAtlasUvMin, vAtlasUvMax)",
+        "clamp(atlasUv, vAtlasUvMin + halfTexel, vAtlasUvMax - halfTexel)",
       );
-      expect(sdfTextFragmentShader).not.toContain("vAtlasUvMin + halfTexel");
-      expect(sdfTextFragmentShader).not.toContain("vAtlasUvMax - halfTexel");
+      expect(sdfTextFragmentShader).toContain("vec2(sdf, sdf) - beyond");
       expect(sdfTextVertexShader).toContain(
         "vAtlasUvMin = glyphUvRect.xy / atlasSize",
       );

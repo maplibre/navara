@@ -537,12 +537,12 @@ content.addBinding(text.content, "highQuality");
 
 const textStyle = addStyleFolder(textPage, text.style);
 textStyle.addBinding(text.style, "outlineColor");
-// Width and blur are in 1/64 em; the range runs past the 12/64 em the SDF
-// atlas padding allows, to show the clamp.
+// Width and blur are in 1/64 em; the range runs past the 17.5/64 em the SDF
+// atlas's distance range allows, to show the clamp.
 textStyle.addBinding(text.style, "outlineWidth", {
   label: "outlineWidth (1/64 em)",
   min: 0,
-  max: 16,
+  max: 24,
   step: 0.5,
 });
 textStyle.addBinding(text.style, "outlineOpacity", {
@@ -553,7 +553,7 @@ textStyle.addBinding(text.style, "outlineOpacity", {
 textStyle.addBinding(text.style, "outlineBlur", {
   label: "outlineBlur (1/64 em)",
   min: 0,
-  max: 16,
+  max: 24,
   step: 0.5,
 });
 textStyle.addBinding(text.style, "outlineFromFeature", {
