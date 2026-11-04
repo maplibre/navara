@@ -15,7 +15,7 @@ description: >
 > "Don't hide our API inside abstractions in the example"
 
 - Call `view.addLayer()`, `layer.on("featureUpdated", ...)`, `layer.update()` directly — no wrapper functions that obscure API calls.
-- One example = one feature. Don't combine unrelated features.
+- One example = one feature. Don't combine unrelated features. The exception is the gallery's `showcase` section, which composes several features into one scene; its reusable machinery goes into a package (a plugin or a Descriptor) so main.ts still reads as the API story.
 
 ## Two example tracks — and who decides what goes where
 
@@ -108,7 +108,7 @@ Under `example/helpers/`:
 - `constants.ts` — `TERRAIN_DATASETS`, `TILE_DATASETS`, `TILES_3D_DATASETS`, `VECTOR_DATASETS`, `LOCAL_DATASETS` (GSI tiles/terrain, PLATEAU 3D Tiles, etc. with attribution metadata)
 - `control.ts` — `addCameraControl(view, pane)`, `addDateControl(view, pane)`, `addHidePaneKeyShortcut`
 - `panel.ts` — `addFieldsToFolder` for Tweakpane folders with many fields
-- `button.ts` — `addButton(label, onClick?)` plain DOM buttons for gallery examples (see the gallery code layout section)
+- `button.ts` — plain DOM controls for gallery examples (see the gallery code layout section): `addButton(label, onClick?)`, `addSwitch`, `addCheckbox`, `addSlider`, `addReadout`. They share one bar that wraps onto more rows on a narrow screen
 - `initialize.ts` — `initializeExample(view)` example-harness bootstrap + `SCENE_LOADED_MESSAGE`, required in every gallery example; the detail page owns the loading overlay (see the gallery code layout section)
 - `keys.ts` — API keys (e.g. `GOOGLE_MAPS_API_KEY`)
 - `overture.ts` — `resolveOvertureDatasets()` resolves the current Overture release from its STAC catalog and returns the per-theme PMTiles `Dataset`s; never hardcode a dated `tiles.overturemaps.org` URL (releases expire after ~60 days)
