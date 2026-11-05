@@ -6,14 +6,15 @@
  * ({@link StreetLightsPlugin.addRoads}), then streams the zoom-14 tiles of
  * the same tile set in around a position ({@link StreetLightsPlugin.start}
  * and {@link StreetLightsPlugin.follow}) to place street lamps along every
- * road, a red beacon on every tall roof, and cars that drive the road
- * segments. The tiles are fetched a second time by this plugin: the engine
- * decodes them for rendering but exposes no feature geometry.
+ * road, a red beacon on every roof the building reader gives a height, and
+ * cars that drive the road segments. The tiles are fetched a second time by
+ * this plugin: the engine decodes them for rendering but exposes no feature
+ * geometry.
  *
- * The tiles are read through {@link StreetLightsConfig.roads} and
- * {@link StreetLightsConfig.buildings}, which default to the OpenMapTiles
- * schema; another schema needs its own {@link RoadReader} and
- * {@link BuildingReader}.
+ * The plugin knows no tile schema: {@link StreetLightsConfig.roads} and
+ * {@link StreetLightsConfig.buildings} name the tile layers and give a
+ * {@link RoadReader} and a {@link BuildingReader} for the tile set's
+ * properties.
  *
  * The lamps and beacons are `point` layers that take part in the selective
  * effects given to `start()`, such as the built-in `selectiveBloom`. The cars
@@ -33,6 +34,7 @@
  * import {
  *   StreetLightsPlugin,
  *   TileJsonPlugin,
+ *   isRoadClass,
  *   type StreetTrafficDescriptions,
  * } from "@navaramap/three-plugins";
  *
@@ -44,14 +46,33 @@
  * view.addPlugin(new DefaultPlugin());
  * const tilejson = new TileJsonPlugin();
  * view.addPlugin(tilejson);
- * const streetLights = new StreetLightsPlugin({ radius: 2 });
+ * // How this tile set (OpenMapTiles schema) names its roads and buildings.
+ * const streetLights = new StreetLightsPlugin({
+ *   radius: 2,
+ *   roads: {
+ *     layer: "transportation",
+ *     properties: ["class", "oneway"],
+ *     read: ({ class: roadClass, oneway }) =>
+ *       isRoadClass(roadClass)
+ *         ? { roadClass, oneway: oneway === 1 || oneway === -1 ? oneway : 0 }
+ *         : undefined,
+ *   },
+ *   buildings: {
+ *     layer: "building",
+ *     // Roofs from 90 m up; an outline drawn in parts leaves the beacon to them.
+ *     read: ({ render_height: height, hide_3d }) =>
+ *       typeof height === "number" && height >= 90 && hide_3d !== true
+ *         ? height
+ *         : undefined,
+ *   },
+ * });
  * view.addPlugin(streetLights);
  * await view.init();
  *
  * const bloom = view.addEffect<SelectiveBloomEffectDesc>({ selectiveBloom: {} });
  *
- * // An OpenMapTiles-schema vector tile set; its TileJSON also names the tile
- * // URL template the plugin streams the roads from.
+ * // The tile set; its TileJSON also names the tile URL template the plugin
+ * // streams the roads from.
  * let tileTemplate = "";
  * tilejson.on("loaded", ({ tilejson: document }) => {
  *   tileTemplate = document.tiles[0];
@@ -93,11 +114,8 @@ import {
 
 import { buildTraffic, mulberry32, tileLights, tileSeed } from "./placement";
 import {
-  OPEN_MAP_TILES,
   readRoadFeature,
-  type BuildingReader,
-  type RoadReader,
-  type RoadSchema,
+  type StreetLightsRoads,
   type TileSchema,
 } from "./roads";
 import {
@@ -117,50 +135,16 @@ import {
 type View = ThreeView<StreetTrafficDescriptions>;
 
 export {
+  isRoadClass,
   type BuildingReader,
   type Oneway,
   type RoadClass,
   type RoadReader,
+  type StreetLightsBuildings,
+  type StreetLightsRoads,
 } from "./roads";
 
-export type StreetLightsRoads = {
-  /**
-   * Tile layer holding the road centerlines.
-   * @defaultValue "transportation"
-   */
-  layer?: string;
-} & (
-  | {
-      /** The OpenMapTiles reader: `class` is the road class, `oneway` the direction. */
-      read?: undefined;
-      properties?: undefined;
-    }
-  | {
-      /** Reads one road feature's properties. */
-      read: RoadReader;
-      /**
-       * Properties the reader needs. The reader sees only these, both on the
-       * road layer and when the lamps and cars are placed. All properties
-       * when omitted.
-       */
-      properties?: string[];
-    }
-);
-
-export type StreetLightsBuildings = {
-  /**
-   * Tile layer holding the building footprints.
-   * @defaultValue "building"
-   */
-  layer?: string;
-  /**
-   * Reads one building feature's properties.
-   * @defaultValue the OpenMapTiles reader: `render_height`, with a beacon from 90 m up
-   */
-  read?: BuildingReader;
-};
-
-export type StreetLightsConfig = {
+export type StreetLightsConfig = TileSchema & {
   /**
    * Tiles of lights kept loaded around the followed position, as a radius in
    * zoom-14 tiles (2 is a 5 × 5 block, about 10 km across at Tokyo's
@@ -169,8 +153,6 @@ export type StreetLightsConfig = {
    */
   radius?: number;
   traffic?: StreetTrafficOptions;
-  roads?: StreetLightsRoads;
-  buildings?: StreetLightsBuildings;
 };
 
 export type StreetLightsStartOptions = {
@@ -204,7 +186,7 @@ const LIGHT_COLORS = {
 
 /**
  * Evaluated values win over the material, so `show` cannot be toggled on a
- * layer: the evaluators read these flags instead, and `forceUpdate()` re-runs
+ * layer: the evaluators read this record instead, and `forceUpdate()` re-runs
  * them. A part shows while it is visible and, for the lights and traffic,
  * while `lightsOn`.
  */
@@ -261,7 +243,7 @@ const beaconEvaluator =
   };
 
 const surfaceEvaluator =
-  (flags: Flags, roads: RoadSchema) =>
+  (flags: Flags, roads: StreetLightsRoads) =>
   ({ evaluator }: { evaluator: FeatureEvaluator }) => {
     evaluator.evaluate(
       ({ properties }) => {
@@ -309,28 +291,12 @@ export class StreetLightsPlugin extends Plugin<View, ViewContext> {
   constructor({
     radius = 2,
     traffic = {},
-    roads = {},
-    buildings = {},
-  }: StreetLightsConfig = {}) {
+    roads,
+    buildings,
+  }: StreetLightsConfig) {
     super();
     this.radius = radius;
-    this.schema = {
-      // A reader and the properties it reads come together: the defaults
-      // as a pair, or the caller's as a pair.
-      roads: {
-        layer: roads.layer ?? OPEN_MAP_TILES.roads.layer,
-        ...(roads.read
-          ? { read: roads.read, properties: roads.properties }
-          : {
-              read: OPEN_MAP_TILES.roads.read,
-              properties: OPEN_MAP_TILES.roads.properties,
-            }),
-      },
-      buildings: {
-        layer: buildings.layer ?? OPEN_MAP_TILES.buildings.layer,
-        read: buildings.read ?? OPEN_MAP_TILES.buildings.read,
-      },
-    };
+    this.schema = { roads: { ...roads }, buildings: { ...buildings } };
     this.traffic = { ...traffic };
   }
 

@@ -1,22 +1,52 @@
 import { describe, expect, it } from "vitest";
 
-import { openMapTilesBuilding, openMapTilesRoad } from "./roads";
+import {
+  ROADS,
+  isRoadClass,
+  pickProperties,
+  readRoadFeature,
+  type StreetLightsRoads,
+} from "./roads";
 
-describe("OpenMapTiles readers", () => {
-  it("map class and oneway to a road class, and render_height to a beacon", () => {
-    expect(openMapTilesRoad({ class: "primary", oneway: -1 })).toEqual({
-      roadClass: "primary",
-      oneway: -1,
+const schema: StreetLightsRoads = {
+  layer: "roads",
+  properties: ["kind"],
+  read: ({ kind }) =>
+    kind === "main" ? { roadClass: "primary", oneway: 1 } : undefined,
+};
+
+describe("readRoadFeature", () => {
+  it("maps the reader's class to its style and defaults the direction", () => {
+    expect(readRoadFeature(schema, { kind: "main" })).toEqual({
+      style: ROADS.primary,
+      oneway: 1,
     });
-    expect(openMapTilesRoad({ class: "primary" })).toEqual({
-      roadClass: "primary",
-      oneway: 0,
+    expect(
+      readRoadFeature(
+        { ...schema, read: () => ({ roadClass: "minor" }) },
+        { kind: "main" },
+      ),
+    ).toEqual({ style: ROADS.minor, oneway: 0 });
+    expect(readRoadFeature(schema, { kind: "path" })).toBeUndefined();
+  });
+});
+
+describe("isRoadClass", () => {
+  it("accepts the classes with a style and nothing else", () => {
+    expect(isRoadClass("primary")).toBe(true);
+    expect(isRoadClass("rail")).toBe(false);
+    expect(isRoadClass("constructor")).toBe(false);
+    expect(isRoadClass(1)).toBe(false);
+  });
+});
+
+describe("pickProperties", () => {
+  it("keeps the named properties only, as undefined when missing, own keys only", () => {
+    expect(
+      pickProperties({ kind: "main", name: "x" }, ["kind", "oneway"]),
+    ).toStrictEqual({ kind: "main", oneway: undefined });
+    expect(pickProperties({}, ["constructor"])).toStrictEqual({
+      constructor: undefined,
     });
-    expect(openMapTilesRoad({ class: "rail" })).toBeUndefined();
-    expect(openMapTilesRoad({ class: "constructor" })).toBeUndefined();
-    expect(openMapTilesRoad({})).toBeUndefined();
-    expect(openMapTilesBuilding({ render_height: 120 })).toBe(120);
-    expect(openMapTilesBuilding({ render_height: 50 })).toBeUndefined();
-    expect(openMapTilesBuilding({})).toBeUndefined();
   });
 });

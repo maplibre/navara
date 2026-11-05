@@ -10,6 +10,7 @@ import {
 import {
   StreetLightsPlugin,
   TileJsonPlugin,
+  isRoadClass,
   type StreetTrafficDescriptions,
 } from "@navaramap/three-plugins";
 
@@ -27,6 +28,9 @@ const STREET_TILE_RADIUS = 2;
 const BLOOM_STRENGTH = 1.2;
 const FAR_BLOOM_STRENGTH = 0.5;
 const STARS_INTENSITY = 400;
+// Roofs from here up get a beacon: high enough that skyscraper districts do
+// not turn into a red mass.
+const BEACON_HEIGHT = 90;
 
 // `useNormal` lets the sun light the map itself; the traffic renders every frame.
 const view = new ThreeView<NightDescriptions>({
@@ -38,9 +42,32 @@ const defaultPlugin = new DefaultPlugin();
 view.addPlugin(defaultPlugin);
 const tilejson = new TileJsonPlugin();
 view.addPlugin(tilejson);
+// OpenMapTiles marks the outline of a building drawn in parts; its parts carry the roof.
+const drawnInParts = ({ hide_3d }: Record<string, unknown>) => hide_3d === true;
+
+// The plugin knows no tile schema: these readers map OpenMapTiles onto it.
 const streets = new StreetLightsPlugin({
   radius: STREET_TILE_RADIUS,
   traffic: { speed: 1, size: 2.5 },
+  roads: {
+    layer: "transportation",
+    properties: ["class", "oneway"],
+    read: ({ class: roadClass, oneway }) =>
+      isRoadClass(roadClass)
+        ? { roadClass, oneway: oneway === 1 || oneway === -1 ? oneway : 0 }
+        : undefined,
+  },
+  buildings: {
+    layer: "building",
+    read: (properties) => {
+      const height = properties.render_height;
+      return typeof height === "number" &&
+        height >= BEACON_HEIGHT &&
+        !drawnInParts(properties)
+        ? height
+        : undefined;
+    },
+  },
 });
 view.addPlugin(streets);
 
@@ -105,8 +132,7 @@ const buildings = view.addLayer({
 });
 const extrude = ({ evaluator }: { evaluator: FeatureEvaluator }) =>
   evaluator.evaluate(({ properties, batchId }) => {
-    // Outlines whose parts are drawn separately stay flat.
-    if (properties?.hide_3d === true) return { show: false };
+    if (drawnInParts(properties ?? {})) return { show: false };
     const top = properties?.render_height;
     return {
       show: true,

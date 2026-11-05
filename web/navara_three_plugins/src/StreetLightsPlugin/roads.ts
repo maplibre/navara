@@ -1,7 +1,8 @@
 /**
- * Road classes and their styles, and the readers that turn tile feature
- * properties into a road class and a roof height. The road layer and the
- * lamp and car placement both read roads through here.
+ * Road classes and their styles, the readers that turn tile feature
+ * properties into a road class and a roof height, and the schema types that
+ * say where to find them. The road layer and the lamp and car placement both
+ * read roads through here.
  */
 
 // --- Road styles -----------------------------------------------------------
@@ -25,7 +26,7 @@ export type RoadStyle = {
   };
 };
 
-/** The OpenMapTiles `transportation` classes with a style in {@link ROADS}. */
+/** The road classes with a style in {@link ROADS}, from motorways down to service roads. */
 export type RoadClass =
   | "motorway"
   | "trunk"
@@ -35,10 +36,7 @@ export type RoadClass =
   | "minor"
   | "service";
 
-/**
- * Road styles by OpenMapTiles `transportation` class, from motorways down to
- * service roads.
- */
+/** Road styles by class, wider and denser toward `motorway`. */
 export const ROADS: Readonly<Record<RoadClass, RoadStyle>> = {
   motorway: {
     width: 6,
@@ -102,59 +100,42 @@ export type BuildingReader = (
   properties: Record<string, unknown>,
 ) => number | undefined;
 
-/** Where the roads are and how to read them: the one place both the road layer and the placement read from. */
-export type RoadSchema = {
+/** Which tile layer holds the roads and how to read them. */
+export type StreetLightsRoads = {
   /** Tile layer holding the road centerlines. */
   layer: string;
+  /** Reads one road feature's properties. */
   read: RoadReader;
-  /** The only properties the reader sees, or all of them when absent. */
-  properties: string[] | undefined;
+  /**
+   * Properties the reader needs. The reader sees only these, both on the
+   * road layer and when the lamps and cars are placed. All properties when
+   * omitted.
+   */
+  properties?: string[];
 };
 
-type BuildingSchema = {
+/** Which tile layer holds the buildings and how to read them. */
+export type StreetLightsBuildings = {
   /** Tile layer holding the building footprints. */
   layer: string;
+  /** Reads one building feature's properties. */
   read: BuildingReader;
 };
 
-export type TileSchema = { roads: RoadSchema; buildings: BuildingSchema };
-
-// Buildings at least this tall get a beacon. High enough that skyscraper
-// districts do not turn into a red mass.
-const TALL_BUILDING_HEIGHT = 90;
-
-// Own keys only: a class named like an Object.prototype member is not a road.
-const isRoadClass = (value: unknown): value is RoadClass =>
-  typeof value === "string" &&
-  Object.prototype.hasOwnProperty.call(ROADS, value);
-
-/** OpenMapTiles `transportation`: `class` is the road class, `oneway` the direction. */
-export const openMapTilesRoad: RoadReader = (properties) => {
-  const roadClass = properties.class;
-  if (!isRoadClass(roadClass)) return undefined;
-  const oneway = properties.oneway;
-  return { roadClass, oneway: oneway === 1 || oneway === -1 ? oneway : 0 };
-};
-
-/** OpenMapTiles `building`: `render_height`, with a beacon from 90 m up. */
-export const openMapTilesBuilding: BuildingReader = (properties) => {
-  const height = properties.render_height;
-  return typeof height === "number" && height >= TALL_BUILDING_HEIGHT
-    ? height
-    : undefined;
-};
-
-export const OPEN_MAP_TILES: TileSchema = {
-  roads: {
-    layer: "transportation",
-    read: openMapTilesRoad,
-    // What openMapTilesRoad reads, kept next to it.
-    properties: ["class", "oneway"],
-  },
-  buildings: { layer: "building", read: openMapTilesBuilding },
+export type TileSchema = {
+  roads: StreetLightsRoads;
+  buildings: StreetLightsBuildings;
 };
 
 // --- Reading one road ------------------------------------------------------
+
+/**
+ * Whether a tile value names a {@link RoadClass}. Own keys only: a value
+ * named like an `Object.prototype` member is not a road.
+ */
+export const isRoadClass = (value: unknown): value is RoadClass =>
+  typeof value === "string" &&
+  Object.prototype.hasOwnProperty.call(ROADS, value);
 
 /**
  * The named properties only, shaped as the road layer's evaluator gets them:
@@ -180,7 +161,7 @@ export const pickProperties = (
  * road layer's evaluator gets them.
  */
 export const readRoadFeature = (
-  schema: RoadSchema,
+  schema: StreetLightsRoads,
   properties: Record<string, unknown>,
 ): { style: RoadStyle; oneway: Oneway } | undefined => {
   const road = schema.read(properties);

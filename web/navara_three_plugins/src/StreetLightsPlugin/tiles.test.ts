@@ -1,12 +1,8 @@
 import type { Geometry, Position } from "geojson";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import {
-  OPEN_MAP_TILES,
-  ROADS,
-  openMapTilesBuilding,
-  openMapTilesRoad,
-} from "./roads";
+import { ROADS } from "./roads";
+import { TEST_SCHEMA } from "./test-utils";
 import {
   chebyshev,
   createTileStreamer,
@@ -115,11 +111,7 @@ describe("readRoads", () => {
         },
       ]),
       TILE,
-      {
-        layer: "transportation",
-        read: openMapTilesRoad,
-        properties: undefined,
-      },
+      TEST_SCHEMA.roads,
       out,
     );
     expect(out).toEqual([
@@ -260,7 +252,7 @@ describe("readTallBuildings", () => {
         },
       ]),
       TILE,
-      openMapTilesBuilding,
+      TEST_SCHEMA.buildings.read,
       out,
     );
     expect(out).toEqual([
@@ -281,7 +273,7 @@ describe("loadRoadNetwork", () => {
       loadRoadNetwork(
         "https://t/{z}/{x}/{y}.pbf",
         { x: 1, y: 2 },
-        OPEN_MAP_TILES,
+        TEST_SCHEMA,
         signal,
       ),
     ).rejects.toThrow("failed (404)");

@@ -2,11 +2,12 @@ import ThreeView, { type ViewContext } from "@navaramap/three";
 import { Vector3 } from "three";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { OPEN_MAP_TILES, ROADS } from "./roads";
+import { ROADS } from "./roads";
 import {
   StreetTrafficMeshDesc,
   type StreetTrafficDescriptions,
 } from "./StreetTrafficMeshDesc";
+import { TEST_SCHEMA } from "./test-utils";
 import {
   loadRoadNetwork,
   tileCenter,
@@ -158,7 +159,7 @@ const flush = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
 /** A plugin following Tokyo with one tile loaded (radius 0). */
 const started = async () => {
   const fake = makeFakeView();
-  const plugin = new StreetLightsPlugin({ radius: 0 });
+  const plugin = new StreetLightsPlugin({ radius: 0, ...TEST_SCHEMA });
   await plugin.init(fake.view, NO_CTX);
   vi.mocked(loadRoadNetwork).mockResolvedValue(NETWORK);
   plugin.start({ tileTemplate: TEMPLATE, effectIds: ["bloom"] });
@@ -181,7 +182,7 @@ describe("StreetLightsPlugin lifecycle", () => {
   it("throws before init() and before start()", async () => {
     const { view } = makeFakeView();
     const roads = view.addLayer({ type: "vector", source: "roads" });
-    const plugin = new StreetLightsPlugin();
+    const plugin = new StreetLightsPlugin(TEST_SCHEMA);
     expect(() => plugin.addRoads(roads)).toThrow(/view\.init\(\)/);
     expect(() => plugin.start({ tileTemplate: TEMPLATE })).toThrow(
       /view\.init\(\)/,
@@ -193,7 +194,7 @@ describe("StreetLightsPlugin lifecycle", () => {
 
   it("registers the traffic mesh on init()", async () => {
     const { view } = makeFakeView();
-    const plugin = new StreetLightsPlugin();
+    const plugin = new StreetLightsPlugin(TEST_SCHEMA);
     await plugin.init(view, NO_CTX);
     expect(view.registerMesh).toHaveBeenCalledWith(
       "streetTraffic",
@@ -205,7 +206,7 @@ describe("StreetLightsPlugin lifecycle", () => {
 describe("StreetLightsPlugin.addRoads", () => {
   it("hides the features without lights and sizes the rest per road class", async () => {
     const { view, layers } = makeFakeView();
-    const plugin = new StreetLightsPlugin();
+    const plugin = new StreetLightsPlugin(TEST_SCHEMA);
     await plugin.init(view, NO_CTX);
     const roads = view.addLayer({ type: "vector", source: "roads" });
 
@@ -246,31 +247,20 @@ describe("StreetLightsPlugin.addRoads", () => {
     expect(surface.off).not.toHaveBeenCalled();
   });
 
-  it("takes a property list only together with a reader", () => {
-    // The default reader brings its own list; a list alone would starve it.
-    const roads = { properties: ["oneway"] };
-    // @ts-expect-error properties without read
-    expect(new StreetLightsPlugin({ roads })).toBeDefined();
-  });
-
-  it("pairs a custom reader with its own property list, or none", async () => {
+  it("shows the reader only its listed properties, or all without a list", async () => {
     const { view, layers } = makeFakeView();
-    const plugin = new StreetLightsPlugin({
-      roads: {
-        read: () => ({ roadClass: "minor" }),
-        properties: ["class", "oneway"],
-      },
-    });
+    const plugin = new StreetLightsPlugin(TEST_SCHEMA);
     await plugin.init(view, NO_CTX);
     plugin.addRoads(view.addLayer({ type: "vector", source: "roads" }));
     layers[0].evaluate({ class: "primary" });
     expect(layers[0].filters).toEqual(["class", "oneway"]);
 
-    const custom = new StreetLightsPlugin({
-      roads: { read: () => ({ roadClass: "minor" }) },
+    const all = new StreetLightsPlugin({
+      ...TEST_SCHEMA,
+      roads: { layer: "roads", read: () => ({ roadClass: "minor" }) },
     });
-    await custom.init(view, NO_CTX);
-    custom.addRoads(view.addLayer({ type: "vector", source: "roads" }));
+    await all.init(view, NO_CTX);
+    all.addRoads(view.addLayer({ type: "vector", source: "roads" }));
     layers[1].evaluate({ anything: 1 });
     expect(layers[1].filters).toBeUndefined();
   });
@@ -321,7 +311,7 @@ describe("StreetLightsPlugin streaming", () => {
     expect(loadRoadNetwork).toHaveBeenCalledWith(
       TEMPLATE,
       tileCoordinate(TOKYO.lng, TOKYO.lat),
-      OPEN_MAP_TILES,
+      TEST_SCHEMA,
       expect.any(AbortSignal),
     );
     // One source each for the lamps and the beacons.

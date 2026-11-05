@@ -1,5 +1,5 @@
 /**
- * Reading roads and tall buildings from zoom-14 vector tiles, and keeping
+ * Reading roads and beacon tallBuildings from zoom-14 vector tiles, and keeping
  * the tiles around a position loaded.
  */
 import { VectorTile } from "@mapbox/vector-tile";
@@ -18,7 +18,7 @@ import {
   readRoadFeature,
   type BuildingReader,
   type Oneway,
-  type RoadSchema,
+  type StreetLightsRoads,
   type RoadStyle,
   type TileSchema,
 } from "./roads";
@@ -98,7 +98,7 @@ const outerRings = (geometry: Polygon | MultiPolygon): Position[][] =>
 export const readRoads = (
   layer: TileLayer,
   tile: TileCoordinate,
-  schema: RoadSchema,
+  schema: StreetLightsRoads,
   out: Road[],
 ) => {
   for (let i = 0; i < layer.length; i++) {
@@ -118,7 +118,7 @@ export const readRoads = (
   }
 };
 
-/** Roof center of every building the reader gives a height, one per outer ring. */
+/** TallBuilding center of every building the reader gives a height, one per outer ring. */
 export const readTallBuildings = (
   layer: TileLayer,
   tile: TileCoordinate,
@@ -150,7 +150,7 @@ export const readTallBuildings = (
 };
 
 /**
- * Reads the roads and tall buildings of one zoom-14 tile. `template` is a
+ * Reads the roads and beacon tallBuildings of one zoom-14 tile. `template` is a
  * `{z}/{x}/{y}` tile URL, as listed in a TileJSON document. The engine
  * decodes these same tiles for rendering but exposes no feature geometry,
  * hence the second fetch.

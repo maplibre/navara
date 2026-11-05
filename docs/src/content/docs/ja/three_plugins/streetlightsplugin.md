@@ -7,9 +7,9 @@ sidebar:
 
 ## 概要
 
-`StreetLightsPlugin` は、道路と建物を持つベクトルタイルセットを夜の街に変えます。`addRoads()` は道路の中心線の上に置いたポリラインレイヤーを路面として受け取り、灯りを持たないフィーチャーを非表示にします。`start()` は同じタイルセットのズーム 14 のタイルを `follow()` に渡した位置の周辺にストリーミングし、すべての道路に沿った街灯、高いビルの屋上の赤い灯、道路の区間を走る車を配置します。
+`StreetLightsPlugin` は、道路と建物を持つベクトルタイルセットを夜の街に変えます。`addRoads()` は道路の中心線の上に置いたポリラインレイヤーを路面として受け取り、灯りを持たないフィーチャーを非表示にします。`start()` は同じタイルセットのズーム 14 のタイルを `follow()` に渡した位置の周辺にストリーミングし、すべての道路に沿った街灯、建物リーダーが高さを返した屋上の赤い灯、道路の区間を走る車を配置します。
 
-プラグインはこれらのタイルをもう一度取得します。エンジンは描画のためにタイルを復号しますが、フィーチャーのジオメトリを公開しないためです。タイルは `roads` と `buildings` オプションを通して読み取られ、デフォルトは OpenMapTiles スキーマです（`transportation` フィーチャーの `class` と `oneway`、`building` フィーチャーの `render_height`）。別のスキーマでは独自の [`RoadReader`](#roadreader) と [`BuildingReader`](#buildingreader) が必要です。
+プラグインはこれらのタイルをもう一度取得します。エンジンは描画のためにタイルを復号しますが、フィーチャーのジオメトリを公開しないためです。プラグインはタイルのスキーマを知りません。`roads` と `buildings` オプションでタイルレイヤーの名前を指定し、そのタイルセットのプロパティを読む [`RoadReader`](#roadreader) と [`BuildingReader`](#buildingreader) を渡します。下の例は OpenMapTiles スキーマを読みます。
 
 街灯と屋上灯は `point` レイヤーです。`start()` に渡した Selective Effect（組み込みの [`selectiveBloom`](../../three_default_descs/effect-desc/selective-bloom-effect-desc/) など）がそれらに適用されます。車は [`StreetTrafficMeshDesc`](#streettrafficmeshdesc) が描く加算合成の点で、プラグインが `init()` 時に登録します。どちらもシーンにライトは必要ありません。
 
@@ -25,6 +25,7 @@ import {
 import {
   StreetLightsPlugin,
   TileJsonPlugin,
+  isRoadClass,
   type StreetTrafficDescriptions,
 } from "@navaramap/three-plugins";
 
@@ -35,7 +36,26 @@ const view = new ThreeView<DefaultDescriptions | StreetTrafficDescriptions>({
 });
 
 const tilejson = new TileJsonPlugin();
-const streetLights = new StreetLightsPlugin({ radius: 2 });
+// プラグインはタイルのスキーマを知りません。このリーダーが OpenMapTiles を対応付けます。
+const streetLights = new StreetLightsPlugin({
+  radius: 2,
+  roads: {
+    layer: "transportation",
+    properties: ["class", "oneway"],
+    read: ({ class: roadClass, oneway }) =>
+      isRoadClass(roadClass)
+        ? { roadClass, oneway: oneway === 1 || oneway === -1 ? oneway : 0 }
+        : undefined,
+  },
+  buildings: {
+    layer: "building",
+    // 90 m 以上に灯りを置きます。部品に分かれた外形は、灯りを部品に任せます。
+    read: ({ render_height: height, hide_3d }) =>
+      typeof height === "number" && height >= 90 && hide_3d !== true
+        ? height
+        : undefined,
+  },
+});
 
 view.addPlugin(new DefaultPlugin());
 view.addPlugin(tilejson);
@@ -44,8 +64,8 @@ await view.init();
 
 const bloom = view.addEffect<SelectiveBloomEffectDesc>({ selectiveBloom: {} });
 
-// OpenMapTiles スキーマのベクトルタイルセット。その TileJSON ドキュメントは、
-// プラグインが道路をストリーミングするタイル URL テンプレートも示します。
+// タイルセット。その TileJSON ドキュメントは、プラグインが道路を
+// ストリーミングするタイル URL テンプレートも示します。
 let tileTemplate = "";
 tilejson.on("loaded", ({ tilejson: document }) => {
   tileTemplate = document.tiles[0];
@@ -75,7 +95,7 @@ view.on("postUpdate", () => {
 ## コンストラクタ
 
 ```typescript
-new StreetLightsPlugin(config?: StreetLightsConfig);
+new StreetLightsPlugin(config: StreetLightsConfig);
 ```
 
 `view.init()` の**前に** `view.addPlugin()` でプラグインを登録してください。`init()` 時にキー `streetTraffic` で `StreetTrafficMeshDesc` を登録します。
@@ -84,8 +104,8 @@ new StreetLightsPlugin(config?: StreetLightsConfig);
 | ---------- | ---------------------- | ---------- | ------------------------------------------------------------------------------------------------------------------- |
 | `radius`   | `number`               | `2`        | 追従位置の周辺で読み込んだ状態に保つタイル数を、ズーム 14 のタイル単位の半径で指定します。`2` は 5 × 5 ブロックで、東京の緯度では差し渡し約 10 km です。 |
 | `traffic`  | `StreetTrafficOptions` | `{}`       | 車の速度倍率と灯りの大きさ。[`StreetTrafficOptions`](#streettrafficoptions) を参照してください。                   |
-| `roads`    | `StreetLightsRoads`    | `{}`       | 道路を持つタイルレイヤーとその読み方。[`StreetLightsRoads`](#streetlightsroads) を参照してください。                |
-| `buildings` | `StreetLightsBuildings` | `{}`     | 建物を持つタイルレイヤーとその読み方。[`StreetLightsBuildings`](#streetlightsbuildings) を参照してください。        |
+| `roads`    | `StreetLightsRoads`    |            | 道路を持つタイルレイヤーとその読み方。[`StreetLightsRoads`](#streetlightsroads) を参照してください。                |
+| `buildings` | `StreetLightsBuildings` |          | 建物を持つタイルレイヤーとその読み方。[`StreetLightsBuildings`](#streetlightsbuildings) を参照してください。        |
 
 ## メソッド
 
@@ -95,7 +115,7 @@ new StreetLightsPlugin(config?: StreetLightsConfig);
 addRoads(layer: Layer): void
 ```
 
-道路の中心線の上に `polyline` マテリアルで置いた [ベクトルレイヤー](../../three/layer/vector-layer/) を路面として受け取ります。道路リーダーが読み飛ばすフィーチャー（鉄道や歩道など）は非表示になり、残りは [`RoadClass`](#roadclass) の幅になって、`setVisible()` に従います。色とクランプはレイヤー自身のマテリアルで決まります。レイヤーを削除するのは呼び出し側です。プラグインが持っている間、フィーチャーごとの `show` と `width` はプラグインのものなので、同じレイヤーに別の評価器を付けると競合します。同じレイヤーを再度渡しても何もしません。レイヤーが既に持っているフィーチャーは次のフレームで評価し直されます。レイヤーは `roads.layer`（デフォルトは `transportation`）で指定したタイルレイヤーだけを表示する必要があるので、`sourceLayers` に同じ名前（デフォルトは `["transportation"]`）を指定してください。街灯と車はその道路から作られ、他の線のレイヤーも同じプロパティを持つことがある（OpenMapTiles の `transportation_name` など）ため、指定しないとそれらも道路として描かれます。`view.init()` の**後に**呼び出す必要があります。それ以外の場合はエラーをスローします。
+道路の中心線の上に `polyline` マテリアルで置いた [ベクトルレイヤー](../../three/layer/vector-layer/) を路面として受け取ります。道路リーダーが読み飛ばすフィーチャー（鉄道や歩道など）は非表示になり、残りは [`RoadClass`](#roadclass) の幅になって、`setVisible()` に従います。色とクランプはレイヤー自身のマテリアルで決まります。レイヤーを削除するのは呼び出し側です。プラグインが持っている間、フィーチャーごとの `show` と `width` はプラグインのものなので、同じレイヤーに別の評価器を付けると競合します。同じレイヤーを再度渡しても何もしません。レイヤーが既に持っているフィーチャーは次のフレームで評価し直されます。レイヤーは `roads.layer` で指定したタイルレイヤーだけを表示する必要があるので、`sourceLayers` に同じ名前を指定してください。街灯と車はその道路から作られ、他の線のレイヤーも同じプロパティを持つことがある（OpenMapTiles の `transportation_name` など）ため、指定しないとそれらも道路として描かれます。`view.init()` の**後に**呼び出す必要があります。それ以外の場合はエラーをスローします。
 
 ### start(options)
 
@@ -153,8 +173,8 @@ dispose(): void
 type StreetLightsConfig = {
   radius?: number;
   traffic?: StreetTrafficOptions;
-  roads?: StreetLightsRoads;
-  buildings?: StreetLightsBuildings;
+  roads: StreetLightsRoads;
+  buildings: StreetLightsBuildings;
 };
 ```
 
@@ -163,31 +183,32 @@ type StreetLightsConfig = {
 ### StreetLightsRoads
 
 ```typescript
-type StreetLightsRoads = { layer?: string } & (
-  | { read?: undefined; properties?: undefined }
-  | { read: RoadReader; properties?: string[] }
-);
+type StreetLightsRoads = {
+  layer: string;
+  read: RoadReader;
+  properties?: string[];
+};
 ```
 
 | プロパティ   | 型           | デフォルト         | 説明                                                                                                              |
 | ------------ | ------------ | ------------------ | ----------------------------------------------------------------------------------------------------------------- |
-| `layer`      | `string`     | `"transportation"` | 道路の中心線を持つタイルレイヤー。                                                                                |
-| `read`       | `RoadReader` | OpenMapTiles       | 道路フィーチャーを 1 つ読み取ります。デフォルトは `class` を [`RoadClass`](#roadclass) として読み、`oneway` を読みます。 |
-| `properties` | `string[]`   | 説明を参照         | 独自の `read` が必要とするプロパティで、`read` と一緒にだけ指定します。リーダーには道路レイヤーでも街灯・車の配置でもこれらだけが渡されるので、リーダーが読む名前をすべて指定してください。省略するとすべてのプロパティが渡され、道路レイヤーは評価のたびに全プロパティを読みます。デフォルトのリーダーは自分の一覧を持っています。 |
+| `layer`      | `string`     |                    | 道路の中心線を持つタイルレイヤー。                                                                                |
+| `read`       | `RoadReader` |                    | 道路フィーチャーを 1 つ読み取り、[`RoadClass`](#roadclass) と向きを返します。[`RoadReader`](#roadreader) を参照してください。 |
+| `properties` | `string[]`   | すべて             | `read` が必要とするプロパティ。リーダーには道路レイヤーでも街灯・車の配置でもこれらだけが渡されるので、リーダーが読む名前をすべて指定してください。省略するとすべてのプロパティが渡され、道路レイヤーは評価のたびに全プロパティを読みます。 |
 
 ### StreetLightsBuildings
 
 ```typescript
 type StreetLightsBuildings = {
-  layer?: string;
-  read?: BuildingReader;
+  layer: string;
+  read: BuildingReader;
 };
 ```
 
 | プロパティ | 型               | デフォルト   | 説明                                                                                         |
 | ---------- | ---------------- | ------------ | -------------------------------------------------------------------------------------------- |
-| `layer`    | `string`         | `"building"` | 建物のフットプリントを持つタイルレイヤー。                                                   |
-| `read`     | `BuildingReader` | OpenMapTiles | 建物フィーチャーを 1 つ読み取ります。デフォルトは `render_height` を読み、90 m 以上に灯りを置きます。 |
+| `layer`    | `string`         |              | 建物のフットプリントを持つタイルレイヤー。                                                   |
+| `read`     | `BuildingReader` |              | 建物フィーチャーを 1 つ読み取り、屋上の高さを返します。灯りを置かない建物では `undefined` を返します。[`BuildingReader`](#buildingreader) を参照してください。 |
 
 ### RoadReader
 
@@ -202,20 +223,16 @@ type Oneway = 1 | -1 | 0;
 道路フィーチャーのプロパティを 1 つ読み取り、描画と灯りに使う [`RoadClass`](#roadclass) と向き（`1` は順方向のみ、`-1` は逆方向のみ、`0` は双方向でデフォルト）を返します。灯りを持たないフィーチャーでは `undefined` を返します。独自の道路の種類を持つタイルセットでは、それをこれらのクラスに対応付けます。
 
 ```typescript
-import { StreetLightsPlugin } from "@navaramap/three-plugins";
+import type { RoadReader } from "@navaramap/three-plugins";
 
-const streetLights = new StreetLightsPlugin({
-  roads: {
-    layer: "roads",
-    properties: ["highway"],
-    read: ({ highway }) =>
-      highway === "main"
-        ? { roadClass: "primary" }
-        : highway === "local"
-          ? { roadClass: "minor" }
-          : undefined,
-  },
-});
+const read: RoadReader = ({ highway }) =>
+  highway === "main"
+    ? { roadClass: "primary" }
+    : highway === "local"
+      ? { roadClass: "minor" }
+      : undefined;
+
+// プラグインには `roads: { layer: "roads", properties: ["highway"], read }` として渡します。
 ```
 
 ### BuildingReader
@@ -224,7 +241,7 @@ const streetLights = new StreetLightsPlugin({
 type BuildingReader = (properties: Record<string, unknown>) => number | undefined;
 ```
 
-建物フィーチャーのプロパティを 1 つ読み取り、屋上の高さを楕円体からのメートルで返します。灯りを置かない建物では `undefined` を返します。屋上灯はその高さの 2 m 上に置かれ、地面にはクランプされないため、地形の上に建つ建物では地面の高さを足してください。デフォルトのリーダーは OpenMapTiles の `render_height` をそのまま返し、楕円体から押し出した建物と合います。
+建物フィーチャーのプロパティを 1 つ読み取り、屋上の高さを楕円体からのメートルで返します。灯りを置かない建物では `undefined` を返します。屋上灯はその高さの 2 m 上に置かれ、地面にはクランプされないため、地形の上に建つ建物では地面の高さを足してください。タイルセットの屋上の高さ（OpenMapTiles の `render_height` など）をそのまま返すと、楕円体から押し出した建物と合います。
 
 ### RoadClass
 
@@ -239,7 +256,15 @@ type RoadClass =
   | "service";
 ```
 
-プラグインが扱う道路クラスです。OpenMapTiles の `transportation` クラスにならい、高速道路から敷地内通路までの段階になっています。クラスごとに路面の幅、街灯の間隔、車の密度が決まっていて、`motorway` に近いほど太く密になります。別のタイルセット用のリーダーは、そのデータの道路の種類をこれらのクラスに対応付けます。
+プラグインが扱う道路クラスです。高速道路から敷地内通路までの段階になっています。クラスごとに路面の幅、街灯の間隔、車の密度が決まっていて、`motorway` に近いほど太く密になります。別のタイルセット用のリーダーは、そのデータの道路の種類をこれらのクラスに対応付けます。
+
+### isRoadClass(value)
+
+```typescript
+isRoadClass(value: unknown): value is RoadClass
+```
+
+タイルの値が [`RoadClass`](#roadclass) のいずれかの名前かどうかを判定します。上の OpenMapTiles の `class` のように、プロパティをそのまま通すリーダー向けです。自身のキーだけを見るので、`Object.prototype` のメンバーと同じ名前の値は道路になりません。
 
 ### StreetLightsStartOptions
 

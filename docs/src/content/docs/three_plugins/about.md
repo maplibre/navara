@@ -58,7 +58,7 @@ Fetches a TileJSON 3.0.0 document and registers it as a single raster, vector, o
 
 ### StreetLightsPlugin
 
-Streams the zoom 14 tiles of a vector tile set (OpenMapTiles schema by default, custom readers for others) in around a position and places street lamps along the roads, red beacons on tall roofs and cars that drive the road segments. `addRoads()` takes the caller's road layer and hides every feature without lights. The lamps and beacons take part in the selective effects given to `start()`, such as the built-in bloom. See [StreetLightsPlugin](../streetlightsplugin/) for details.
+Streams the zoom 14 tiles of a vector tile set (any schema, read through readers the caller gives) in around a position and places street lamps along the roads, red beacons on the roofs the caller's reader picks and cars that drive the road segments. `addRoads()` takes the caller's road layer and hides every feature without lights. The lamps and beacons take part in the selective effects given to `start()`, such as the built-in bloom. See [StreetLightsPlugin](../streetlightsplugin/) for details.
 
 ## Usage
 

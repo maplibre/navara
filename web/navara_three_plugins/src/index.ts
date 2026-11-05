@@ -43,6 +43,7 @@ export {
 
 export {
   StreetLightsPlugin,
+  isRoadClass,
   type StreetLightsConfig,
   type StreetLightsRoads,
   type StreetLightsBuildings,
