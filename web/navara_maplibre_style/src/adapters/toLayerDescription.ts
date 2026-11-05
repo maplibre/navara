@@ -372,17 +372,22 @@ function createCircleLayer(
   styleLayer: StyleLayer,
 ): LayerDescription {
   const geometryTypes = getAllGeometryTypesUnlessFiltered(styleLayer);
+  const circleSpec = PAINT_SPECS_BY_TYPE.circle;
+  // Unset paint properties are not evaluated per feature, so the material
+  // carries the spec defaults; otherwise an unset `circle-color` would be the
+  // point material's own default, white.
+  const defaultColor = toNavaraColor(circleSpec["circle-color"].default);
   return {
     type: "vector",
     source,
     ...getSourceLayersField(styleLayer),
     point: {
       clampToGround: true,
+      ...(defaultColor && { color: defaultColor.color }),
       // `circle-radius` is in screen pixels, and circles are centered on
       // their point, as in MapLibre. `size` is the full width, so twice the
-      // radius; this is the size when the style leaves `circle-radius` unset,
-      // as unset paint properties are not evaluated per feature.
-      size: 2 * PAINT_SPECS_BY_TYPE.circle["circle-radius"].default,
+      // radius.
+      size: 2 * circleSpec["circle-radius"].default,
       sizeInMeters: false,
       anchor: "center",
       // MapLibre never collides circles: overlapping ones are all drawn.

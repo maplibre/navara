@@ -200,6 +200,8 @@ describe("toLayerDescription", () => {
         source: mockSource,
         point: {
           clampToGround: true,
+          // The spec's default `circle-color`, black
+          color: expect.objectContaining({ r: 0, g: 0, b: 0 }),
           // 2 × the spec's default `circle-radius` of 5
           size: 10,
           sizeInMeters: false,

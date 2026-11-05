@@ -55,8 +55,6 @@ order.
   `line-color` and are drawn white, invisible over the white background.
 - `fill-extrusion-color/default`: the extrusion sets no color and is drawn
   white.
-- `circle-color/default`: the circles set no `circle-color` and are drawn
-  white.
 
 ### Translucent colors are blended in linear space
 
