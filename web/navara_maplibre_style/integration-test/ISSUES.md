@@ -218,10 +218,7 @@ defaults (`center: [0, 0]`, `zoom: 0`).
 - **Globe vs. Web Mercator.** Navara always renders a globe. At low zoom,
   straight lines bow (`line-opacity/*`, `regressions/mapbox-gl-native#7714`) and
   the globe's limb is visible inside 256 px canvases at z0
-  (`sparse-tileset/*`, `line-join/default`). At z0 the whole world is a
-  sphere about a third of the canvas wide, so `extent/1024-circle` shows the
-  points of its world-covering tile in the middle only, where MapLibre spreads
-  them over the whole canvas.
+  (`sparse-tileset/*`, `line-join/default`).
 - **Soft edges in small canvases.** Draped fills and lines have blurred edges
   in 64 px fixtures (`fill-color/*`, `line-layer-opacity/default`).
 - **Draping blur at z0.** Small polygons are rounded at z0
