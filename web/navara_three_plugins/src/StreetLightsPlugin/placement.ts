@@ -120,7 +120,7 @@ export const lampsAlongLine = (
 };
 
 /**
- * Street lamps along every road and a red beacon on every tall roof. `rand`
+ * Street lamps along every road and a red beacon on every roof the reader gave a height. `rand`
  * decides the lamp spacing phase, side and color; give a tile the same
  * sequence to get the same lights each time it streams in.
  */
@@ -134,7 +134,7 @@ export const tileLights = (
     lampsAlongLine(road.line, spacing, offset, rand, lamps);
   }
 
-  const beacons = network.tallBuildings.map((building) =>
+  const beacons = network.roofs.map((building) =>
     light(building.lng, building.lat, { height: building.height + 2 }),
   );
 

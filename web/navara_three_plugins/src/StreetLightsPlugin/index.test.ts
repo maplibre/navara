@@ -70,7 +70,7 @@ const NETWORK: RoadNetwork = {
       ],
     },
   ],
-  tallBuildings: [{ lng: TOKYO.lng, lat: TOKYO.lat, height: 120 }],
+  roofs: [{ lng: TOKYO.lng, lat: TOKYO.lat, height: 120 }],
 };
 // ViewContext has private members, so no object literal can satisfy it
 // structurally. The cast is the repo's pattern for a context a test never
@@ -407,7 +407,9 @@ describe("StreetLightsPlugin streaming", () => {
     plugin.setVisible(false, "traffic");
     expect(meshes[0].update).toHaveBeenCalledWith({ visible: false });
     expect(lamps.evaluate({ kind: "lamp" })).toEqual({ show: true });
-    // Only a change to the roads re-evaluates the road layer.
+    // Only the layers of the changed part are re-evaluated.
+    expect(lamps.forceUpdate).not.toHaveBeenCalled();
+    expect(beacons.forceUpdate).not.toHaveBeenCalled();
     expect(surface.forceUpdate).not.toHaveBeenCalled();
 
     plugin.setVisible(false, "lamps");

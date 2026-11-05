@@ -68,10 +68,10 @@ describe("lampsAlongLine", () => {
 describe("tileLights", () => {
   const network: RoadNetwork = {
     roads: [{ style: ROADS.primary, oneway: 0, line: eastLine(100) }],
-    tallBuildings: [{ lng: 1, lat: 2, height: 120 }],
+    roofs: [{ lng: 1, lat: 2, height: 120 }],
   };
 
-  it("adds a beacon above every tall roof and the same lamps every time", () => {
+  it("adds a beacon above every roof and the same lamps every time", () => {
     const lights = tileLights(network, mulberry32(7));
     expect(lights.beacons.features).toEqual([
       {

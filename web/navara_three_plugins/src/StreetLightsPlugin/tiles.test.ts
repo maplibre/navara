@@ -8,12 +8,12 @@ import {
   createTileStreamer,
   loadRoadNetwork,
   readRoads,
-  readTallBuildings,
+  readRoofs,
   tileCenter,
   tileCoordinate,
   tileKey,
   type Road,
-  type TallBuilding,
+  type Roof,
   type TileCoordinate,
   type TileLayer,
 } from "./tiles";
@@ -213,8 +213,8 @@ describe("road classes", () => {
   });
 });
 
-describe("readTallBuildings", () => {
-  it("reads the roof center of every building 90 m or taller", () => {
+describe("readRoofs", () => {
+  it("reads the roof center of every building the reader gives a height", () => {
     const square = (x: number, y: number): Position[][] => [
       [
         [x, y],
@@ -224,8 +224,8 @@ describe("readTallBuildings", () => {
         [x, y],
       ],
     ];
-    const out: TallBuilding[] = [];
-    readTallBuildings(
+    const out: Roof[] = [];
+    readRoofs(
       layerOf([
         {
           properties: { render_height: 120 },

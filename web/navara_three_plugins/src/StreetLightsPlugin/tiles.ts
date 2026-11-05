@@ -1,5 +1,5 @@
 /**
- * Reading roads and beacon tallBuildings from zoom-14 vector tiles, and keeping
+ * Reading roads and beacon roofs from zoom-14 vector tiles, and keeping
  * the tiles around a position loaded.
  */
 import { VectorTile } from "@mapbox/vector-tile";
@@ -33,7 +33,7 @@ export type Road = {
   line: Position[];
 };
 
-export type TallBuilding = {
+export type Roof = {
   lng: number;
   lat: number;
   height: number;
@@ -41,7 +41,7 @@ export type TallBuilding = {
 
 export type RoadNetwork = {
   roads: Road[];
-  tallBuildings: TallBuilding[];
+  roofs: Roof[];
 };
 
 export type TileCoordinate = { x: number; y: number };
@@ -118,12 +118,12 @@ export const readRoads = (
   }
 };
 
-/** TallBuilding center of every building the reader gives a height, one per outer ring. */
-export const readTallBuildings = (
+/** Roof center of every building the reader gives a height, one per outer ring. */
+export const readRoofs = (
   layer: TileLayer,
   tile: TileCoordinate,
   read: BuildingReader,
-  out: TallBuilding[],
+  out: Roof[],
 ) => {
   for (let i = 0; i < layer.length; i++) {
     const feature = layer.feature(i);
@@ -150,7 +150,7 @@ export const readTallBuildings = (
 };
 
 /**
- * Reads the roads and beacon tallBuildings of one zoom-14 tile. `template` is a
+ * Reads the roads and beacon roofs of one zoom-14 tile. `template` is a
  * `{z}/{x}/{y}` tile URL, as listed in a TileJSON document. The engine
  * decodes these same tiles for rendering but exposes no feature geometry,
  * hence the second fetch.
@@ -170,19 +170,14 @@ export const loadRoadNetwork = async (
   const vectorTile = new VectorTile(new PbfReader(await res.arrayBuffer()));
 
   const roads: Road[] = [];
-  const tallBuildings: TallBuilding[] = [];
+  const roofs: Roof[] = [];
   const roadLayer = vectorTile.layers[schema.roads.layer];
   if (roadLayer) readRoads(roadLayer, tile, schema.roads, roads);
   const buildingLayer = vectorTile.layers[schema.buildings.layer];
   if (buildingLayer) {
-    readTallBuildings(
-      buildingLayer,
-      tile,
-      schema.buildings.read,
-      tallBuildings,
-    );
+    readRoofs(buildingLayer, tile, schema.buildings.read, roofs);
   }
-  return { roads, tallBuildings };
+  return { roads, roofs };
 };
 
 // --- Tile streaming --------------------------------------------------------

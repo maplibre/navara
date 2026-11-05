@@ -169,6 +169,8 @@ export type StreetLightsStartOptions = {
 export type StreetLightsPart = "roads" | "lamps" | "beacons" | "traffic";
 
 const PARTS: StreetLightsPart[] = ["roads", "lamps", "beacons", "traffic"];
+/** The parts that live on the streamed tiles; the roads are the caller's layers. */
+const TILE_PARTS: StreetLightsPart[] = PARTS.filter((p) => p !== "roads");
 
 export type StreetLightsUpdate = {
   traffic?: StreetTrafficOptions;
@@ -190,13 +192,13 @@ const LIGHT_COLORS = {
  * them. A part shows while it is visible and, for the lights and traffic,
  * while `lightsOn`.
  */
-type Flags = {
+type Visibility = {
   lightsOn: boolean;
   parts: Record<StreetLightsPart, boolean>;
 };
 
-const shown = (flags: Flags, part: StreetLightsPart) =>
-  flags.parts[part] && (part === "roads" || flags.lightsOn);
+const shown = (visibility: Visibility, part: StreetLightsPart) =>
+  visibility.parts[part] && (part === "roads" || visibility.lightsOn);
 
 /** A road layer given to `addRoads()` and the handlers attached to it. */
 type Surface = {
@@ -206,11 +208,11 @@ type Surface = {
 };
 
 const lampEvaluator =
-  (flags: Flags) =>
+  (visibility: Visibility) =>
   ({ evaluator }: { evaluator: FeatureEvaluator }) => {
     evaluator.evaluate(
       ({ properties }) => {
-        if (!shown(flags, "lamps")) return { show: false };
+        if (!shown(visibility, "lamps")) return { show: false };
         switch (properties?.kind) {
           case "lamp":
             // The layer's material gives the plain lamp's look.
@@ -230,11 +232,11 @@ const lampEvaluator =
   };
 
 const beaconEvaluator =
-  (flags: Flags) =>
+  (visibility: Visibility) =>
   ({ evaluator }: { evaluator: FeatureEvaluator }) => {
     evaluator.evaluate(
       ({ properties }) => {
-        if (!shown(flags, "beacons")) return { show: false };
+        if (!shown(visibility, "beacons")) return { show: false };
         const height = properties?.height;
         return { show: true, height: typeof height === "number" ? height : 0 };
       },
@@ -243,11 +245,11 @@ const beaconEvaluator =
   };
 
 const surfaceEvaluator =
-  (flags: Flags, roads: StreetLightsRoads) =>
+  (visibility: Visibility, roads: StreetLightsRoads) =>
   ({ evaluator }: { evaluator: FeatureEvaluator }) => {
     evaluator.evaluate(
       ({ properties }) => {
-        const road = shown(flags, "roads")
+        const road = shown(visibility, "roads")
           ? readRoadFeature(roads, properties ?? {})
           : undefined;
         if (!road) return { show: false };
@@ -282,7 +284,7 @@ export class StreetLightsPlugin extends Plugin<View, ViewContext> {
   private readonly radius: number;
   private readonly schema: TileSchema;
   private readonly traffic: StreetTrafficOptions;
-  private readonly flags: Flags = {
+  private readonly visibility: Visibility = {
     lightsOn: true,
     parts: { roads: true, lamps: true, beacons: true, traffic: true },
   };
@@ -331,7 +333,7 @@ export class StreetLightsPlugin extends Plugin<View, ViewContext> {
   addRoads(layer: Layer): void {
     this.requireView();
     if (this.surfaces.some((surface) => surface.layer === layer)) return;
-    const apply = surfaceEvaluator(this.flags, this.schema.roads);
+    const apply = surfaceEvaluator(this.visibility, this.schema.roads);
     // Deleted by the caller: let go of it.
     const forget = () => {
       this.surfaces = this.surfaces.filter(
@@ -386,20 +388,21 @@ export class StreetLightsPlugin extends Plugin<View, ViewContext> {
    */
   setVisible(visible: boolean, part?: StreetLightsPart): void {
     const changed = (part ? [part] : PARTS).filter(
-      (p) => this.flags.parts[p] !== visible,
+      (p) => this.visibility.parts[p] !== visible,
     );
     if (changed.length === 0) return;
-    for (const p of changed) this.flags.parts[p] = visible;
+    for (const p of changed) this.visibility.parts[p] = visible;
     if (changed.includes("roads")) {
       for (const { layer } of this.surfaces) layer.forceUpdate();
     }
-    if (changed.some((p) => p !== "roads")) this.refreshTiles();
+    const tileParts = changed.filter((p) => p !== "roads");
+    if (tileParts.length > 0) this.refreshTiles(tileParts);
   }
 
   /** Lamps, beacons and traffic on or off; the road surfaces stay. */
   setLightsOn(on: boolean): void {
-    if (this.flags.lightsOn === on) return;
-    this.flags.lightsOn = on;
+    if (this.visibility.lightsOn === on) return;
+    this.visibility.lightsOn = on;
     this.refreshTiles();
   }
 
@@ -435,12 +438,15 @@ export class StreetLightsPlugin extends Plugin<View, ViewContext> {
     return this.streamer?.tiles.values() ?? [];
   }
 
-  private refreshTiles(): void {
-    const trafficVisible = shown(this.flags, "traffic");
+  /** Re-applies the visibility of `parts` on the loaded tiles. */
+  private refreshTiles(parts: StreetLightsPart[] = TILE_PARTS): void {
+    const trafficVisible = shown(this.visibility, "traffic");
     for (const { loaded } of this.loadedTiles()) {
-      loaded.lamps.forceUpdate();
-      loaded.beacons.forceUpdate();
-      loaded.traffic.update({ visible: trafficVisible });
+      if (parts.includes("lamps")) loaded.lamps.forceUpdate();
+      if (parts.includes("beacons")) loaded.beacons.forceUpdate();
+      if (parts.includes("traffic")) {
+        loaded.traffic.update({ visible: trafficVisible });
+      }
     }
   }
 
@@ -486,7 +492,7 @@ export class StreetLightsPlugin extends Plugin<View, ViewContext> {
       size: 3,
       clampToGround: true,
     });
-    const applyLamp = lampEvaluator(this.flags);
+    const applyLamp = lampEvaluator(this.visibility);
     lamps.on("featureCreated", applyLamp);
     lamps.on("featureUpdated", applyLamp);
 
@@ -499,7 +505,7 @@ export class StreetLightsPlugin extends Plugin<View, ViewContext> {
       size: 2,
       clampToGround: false,
     });
-    const applyBeacon = beaconEvaluator(this.flags);
+    const applyBeacon = beaconEvaluator(this.visibility);
     beacons.on("featureCreated", applyBeacon);
     beacons.on("featureUpdated", applyBeacon);
 
@@ -522,7 +528,7 @@ export class StreetLightsPlugin extends Plugin<View, ViewContext> {
         ...this.traffic,
       },
       position: { x: origin.x, y: origin.y, z: origin.z },
-      visible: shown(this.flags, "traffic"),
+      visible: shown(this.visibility, "traffic"),
     });
 
     return { lampSource, lamps, beaconSource, beacons, traffic };
