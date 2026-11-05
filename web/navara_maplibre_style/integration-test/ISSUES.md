@@ -35,21 +35,17 @@ color.
 - `combinations/background-translucent--background-translucent`: Navara shows
   only the upper layer.
 
-### `circle-radius` is applied in meters, so circles vanish at low zoom
+### Circles draw above layers listed after them
 
-No circle appears in any case. The cause is the size unit, not the color.
+Circles are sprites drawn above the globe, while backgrounds, fills, and lines
+are draped into its surface, so a circle shows on top whatever the layer
+order.
 
-- Verified: `createCircleLayer` in `src/adapters/toLayerDescription.ts`
-  builds a `point` material without `sizeInMeters: false`, so
-  `circle-radius: 8` becomes 8 m (the symbol materials in the same file do set
-  it).
-- The same `circle-color/literal` style viewed at z18 over a white background
-  shows the blue circle. At the fixtures' z0–z2 it is sub-pixel, even over
-  white.
-- Once fixed in pixels, also check that `size` matches MapLibre's radius
-  semantics (MapLibre's value is a radius, not a diameter).
-- Cases: `circle-*/*`, `filter/*`, `regressions/mapbox-gl-js#4124`, `#4651`,
-  `regressions/mapbox-gl-native#14402`, `combinations/*circle*`.
+- `combinations/circle-translucent--background-opaque`: the opaque blue
+  background listed after the circles should cover them; Navara shows red
+  circles on blue.
+- `combinations/circle-translucent--fill-opaque`: the blue fill should cover
+  the inner quarter of each red circle; Navara draws whole circles over it.
 
 ### Unset paint colors render white instead of the spec default (black)
 
@@ -58,6 +54,8 @@ No circle appears in any case. The cause is the size unit, not the color.
 - `line-join/default`, `line-width/*`, `line-pitch/*`: the lines set no
   `line-color` and are drawn white, invisible over the white background.
 - `fill-extrusion-color/default`: the extrusion sets no color and is drawn
+  white.
+- `circle-color/default`: the circles set no `circle-color` and are drawn
   white.
 
 ### Translucent colors are blended in linear space
@@ -222,7 +220,10 @@ defaults (`center: [0, 0]`, `zoom: 0`).
 - **Globe vs. Web Mercator.** Navara always renders a globe. At low zoom,
   straight lines bow (`line-opacity/*`, `regressions/mapbox-gl-native#7714`) and
   the globe's limb is visible inside 256 px canvases at z0
-  (`sparse-tileset/*`, `line-join/default`).
+  (`sparse-tileset/*`, `line-join/default`). At z0 the whole world is a
+  sphere about a third of the canvas wide, so `extent/1024-circle` shows the
+  points of its world-covering tile in the middle only, where MapLibre spreads
+  them over the whole canvas.
 - **Soft edges in small canvases.** Draped fills and lines have blurred edges
   in 64 px fixtures (`fill-color/*`, `line-layer-opacity/default`).
 - **Draping blur at z0.** Small polygons are rounded at z0
