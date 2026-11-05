@@ -125,6 +125,9 @@ function createMockView(initialZoom = 10): ThreeView {
   const mockCamera = {
     zoom: initialZoom,
     fov: 50, // Default FOV
+    // The camera's current pose, kept for properties a style omits
+    positionGeographic: { lng: 135, lat: 35, height: 1000000 },
+    orientation: { heading: 10, pitch: -60, roll: 2 },
     on: vi.fn(),
     off: vi.fn(),
   };
@@ -875,7 +878,7 @@ describe("MapLibreStylePlugin", () => {
       expect(view.setCamera).toHaveBeenCalled();
     });
 
-    it("should use default values for omitted optional camera properties", async () => {
+    it("should keep the current orientation for omitted bearing, pitch, and roll", async () => {
       const style: StyleSpecification = {
         version: 8,
         center: [100, 50],
@@ -888,20 +891,19 @@ describe("MapLibreStylePlugin", () => {
       const view = createMockView();
       await plugin.init(view, mockViewContext);
 
-      // Verify setCamera was called with defaults
       expect(view.setCamera).toHaveBeenCalledWith(
         expect.objectContaining({
           lng: 100,
           lat: 50,
           height: 0, // default centerAltitude
-          heading: 0, // default bearing
-          pitch: -90, // default pitch (straight down)
-          roll: 0, // default roll
+          heading: 10,
+          pitch: -60,
+          roll: 2,
         }),
       );
     });
 
-    it("should not apply camera when center is missing", async () => {
+    it("should keep the current center when only zoom is set", async () => {
       const style: StyleSpecification = {
         version: 8,
         zoom: 12,
@@ -913,11 +915,18 @@ describe("MapLibreStylePlugin", () => {
       const view = createMockView();
       await plugin.init(view, mockViewContext);
 
-      // setCamera should not be called
-      expect(view.setCamera).not.toHaveBeenCalled();
+      expect(view.setCamera).toHaveBeenCalledWith(
+        expect.objectContaining({ lng: 135, lat: 35 }),
+      );
+      expect(view.zoomLevelToCameraDistance).toHaveBeenCalledWith(
+        12,
+        35,
+        512,
+        undefined,
+      );
     });
 
-    it("should not apply camera when zoom is missing", async () => {
+    it("should keep the current zoom when only center is set", async () => {
       const style: StyleSpecification = {
         version: 8,
         center: [139.7, 35.7],
@@ -926,11 +935,102 @@ describe("MapLibreStylePlugin", () => {
       };
 
       const plugin = new MapLibreStylePlugin(style);
+      const view = createMockView(7);
+      await plugin.init(view, mockViewContext);
+
+      expect(view.setCamera).toHaveBeenCalledWith(
+        expect.objectContaining({ lng: 139.7, lat: 35.7 }),
+      );
+      expect(view.zoomLevelToCameraDistance).toHaveBeenCalledWith(
+        7,
+        35.7,
+        512,
+        undefined,
+      );
+    });
+
+    it("should apply pitch and bearing without center or zoom", async () => {
+      const style: StyleSpecification = {
+        version: 8,
+        pitch: 60,
+        bearing: 45,
+        sources: {},
+        layers: [],
+      };
+
+      const plugin = new MapLibreStylePlugin(style);
+      const view = createMockView(7);
+      await plugin.init(view, mockViewContext);
+
+      expect(view.setCamera).toHaveBeenCalledWith(
+        expect.objectContaining({
+          lng: 135,
+          lat: 35,
+          heading: 45,
+          pitch: -30,
+          roll: 2,
+        }),
+      );
+      expect(view.zoomLevelToCameraDistance).toHaveBeenCalledWith(
+        7,
+        35,
+        512,
+        undefined,
+      );
+    });
+
+    it("should keep the application's camera when the style sets no camera property", async () => {
+      const style: StyleSpecification = {
+        version: 8,
+        sources: {},
+        layers: [],
+      };
+
+      const plugin = new MapLibreStylePlugin(style);
       const view = createMockView();
       await plugin.init(view, mockViewContext);
 
-      // setCamera should not be called
       expect(view.setCamera).not.toHaveBeenCalled();
+    });
+
+    it("should force MapLibre FOV even when the style sets no camera property", async () => {
+      const style: StyleSpecification = {
+        version: 8,
+        sources: {},
+        layers: [],
+      };
+
+      const plugin = new MapLibreStylePlugin(style, {
+        forceMapLibreFov: true,
+      });
+      const view = createMockView();
+      await plugin.init(view, mockViewContext);
+
+      expect(view.camera.fov).toBeCloseTo(36.87, 1);
+      expect(view.setCamera).not.toHaveBeenCalled();
+    });
+
+    it("should pass MapLibre FOV to the zoom conversion for a partial camera", async () => {
+      const style: StyleSpecification = {
+        version: 8,
+        zoom: 12,
+        sources: {},
+        layers: [],
+      };
+
+      const plugin = new MapLibreStylePlugin(style, {
+        forceMapLibreFov: true,
+      });
+      const view = createMockView();
+      await plugin.init(view, mockViewContext);
+
+      expect(view.camera.fov).toBeCloseTo(36.87, 1);
+      expect(view.zoomLevelToCameraDistance).toHaveBeenCalledWith(
+        12,
+        35,
+        512,
+        0.6435011087932844,
+      );
     });
 
     it("should register frustumChanged listener when camera not ready", async () => {

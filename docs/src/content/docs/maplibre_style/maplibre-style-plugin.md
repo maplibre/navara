@@ -356,7 +356,7 @@ The plugin follows the standard Navara plugin lifecycle:
    - Parses and validates the style
    - Registers fonts from `font-faces`
    - Initializes background handler
-   - Applies camera position from root properties (center, zoom, pitch, bearing, etc.)
+   - Applies camera position from root properties (center, zoom, pitch, bearing, etc.). As with MapLibre, properties the style omits keep the current camera's values; a missing `center` keeps the point directly below the camera. A style without any of them leaves the camera unchanged.
    - Adds all sources and layers
    - Sets up zoom change detection
 4. **Usage** - The plugin is now active and managing the style
