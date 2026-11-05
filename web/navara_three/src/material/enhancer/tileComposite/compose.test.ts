@@ -70,7 +70,7 @@ describe("composeCompositeContributions", () => {
   it("orders the post-loop blocks hillshade before watermask", () => {
     const c = compose({ ...OFF, hasHillshade: true, hasWatermask: true }, 1);
     const hill = c.postLoop.indexOf("hillshadeNormal");
-    const mask = c.postLoop.indexOf("uWatermask");
+    const mask = c.postLoop.indexOf("nvrWatermaskBSpline");
     expect(hill).toBeGreaterThanOrEqual(0);
     expect(hill).toBeLessThan(mask);
   });

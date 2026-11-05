@@ -111,7 +111,7 @@ Each method returns a `{ value }` ref that the view updates every frame. Assign 
 | `ctx.getGlobeDepthTextureUniform()`       | The texture of `ctx.getGlobeDepthTexture()` |
 | `ctx.getGlobeNormalTextureUniform()`      | The texture of `ctx.getGlobeNormalTexture()`. Declare `globeNormal` as a required buffer to sample it |
 | `ctx.getSkyEnvMapTextureUniform()`        | The sky environment map |
-| `ctx.getWaterTextureUniform()`            | The shared water normal map. Its value is `null` unless the view is created with `waterTexture.enabled` |
+| `ctx.getWaterState()`                     | The view's water state, used by the water shader chunk: `uniforms` holds what water materials share, and `createWaves(conditions)` holds one surface's waves. The first read of `uniforms` generates the wave texture |
 | `ctx.getViewportAndPixelRatioUniform()`   | `[width, height, pixelRatio]`, with the viewport size in CSS pixels |
 | `ctx.getFrustumNearFarUniform()`          | The camera's `[near, far]` |
 | `ctx.getFrustumRatioUniform()`            | The camera frustum's `[top, bottom, right, left]` on the near plane |

@@ -7,6 +7,5 @@ const view = new ThreeView<CustomDescriptions>({
   debug: true,
   shadow: true,
   animation: true,
-  waterTexture: { enabled: true },
 });
 run(view);

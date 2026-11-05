@@ -154,16 +154,26 @@ export function getSymbolPlacement(
 /**
  * Source geometry a symbol layer consumes. Along-line placement takes lines
  * only. Point placement labels every geometry, as MapLibre does: a line once
- * at its first vertex, a polygon at its pole of inaccessibility. The plugin
- * evaluates a symbol layer's filter as a single geometry type, though, so a
- * filter that tests it (`$type`, `["geometry-type"]`) would pass lines and
- * polygons as points; such layers keep the native point geometry only.
+ * at its first vertex, a polygon at its pole of inaccessibility.
  */
 function getSymbolGeometryTypes(
   styleLayer: StyleLayer,
   placement: SymbolPlacement,
 ): SourceGeometryType[] | undefined {
   if (placement !== "point") return ["line"];
+  return getAllGeometryTypesUnlessFiltered(styleLayer);
+}
+
+/**
+ * Every source geometry type, for a point-like layer (circle, point-placed
+ * symbol) that MapLibre draws on lines and polygons too. The plugin evaluates
+ * such a layer's filter as a single geometry type (`"Point"`), though, so a
+ * filter that tests it (`$type`, `["geometry-type"]`) would pass lines and
+ * polygons as points; such layers keep the native point geometry only.
+ */
+function getAllGeometryTypesUnlessFiltered(
+  styleLayer: StyleLayer,
+): SourceGeometryType[] | undefined {
   const filter = "filter" in styleLayer ? styleLayer.filter : undefined;
   return expressionUsesGeometryType(filter)
     ? undefined
@@ -359,13 +369,30 @@ function createCircleLayer(
   source: Source,
   styleLayer: StyleLayer,
 ): LayerDescription {
+  const geometryTypes = getAllGeometryTypesUnlessFiltered(styleLayer);
+  const circleSpec = PAINT_SPECS_BY_TYPE.circle;
+  // Unset paint properties are not evaluated per feature, so the material
+  // carries the spec defaults; otherwise an unset `circle-color` would be the
+  // point material's own default, white.
+  const defaultColor = toNavaraColor(circleSpec["circle-color"].default);
   return {
     type: "vector",
     source,
     ...getSourceLayersField(styleLayer),
     point: {
       clampToGround: true,
-      anchor: "bottom",
+      ...(defaultColor && { color: defaultColor.color }),
+      // `circle-radius` is in screen pixels, and circles are centered on
+      // their point, as in MapLibre. `size` is the full width, so twice the
+      // radius.
+      size: 2 * circleSpec["circle-radius"].default,
+      sizeInMeters: false,
+      anchor: "center",
+      // MapLibre never collides circles: overlapping ones are all drawn.
+      declutter: false,
+      // MapLibre draws a circle at every vertex of lines and polygon rings,
+      // which is the default `placement: "point"`.
+      ...(geometryTypes && { geometryTypes }),
     },
   };
 }

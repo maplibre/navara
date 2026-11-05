@@ -200,9 +200,31 @@ describe("toLayerDescription", () => {
         source: mockSource,
         point: {
           clampToGround: true,
-          anchor: "bottom",
+          // The spec's default `circle-color`, black
+          color: expect.objectContaining({ r: 0, g: 0, b: 0 }),
+          // 2 × the spec's default `circle-radius` of 5
+          size: 10,
+          sizeInMeters: false,
+          anchor: "center",
+          declutter: false,
+          geometryTypes: ["point", "line", "polygon"],
         },
       });
+    });
+
+    it("keeps a circle layer filtering on geometry type to points", () => {
+      for (const filter of [
+        ["==", "$type", "Point"],
+        ["==", ["geometry-type"], "Point"],
+      ]) {
+        const result = toLayerDescription(mockSource, {
+          id: "test-layer",
+          type: "circle",
+          source: "test",
+          filter,
+        } as StyleLayer) as { point?: Record<string, unknown> };
+        expect(result.point).not.toHaveProperty("geometryTypes");
+      }
     });
   });
 

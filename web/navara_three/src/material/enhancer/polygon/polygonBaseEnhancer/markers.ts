@@ -11,6 +11,10 @@ export const POLYGON_BASE_SHADER_MARKERS = {
     NORMAL_START: "// NVR_POLYGON_BASE_NORMAL_START",
     /** End of normal computation block. */
     NORMAL_END: "// NVR_POLYGON_BASE_NORMAL_END",
+    /** Start of the lit (non clamp-to-ground) outgoing light additions. */
+    OUTGOING_LIGHT_START: "// NVR_POLYGON_BASE_OUTGOING_LIGHT_START",
+    /** End of the lit outgoing light additions. */
+    OUTGOING_LIGHT_END: "// NVR_POLYGON_BASE_OUTGOING_LIGHT_END",
     /** Start of the final normal assignment block (used for MRT output). */
     FINAL_NORMAL_START: "// NVR_POLYGON_BASE_FINAL_NORMAL_START",
     /** End of the final normal assignment block (used for MRT output). */

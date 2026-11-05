@@ -362,6 +362,18 @@ describe("toEvaluatedValue", () => {
     expect(result.opacity).toBeCloseTo(0.75, 2);
   });
 
+  it("converts circle-radius to a point size twice as large", () => {
+    const layer: StyleLayer = {
+      id: "test",
+      type: "circle",
+      source: "test",
+    };
+
+    const result = toEvaluatedValue(layer, { "circle-radius": 8 });
+
+    expect(result.size).toBe(16);
+  });
+
   it("should default to alpha 1.0 for CSS color strings", () => {
     const layer: StyleLayer = {
       id: "test",

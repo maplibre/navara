@@ -415,10 +415,10 @@ function processCircleLayer(
     paintValues["circle-opacity"],
   );
 
-  // Handle circle radius
+  // `circle-radius` is a radius; a point's `size` is its full width.
   const circleRadius = paintValues["circle-radius"];
   if (typeof circleRadius === "number" && Number.isFinite(circleRadius)) {
-    result.size = circleRadius;
+    result.size = circleRadius * 2;
   }
 }
 

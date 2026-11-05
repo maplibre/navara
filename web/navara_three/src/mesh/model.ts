@@ -15,7 +15,6 @@ import {
   MeshStandardMaterial,
   Object3D,
   SkinnedMesh,
-  Texture,
   type NormalBufferAttributes,
   PointsMaterial,
 } from "three";
@@ -36,7 +35,6 @@ import {
   createPntsEnhancer,
 } from "../material/enhancer/model";
 import type { ModelMaterialProps, PntsProps } from "../material/enhancer/model";
-import type { UniformValue } from "../material/types";
 import type { CustomObject3DEventMap } from "../object3DEvent";
 
 import { GEOMETRY_TYPES } from "./constants";
@@ -137,10 +135,7 @@ export class ModelMesh
       ...updateProps,
       water: {
         ...updateProps.water,
-        skyEnvMap: uniforms.tSkyEnvMap.value,
-        waterNormalMap: uniforms.waterTexture as UniformValue<Texture | null>,
-        timeUniform: uniforms.time as UniformValue<number>,
-        skyEnvMapUniform: uniforms.tSkyEnvMap as UniformValue<Texture | null>,
+        getWaterState: () => uniforms.water,
       },
     };
 
@@ -391,14 +386,14 @@ export class ModelMesh
       },
       water: {
         water: material.water,
-        waterScaleNormal: material.waterScaleNormal,
-        waterSpeed: material.waterSpeed,
+        waveExaggeration: material.waveExaggeration,
+        waterScale: material.waterScale,
+        waveStrength: material.waveStrength,
+        waveDirection: material.waveDirection,
         shininess: material.shininess,
         specularStrength: material.specularStrength,
-        applyWaterNormal: material.applyWaterNormal,
         specular: material.specular,
         ior: material.ior,
-        reflectivity: material.reflectivity,
       },
     };
   }
@@ -467,5 +462,8 @@ export class ModelMesh
     this.traverseMesh((m) => {
       this.ctx.viewContext.removeShadowMaterial(m.material);
     });
+    for (const enhancer of this._enhancers.values()) {
+      enhancer.mutates().water.dispose();
+    }
   }
 }

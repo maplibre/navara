@@ -10,12 +10,12 @@ Proven combinations that get from zero to a high-quality scene. Prefer starting 
 
 **Composition (current best practice):**
 
-| Piece                                           | What it contributes                                                                                                                                                                                                              |
-| ----------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `DefaultPlugin` + `addDefaultPhotorealScene()`  | Sky, stars, sun light, sky light probe, aerial perspective, lens flare (skipped on mobile), tone mapping, antialiasing — mobile-aware                                                                                            |
-| Re:Earth Terrain (`quantized-mesh` source)      | Global terrain relief with vertex normals and water mask. `requestWaterMask: true` also gives ocean pixels a default reflectivity/roughness automatically, so adding the SSR effect makes the sea reflective with no extra setup |
-| EOX Sentinel-2 cloudless (`raster-tile` source) | Global satellite imagery draped over the terrain                                                                                                                                                                                 |
-| Built-in attribution UI (`view.attribution`)    | Required data credits for the above                                                                                                                                                                                              |
+| Piece                                           | What it contributes                                                                                                                                                                                                                                 |
+| ----------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `DefaultPlugin` + `addDefaultPhotorealScene()`  | Sky, stars, sun light, sky light probe, aerial perspective, lens flare (skipped on mobile), tone mapping, antialiasing — mobile-aware                                                                                                               |
+| Re:Earth Terrain (`quantized-mesh` source)      | Global terrain relief with vertex normals and water mask. `requestWaterMask: true` also shades ocean pixels as water (waves from `terrain.waveStrength` and `waveDirection`), so adding the SSR effect makes the sea reflective with no extra setup |
+| EOX Sentinel-2 cloudless (`raster-tile` source) | Global satellite imagery draped over the terrain                                                                                                                                                                                                    |
+| Built-in attribution UI (`view.attribution`)    | Required data credits for the above                                                                                                                                                                                                                 |
 
 ```typescript
 import ThreeView from "@navaramap/three";
