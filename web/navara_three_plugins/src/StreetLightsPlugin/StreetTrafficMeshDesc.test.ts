@@ -88,25 +88,46 @@ describe("StreetTrafficMeshDesc", () => {
     expect(points.material.blending).toBe(AdditiveBlending);
     expect(points.material.depthWrite).toBe(false);
     expect(points.frustumCulled).toBe(false);
-    expect(points.material.uniforms.nvrSpeedScale.value).toBe(1);
     expect(points.material.uniforms.nvrSize.value).toBe(2.5);
     expect(points.material.uniforms.nvrViewport).toBe(viewport);
   });
 
   it("drives the clock and the field of view every frame", () => {
     const { desc, points } = create();
-    desc.update(2000);
+    desc.update(1000);
+    desc.update(3000);
     expect(points.material.uniforms.nvrTime.value).toBe(2);
     expect(points.material.uniforms.nvrTanHalfFov.value).toBeCloseTo(
       Math.tan(Math.PI / 6),
     );
   });
 
-  it("applies option updates to the uniforms", () => {
+  it("applies option updates to the uniforms and keeps the others", () => {
     const { desc, points } = create({ size: 4 });
-    desc.onUpdateConfig({ streetTraffic: { speed: 3 } });
-    expect(points.material.uniforms.nvrSpeedScale.value).toBe(3);
+    desc.onUpdateConfig({ streetTraffic: { speed: 2 } });
     expect(points.material.uniforms.nvrSize.value).toBe(4);
+    desc.onUpdateConfig({ streetTraffic: { size: 3 } });
+    expect(points.material.uniforms.nvrSize.value).toBe(3);
+  });
+
+  it("starts the clock from the first frame it sees, and holds it at speed 0", () => {
+    const { desc, points } = create({ speed: 0 });
+    desc.update(5000);
+    expect(points.material.uniforms.nvrTime.value).toBe(0);
+    desc.update(6000);
+    expect(points.material.uniforms.nvrTime.value).toBe(0);
+  });
+
+  it("changes the speed from here on, without moving the cars", () => {
+    const { desc, points } = create();
+    desc.update(0);
+    desc.update(600_000);
+    expect(points.material.uniforms.nvrTime.value).toBe(600);
+
+    desc.onUpdateConfig({ streetTraffic: { speed: 2 } });
+    expect(points.material.uniforms.nvrTime.value).toBe(600);
+    desc.update(601_000);
+    expect(points.material.uniforms.nvrTime.value).toBe(602);
   });
 
   it("disposes the geometry and material with the mesh", () => {

@@ -64,8 +64,8 @@ attribute vec3 nvrEnd;
 attribute float nvrPhase;
 attribute float nvrSpeed;
 
+// Seconds of driving at the speed option, summed on the CPU.
 uniform float nvrTime;
-uniform float nvrSpeedScale;
 uniform float nvrSize;
 uniform vec3 nvrViewport;
 uniform float nvrTanHalfFov;
@@ -79,7 +79,7 @@ const vec3 NVR_TAILLIGHT = vec3(1.0, 0.15, 0.08);
 void main() {
   vec3 along = nvrEnd - position;
   float segmentLength = max(length(along), 0.001);
-  float t = fract(nvrPhase + nvrTime * nvrSpeed * nvrSpeedScale / segmentLength);
+  float t = fract(nvrPhase + nvrTime * nvrSpeed / segmentLength);
   // modelViewMatrix is built on the CPU, so the kilometers-scale offsets of
   // the origin never meet float32 here.
   vec4 mvPosition = modelViewMatrix * vec4(position + along * t, 1.0);
@@ -131,6 +131,7 @@ export class StreetTrafficMeshDesc extends MeshDesc<
   static key = "streetTraffic";
 
   private readonly traffic: StreetTrafficDescription;
+  private lastTime?: number;
 
   constructor(
     view: ThreeView,
@@ -144,9 +145,12 @@ export class StreetTrafficMeshDesc extends MeshDesc<
     this.traffic = config.streetTraffic;
   }
 
-  private get options(): Required<StreetTrafficOptions> {
-    const { speed, size } = this.traffic;
-    return { speed: speed ?? DEFAULTS.speed, size: size ?? DEFAULTS.size };
+  private get speedMultiplier(): number {
+    return this.traffic.speed ?? DEFAULTS.speed;
+  }
+
+  private get lightSize(): number {
+    return this.traffic.size ?? DEFAULTS.size;
   }
 
   createMesh() {
@@ -163,8 +167,7 @@ export class StreetTrafficMeshDesc extends MeshDesc<
     const material = new ShaderMaterial({
       uniforms: {
         nvrTime: { value: 0 },
-        nvrSpeedScale: { value: this.options.speed },
-        nvrSize: { value: this.options.size },
+        nvrSize: { value: this.lightSize },
         nvrViewport: this.ctx.getViewportAndPixelRatioUniform(),
         nvrTanHalfFov: { value: 1 },
       },
@@ -185,7 +188,12 @@ export class StreetTrafficMeshDesc extends MeshDesc<
   update(time: number): void {
     if (!this._instance) return;
     const uniforms = this._instance.material.uniforms;
-    uniforms.nvrTime.value = time / 1000;
+    // Summed frame by frame, so a speed change keeps the cars where they are.
+    if (this.lastTime !== undefined) {
+      uniforms.nvrTime.value +=
+        ((time - this.lastTime) / 1000) * this.speedMultiplier;
+    }
+    this.lastTime = time;
     uniforms.nvrTanHalfFov.value = Math.tan(
       (this.view.camera.raw.fov * Math.PI) / 360,
     );
@@ -195,9 +203,7 @@ export class StreetTrafficMeshDesc extends MeshDesc<
     super.onUpdateConfig(updates);
     Object.assign(this.traffic, updates.streetTraffic);
     if (!this._instance) return;
-    const uniforms = this._instance.material.uniforms;
-    uniforms.nvrSpeedScale.value = this.options.speed;
-    uniforms.nvrSize.value = this.options.size;
+    this._instance.material.uniforms.nvrSize.value = this.lightSize;
   }
 
   override onDestroy(): void {
