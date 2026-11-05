@@ -74,9 +74,15 @@ async function run(input: object | string) {
         ).json()
       : input;
   const style = localizeUrls(raw) as StyleSpecification;
-  // MapLibre's Map defaults; the plugin needs both for a camera (ISSUES.md).
+  // The plugin keeps the current camera for root camera properties the style
+  // omits, as MapLibre's jumpTo(style) does. maplibre-gl-js starts from a new
+  // Map, so start from its defaults.
   style.center ??= [0, 0];
   style.zoom ??= 0;
+  style.bearing ??= 0;
+  style.pitch ??= 0;
+  style.roll ??= 0;
+  const [lng, lat] = style.center;
 
   const view = new ThreeView<DefaultDescriptions>({
     // Matches pixelmatch, which blends transparent expected pixels onto white.
@@ -92,10 +98,7 @@ async function run(input: object | string) {
     state.idleCount++;
   });
   view.atmosphere.date = SUN_DATE;
-  view.atmosphere.setElevationAt(SUN_REFERENCE, {
-    lng: style.center[0],
-    lat: style.center[1],
-  });
+  view.atmosphere.setElevationAt(SUN_REFERENCE, { lng, lat });
   view.addPlugin(new DefaultPlugin());
   view.addPlugin(new MapLibreStylePlugin(style, { forceMapLibreFov: true }));
   await view.init();

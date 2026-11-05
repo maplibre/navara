@@ -188,20 +188,6 @@ but found number`). maplibre-gl-js never migrates at render time.
 "tilejson" version field`, so the source and its layer are dropped.
 - MapLibre accepts such TileJSON.
 
-### A style with only one of `center` and `zoom` gets no camera
-
-Verified: `setupCameraFromStyle` and `applyCamera` in
-`src/MapLibreStylePlugin.ts` return unless both are set, so the view keeps
-Navara's default camera. MapLibre fills the missing one from its `Map`
-defaults (`center: [0, 0]`, `zoom: 0`).
-
-- 191 styles set only `zoom` and 2 only `center` (e.g.
-  `background-pattern/zoomed`, `feature-state/promote-id-circle`,
-  `regressions/mapbox-gl-js#4551`). Another 620 set neither, where keeping the
-  application's camera may be intended.
-- Hidden from the render tests: `lib/test-page.ts` fills in the same
-  defaults before passing the style to the plugin.
-
 ## Packaging and docs
 
 ### `@navaramap/three` bundles part of three
