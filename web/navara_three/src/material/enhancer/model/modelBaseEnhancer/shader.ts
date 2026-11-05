@@ -157,8 +157,10 @@ if (nvr_uPickable > 0.0 && diffuseColor.a > 0.0) {
       `
 ${MODEL_BASE_SHADER_MARKERS.fragment.FINAL_NORMAL_START}
 vec3 finalNormal = normal;
+float finalReflectivity = metalnessFactor;
+float finalRoughness = roughnessFactor;
 ${MODEL_BASE_SHADER_MARKERS.fragment.FINAL_NORMAL_END}
-GBUFFER_WRITE_NORMAL(finalNormal, metalnessFactor, roughnessFactor)
+GBUFFER_WRITE_NORMAL(finalNormal, finalReflectivity, finalRoughness)
 `,
     ).source;
 };

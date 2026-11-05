@@ -51,7 +51,7 @@ describe("modelWaterEnhancer", () => {
 
     it("should return same cache key for same shader-affecting states with different non-affecting states", () => {
       enhancer.mount({
-        water: { water: true, waterSpeed: 1.0, shininess: 10 },
+        water: { water: true, waveExaggeration: 1.0, shininess: 10 },
       });
       const cacheKey1 = enhancer.programCacheKey();
 
@@ -59,7 +59,7 @@ describe("modelWaterEnhancer", () => {
         createModelBaseEnhancer(new MeshStandardMaterial()),
       );
       enhancer2.mount({
-        water: { water: true, waterSpeed: 5.0, shininess: 50 },
+        water: { water: true, waveExaggeration: 0.5, shininess: 50 },
       });
       const cacheKey2 = enhancer2.programCacheKey();
 

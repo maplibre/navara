@@ -23,6 +23,7 @@ import type { CustomRenderPass } from "../passes";
 import type { Scenes } from "../scene";
 import type { MeshCache } from "../type";
 import type { CommonUniforms, RefThree } from "../uniforms";
+import type { WaterState } from "../water/waterState";
 
 import type { EffectHandle, LightHandle, MeshHandle } from "./BaseHandle";
 import type { EffectDesc } from "./EffectDesc";
@@ -228,11 +229,13 @@ export class ViewContext extends EventHandler<ViewContextEvents> {
   }
 
   /**
-   * Uniform ref to the shared water normal map. Its value is `null` unless
-   * the view is created with `waterTexture.enabled`.
+   * The view's water state, for a custom material that calls the water shader
+   * chunk: `uniforms` holds what water materials share, and `createWaves` holds
+   * one surface's waves. The first read of `uniforms` generates the wave
+   * texture.
    */
-  getWaterTextureUniform(): RefThree<Texture> {
-    return this._commonUniforms.waterTexture;
+  getWaterState(): WaterState {
+    return this._commonUniforms.water;
   }
 
   /** Uniform ref to `[width, height, pixelRatio]` of the viewport in CSS pixels. */

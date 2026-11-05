@@ -478,38 +478,6 @@ const view = new ThreeView({
 The SSE multiplier range can also be changed at runtime via [`setSseMultiplierRange()`](../threeview-functions#setssemultiplierrange).
 :::
 
-### waterTexture
-
-**Type:** `{ enabled: boolean; url?: string } | undefined`
-
-**Description:** Configuration for shared water textures. When enabled, a single water normal texture is shared across all meshes that use water effects. This is more efficient than each mesh loading its own texture individually.
-
-**Default:** Disabled when omitted (the shared water texture is loaded only when `{ enabled: true }` is passed).
-
-```typescript
-type WaterTextureOptions = {
-  enabled: boolean; // Whether to enable water texture sharing
-  url?: string; // URL for custom water normal texture (uses built-in texture when omitted)
-};
-```
-
-**Example:**
-
-```typescript
-// Use built-in texture
-const view = new ThreeView({
-  waterTexture: { enabled: true },
-});
-
-// Use a custom texture
-const viewWithCustomWater = new ThreeView({
-  waterTexture: {
-    enabled: true,
-    url: "https://example.com/water-normal.png",
-  },
-});
-```
-
 ### GlobeOptions
 
 **Type:** `GlobeOptions`
