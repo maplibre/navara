@@ -21,6 +21,7 @@ import {
 
 import { parseColorReliefStops, toColorReliefRamp } from "./colorRelief";
 import { CONSTRUCTION_ZOOM, resolveSymbolOrientation } from "./symbolAlignment";
+import { toNavaraColor } from "./toEvaluatedValue";
 
 type TextDescription = NonNullable<VectorLayer["text"]>;
 type BillboardDescription = NonNullable<VectorLayer["billboard"]>;

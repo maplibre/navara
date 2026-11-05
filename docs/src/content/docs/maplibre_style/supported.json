@@ -176,10 +176,10 @@
           "status": "✅"
         },
         "text-halo-width": {
-          "status": "⚠️ Capped at 17.5/64 em less half a screen pixel (MapLibre: 1/4 em)"
+          "status": "✅"
         },
         "text-halo-blur": {
-          "status": "⚠️ Fade is narrowed to end within the same cap as text-halo-width"
+          "status": "✅"
         },
         "icon-halo-color": {
           "status": "❌"
