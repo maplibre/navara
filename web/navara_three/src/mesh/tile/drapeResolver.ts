@@ -1,10 +1,21 @@
-import type {
-  MagnificationTextureFilter,
-  MinificationTextureFilter,
-  Texture,
+import {
+  LinearMipmapLinearFilter,
+  LinearMipmapNearestFilter,
+  NearestMipmapLinearFilter,
+  NearestMipmapNearestFilter,
+  type MagnificationTextureFilter,
+  type MinificationTextureFilter,
+  type Texture,
 } from "three";
 
 import type { TextureOptions } from "../../textures";
+
+const MIPMAP_MIN_FILTERS: ReadonlySet<number> = new Set([
+  NearestMipmapNearestFilter,
+  NearestMipmapLinearFilter,
+  LinearMipmapNearestFilter,
+  LinearMipmapLinearFilter,
+]);
 
 /**
  * A drape resolver owns one family of composite material slots for a terrain
@@ -62,7 +73,11 @@ export type DrapeResolver = {
 };
 
 /** Apply the shared texturized-slot sampler settings to a drape render target's
- * texture. Returns the texture for call-site chaining. */
+ * texture. Returns the texture for call-site chaining.
+ *
+ * three allocates the mip chain, and regenerates it after every bake, whenever
+ * `generateMipmaps` is set, whatever the min filter — so it is requested only
+ * for a min filter that samples mips. */
 export function configureTexturizedTexture(
   tex: Texture,
   textureOptions: TextureOptions,
@@ -70,7 +85,8 @@ export function configureTexturizedTexture(
   tex.minFilter = textureOptions.minFilter as MinificationTextureFilter;
   tex.magFilter = textureOptions.magFilter as MagnificationTextureFilter;
   tex.anisotropy = textureOptions.maxAnisotropy;
-  tex.generateMipmaps = textureOptions.useMipmaps;
+  tex.generateMipmaps =
+    textureOptions.useMipmaps && MIPMAP_MIN_FILTERS.has(tex.minFilter);
   tex.needsUpdate = true;
   return tex;
 }
