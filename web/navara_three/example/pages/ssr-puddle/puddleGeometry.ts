@@ -4,6 +4,7 @@ import {
   geodeticToVector3,
   type EffectConfig,
   type EffectUpdate,
+  type GBufferName,
   type MRTPassEffectDesc,
   type ViewContext,
 } from "@navaramap/three";
@@ -281,6 +282,7 @@ export class PuddleGeometryEffectDesc extends EffectDesc<
   static key = "puddleGeometry";
   // Runs right after the G-buffer is produced, before SSR consumes our output.
   static insertAfter = ["mrt"];
+  static requiredBuffers: readonly GBufferName[] = ["normal"];
 
   private config: PuddleGeometryConfig;
 

@@ -134,7 +134,7 @@ and no placeholder textures:
 | attachment  | content                                                                        | type               | when                      |
 | ----------- | ------------------------------------------------------------------------------ | ------------------ | ------------------------- |
 | 0 `color`   | forward color (or albedo — see `lit`)                                          | HalfFloat          | always                    |
-| 1 `normal`  | RG = octahedral view-space normal, B = F0, A = roughness _(and blend factor!)_ | HalfFloat          | always                    |
+| 1 `normal`  | RG = octahedral view-space normal, B = F0, A = roughness _(and blend factor!)_ | HalfFloat          | `buffers.normal`          |
 | packed next | `effectIds` — R = selective-effect bitmask                                     | HalfFloat, Nearest | `buffers.selectiveEffect` |
 | packed next | `emissive` — RGB = HDR emissive                                                | HalfFloat          | `buffers.emissive`        |
 | packed next | `shadow` — R = shadow amount (0 = lit .. 1 = shadowed), G = albedo-output flag | UnsignedByte       | `buffers.shadow`          |
@@ -185,7 +185,8 @@ hole with its own floor only hides it from itself.
 There is no user-facing buffers option. The configuration is the **union of
 active effects' and meshes' `getRequiredBuffers()`** (`selectiveBloom` →
 `["selectiveEffect", "emissive"]`, `selectiveOutline` → `["selectiveEffect"]`,
-`aerialPerspective` with a lighting term → `["normal", "shadow"]`, a draped
+`aerialPerspective` → `["normal"]`, `["normal", "shadow"]` with a lighting
+term and `[]` with `useNormalBuffer: false`, a draped
 `box`/`cylinder`/`polygon` mesh or a `polyline` mesh with `useGroundNormals` →
 `["globeNormal"]`). For effects the
 instance method defaults to the class's `static requiredBuffers`; for meshes it
