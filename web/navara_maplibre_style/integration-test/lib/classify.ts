@@ -1,8 +1,9 @@
 /**
  * Decides whether a maplibre-gl-js render test only uses style features that
  * docs/src/content/docs/maplibre_style/supported.json marks ✅ or ⚠️. Anything
- * marked ❌ or not listed at all makes the case unsupported. The same walk
- * collects the features the case exercises as Playwright tags.
+ * marked ❌ or not listed at all makes the case unsupported, including a
+ * source's own properties. The same walk collects the features the case
+ * exercises as Playwright tags.
  */
 
 import { latest } from "@maplibre/maplibre-gl-style-spec";
@@ -123,11 +124,28 @@ export function classifyStyle(
       SPEC[`source_${source.type.replace("-", "_")}`]?.encoding?.default;
     if (!isSupported(node)) {
       reasons.add(`source: ${source.type}`);
-    } else if (
-      encoding !== undefined &&
-      !isSupported(child(child(node, "encoding"), String(encoding)))
-    ) {
-      reasons.add(`source: ${source.type} encoding ${String(encoding)}`);
+    } else {
+      if (
+        encoding !== undefined &&
+        !isSupported(child(child(node, "encoding"), String(encoding)))
+      ) {
+        reasons.add(`source: ${source.type} encoding ${String(encoding)}`);
+      }
+      // Properties the style sets on the source. `type` and `encoding` are
+      // judged above.
+      const sourceSpec = SPEC[`source_${source.type.replace("-", "_")}`];
+      for (const [prop, value] of Object.entries(source)) {
+        if (prop === "type" || prop === "encoding") continue;
+        // A property at its spec default is the same as leaving it out.
+        if (
+          JSON.stringify(sourceSpec?.[prop]?.default) === JSON.stringify(value)
+        ) {
+          continue;
+        }
+        if (!isSupported(child(child(node, "properties"), prop))) {
+          reasons.add(`source ${source.type}: ${prop}`);
+        }
+      }
     }
   }
 

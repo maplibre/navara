@@ -6,6 +6,7 @@ import { test, type Page } from "@playwright/test";
 import { classifyStyle } from "../lib/classify";
 import { compareToExpected, toPng } from "../lib/compare";
 import {
+  ASSETS_DIR,
   RENDER_TESTS_DIR,
   listCaseIds,
   readCaseStyle,
@@ -16,6 +17,12 @@ import {
 // Defaults from maplibre-gl-js test/integration/render/render.test.ts.
 const DEFAULT_SIZE = 512;
 const DEFAULT_THRESHOLD = 0.1285;
+
+/**
+ * maplibre-gl-js serves its assets from this port, and some TileJSON fixtures
+ * (`assets/tilesets/*.json`) hard-code it in their tile URLs.
+ */
+const UPSTREAM_ASSET_ORIGIN = "http://localhost:2900/";
 
 const GENERATED_FILES = ["actual.png", "diff.png", "result.json"];
 
@@ -79,13 +86,26 @@ for (const id of listCaseIds()) {
       network.lastActivity = Date.now();
     });
     page.on("requestfinished", settle);
-    page.on("requestfailed", settle);
+    page.on("requestfailed", (req) => {
+      settle();
+      const reason = req.failure()?.errorText ?? "";
+      // Cancelled on purpose, e.g. a tile request dropped when the view moves.
+      if (reason.includes("ERR_ABORTED")) return;
+      result.console.push(`[request failed] ${req.url()}: ${reason}`);
+    });
     page.on("console", (msg) => {
       // Failed fetches are logged with their URL by the response handler.
       if (msg.text().startsWith("Failed to load resource")) return;
       if (msg.type() === "warning" || msg.type() === "error") {
         result.console.push(`[${msg.type()}] ${msg.text()}`);
       }
+    });
+    // Serve maplibre-gl-js's asset port from the checkout instead.
+    await page.route(`${UPSTREAM_ASSET_ORIGIN}**`, (route) => {
+      const file = resolveUpstreamAsset(route.request().url());
+      return file
+        ? route.fulfill({ path: file })
+        : route.fulfill({ status: 404 });
     });
     page.on("response", (res) => {
       if (res.status() >= 400) {
@@ -147,6 +167,22 @@ for (const id of listCaseIds()) {
       await context.close();
     }
   });
+}
+
+/**
+ * The file in the checkout's assets for a request to UPSTREAM_ASSET_ORIGIN, or
+ * undefined when it does not exist, is not a file, or lies outside ASSETS_DIR.
+ */
+function resolveUpstreamAsset(url: string): string | undefined {
+  try {
+    const relative = decodeURIComponent(new URL(url).pathname.slice(1));
+    const file = path.resolve(ASSETS_DIR, relative);
+    if (!file.startsWith(ASSETS_DIR + path.sep)) return undefined;
+    return fs.statSync(file).isFile() ? file : undefined;
+  } catch {
+    // A literal `%` that is not an escape, or a missing file.
+    return undefined;
+  }
 }
 
 function readablePath(url: string): string {

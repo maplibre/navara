@@ -1277,6 +1277,93 @@ describe("MapLibreStylePlugin", () => {
       );
     });
 
+    it("should pass scheme tms to a raster source with a tiles array", async () => {
+      const style: StyleSpecification = {
+        version: 8,
+        sources: {
+          "raster-source": {
+            type: "raster",
+            tiles: ["https://example.com/{z}/{x}/{y}.png"],
+            scheme: "tms",
+          },
+        },
+        layers: [],
+      };
+
+      const plugin = new MapLibreStylePlugin(style);
+      const view = createMockView();
+      await plugin.init(view, mockViewContext);
+
+      expect(view.addSource).toHaveBeenCalledWith(
+        expect.objectContaining({ type: "raster-tile", tms: true }),
+      );
+    });
+
+    it("should not set tms for a raster source with the default scheme", async () => {
+      const style: StyleSpecification = {
+        version: 8,
+        sources: {
+          "raster-source": {
+            type: "raster",
+            tiles: ["https://example.com/{z}/{x}/{y}.png"],
+          },
+        },
+        layers: [],
+      };
+
+      const plugin = new MapLibreStylePlugin(style);
+      const view = createMockView();
+      await plugin.init(view, mockViewContext);
+
+      expect(view.addSource).toHaveBeenCalledWith(
+        expect.not.objectContaining({ tms: true }),
+      );
+    });
+
+    it("should pass scheme to TileJsonPlugin for a raster url source", async () => {
+      const style: StyleSpecification = {
+        version: 8,
+        sources: {
+          "raster-source": {
+            type: "raster",
+            url: "https://example.com/raster-tiles.json",
+            scheme: "tms",
+          },
+        },
+        layers: [],
+      };
+
+      const plugin = new MapLibreStylePlugin(style);
+      const view = createMockView();
+      await plugin.init(view, mockViewContext);
+
+      expect(mockTileJsonPluginAddSource).toHaveBeenCalledWith(
+        expect.objectContaining({ type: "raster-tile", scheme: "tms" }),
+      );
+    });
+
+    it("should not pass scheme for a vector source", async () => {
+      const style: StyleSpecification = {
+        version: 8,
+        sources: {
+          "vector-source": {
+            type: "vector",
+            tiles: ["https://example.com/{z}/{x}/{y}.pbf"],
+            scheme: "tms",
+          },
+        },
+        layers: [],
+      };
+
+      const plugin = new MapLibreStylePlugin(style);
+      const view = createMockView();
+      await plugin.init(view, mockViewContext);
+
+      expect(view.addSource).toHaveBeenCalledWith(
+        expect.not.objectContaining({ tms: true }),
+      );
+    });
+
     it("should call tileJsonPlugin.addSource for raster-dem TileJSON url sources", async () => {
       const style: StyleSpecification = {
         version: 8,

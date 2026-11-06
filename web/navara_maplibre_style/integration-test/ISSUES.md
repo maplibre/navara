@@ -97,12 +97,6 @@ The extrusions render once the scene has lights, which the harness adds
 - Cases: `hillshade-*/default`, `hillshade-accent-color/terrarium`,
   `hillshade-maxzoom/*`, `resampling/hillshade/default`.
 
-### Overzoomed GeoJSON lines are partially missing
-
-- `regressions/mapbox-gl-js#9009`: a GeoJSON source with `maxzoom: 10` is
-  viewed at z18.
-- Only part of the 20 px wide V-shaped line is drawn.
-
 ### `interpolate-hcl` (legacy `colorSpace: "hcl"`) yields a different color
 
 - `background-color/colorSpace-hcl`: Navara draws `(224, 38, 88)` and MapLibre
@@ -122,15 +116,6 @@ The extrusions render once the scene has lights, which the harness adds
 - `projection/globe/pole-cap`: a GeoJSON polygon spanning the eastern
   hemisphere up to 90°N, seen pitched from 85°N, is missing entirely.
 - The background reaches the pole, and MapLibre draws the fill there too.
-
-### A vector source's `scheme: "tms"` is ignored
-
-- `tms/tms` requests `{z}-{x}-{y}.tms.mvt` with XYZ rows, so it hits tiles the
-  fixture does not ship and renders nothing.
-- Verified: `MapLibreStylePlugin` never reads `scheme`, and the engine's
-  vector-tile source has no `tms` flag (`request_mvt_data` in
-  `crates/navara_mvt` always builds URLs with `tms: false`). Raster and
-  raster-dem sources already support it.
 
 ### Symbol text is never drawn
 
@@ -177,12 +162,6 @@ Both styles are valid for MapLibre, but `MapLibreStylePlugin` throws from
 but found number`). maplibre-gl-js never migrates at render time.
 - Likely fix: validate the original style, then migrate, and throw only on
   `severity` other than `"warning"`. Report the `migrate()` output upstream.
-
-### TileJSON without a `tilejson` field is rejected
-
-- `tilejson-bounds/overwrite-bounds`: `TileJsonPlugin: invalid or missing
-"tilejson" version field`, so the source and its layer are dropped.
-- MapLibre accepts such TileJSON.
 
 ## Packaging and docs
 
