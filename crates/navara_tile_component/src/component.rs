@@ -12,12 +12,12 @@ pub struct TileMeshMarker {
 
 /// GPU byte breakdown for a terrain tile mesh, split so the two contributions
 /// can be updated independently. `geometry` is measured from the mesh's GPU
-/// buffers when the mesh spawns. `drape` is the footprint of draping
-/// clamp-to-ground vectors onto this tile — the shared composite atlas plus one
-/// render target per live draped layer — reported from JS, which owns those
-/// lazily-allocated targets and knows the live count. Both scale with terrain
-/// subdivision past the vector maxZoom, which per-vector-tile accounting cannot
-/// see. The owning `TileCost.gpu_est` is kept equal to `geometry + drape`.
+/// buffers when the mesh spawns. `drape` is the composite atlas (once the tile
+/// is rendered) plus one render target per live draped layer, reported from
+/// JS, which owns those lazily-allocated targets. It starts at 0. Both scale
+/// with terrain subdivision past the vector maxZoom, which per-vector-tile
+/// accounting cannot see. The owning `TileCost.gpu_est` is kept equal to
+/// `geometry + drape`.
 #[derive(Debug, Default, Clone, Copy, Component)]
 pub struct TerrainTileGpuCost {
     pub geometry: u64,

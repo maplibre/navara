@@ -128,9 +128,10 @@ impl App {
         }
     }
 
-    /// Updates a terrain tile's drape render-target GPU footprint, measured on
-    /// the JS side where the `WebGLRenderTarget`s are lazily allocated (one per
-    /// live clamp-to-ground vector layer draped onto this tile). Preserves the
+    /// Updates a terrain tile's drape GPU footprint, measured on the JS side
+    /// where the `WebGLRenderTarget`s are lazily allocated (the composite atlas
+    /// once the tile is rendered, plus one per live clamp-to-ground vector
+    /// layer draped onto this tile). Preserves the
     /// mesh geometry estimate and re-derives `TileCost.gpu_est = geometry +
     /// drape`, so the memory ledger tracks drape memory that scales with terrain
     /// subdivision past the vector `maxZoom`. No-op if the tile was already

@@ -44,6 +44,7 @@ function makeFakeAtlas(): CompositeAtlas {
     color: tex("color"),
     attr: tex("attr"),
     normal: tex("normal"),
+    allocated: false,
     dispose: vi.fn(),
   };
 }
@@ -105,6 +106,28 @@ describe("TileTextureCompositor.acquire/release", () => {
     expect(compositor.cache.getEntry(1n)).toBeUndefined();
     expect(atlas.dispose).not.toHaveBeenCalled();
     expect(compositor.cache.pooledCount).toBe(1);
+  });
+});
+
+describe("TileTextureCompositor.isAtlasAllocated", () => {
+  it("is false until the composite pass renders into the atlas", () => {
+    const { compositor } = setup();
+    compositor.acquire(1n);
+    expect(compositor.isAtlasAllocated(1n)).toBe(false);
+
+    compositor.runCompositePassIfDirty(
+      1n,
+      { rasterCount: 0, vectorCount: 0, boundary: 2, slots: [] },
+      { hillshadeExaggeration: 1, watermask: null, colorMapTexture: null },
+      {
+        hasHillshade: false,
+        hasWater: false,
+        hasElevationHeatmap: false,
+        hasWatermask: false,
+      },
+    );
+
+    expect(compositor.isAtlasAllocated(1n)).toBe(true);
   });
 });
 

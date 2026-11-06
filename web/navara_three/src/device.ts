@@ -172,8 +172,8 @@ export function getCompositeAtlasSize(isMobile: boolean): number {
 /**
  * GPU cost hints for the memory ledger, matching the actual allocation sizes.
  * The composite atlas is 512² on both desktop and mobile (see
- * `getCompositeAtlasSize`), so with three MRT attachments each tile costs
- * ~3MB — the ledger must match reality or the map settles far too coarse.
+ * `getCompositeAtlasSize`), so with three MRT attachments each rendered tile
+ * costs ~3MB. The ledger must match reality or the map settles far too coarse.
  */
 export function getDefaultMemoryCostHints(
   inputs?: MemoryCostHintsInputs,

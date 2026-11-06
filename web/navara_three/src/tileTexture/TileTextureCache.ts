@@ -16,8 +16,8 @@ const DEV =
 // used to allocate and dispose a ~3MB MRT render target per terrain tile
 // swap. Keeping a few released atlases around lets the next acquire reuse
 // them. Kept small on purpose: pooled atlases are GPU memory the per-tile
-// ledger accounting does not see (each live tile is charged for its own
-// atlas at mesh-attach time, a pooled spare belongs to no tile).
+// ledger accounting does not see (a tile is charged for its atlas once the
+// atlas is allocated, a pooled spare belongs to no tile).
 const DEFAULT_MAX_POOLED_ATLASES = 4;
 
 export type TileTextureCacheOptions = {

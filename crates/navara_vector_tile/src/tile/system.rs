@@ -386,9 +386,8 @@ pub fn transfer_mesh(
 /// Neither the composite atlas nor the drape render targets are charged here:
 /// both are owned per *terrain* tile (not per vector tile) and scale with
 /// terrain subdivision past the vector `maxZoom`, which per-vector-tile
-/// accounting cannot see. The atlas is charged on the terrain tile in
-/// `attach_terrain_mesh_cost`; the drape render targets are reported from JS
-/// against `TerrainTileGpuCost.drape` (see `report_terrain_drape_gpu_bytes`).
+/// accounting cannot see. Both are reported from JS against
+/// `TerrainTileGpuCost.drape` (see `report_terrain_drape_gpu_bytes`).
 ///
 /// Billboard image atlases are also not charged here — they are allocated
 /// lazily on the JS side (images load after the tile finalizes) and are folded
