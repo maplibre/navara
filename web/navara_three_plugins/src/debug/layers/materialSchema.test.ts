@@ -13,7 +13,7 @@ const field = (key: string, name: string) =>
 describe("MATERIAL_SCHEMA", () => {
   it("is up to date with the Rust materials", () => {
     const script = fileURLToPath(
-      new URL("../../scripts/generate-material-schema.mjs", import.meta.url),
+      new URL("../../../scripts/generate-material-schema.mjs", import.meta.url),
     );
     expect(() =>
       execFileSync("node", [script, "--check"], { stdio: "pipe" }),

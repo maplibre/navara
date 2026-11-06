@@ -1,5 +1,5 @@
 /**
- * Debug tools page: every `@navaramap/three-debug` plugin on one shared
+ * Debug tools page: every debug plugin of `@navaramap/three-plugins` on one shared
  * panel, over a scene with terrain, imagery, vector tiles and 3D Tiles so
  * each profiler section has something to show. Press ` to hide the panel.
  */

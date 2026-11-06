@@ -3,7 +3,7 @@ import {
   DebugPanel,
   LayerDebuggerPlugin,
   ProfilerPlugin,
-} from "@navaramap/three-debug";
+} from "@navaramap/three-plugins";
 
 export type DebugTools = {
   panel: DebugPanel;

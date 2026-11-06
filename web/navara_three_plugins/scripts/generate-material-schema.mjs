@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /* global console, process */
-// Generates src/layers/materialSchema.generated.ts: every field a layer
+// Generates src/debug/layers/materialSchema.generated.ts: every field a layer
 // material accepts, with its kind, description, engine default and options.
 //
 // Sources (re-run `pnpm run generate:schema` after changing either):
@@ -25,7 +25,10 @@ const internalSrc = readFileSync(
   resolve(root, "crates/navara_material/src/appearance.rs"),
   "utf8",
 );
-const outFile = resolve(here, "../src/layers/materialSchema.generated.ts");
+const outFile = resolve(
+  here,
+  "../src/debug/layers/materialSchema.generated.ts",
+);
 
 /** Layer description key → [wasm struct, internal struct]. */
 const MATERIALS = {

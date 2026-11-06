@@ -152,16 +152,16 @@ the render target with new texture objects.
 and A as the roughness.** Writers store their material's own reflectance input
 there unconverted, so a model's metalness reaches readers as its F0 as is:
 
-| writer                                                               | B                                                                        | A                                                              |
-| -------------------------------------------------------------------- | ------------------------------------------------------------------------ | -------------------------------------------------------------- |
-| model / 3D Tiles glTF (`MeshStandard`/`Physical`)                    | real `metalnessFactor`                                                   | real `roughnessFactor`                                         |
-| polygon                                                              | `reflectivity` ref, **default 0**                                        | `roughness` ref, **default `GBUFFER_PHONG_ROUGHNESS`**         |
-| terrain tile, `useNormal` on                                         | `tileReflectivity`, **default 0**                                        | draped slot's roughness, **default `GBUFFER_PHONG_ROUGHNESS`** |
-| water (watermask sea, `water` polygon/model)                         | 0.02 (water's F0), whatever `reflectivity` says                          | `mss^(1/4)` of the wave slopes the normal leaves out           |
-| terrain tile, `useNormal` off (`MeshBasicMaterial`)                  | 0                                                                        | 1.0, and **RG is NaN** (no `normal` attribute)                 |
-| polyline, outline, sprite, SDF text, points, custom `ShaderMaterial` | 0                                                                        | 1.0                                                            |
-| any other Lambert/Basic/Phong                                        | 0 (three's `reflectivity` is an env-map weight, not an F0)               | 1.0                                                            |
-| any `transparent` material                                           | unchanged                                                                | **forced 1.0** (`NVR_BLENDED`)                                 |
+| writer                                                               | B                                                          | A                                                              |
+| -------------------------------------------------------------------- | ---------------------------------------------------------- | -------------------------------------------------------------- |
+| model / 3D Tiles glTF (`MeshStandard`/`Physical`)                    | real `metalnessFactor`                                     | real `roughnessFactor`                                         |
+| polygon                                                              | `reflectivity` ref, **default 0**                          | `roughness` ref, **default `GBUFFER_PHONG_ROUGHNESS`**         |
+| terrain tile, `useNormal` on                                         | `tileReflectivity`, **default 0**                          | draped slot's roughness, **default `GBUFFER_PHONG_ROUGHNESS`** |
+| water (watermask sea, `water` polygon/model)                         | 0.02 (water's F0), whatever `reflectivity` says            | `mss^(1/4)` of the wave slopes the normal leaves out           |
+| terrain tile, `useNormal` off (`MeshBasicMaterial`)                  | 0                                                          | 1.0, and **RG is NaN** (no `normal` attribute)                 |
+| polyline, outline, sprite, SDF text, points, custom `ShaderMaterial` | 0                                                          | 1.0                                                            |
+| any other Lambert/Basic/Phong                                        | 0 (three's `reflectivity` is an env-map weight, not an F0) | 1.0                                                            |
+| any `transparent` material                                           | unchanged                                                  | **forced 1.0** (`NVR_BLENDED`)                                 |
 
 B is a scalar and nothing derives a dielectric's 0.04 or a metal's tint from
 it: metalness 0 does not reflect and 1 is an untinted mirror. B below 0.01
@@ -386,7 +386,7 @@ Both are pointed at the copy targets every frame.
   unwritten texel decodes to the camera-facing (0, 0, 1). A globe that
   writes no normals leaves the drape shaded with that. With
   `NVR_DRAPE_ELLIPSOID_NORMAL` (set by `setDrapeGroundNormals(material,
-  false)`), the ellipsoid normal at the ground point is used instead and the
+false)`), the ellipsoid normal at the ground point is used instead and the
   globe-normal copy is not read.
 - **Position** — `vViewPosition` is redefined to the ground point, so light
   directions and CSM cascade selection use it.
@@ -402,7 +402,7 @@ Both are pointed at the copy targets every frame.
 `DrapedMesh` reports `castShadow` as `false` while draped (an own accessor),
 since the volume would cast its own shape.
 
-Point and spot light *shadows* and an `envMap` still read the volume's
+Point and spot light _shadows_ and an `envMap` still read the volume's
 position and reintroduce the artefact. Three's `fog` is unused here
 (atmospheric haze is the screen-space `aerialPerspective` effect, which is
 per-pixel and therefore safe).
@@ -502,8 +502,8 @@ reduces gradient banding and fades with the sky.
 
 ## 12. Instrumentation hooks
 
-`ThreeView` and `ViewContext` expose what `@navaramap/three-debug`'s
-profiler reads; nothing in the pipeline depends on them.
+`ThreeView` and `ViewContext` expose what the `ProfilerPlugin` debug tool in
+`@navaramap/three-plugins` reads; nothing in the pipeline depends on them.
 
 - **`renderer.info` is reset by the main loop**, as its first statement each
   tick (`info.autoReset` is off). Counters read later in the tick, from a
