@@ -63,7 +63,8 @@ function makeTile({
     // The MRT composite pass runs only when dirty, and _onBeforeRender returns
     // right after the vector bake when it isn't.
     cache: { isDirty: vi.fn().mockReturnValue(false) },
-    isAtlasAllocated: vi.fn(() => allocated),
+    // A tile without hillshade: color + attr attachments.
+    atlasGpuBytes: vi.fn(() => (allocated ? atlasSize * atlasSize * 4 * 2 : 0)),
     runCompositePassIfDirty: vi.fn(() => {
       allocated = true;
       return true;
@@ -111,12 +112,12 @@ function makeTile({
 }
 
 const RT_BYTES = 512 * 512 * 4;
-const ATLAS_BYTES = 512 * 512 * 4 * 3;
+const ATLAS_BYTES = 512 * 512 * 4 * 2;
 // A smaller 256² atlas / drape RT (a quarter of the 512² GPU cost), used to
 // exercise the sizing math at a non-default side length. NOTE: the real mobile
 // atlas is 512², same as desktop — 256² here is just a smaller parametric size.
 const RT_BYTES_SMALL = 256 * 256 * 4;
-const ATLAS_BYTES_SMALL = 256 * 256 * 4 * 3;
+const ATLAS_BYTES_SMALL = 256 * 256 * 4 * 2;
 
 function renderTargetCount(tile: TileMesh): number {
   return (

@@ -60,6 +60,7 @@ import { deriveCompositeFeatures } from "../../material/enhancer/tileComposite";
 import type { CustomObject3DEventMap } from "../../object3DEvent";
 import type { TextureOptions } from "../../textures";
 import {
+  atlasUniforms,
   DEFAULT_ELEVATION_HEATMAP_LOG_BOUNDARY,
   planSlots,
   type CompositeFeatures,
@@ -96,22 +97,9 @@ import { VectorDrapeResolver } from "./vectorDrapeResolver";
 
 export type TileMaterial = MeshBasicMaterial | MeshLambertMaterial;
 
-/** The MRT composite atlas has three RGBA attachments (color, attr, normal). */
-const ATLAS_ATTACHMENTS = 3;
 /** GPU bytes for one drape render target at side length `size`: size² RGBA. */
 function drapeRtBytes(size: number): number {
   return size * size * 4;
-}
-/** GPU bytes for the per-tile composite atlas at side length `size`: one MRT
- * with three size² RGBA attachments. A terrain tile acquires this atlas in its
- * constructor, but three allocates it only on the first composite pass, so the
- * drape report includes it only from then on (see
- * `reportDrapeGpuBytesIfChanged`). The side length is 512² on both desktop and
- * mobile (so ~3MB per tile with three attachments) and flows in from the
- * compositor, which is the SAME source of truth `getDefaultMemoryCostHints`
- * feeds to the Rust reservation estimate. */
-function compositeAtlasBytes(size: number): number {
-  return size * size * 4 * ATLAS_ATTACHMENTS;
 }
 
 export class TileMesh
@@ -149,12 +137,11 @@ export class TileMesh
 
   private compositor: TileTextureCompositor;
 
-  // Drape RT side length + atlas byte cost, read from the compositor (the
-  // single source of truth shared with the Rust cost hints) in the constructor.
-  // Per-instance rather than module constants because the compositor size is a
-  // runtime value (512² on both desktop and mobile today, but configurable).
+  // Drape RT side length, read from the compositor (the single source of truth
+  // shared with the Rust cost hints) in the constructor. Per-instance rather
+  // than a module constant because the compositor size is a runtime value
+  // (512² on both desktop and mobile today, but configurable).
   private readonly drapeRtSize: number;
-  private readonly atlasBytes: number;
   /** Current `Mesh::fill_quadrants` mask (see `setFillQuadrants`). */
   private fillQuadrants = 0;
   // Drape footprint (bytes) last reported to the memory ledger, so a report
@@ -185,7 +172,6 @@ export class TileMesh
     // Device-dependent atlas / drape RT sizing, sourced from the compositor so
     // it always matches the ledger cost hints (see device.ts).
     this.drapeRtSize = this.compositor.size;
-    this.atlasBytes = compositeAtlasBytes(this.compositor.size);
 
     // Acquire the per-tile composite atlas from the compositor. Pairing the
     // acquire with the mesh keeps the atlas lifecycle tied to the tile and lets
@@ -262,7 +248,8 @@ export class TileMesh
   /**
    * Report the tile's drape GPU footprint (composite atlas + vector and baked-raster
    * drape render targets) to the memory ledger when it changed. The atlas counts once
-   * it is allocated and stays counted for the tile's lifetime regardless of draping.
+   * it is allocated and stays counted for the tile's lifetime regardless of draping;
+   * it grows by the normal attachment while the tile has hillshade.
    * The render targets on top of it scale with terrain subdivision past the layers'
    * maxZoom — a cost per-source-tile accounting cannot see.
    */
@@ -270,10 +257,9 @@ export class TileMesh
     const rtCount =
       this.vectorDrape.liveRenderTargetCount() +
       this.rasterDrape.liveRenderTargetCount();
-    const atlasBytes = this.compositor.isAtlasAllocated(this.handle)
-      ? this.atlasBytes
-      : 0;
-    const bytes = atlasBytes + rtCount * drapeRtBytes(this.drapeRtSize);
+    const bytes =
+      this.compositor.atlasGpuBytes(this.handle) +
+      rtCount * drapeRtBytes(this.drapeRtSize);
     if (bytes === this.reportedDrapeGpuBytes) return;
     // Only the mesh currently registered for this position-stable handle may
     // report. During a terrain mesh replacement the outgoing mesh briefly
@@ -889,13 +875,11 @@ export class TileMesh
     const maxTextures = this.maxTextures;
 
     // Bind the compositor's atlas outputs as TileMesh-visible uniforms so the
-    // slim shader can sample them. Atlas Textures are created once per tile
-    // and persist across composite passes — `needsUpdate` is flipped by the
-    // compositor when a new pass writes to them.
-    const atlasOutputs = this.compositor.acquireOutputs(this.handle);
-    m.userData.uColorAtlas = { value: atlasOutputs.color };
-    m.userData.uAttrAtlas = { value: atlasOutputs.attr };
-    m.userData.uNormalAtlas = { value: atlasOutputs.normal };
+    // slim shader can sample them.
+    Object.assign(
+      m.userData,
+      atlasUniforms(this.compositor.acquireOutputs(this.handle)),
+    );
 
     m.customProgramCacheKey = () =>
       `TILE${this.numTexturizedVector}${JSON.stringify(this.computeFeatures())}`;

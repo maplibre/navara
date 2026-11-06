@@ -3,7 +3,7 @@ import { describe, it, expect, vi } from "vitest";
 import { TileTextureCache } from "./TileTextureCache";
 import type { AtlasFactory, CompositeAtlas } from "./types";
 
-function makeFakeAtlas(): CompositeAtlas {
+function makeFakeAtlas(withNormal: boolean): CompositeAtlas {
   // Minimal stand-ins for Texture / WebGLRenderTarget — the cache only checks
   // identity (acquire returns the same Texture instance) and lifecycle.
   const tex = (name: string) =>
@@ -12,14 +12,16 @@ function makeFakeAtlas(): CompositeAtlas {
     target: { dispose: vi.fn() } as unknown as CompositeAtlas["target"],
     color: tex("color"),
     attr: tex("attr"),
-    normal: tex("normal"),
+    normal: withNormal ? tex("normal") : null,
     allocated: false,
     dispose: vi.fn(),
   };
 }
 
 function makeCache(maxPooled = 0) {
-  const factory = vi.fn<AtlasFactory>(() => makeFakeAtlas());
+  const factory = vi.fn<AtlasFactory>((_size, withNormal) =>
+    makeFakeAtlas(withNormal),
+  );
   const cache = new TileTextureCache({
     size: 512,
     atlasFactory: factory,
@@ -114,7 +116,7 @@ describe("TileTextureCache atlas pooling", () => {
     expect(reasons?.has("hillshade")).toBe(true);
   });
 
-  it("disposes released atlases once the pool is full", () => {
+  it("disposes the oldest pooled atlas once the pool is full", () => {
     const { cache } = makeCache(1);
     cache.acquire(1n);
     cache.acquire(2n);
@@ -127,8 +129,10 @@ describe("TileTextureCache atlas pooling", () => {
     expect(cache.pooledCount).toBe(1);
 
     cache.release(2n);
-    expect(e2.atlas.dispose).toHaveBeenCalledTimes(1);
+    expect(e1.atlas.dispose).toHaveBeenCalledTimes(1);
+    expect(e2.atlas.dispose).not.toHaveBeenCalled();
     expect(cache.pooledCount).toBe(1);
+    expect(cache.acquire(3n).color).toBe(e2.atlas.color);
   });
 
   it("disposeAll drains the pool", () => {
@@ -143,6 +147,145 @@ describe("TileTextureCache atlas pooling", () => {
     cache.disposeAll();
     expect(atlas.dispose).toHaveBeenCalledTimes(1);
     expect(cache.pooledCount).toBe(0);
+  });
+});
+
+/** Mark a handle's atlas as rendered, as the composite pass does. */
+function rendered(cache: TileTextureCache, handle: bigint) {
+  const entry = cache.getEntry(handle);
+  if (!entry) throw new Error("expected entry to exist");
+  entry.atlas.allocated = true;
+}
+
+/** What `TileTextureCompositor.runCompositePassIfDirty` does to the atlas. */
+function bake(cache: TileTextureCache, handle: bigint, hillshade: boolean) {
+  cache.setNormalAttachment(handle, hillshade);
+  rendered(cache, handle);
+}
+
+describe("TileTextureCache normal attachment", () => {
+  it("creates atlases without the normal attachment", () => {
+    const { cache, factory } = makeCache();
+    const out = cache.acquire(1n);
+
+    expect(factory).toHaveBeenCalledWith(512, false);
+    expect(cache.getEntry(1n)?.atlas.normal).toBeNull();
+    expect(out.normal).toBeNull();
+  });
+
+  it("swaps in an atlas with the normal attachment and back, updating the outputs in place", () => {
+    const { cache, factory } = makeCache();
+    const out = cache.acquire(1n);
+    const small = cache.getEntry(1n)?.atlas;
+    if (!small) throw new Error("expected entry to exist");
+
+    expect(cache.setNormalAttachment(1n, true)).toBe(true);
+    expect(factory).toHaveBeenLastCalledWith(512, true);
+    const big = cache.getEntry(1n)?.atlas;
+    if (!big?.normal) throw new Error("expected an atlas with normals");
+    // Every holder of the outputs follows the swap.
+    expect(cache.getOutputs(1n)).toBe(out);
+    expect(out).toMatchObject({
+      color: big.color,
+      attr: big.attr,
+      normal: big.normal,
+    });
+    // Pooling is disabled here, so the replaced atlas is freed.
+    expect(small.dispose).toHaveBeenCalledOnce();
+
+    expect(cache.setNormalAttachment(1n, true)).toBe(false);
+
+    expect(cache.setNormalAttachment(1n, false)).toBe(true);
+    expect(cache.getEntry(1n)?.atlas.normal).toBeNull();
+    expect(out.normal).toBeNull();
+    expect(big.dispose).toHaveBeenCalledOnce();
+  });
+
+  it("takes a pooled atlas of the requested shape and pools the replaced one", () => {
+    const { cache, factory } = makeCache(3);
+    cache.acquire(1n);
+    cache.acquire(2n);
+    cache.setNormalAttachment(1n, true);
+    rendered(cache, 1n);
+    rendered(cache, 2n);
+    const withNormal = cache.getEntry(1n)?.atlas;
+    cache.release(1n);
+    cache.release(2n);
+    expect(cache.pooledCount).toBe(2);
+
+    // The most recently pooled atlas has no normals; the swap finds the one
+    // that does deeper in the pool instead of creating another.
+    cache.acquire(3n);
+    const plain = cache.getEntry(3n)?.atlas;
+    expect(plain?.normal).toBeNull();
+    expect(cache.setNormalAttachment(3n, true)).toBe(true);
+    expect(cache.getEntry(3n)?.atlas).toBe(withNormal);
+    expect(factory).toHaveBeenCalledTimes(3);
+    expect(cache.pooledCount).toBe(1);
+    expect(plain?.dispose).not.toHaveBeenCalled();
+  });
+
+  it("disposes a never-rendered atlas it replaces instead of pooling it", () => {
+    const { cache } = makeCache(2);
+    cache.acquire(1n);
+    const unrendered = cache.getEntry(1n)?.atlas;
+
+    cache.setNormalAttachment(1n, true);
+
+    expect(unrendered?.dispose).toHaveBeenCalledOnce();
+    expect(cache.pooledCount).toBe(0);
+  });
+
+  it("keeps reusing released atlases while every tile has hillshade", () => {
+    const { cache, factory } = makeCache(4);
+    const live: bigint[] = [];
+    for (let h = 1n; h <= 10n; h++) {
+      cache.acquire(h);
+      live.push(h);
+    }
+    for (const h of live) bake(cache, h, true);
+    const created = factory.mock.calls.length;
+
+    // Pan: one tile leaves, one enters and is baked.
+    for (let h = 11n; h <= 30n; h++) {
+      cache.release(live.shift() ?? 0n);
+      cache.acquire(h);
+      bake(cache, h, true);
+      live.push(h);
+    }
+
+    expect(factory).toHaveBeenCalledTimes(created);
+  });
+
+  it("refills the pool with the shape tiles release after hillshade goes away", () => {
+    const { cache, factory } = makeCache(4);
+    const live: bigint[] = [];
+    for (let h = 1n; h <= 8n; h++) {
+      cache.acquire(h);
+      bake(cache, h, true);
+      live.push(h);
+    }
+    for (const h of live.splice(0, 4)) cache.release(h);
+    for (const h of live) bake(cache, h, false);
+
+    // Released atlases without normals push the old ones out of the pool,
+    // so the factory runs only until the pool has turned over.
+    let calls = 0;
+    for (let h = 9n; h <= 20n; h++) {
+      cache.release(live.shift() ?? 0n);
+      const before = factory.mock.calls.length;
+      cache.acquire(h);
+      bake(cache, h, false);
+      live.push(h);
+      if (h > 12n) calls += factory.mock.calls.length - before;
+    }
+
+    expect(calls).toBe(0);
+  });
+
+  it("is a no-op for unknown handles", () => {
+    const { cache } = makeCache();
+    expect(cache.setNormalAttachment(999n, true)).toBe(false);
   });
 });
 

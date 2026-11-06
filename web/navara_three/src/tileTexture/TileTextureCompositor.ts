@@ -65,17 +65,24 @@ const FIRST_SOURCE_STENCIL_REF = 0xff;
 export const DRAPE_BAKE_SAMPLES = 4;
 
 /**
- * Default atlas factory: a single MRT WebGLRenderTarget (count=3) sized
- * `size × size` with RGBA8 textures. All three attachments share format —
- * three.js's MRT API doesn't allow per-attachment formats — so we trade some
- * attr-channel precision for one draw call to populate color/attr/normal.
+ * GPU bytes of a composite atlas at side length `size`: one size² RGBA8
+ * attachment each for color and attr, plus normal when the atlas has it.
+ */
+export function compositeAtlasBytes(size: number, withNormal: boolean): number {
+  return size * size * 4 * (withNormal ? 3 : 2);
+}
+
+/**
+ * Default atlas factory: a single MRT WebGLRenderTarget sized `size × size`
+ * with RGBA8 textures — color and attr, plus normal when `withNormal` — that
+ * one draw call populates.
  */
 export const defaultAtlasFactory =
   (renderer: WebGLRenderer | null): AtlasFactory =>
-  (size: number): CompositeAtlas => {
+  (size: number, withNormal: boolean): CompositeAtlas => {
     void renderer;
     const target = new WebGLRenderTarget(size, size, {
-      count: 3,
+      count: withNormal ? 3 : 2,
       format: RGBAFormat,
       type: UnsignedByteType,
       depthBuffer: false,
@@ -91,11 +98,36 @@ export const defaultAtlasFactory =
       target,
       color,
       attr,
-      normal,
+      normal: normal ?? null,
       allocated: false,
       dispose: () => target.dispose(),
     };
   };
+
+/**
+ * Main TileMesh material uniforms for a handle's atlas outputs. They read
+ * `outputs` on every upload, so the material follows the atlas swaps of
+ * `TileTextureCache.setNormalAttachment`.
+ */
+export function atlasUniforms(outputs: CompositeOutputs) {
+  return {
+    uColorAtlas: {
+      get value() {
+        return outputs.color;
+      },
+    },
+    uAttrAtlas: {
+      get value() {
+        return outputs.attr;
+      },
+    },
+    uNormalAtlas: {
+      get value() {
+        return outputs.normal;
+      },
+    },
+  };
+}
 
 export type TileTextureCompositorOptions = {
   renderer: WebGLRenderer;
@@ -313,9 +345,13 @@ export class TileTextureCompositor {
     this.cache.markDirty(handle, reason);
   }
 
-  /** Whether the handle's atlas holds GPU memory (see `CompositeAtlas.allocated`). */
-  isAtlasAllocated(handle: TileHandle): boolean {
-    return this.cache.getEntry(handle)?.atlas.allocated ?? false;
+  /** GPU bytes the handle's atlas holds: 0 while it has never been rendered
+   * (see `CompositeAtlas.allocated`). */
+  atlasGpuBytes(handle: TileHandle): number {
+    const atlas = this.cache.getEntry(handle)?.atlas;
+    return atlas?.allocated
+      ? compositeAtlasBytes(this.size, atlas.normal !== null)
+      : 0;
   }
 
   // ---------------------------------------------------------------------
@@ -671,6 +707,10 @@ export class TileTextureCompositor {
    *   attr   attachment  = water + texturized-layer flags + winning slot idx
    *   normal attachment  = hillshade normal (or neutral)
    *
+   * The atlas has the normal attachment only while a hillshade layer feeds
+   * it (see `TileTextureCache.setNormalAttachment`). Without it the shader's
+   * location 2 has no draw buffer, and WebGL2 discards that output.
+   *
    * Returns true when a render happened.
    */
   runCompositePassIfDirty(
@@ -682,6 +722,7 @@ export class TileTextureCompositor {
     if (!this.cache.isDirty(handle)) return false;
     const entry = this.cache.getEntry(handle);
     if (!entry) return false;
+    this.cache.setNormalAttachment(handle, features.hasHillshade);
     // Both branches below render into the atlas.
     entry.atlas.allocated = true;
 
@@ -703,7 +744,7 @@ export class TileTextureCompositor {
       this.renderer.setClearColor(prevClear, prevClearAlpha);
       entry.atlas.color.needsUpdate = true;
       entry.atlas.attr.needsUpdate = true;
-      entry.atlas.normal.needsUpdate = true;
+      if (entry.atlas.normal) entry.atlas.normal.needsUpdate = true;
       this.cache.consumeDirty(handle);
       return true;
     }
@@ -723,7 +764,7 @@ export class TileTextureCompositor {
 
     entry.atlas.color.needsUpdate = true;
     entry.atlas.attr.needsUpdate = true;
-    entry.atlas.normal.needsUpdate = true;
+    if (entry.atlas.normal) entry.atlas.normal.needsUpdate = true;
 
     this.cache.consumeDirty(handle);
     return true;

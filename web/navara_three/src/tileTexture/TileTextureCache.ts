@@ -13,7 +13,7 @@ const DEV =
   typeof import.meta !== "undefined" && !!(import.meta as ImportMeta).env?.DEV;
 
 // Every atlas is the same size and format, but tile churn during pan/zoom
-// used to allocate and dispose a ~3MB MRT render target per terrain tile
+// used to allocate and dispose a 2–3MB MRT render target per terrain tile
 // swap. Keeping a few released atlases around lets the next acquire reuse
 // them. Kept small on purpose: pooled atlases are GPU memory the per-tile
 // ledger accounting does not see (a tile is charged for its atlas once the
@@ -23,7 +23,7 @@ const DEFAULT_MAX_POOLED_ATLASES = 4;
 export type TileTextureCacheOptions = {
   /** Side length (in pixels) of the composite render targets. */
   size: number;
-  /** Builds the MRT trio. Injected so unit tests pass fakes. */
+  /** Builds the MRT atlas. Injected so unit tests pass fakes. */
   atlasFactory: AtlasFactory;
   /** Max spare atlases kept for reuse instead of disposed. 0 disables pooling. */
   maxPooled?: number;
@@ -59,10 +59,14 @@ export class TileTextureCache {
   acquire(handle: TileHandle): CompositeOutputs {
     let entry = this.entries.get(handle);
     if (!entry) {
-      const atlas = this.pool.pop() ?? this.opts.atlasFactory(this.opts.size);
+      // Any pooled atlas will do: the first composite pass gives it the
+      // tile's shape (see `setNormalAttachment`) before rendering into it.
+      const atlas =
+        this.pool.pop() ?? this.opts.atlasFactory(this.opts.size, false);
       entry = {
         handle,
         atlas,
+        outputs: { color: atlas.color, attr: atlas.attr, normal: atlas.normal },
         refCount: 0,
         dirty: new Set<DirtyReason>([
           "material",
@@ -75,11 +79,7 @@ export class TileTextureCache {
       this.entries.set(handle, entry);
     }
     entry.refCount++;
-    return {
-      color: entry.atlas.color,
-      attr: entry.atlas.attr,
-      normal: entry.atlas.normal,
-    };
+    return entry.outputs;
   }
 
   /**
@@ -103,13 +103,53 @@ export class TileTextureCache {
       );
     }
     if (entry.refCount <= 0) {
-      if (this.pool.length < this.maxPooled) {
-        this.pool.push(entry.atlas);
-      } else {
-        entry.atlas.dispose();
-      }
+      this.recycle(entry.atlas);
       this.entries.delete(handle);
     }
+  }
+
+  /**
+   * Give the handle's atlas a normal attachment iff `withNormal`, replacing
+   * the atlas (with a pooled one of that shape when there is one) when it has
+   * the other shape. The replacement starts with undefined contents, so call
+   * this only right before rendering the whole atlas. The entry's outputs
+   * switch to the new textures in place. A replaced atlas that was never
+   * rendered is disposed rather than pooled: it holds no GPU memory, and
+   * pooling it would push out a rendered one. Returns whether the atlas
+   * changed.
+   */
+  setNormalAttachment(handle: TileHandle, withNormal: boolean): boolean {
+    const entry = this.entries.get(handle);
+    if (!entry || (entry.atlas.normal !== null) === withNormal) return false;
+    const previous = entry.atlas;
+    const index = this.pool.findIndex(
+      (atlas) => (atlas.normal !== null) === withNormal,
+    );
+    const atlas =
+      index >= 0
+        ? this.pool.splice(index, 1)[0]
+        : this.opts.atlasFactory(this.opts.size, withNormal);
+    entry.atlas = atlas;
+    entry.outputs.color = atlas.color;
+    entry.outputs.attr = atlas.attr;
+    entry.outputs.normal = atlas.normal;
+    if (previous.allocated) {
+      this.recycle(previous);
+    } else {
+      previous.dispose();
+    }
+    return true;
+  }
+
+  /** Pool an atlas no tile uses any more. A full pool disposes its oldest
+   * atlas instead, so the pool follows the shape tiles currently release. */
+  private recycle(atlas: CompositeAtlas): void {
+    if (this.maxPooled === 0) {
+      atlas.dispose();
+      return;
+    }
+    if (this.pool.length >= this.maxPooled) this.pool.shift()?.dispose();
+    this.pool.push(atlas);
   }
 
   /** Mark an entry dirty for a given reason. No-op if handle isn't tracked. */
@@ -150,13 +190,7 @@ export class TileTextureCache {
    * constructor already acquired the entry).
    */
   getOutputs(handle: TileHandle): CompositeOutputs | undefined {
-    const entry = this.entries.get(handle);
-    if (!entry) return undefined;
-    return {
-      color: entry.atlas.color,
-      attr: entry.atlas.attr,
-      normal: entry.atlas.normal,
-    };
+    return this.entries.get(handle)?.outputs;
   }
 
   /** Iterate all live entries. Used by compositor.update(). */

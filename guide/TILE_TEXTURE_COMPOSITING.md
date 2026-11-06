@@ -15,7 +15,7 @@ Every terrain tile can carry several overlays at once. Compositing them **per
 fragment, every frame** would cost N texture lookups for each pixel of every
 tile. Instead the overlays are baked **once, off-screen**, into a small per-tile
 atlas whenever something changes; the terrain's main shader then samples just
-that atlas (3 lookups) no matter how many overlays the tile has.
+that atlas (2–3 lookups) no matter how many overlays the tile has.
 
 So two shaders are involved, and the rest of this document follows one tile's
 overlays through them, end to end:
@@ -23,7 +23,7 @@ overlays through them, end to end:
 - **Composite pass** — an off-screen full-screen-quad pass that bakes N source
   textures into the tile's MRT atlas. Runs only when the tile is _dirty_.
 - **Main TileMesh shader** — the on-screen terrain material. Samples the atlas's
-  three attachments once per fragment and applies lighting / water / picking.
+  attachments once per fragment and applies lighting / water / picking.
 
 ## The pipeline
 
@@ -397,14 +397,27 @@ factory into `createCompositeLayerEnhancers()`. Nothing else changes.
 
 ### What the bake produces
 
-The atlas is one `WebGLRenderTarget` with three RGBA8 attachments (512×512),
-owned per tile by `TileTextureCache`. The single quad draw writes all three:
+The atlas is one `WebGLRenderTarget` with RGBA8 attachments (512×512), owned
+per tile by `TileTextureCache`. The single quad draw writes all of them:
 
 | Attachment | Channels | Meaning |
 | --- | --- | --- |
 | `color` | rgba | Alpha-over composited diffuse (last opaque writer wins) |
 | `attr` | r / g / b / a | `isWater` / `isTexturized` / `0` / `(winningSlot+1)/255` |
 | `normal` | rgb / a | Hillshade normal in `[0,1]` / `1` when present else `0` |
+
+Only the hillshade branch of the main shader reads `normal`, so the atlas has
+that attachment only while a hillshade layer feeds the bake (2 MB at 512²
+instead of 3 MB). Without it, the tile's `normal` output is `null`, which three
+binds as an all-zero texture (`a = 0`, as if no hillshade slot won), and the
+composite shader's `normal` output (location 2) has no draw buffer, so WebGL2
+discards it. When the bake's feature set gains or loses hillshade,
+`runCompositePassIfDirty` first has the cache swap the atlas for one of the
+other shape (a pooled one when available) and then bakes it in full. The
+cache's outputs object for the tile switches to the new textures in place, and
+the main material's atlas uniforms (`atlasUniforms`) read that object on every
+upload, so every mesh holding the handle follows the swap. The atlas pool keeps
+the most recently released atlases of either shape.
 
 That `attr.a` is how the absolute winning slot survives into the main shader,
 and `attr.g` is how raster and vector pixels stay distinguishable — both used in
@@ -419,7 +432,7 @@ the interpolated `attr.r` / `attr.g` flags would no longer describe the slot
 ## 5. Sampling on screen
 
 The terrain's main shader (injected via `material/macro/tileShader.ts`) is now
-thin: it samples the three atlas attachments once at `vOrigUv` and reads
+thin: it samples each atlas attachment it needs once at `vOrigUv` and reads
 per-slot uniforms by the decoded winner instead of looping over every slot.
 
 - **Color** — `color` is composited over the base via a premultiplied "over".
@@ -507,7 +520,8 @@ sequenceDiagram
 Dirty reasons are coalesced per tile (`DirtyReason`: `material`,
 `texture-binding`, `vector-revision`, `raster-revision`, `hillshade`) so one bake services many
 changes, and the atlas Textures persist across passes — only `needsUpdate` flips
-when a new bake overwrites them.
+when a new bake overwrites them, except when the tile gains or loses hillshade
+and the atlas is swapped (see [What the bake produces](#what-the-bake-produces)).
 
 ## Quantized-mesh and watermask
 

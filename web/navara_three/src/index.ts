@@ -1526,8 +1526,8 @@ export default class ThreeView<
     );
 
     // Override the Rust CostHints defaults with sizes derived from this
-    // device's actual composite-atlas dimensions (512² with three MRT
-    // attachments, ~3MB per tile) so the ledger's per-tile GPU estimate matches.
+    // device's actual composite-atlas dimensions (512² with two MRT
+    // attachments, ~2MB per tile) so the ledger's per-tile GPU estimate matches.
     const costHints = getDefaultMemoryCostHints({ isMobile: mobileOptimized });
     this._core.setMemoryCostHints(
       costHints.atlasTileBytes,

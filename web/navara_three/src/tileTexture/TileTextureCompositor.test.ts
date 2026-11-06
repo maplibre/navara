@@ -11,7 +11,9 @@ import { TexturizedSceneByTileCoordinates } from "../scene";
 import { createTestTileHandler } from "../test-utils/engine";
 
 import {
+  atlasUniforms,
   DRAPE_BAKE_SAMPLES,
+  defaultAtlasFactory,
   TileTextureCompositor,
 } from "./TileTextureCompositor";
 import type { AtlasFactory, CompositeAtlas } from "./types";
@@ -36,20 +38,21 @@ function makeRenderer() {
   return renderer;
 }
 
-function makeFakeAtlas(): CompositeAtlas {
+function makeFakeAtlas(withNormal: boolean): CompositeAtlas {
   const tex = (n: string) =>
     ({ name: n, needsUpdate: false }) as unknown as CompositeAtlas["color"];
   return {
     target: { dispose: vi.fn() } as unknown as CompositeAtlas["target"],
     color: tex("color"),
     attr: tex("attr"),
-    normal: tex("normal"),
+    normal: withNormal ? tex("normal") : null,
     allocated: false,
     dispose: vi.fn(),
   };
 }
 
-const fakeFactory: AtlasFactory = () => makeFakeAtlas();
+const fakeFactory: AtlasFactory = (_size, withNormal) =>
+  makeFakeAtlas(withNormal);
 
 function setup() {
   const renderer = makeRenderer();
@@ -109,25 +112,76 @@ describe("TileTextureCompositor.acquire/release", () => {
   });
 });
 
-describe("TileTextureCompositor.isAtlasAllocated", () => {
-  it("is false until the composite pass renders into the atlas", () => {
+describe("defaultAtlasFactory", () => {
+  it("creates color and attr attachments, plus normal only when asked", () => {
+    const factory = defaultAtlasFactory(null);
+
+    const plain = factory(64, false);
+    expect(plain.target.textures).toEqual([plain.color, plain.attr]);
+    expect(plain.normal).toBeNull();
+
+    const withNormal = factory(64, true);
+    expect(withNormal.target.textures).toEqual([
+      withNormal.color,
+      withNormal.attr,
+      withNormal.normal,
+    ]);
+  });
+});
+
+describe("TileTextureCompositor atlas accounting", () => {
+  const plan = { rasterCount: 0, vectorCount: 0, boundary: 2, slots: [] };
+  const globals = {
+    hillshadeExaggeration: 1,
+    watermask: null,
+    colorMapTexture: null,
+  };
+  const features = (hasHillshade: boolean) => ({
+    hasHillshade,
+    hasWater: false,
+    hasElevationHeatmap: false,
+    hasWatermask: false,
+  });
+
+  it("charges no bytes until the composite pass renders into the atlas", () => {
     const { compositor } = setup();
     compositor.acquire(1n);
-    expect(compositor.isAtlasAllocated(1n)).toBe(false);
+    expect(compositor.atlasGpuBytes(1n)).toBe(0);
 
-    compositor.runCompositePassIfDirty(
-      1n,
-      { rasterCount: 0, vectorCount: 0, boundary: 2, slots: [] },
-      { hillshadeExaggeration: 1, watermask: null, colorMapTexture: null },
-      {
-        hasHillshade: false,
-        hasWater: false,
-        hasElevationHeatmap: false,
-        hasWatermask: false,
-      },
-    );
+    compositor.runCompositePassIfDirty(1n, plan, globals, features(false));
 
-    expect(compositor.isAtlasAllocated(1n)).toBe(true);
+    // color + attr, 512² RGBA8 each.
+    expect(compositor.atlasGpuBytes(1n)).toBe(2 * 512 * 512 * 4);
+  });
+
+  it("adds the normal attachment while the tile has hillshade, and drops it after", () => {
+    const { compositor, renderer } = setup();
+    const out = compositor.acquire(1n);
+
+    compositor.runCompositePassIfDirty(1n, plan, globals, features(true));
+    const atlas = compositor.cache.getEntry(1n)?.atlas;
+    expect(atlas?.normal).not.toBeNull();
+    expect(out.normal).toBe(atlas?.normal);
+    expect(renderer.setRenderTarget).toHaveBeenCalledWith(atlas?.target);
+    expect(compositor.atlasGpuBytes(1n)).toBe(3 * 512 * 512 * 4);
+
+    compositor.markDirty(1n, "material");
+    compositor.runCompositePassIfDirty(1n, plan, globals, features(false));
+    expect(compositor.cache.getEntry(1n)?.atlas.normal).toBeNull();
+    expect(compositor.atlasGpuBytes(1n)).toBe(2 * 512 * 512 * 4);
+  });
+
+  it("keeps material uniforms on the live atlas across a swap", () => {
+    const { compositor } = setup();
+    const uniforms = atlasUniforms(compositor.acquire(1n));
+    expect(uniforms.uNormalAtlas.value).toBeNull();
+
+    compositor.runCompositePassIfDirty(1n, plan, globals, features(true));
+
+    const atlas = compositor.cache.getEntry(1n)?.atlas;
+    expect(uniforms.uColorAtlas.value).toBe(atlas?.color);
+    expect(uniforms.uAttrAtlas.value).toBe(atlas?.attr);
+    expect(uniforms.uNormalAtlas.value).toBe(atlas?.normal);
   });
 });
 

@@ -31,37 +31,47 @@ export type DirtyReason =
   | "watermask";
 
 /**
- * A composite atlas is a single MRT render target (count=3) with three named
- * attachments:
+ * A composite atlas is a single MRT render target with named attachments:
  * - color: composited diffuse (sRGB)
  * - attr:  packed per-pixel material attributes (water flag/scale/speed, …)
- * - normal: hillshade normal map in [0,1] (neutral 0.5,0.5,1 when no hillshade)
+ * - normal: hillshade normal map in [0,1], `a = 1` where a hillshade slot won
  *
- * One draw call writes all three; the main TileMesh shader samples them
- * independently as Textures.
+ * Only the hillshade branch of the main TileMesh shader reads `normal`, so
+ * the attachment exists only while the tile has a hillshade layer and is
+ * null otherwise. One draw call writes all attachments; the main TileMesh
+ * shader samples them independently as Textures.
  */
 export type CompositeAtlas = {
   readonly target: WebGLRenderTarget;
   readonly color: Texture;
   readonly attr: Texture;
-  readonly normal: Texture;
+  readonly normal: Texture | null;
   /** three allocates the target on its first render, so an atlas that was
    * never baked holds no GPU memory. Survives pooling. */
   allocated: boolean;
   dispose: () => void;
 };
 
-/** Creates the per-tile MRT trio. Injected so tests can supply fakes. */
-export type AtlasFactory = (size: number) => CompositeAtlas;
+/** Creates a per-tile MRT atlas, with the normal attachment when
+ * `withNormal`. Injected so tests can supply fakes. */
+export type AtlasFactory = (
+  size: number,
+  withNormal: boolean,
+) => CompositeAtlas;
 
 /**
- * View on the atlas suitable for binding as TileMesh uniforms.
- * Same Textures live across the atlas's lifetime; only `needsUpdate` flips.
+ * View on the atlas suitable for binding as TileMesh uniforms. One object per
+ * cache entry, shared by every holder of the handle: when the entry's atlas is
+ * replaced (see `TileTextureCache.setNormalAttachment`) its fields switch to
+ * the new atlas's textures in place.
  */
 export type CompositeOutputs = {
   color: Texture;
   attr: Texture;
-  normal: Texture;
+  /** Null without a normal attachment: three binds an all-zero texture to a
+   * null sampler, and its `a = 0` is what the composite pass writes where no
+   * hillshade slot won. */
+  normal: Texture | null;
 };
 
 /** Features detected from the Rust material — drives CPU shader branch elision. */
@@ -80,7 +90,8 @@ export type CompositeFeatures = {
 /** A handle's cache entry. Public surface is via TileTextureCache methods. */
 export type CacheEntry = {
   readonly handle: TileHandle;
-  readonly atlas: CompositeAtlas;
+  atlas: CompositeAtlas;
+  readonly outputs: CompositeOutputs;
   refCount: number;
   dirty: Set<DirtyReason>;
 };
