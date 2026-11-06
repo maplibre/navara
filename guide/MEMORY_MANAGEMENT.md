@@ -114,7 +114,10 @@ One subtlety makes `gpu_est ≈ 1×` the buffer length a valid model
 callback on every `BufferAttribute`
 (`releaseGeometryArraysAfterUpload`, `web/navara_three`) that drops the
 CPU-side `.array` right after the first GPU upload, so no JS-heap clone of the
-WASM buffer survives.
+WASM buffer survives. The exception is `ViewContext.retainGeometryArrays`, which
+debug tooling sets to draw wireframes (three.js builds them from the CPU index):
+terrain and polygon geometries then keep their arrays, and the ledger does not
+count those copies.
 
 Costs that only the JS side knows precisely (atlas dimensions depend on device
 options) arrive as `CostHints` via `Core.setMemoryCostHints` at init. The

@@ -2,24 +2,18 @@
 
 Debug tools for `@navaramap/three`, as plugins that can be switched on and
 off at runtime. They are meant for development builds and example pages, not
-for shipping inside an application.
+for shipping inside an application. Every row and setting explains itself on
+hover.
 
-- **`ProfilerPlugin`**: frame timings (loop tick, WASM update, event handlers,
-  render), per-pass CPU / GPU time and draw calls, draw and program counters,
-  the engine's memory ledger, worker and job queues, network traffic per
-  source, the render-target stack, a picture-in-picture viewer of the
-  pipeline's textures (G-buffer attachments, depth copies, any render target),
-  and a frame capture that downloads as JSON.
-
-- **`LayerDebuggerPlugin`**: the view's resource layers with their resident
-  cost (objects, triangles, geometry and texture bytes) and, with a
-  `ProfilerPlugin` passed in, their network traffic; a settings form generated
-  from each layer's description (`layer.description`, the description passed
-  to `addLayer` with every `update()` merged in; fields never set take the
-  engine's defaults and can be added through "set field"); solo / hide,
-  wireframe, bounding-box, delete / re-add and copy-as-code actions.
-
-Camera tools follow in the same shape.
+- **`ProfilerPlugin`**: how fast the map draws and why. A summary (frame
+  rate, frame time on CPU and GPU, draw calls, engine memory against its
+  budget, downloads, workers), then where each frame's time goes step by step,
+  memory by kind, downloads per source, background work, draw details, screen
+  buffers, a buffer viewer, and frame recording to JSON.
+- **`LayerDebuggerPlugin`**: the view's layers with what each costs (meshes,
+  memory, downloads), a visibility checkbox per layer, solo / wireframe /
+  bounding-box toggles, and a style form for the selected layer with every
+  setting its materials accept.
 
 ## Usage
 
@@ -29,7 +23,11 @@ one tweakpane with a tab per tool; without it each tool opens its own pane.
 ```typescript
 import ThreeView from "@navaramap/three";
 import { DefaultPlugin } from "@navaramap/three-default-plugin";
-import { DebugPanel, ProfilerPlugin } from "@navaramap/three-debug";
+import {
+  DebugPanel,
+  LayerDebuggerPlugin,
+  ProfilerPlugin,
+} from "@navaramap/three-debug";
 
 const view = new ThreeView();
 view.addPlugin(new DefaultPlugin());
@@ -37,6 +35,7 @@ view.addPlugin(new DefaultPlugin());
 const panel = new DebugPanel(); // press ` to show / hide
 const profiler = new ProfilerPlugin({ panel });
 view.addPlugin(profiler);
+view.addPlugin(new LayerDebuggerPlugin({ panel, profiler }));
 
 await view.init();
 
@@ -46,22 +45,35 @@ profiler.enabled = true;
 
 `@navaramap/three`, `three` and `postprocessing` are peer dependencies.
 
-## What the profiler measures
+## Profiler
 
-Every graph's label carries its live value and the graph's top, as
-`name value/top`; hovering the graph shows the value under the pointer.
+Navara draws only when something changes, so frame rate and frame time cover
+drawn frames; the summary says "idle" while the map is still.
 
-| Section        | Source                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
-| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Frame          | The view's `frame` event: `fps` counts loop ticks, `renderedFps` the ticks that drew a frame (on-demand rendering skips the rest). `totalMs` is the whole tick; `updateMs` the WASM update; `eventsMs` the frontend job handlers; `renderMs` the pass pipeline.                                                                                                                                                                                                                            |
-| Passes         | Each registered pass's `render` is wrapped on its instance. CPU from `performance.now()`, draw calls and triangles from `renderer.info` deltas, GPU from `EXT_disjoint_timer_query_webgl2` (Chrome; "n/a" elsewhere). Queries cannot nest, so the GPU total is the sum of the passes. Nested renders a pass issues (tile drape bakes inside the G-buffer pass) count toward that pass. "other" is the tick minus the passes: feature updates, event handlers, picking, shadow-map viewers. |
-| Draws          | This tick's `renderer.info`. `programDelta` is the change in compiled programs per tick; a steady non-zero value means a material recompiles every frame.                                                                                                                                                                                                                                                                                                                                  |
-| Memory         | `view.memoryStats()` and `view.workerMemoryStats()` once a second (the WASM ledger documented in `guide/MEMORY_MANAGEMENT.md`), plus the JS heap where the browser reports it.                                                                                                                                                                                                                                                                                                             |
-| Scheduler      | In-flight frontend jobs per kind and the worker pool's load (`guide/FRONTEND_JOB_PROTOCOL.md`).                                                                                                                                                                                                                                                                                                                                                                                            |
-| Network        | `fetch` is wrapped while the profiler is enabled. Bytes are the response `Content-Length` (compressed), or the resource-timing size where the server sends `Timing-Allow-Origin`. Requests are attributed to the source whose URL template they match.                                                                                                                                                                                                                                     |
-| Render targets | Every target of the fixed stack with its owning pass, size, attachments and nominal bytes; "(unallocated)" targets have not been rendered into yet.                                                                                                                                                                                                                                                                                                                                        |
-| Content viewer | Draws a chosen texture into a corner of the frame on the GPU. `normal` decodes the octahedral G-buffer normals, `packedDepth` three's RGBA depth packing, `bitmask` the selective-effect ids; `channel` stretches one channel over the range (log depth lives near 1).                                                                                                                                                                                                                     |
-| Capture        | Records the next N ticks (frame timings, per-pass rows, draw counts) and downloads them as JSON for A/B comparison.                                                                                                                                                                                                                                                                                                                                                                        |
+| Section                   | What it shows                                                                                                                                                                                                                                                                                   |
+| ------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Where the frame time goes | The latest drawn frame: the WASM engine update, loading and building, each render pass (CPU, GPU, draw calls), and the rest. Each pass's `render` is wrapped on its instance; GPU times come from `EXT_disjoint_timer_query_webgl2` (Chrome desktop) and are summed, since queries cannot nest. |
+| Memory                    | `view.memoryStats()` by kind against the budget, the cache of tiles kept for reuse, evictions and whether detail is being reduced; worker, font and JS heaps outside the budget.                                                                                                                |
+| Downloads                 | `fetch` is wrapped while enabled and requests are matched to their source by URL template. Sizes are `Content-Length`, or resource timing where the server allows it.                                                                                                                           |
+| Background work           | Frontend jobs per kind (terrain tiles, worker tasks, features, imagery textures, downloads) and worker threads.                                                                                                                                                                                 |
+| Draw details              | `renderer.info` of the latest drawn frame, and shader programs compiled in the last 5 s: a count that never settles means something recompiles every frame.                                                                                                                                     |
+| Screen buffers            | Render targets sized to the screen, by the pass that owns them.                                                                                                                                                                                                                                 |
+| Buffer viewer             | One of the renderer's images in a corner of the map, decoded for you: scene color, normals, roughness, reflectance, depth (as distance), the terrain-only depth and normals, shadows, selective effects, emissive. Unavailable buffers say why.                                                 |
+| Record frames             | The next N drawn frames' timings and per-pass costs, downloaded as JSON.                                                                                                                                                                                                                        |
+
+## Layers
+
+Click a layer to select it; its checkbox hides it by setting `show: false` on
+its styles. The style form is generated from the engine's material
+definitions (`MATERIAL_SCHEMA`, from `pnpm run generate:schema`): a field set
+on the layer is marked `•`, the others show the engine default, and hovering
+one shows its documentation. Changes apply as you edit; "Undo my changes"
+puts the values back.
+
+The wireframe toggle needs geometry arrays kept on the CPU
+(`ViewContext.retainGeometryArrays`), which the plugin turns on before layers
+load. That costs a JS-heap copy of every terrain and polygon geometry; pass
+`wireframe: false` to profile memory without it.
 
 ## License
 

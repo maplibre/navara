@@ -4,56 +4,55 @@ import { RingBuffer } from "../util/ring";
 
 /** Ticks older than this no longer count toward the rates. */
 const RATE_WINDOW_MS = 1000;
+/** Drawn frames kept for the averages (about 4 s at 60 fps). */
 const HISTORY = 240;
 
-/** Aggregates of the `frame` event over the recent history. */
+/**
+ * Aggregates of the `frame` event. Navara draws only when something changed,
+ * so the averages cover drawn frames only: idle ticks cost next to nothing
+ * and would hide the cost of the frames that matter.
+ */
 export class FrameStats {
-  readonly total = new RingBuffer(HISTORY);
-  readonly update = new RingBuffer(HISTORY);
-  readonly events = new RingBuffer(HISTORY);
-  readonly render = new RingBuffer(HISTORY);
+  /** Whole-tick CPU ms of drawn frames. */
+  readonly cpu = new RingBuffer(HISTORY);
   private readonly tickTimes: number[] = [];
-  private readonly renderTimes: number[] = [];
-  private last: FrameTiming | undefined;
+  private readonly drawTimes: number[] = [];
+  private lastDrawn: FrameTiming | undefined;
 
   push(timing: FrameTiming): void {
-    this.last = { ...timing };
-    this.total.push(timing.totalMs);
-    this.update.push(timing.updateMs);
-    this.events.push(timing.eventsMs);
-    this.render.push(timing.renderMs);
     const now = performance.now();
     this.tickTimes.push(now);
-    if (timing.rendered) this.renderTimes.push(now);
+    if (timing.rendered) {
+      this.cpu.push(timing.totalMs);
+      this.drawTimes.push(now);
+      this.lastDrawn = { ...timing };
+    }
     trim(this.tickTimes, now);
-    trim(this.renderTimes, now);
+    trim(this.drawTimes, now);
   }
 
-  /** The latest tick's timings, or `undefined` before the first one. */
+  /** The latest drawn frame's timings, or `undefined` before the first. */
   get latest(): FrameTiming | undefined {
-    return this.last;
+    return this.lastDrawn;
   }
 
-  /** Loop ticks per second over the last second. */
+  /** Animation-loop ticks per second (the display's refresh rate). */
   ticksPerSecond(now = performance.now()): number {
     trim(this.tickTimes, now);
     return this.tickTimes.length;
   }
 
-  /** Rendered frames per second over the last second. */
+  /** Drawn frames per second over the last second; 0 while idle. */
   framesPerSecond(now = performance.now()): number {
-    trim(this.renderTimes, now);
-    return this.renderTimes.length;
+    trim(this.drawTimes, now);
+    return this.drawTimes.length;
   }
 
   clear(): void {
-    this.total.clear();
-    this.update.clear();
-    this.events.clear();
-    this.render.clear();
+    this.cpu.clear();
     this.tickTimes.length = 0;
-    this.renderTimes.length = 0;
-    this.last = undefined;
+    this.drawTimes.length = 0;
+    this.lastDrawn = undefined;
   }
 }
 

@@ -1,95 +1,204 @@
+import type ThreeView from "@navaramap/three";
 import type { ViewContext } from "@navaramap/three";
 import type { Texture } from "three";
 
 import type { DebugContainer } from "../DebugPlugin";
+import { addHtmlBlock, esc, hint, type HtmlBlock } from "../util/html";
 
 import { DebugBlitPass, type BlitCorner, type BlitMode } from "./DebugBlitPass";
 
-type TextureSource = {
-  label: string;
-  get: () => Texture | undefined;
-  /** The mode that reads the texture's encoding. */
+/** One thing the viewer can show. */
+type BufferView = {
+  name: string;
+  /** What the picture means, in plain words. */
+  description: string;
   mode: BlitMode;
-  range?: [number, number];
+  channel?: number;
+  /** The texture, or why there is none right now. */
+  resolve: (ctx: ViewContext) => Texture | string;
 };
 
+/** Optional G-buffers exist only while an effect asks for them. */
+function optional(texture: Texture | undefined, why: string): Texture | string {
+  return texture ?? why;
+}
+
+/** A copy target kept at 1×1 until something needs it. */
+function sized(texture: Texture, why: string): Texture | string {
+  const image = texture.image as { width?: number } | undefined;
+  return (image?.width ?? 0) > 1 ? texture : why;
+}
+
+const VIEWS: BufferView[] = [
+  {
+    name: "Scene color",
+    description:
+      "The scene as drawn into the G-buffer, before atmosphere, tone mapping and anti-aliasing. Raise the brightness if it looks black: values are HDR.",
+    mode: "color",
+    resolve: (ctx) => ctx.getRenderTarget().texture,
+  },
+  {
+    name: "Surface normals",
+    description:
+      "Which way each surface faces, relative to the camera: red = right, green = up, blue = toward you. Terrain without vertex normals shows black.",
+    mode: "normal",
+    resolve: (ctx) =>
+      optional(ctx.getNormalTexture(), "The normal buffer is not allocated."),
+  },
+  {
+    name: "Roughness",
+    description:
+      "Material roughness per pixel: black = mirror-smooth, white = fully rough (most terrain and imagery).",
+    mode: "channel",
+    channel: 3,
+    resolve: (ctx) =>
+      optional(ctx.getNormalTexture(), "The normal buffer is not allocated."),
+  },
+  {
+    name: "Reflectance",
+    description:
+      "How strongly each surface reflects (F0): black = not reflective. Water and metallic models show up bright.",
+    mode: "channel",
+    channel: 2,
+    resolve: (ctx) =>
+      optional(ctx.getNormalTexture(), "The normal buffer is not allocated."),
+  },
+  {
+    name: "Depth",
+    description:
+      "Distance from the camera: black at the camera's height above the ground or nearer, white 50× farther or more (logarithmic).",
+    mode: "depth",
+    resolve: (ctx) =>
+      ctx.getRenderTarget().depthTexture ??
+      "The G-buffer has no depth texture.",
+  },
+  {
+    name: "Terrain depth",
+    description:
+      "Distance to the terrain alone, without layers or meshes, shaded like Depth. Draped data and ground-clamped lines are placed with it.",
+    mode: "packedDepth",
+    resolve: (ctx) => ctx.getGlobeDepthTexture(),
+  },
+  {
+    name: "Terrain normals",
+    description:
+      "Surface direction of the terrain alone (colors as in Surface normals). Draped meshes are shaded with it.",
+    mode: "normal",
+    resolve: (ctx) =>
+      sized(
+        ctx.getGlobeNormalTexture(),
+        "Only kept while a draped mesh or an effect needs terrain normals.",
+      ),
+  },
+  {
+    name: "Shadows",
+    description: "Shadow amount per pixel: white = in shadow, black = lit.",
+    mode: "channel",
+    channel: 0,
+    resolve: (ctx) =>
+      optional(
+        ctx.getShadowTexture(),
+        "Only kept while an effect needs it (deferred lighting with shadows).",
+      ),
+  },
+  {
+    name: "Selective effects",
+    description:
+      "Pixels of meshes marked for a selective effect, one color per effect slot (red, green, blue, …).",
+    mode: "bitmask",
+    resolve: (ctx) =>
+      optional(
+        ctx.getEffectIdsTexture(),
+        "Only kept while a selective effect (bloom, outline) is active.",
+      ),
+  },
+  {
+    name: "Emissive",
+    description:
+      "Glow color written by emissive materials, which bloom spreads.",
+    mode: "color",
+    resolve: (ctx) =>
+      optional(
+        ctx.getEmissiveTexture(),
+        "Only kept while an effect that uses it (bloom) is active.",
+      ),
+  },
+];
+
 const PASS_NAME = "debugBlit";
+const CORNERS: Record<string, BlitCorner> = {
+  "bottom left": "bottom-left",
+  "bottom right": "bottom-right",
+  "top left": "top-left",
+  "top right": "top-right",
+};
 
 /**
- * Picture-in-picture viewer for the pipeline's textures: the G-buffer
- * attachments, the depth copies and every render target of the fixed stack.
- * The blit pass stays registered while the viewer exists and is disabled
- * when nothing is shown.
+ * Picture-in-picture view of the G-buffer and the terrain copies, drawn on
+ * the GPU into a corner of the frame. Each view decodes its buffer for you
+ * (normals as colors, depth as gray), so there is nothing to configure but
+ * what to look at and how bright.
  */
-export class ContentViewer {
+export class BufferViewer {
   private readonly pass = new DebugBlitPass();
-  private sources: TextureSource[] = [];
   private readonly state = {
     show: false,
-    source: "",
-    mode: "rgb" as BlitMode,
-    channel: 0,
-    rangeMin: 0,
-    rangeMax: 1,
-    corner: "bottom-left" as BlitCorner,
-
-    scale: 0.3,
+    view: VIEWS[1].name,
+    brightness: 1,
+    corner: "bottom left",
+    size: 0.3,
+    shadowMaps: false,
   };
-  private sourceBinding: ReturnType<DebugContainer["addBinding"]> | undefined;
-  private folder: ReturnType<DebugContainer["addFolder"]> | undefined;
+  private status: HtmlBlock | undefined;
+  private brightnessBinding: { hidden: boolean } | undefined;
   private registered = false;
 
   constructor(
+    private readonly view: ThreeView,
     private readonly ctx: ViewContext,
-    /** Asks the view for a frame so a setting change shows at once. */
-    private readonly requestRender: () => void,
   ) {
     this.pass.enabled = false;
   }
 
   buildUi(ui: DebugContainer): void {
-    const folder = ui.addFolder({ title: "Content viewer", expanded: false });
-    this.folder = folder;
-    folder.addBinding(this.state, "show").on("change", () => this.apply());
-    this.rebuildSources();
+    const folder = ui.addFolder({ title: "Buffer viewer", expanded: false });
+    hint(
+      folder,
+      "Shows one of the renderer's internal images in a corner of the map.",
+    );
     folder
-      .addBinding(this.state, "mode", {
-        options: {
-          rgb: "rgb",
-          channel: "channel",
-          normal: "normal",
-          packedDepth: "packedDepth",
-          bitmask: "bitmask",
-        },
+      .addBinding(this.state, "show", { label: "show" })
+      .on("change", () => this.apply());
+    folder
+      .addBinding(this.state, "view", {
+        options: Object.fromEntries(VIEWS.map((v) => [v.name, v.name])),
       })
       .on("change", () => this.apply());
-    folder
-      .addBinding(this.state, "channel", {
-        options: { R: 0, G: 1, B: 2, A: 3 },
-      })
+    const brightness = folder
+      .addBinding(this.state, "brightness", { min: 0.05, max: 10 })
       .on("change", () => this.apply());
-    folder
-      .addBinding(this.state, "rangeMin", { min: 0, max: 1, step: 0.001 })
-      .on("change", () => this.apply());
-    folder
-      .addBinding(this.state, "rangeMax", { min: 0, max: 1, step: 0.001 })
-      .on("change", () => this.apply());
+    hint(brightness, "Multiplies the shown values.");
+    this.brightnessBinding = brightness;
     folder
       .addBinding(this.state, "corner", {
-        options: {
-          "top-left": "top-left",
-          "top-right": "top-right",
-          "bottom-left": "bottom-left",
-          "bottom-right": "bottom-right",
-        },
+        options: Object.fromEntries(Object.keys(CORNERS).map((c) => [c, c])),
       })
       .on("change", () => this.apply());
     folder
-      .addBinding(this.state, "scale", { min: 0.1, max: 1, step: 0.05 })
+      .addBinding(this.state, "size", { min: 0.15, max: 0.9, step: 0.05 })
       .on("change", () => this.apply());
-    folder.addButton({ title: "Refresh sources" }).on("click", () => {
-      this.rebuildSources();
-    });
+    this.status = addHtmlBlock(folder);
+    const shadowMaps = folder
+      .addBinding(this.state, "shadowMaps", { label: "sun shadow maps" })
+      .on("change", () => {
+        this.view.shadowMapViewersEnabled = this.state.shadowMaps;
+        this.view.forceUpdate();
+      });
+    hint(
+      shadowMaps,
+      "Draws each sun shadow cascade's depth map at the left edge of the screen.",
+    );
+    this.apply();
   }
 
   enable(): void {
@@ -97,13 +206,12 @@ export class ContentViewer {
       this.ctx.insertPassBefore("final", PASS_NAME, this.pass);
       this.registered = true;
     }
-    this.ctx.on("passesChanged", this.onPassesChanged);
     this.apply();
   }
 
   disable(): void {
-    this.ctx.off("passesChanged", this.onPassesChanged);
     this.pass.enabled = false;
+    if (this.state.shadowMaps) this.view.shadowMapViewersEnabled = false;
   }
 
   dispose(): void {
@@ -115,107 +223,47 @@ export class ContentViewer {
     this.pass.dispose();
   }
 
-  private readonly onPassesChanged = (): void => {
-    // Our own insertion fires this too; rebuilding is cheap.
-    this.rebuildSources();
-  };
+  /** Re-evaluates availability: optional buffers come and go with effects. */
+  refresh(): void {
+    if (this.state.show) this.apply();
+  }
 
-  private rebuildSources(): void {
-    const ctx = this.ctx;
-    const sources: TextureSource[] = [
-      {
-        label: "G-buffer color",
-        get: () => ctx.getRenderTarget().texture,
-        mode: "rgb",
-      },
-      {
-        label: "G-buffer normal (octahedral)",
-        get: () => ctx.getNormalTexture(),
-        mode: "normal",
-      },
-      {
-        label: "G-buffer effect ids",
-        get: () => ctx.getEffectIdsTexture(),
-        mode: "bitmask",
-      },
-      {
-        label: "G-buffer emissive",
-        get: () => ctx.getEmissiveTexture(),
-        mode: "rgb",
-      },
-      {
-        label: "G-buffer shadow (R)",
-        get: () => ctx.getShadowTexture(),
-        mode: "channel",
-      },
-      {
-        label: "G-buffer depth",
-        get: () => ctx.getRenderTarget().depthTexture ?? undefined,
-        mode: "channel",
-        range: [0.9, 1],
-      },
-      {
-        label: "Globe depth copy (packed)",
-        get: () => ctx.getGlobeDepthTexture(),
-        mode: "packedDepth",
-        range: [0.9, 1],
-      },
-      {
-        label: "Globe normal copy (octahedral)",
-        get: () => ctx.getGlobeNormalTexture(),
-        mode: "normal",
-      },
-    ];
-    for (const entry of ctx.getRenderTargets()) {
-      if (entry.owner === PASS_NAME) continue;
-      const { target } = entry;
-      target.textures.forEach((_, index) => {
-        sources.push({
-          label: `${entry.owner}: ${target.width}×${target.height}${
-            target.textures.length > 1 ? ` [${index}]` : ""
-          }`,
-          get: () => target.textures[index],
-          mode: "rgb",
-        });
-      });
-      if (target.depthTexture) {
-        sources.push({
-          label: `${entry.owner}: depth`,
-          get: () => target.depthTexture ?? undefined,
-          mode: "channel",
-          range: [0.9, 1],
-        });
-      }
-    }
-    this.sources = sources;
-    if (!sources.some((s) => s.label === this.state.source)) {
-      this.state.source = sources[0]?.label ?? "";
-    }
-    this.sourceBinding?.dispose();
-    const options: Record<string, string> = {};
-    for (const source of sources) options[source.label] = source.label;
-    this.sourceBinding = this.folder
-      ?.addBinding(this.state, "source", { options, index: 1 })
-      .on("change", () => {
-        const source = this.sources.find((s) => s.label === this.state.source);
-        if (source) {
-          this.state.mode = source.mode;
-          [this.state.rangeMin, this.state.rangeMax] = source.range ?? [0, 1];
-        }
-        this.apply();
-      });
-    this.apply();
+  /** Shades depth from the camera's height above the ground (black) outward. */
+  private updateDepthScale(): void {
+    const camera = this.view.camera;
+    this.pass.setDepthScale(
+      this.ctx.getRenderer().capabilities.logarithmicDepthBuffer,
+      camera.far,
+      Math.abs(camera.positionGeographic.height),
+    );
   }
 
   private apply(): void {
-    const source = this.sources.find((s) => s.label === this.state.source);
-    this.pass.source = source?.get;
-    this.pass.mode = this.state.mode;
-    this.pass.channel = this.state.channel;
-    this.pass.setRange(this.state.rangeMin, this.state.rangeMax);
-    this.pass.corner = this.state.corner;
-    this.pass.scale = this.state.scale;
-    this.pass.enabled = this.state.show && source !== undefined;
-    this.requestRender();
+    const view = VIEWS.find((v) => v.name === this.state.view) ?? VIEWS[0];
+    const resolved = view.resolve(this.ctx);
+    const texture = typeof resolved === "string" ? undefined : resolved;
+    this.pass.source = () => {
+      const r = view.resolve(this.ctx);
+      return typeof r === "string" ? undefined : r;
+    };
+    this.pass.mode = view.mode;
+    this.pass.channel = view.channel ?? 0;
+    this.pass.brightness = this.state.brightness;
+    // The engine camera exists only after the first update, which follows
+    // `view.init()`; the viewer is first shown by a click or a tick after it.
+    if (this.state.show) this.updateDepthScale();
+    this.pass.corner = CORNERS[this.state.corner];
+    this.pass.scale = this.state.size;
+    this.pass.enabled = this.state.show && texture !== undefined;
+    if (this.brightnessBinding) {
+      this.brightnessBinding.hidden =
+        view.mode === "normal" || view.mode === "bitmask";
+    }
+    const status =
+      typeof resolved === "string"
+        ? `<span class="warn">Not available:</span> ${esc(resolved)}`
+        : esc(view.description);
+    this.status?.render(`<div class="note">${status}</div>`);
+    this.view.forceUpdate();
   }
 }

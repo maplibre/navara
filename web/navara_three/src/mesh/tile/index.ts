@@ -80,7 +80,10 @@ import {
   type WaterWavesRef,
 } from "../../water/waterState";
 import type { PickableMesh } from "../pickableMesh";
-import { releaseGeometryArraysAfterUpload } from "../releaseGeometryArrays";
+import {
+  canDrawWireframe,
+  releaseGeometryArraysAfterUpload,
+} from "../releaseGeometryArrays";
 
 import type { DrapeResolver } from "./drapeResolver";
 import {
@@ -516,10 +519,7 @@ export class TileMesh
     const boundingBox = this.installGeometry(mesh);
     if (!boundingBox) return;
 
-    if (mat.showBoundingBox) {
-      this.boundingBoxHelper = new Box3Helper(boundingBox, 0x00ff00);
-      this.add(this.boundingBoxHelper);
-    }
+    this.syncBoundingBoxHelper(!!mat.showBoundingBox);
 
     this.material = this.initMaterial(mat, uniforms, globe);
 
@@ -685,7 +685,9 @@ export class TileMesh
     // path, so releasing is safe. CONSTRAINT: once released these geometries
     // can no longer be re-uploaded on a WebGL context loss — acceptable because
     // terrain is re-fetched from Rust on demand, not restored from CPU memory.
-    releaseGeometryArraysAfterUpload(geometry);
+    if (!this.ctx.viewContext.retainGeometryArrays) {
+      releaseGeometryArraysAfterUpload(geometry);
+    }
 
     return boundingBox;
   }
@@ -703,6 +705,25 @@ export class TileMesh
    * next render. */
   markVectorDrapeSourcesChanged() {
     this.vectorDrape.markSourcesChanged();
+  }
+
+  /**
+   * Adds or removes the bounding-box helper so it matches `show`. Runs when
+   * the tile is built and on every material change, so toggling
+   * `showBoundingBox` reaches tiles that already exist.
+   */
+  private syncBoundingBoxHelper(show: boolean) {
+    if (show && !this.boundingBoxHelper && this.geometry.boundingBox) {
+      this.boundingBoxHelper = new Box3Helper(
+        this.geometry.boundingBox,
+        0x00ff00,
+      );
+      this.add(this.boundingBoxHelper);
+    } else if (!show && this.boundingBoxHelper) {
+      this.remove(this.boundingBoxHelper);
+      this.boundingBoxHelper.dispose();
+      this.boundingBoxHelper = undefined;
+    }
   }
 
   private applyExaggeratedBounds(): Box3 {
@@ -1052,6 +1073,7 @@ ${generateTileCommonInjection(maxTextures)}
     const changedMaterial = mesh.material;
     const tileMesh = mesh.mesh;
     const active = tileMesh.active;
+    this.syncBoundingBoxHelper(!!changedMaterial?.showBoundingBox);
     this.setFillQuadrants(tileMesh.fill_quadrants);
 
     const maxTextures = textureOptions.maxTextures;
@@ -1103,8 +1125,14 @@ ${generateTileCommonInjection(maxTextures)}
     if (this.material.opacity !== globe.opacity) {
       this.material.opacity = globe.opacity;
     }
-    if (this.material.wireframe !== globe.wireframe) {
-      this.material.wireframe = globe.wireframe;
+    const wireframe =
+      globe.wireframe &&
+      canDrawWireframe(
+        this.geometry,
+        this.ctx.viewContext.retainGeometryArrays,
+      );
+    if (this.material.wireframe !== wireframe) {
+      this.material.wireframe = wireframe;
     }
   }
 

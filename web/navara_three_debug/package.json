@@ -18,7 +18,8 @@
     "lint": "eslint . --fix",
     "lint:check": "eslint .",
     "format": "prettier --write --ignore-path ../../.gitignore .",
-    "format:check": "prettier --check --ignore-path ../../.gitignore ."
+    "format:check": "prettier --check --ignore-path ../../.gitignore .",
+    "generate:schema": "node scripts/generate-material-schema.mjs"
   },
   "license": "MIT OR Apache-2.0",
   "repository": {
@@ -39,6 +40,7 @@
   },
   "devDependencies": {
     "@navaramap/three": "workspace:*",
+    "@types/node": "26.6.5",
     "@types/three": "0.186.0",
     "postprocessing": "6.39.5",
     "three": "0.186.1"

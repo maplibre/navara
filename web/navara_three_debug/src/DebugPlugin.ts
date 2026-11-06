@@ -59,7 +59,7 @@ export abstract class DebugPlugin<
       style.position = "absolute";
       style.top = "8px";
       style.right = "8px";
-      style.width = "400px";
+      style.width = "440px";
       style.maxHeight = "calc(100vh - 16px)";
       style.overflow = "auto";
       style.zIndex = "1000";

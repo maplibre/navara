@@ -137,6 +137,17 @@ export class ViewContext extends EventHandler<ViewContextEvents> {
     return this._selectiveEffectRegistry;
   }
 
+  /**
+   * Keep each terrain and polygon geometry's CPU arrays after its GPU
+   * upload instead of releasing them (`releaseGeometryArraysAfterUpload`).
+   * three.js builds a wireframe from the CPU index, so polygon `wireframe`
+   * and `globe.wireframe` draw only while this is on. Costs a JS-heap copy of
+   * every geometry, which the memory ledger does not count. Applies to
+   * geometries built after it is set: debug tooling sets it in `init()`,
+   * before any layer loads.
+   */
+  retainGeometryArrays = false;
+
   // --- Pass management ---
 
   /** Get a post-processing pass by name. */

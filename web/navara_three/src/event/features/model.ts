@@ -11,7 +11,6 @@ import {
   PointsMaterial,
   Box3,
   Vector3,
-  Box3Helper,
   Mesh,
   Sphere,
 } from "three";
@@ -117,7 +116,8 @@ export async function renderModel(ctx: EventContext, m: NavaraModelMesh) {
         const points: Points = new Points(geometry, material);
         group.add(points);
 
-        // Add bounding box helper using the precomputed AABB
+        // Bounding volumes from the precomputed AABB (`ModelMesh` draws the
+        // `showBoundingBox` helper from it).
         const aabb_center = new Vector3(
           m.aabb.center.x,
           m.aabb.center.y,
@@ -135,11 +135,6 @@ export async function renderModel(ctx: EventContext, m: NavaraModelMesh) {
         );
 
         geometry.boundingSphere = new Sphere(aabb_center, aabb_extent.length());
-
-        if (m.material.showBoundingBox) {
-          const boxHelper = new Box3Helper(geometry.boundingBox, 0xff0000);
-          group.add(boxHelper);
-        }
         return { rawScene: group };
       }
 
@@ -147,17 +142,6 @@ export async function renderModel(ctx: EventContext, m: NavaraModelMesh) {
         bin.buffer as ArrayBuffer,
         "",
       );
-      if (m.material.showBoundingBox) {
-        model.scene.traverse((child) => {
-          if (child instanceof Mesh) {
-            const boxHelper = new Box3Helper(
-              child.geometry.boundingBox,
-              0x0000ff,
-            );
-            child.add(boxHelper);
-          }
-        });
-      }
 
       return {
         rawScene: model.scene,
@@ -173,17 +157,6 @@ export async function renderModel(ctx: EventContext, m: NavaraModelMesh) {
       } catch (e) {
         console.warn(`Failed to load model: ${m.material.url}`, e);
         return {};
-      }
-      if (m.material.showBoundingBox) {
-        model.scene.traverse((child) => {
-          if (child instanceof Mesh) {
-            const boxHelper = new Box3Helper(
-              child.geometry.boundingBox,
-              0x0000ff,
-            );
-            child.add(boxHelper);
-          }
-        });
       }
       return { rawScene: model.scene };
     }

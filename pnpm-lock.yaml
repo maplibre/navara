@@ -539,6 +539,9 @@ importers:
       '@navaramap/three':
         specifier: workspace:*
         version: link:../navara_three
+      '@types/node':
+        specifier: 26.6.5
+        version: 26.6.5
       '@types/three':
         specifier: 0.186.0
         version: 0.186.0
@@ -9586,7 +9589,7 @@ snapshots:
 
   '@types/sax@1.2.7':
     dependencies:
-      '@types/node': 26.6.5
+      '@types/node': 26.6.6
 
   '@types/stats.js@0.17.4': {}
 

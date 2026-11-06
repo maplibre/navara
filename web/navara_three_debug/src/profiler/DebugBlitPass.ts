@@ -12,13 +12,18 @@ import {
 
 /** How a sampled texel is turned into a display color. */
 export type BlitMode =
-  /** RGB as stored. */
-  | "rgb"
-  /** One channel, stretched over `range`. */
+  /** RGB as stored, times `brightness`. */
+  | "color"
+  /** One channel (`channel`) as gray, times `brightness`. */
   | "channel"
   /** RG as an octahedral-encoded normal (the G-buffer normal buffer). */
   | "normal"
-  /** RGBA-packed depth (three's `RGBADepthPacking`), stretched over `range`. */
+  /**
+   * R as depth, shown as distance on a log scale (see `setDepthScale`):
+   * black at the reference distance or nearer, white 50× farther or more.
+   */
+  | "depth"
+  /** RGBA-packed depth (three's `RGBADepthPacking`), shown like `depth`. */
   | "packedDepth"
   /** R as an integer bitmask (the selective-effect id buffer), one color per bit. */
   | "bitmask";
@@ -27,11 +32,12 @@ export type BlitCorner =
   "top-left" | "top-right" | "bottom-left" | "bottom-right";
 
 const MODE_INDEX: Record<BlitMode, number> = {
-  rgb: 0,
+  color: 0,
   channel: 1,
   normal: 2,
-  packedDepth: 3,
-  bitmask: 4,
+  depth: 3,
+  packedDepth: 4,
+  bitmask: 5,
 };
 
 const vertexShader = /* glsl */ `
@@ -49,24 +55,32 @@ ${NORMAL_PACKING_SHADER}
 uniform sampler2D tSource;
 uniform int uMode;
 uniform int uChannel;
-uniform vec2 uRange;
+uniform float uBrightness;
+uniform bool uLogDepth;
+uniform float uLogFar;
+uniform float uRefDistance;
 varying vec2 vUv;
 
-float stretch(float v) {
-  return (v - uRange.x) / max(uRange.y - uRange.x, 1e-6);
+// three's logarithmic depth stores log2(1 + w) / log2(far + 1).
+float depthShade(float d) {
+  if (!uLogDepth) return d;
+  float distance = exp2(d * uLogFar) - 1.0;
+  return clamp(log(max(distance, 1e-3) / uRefDistance) / log(50.0), 0.0, 1.0);
 }
 
 void main() {
   vec4 c = texture2D(tSource, vUv);
-  vec3 rgb = c.rgb;
+  vec3 rgb = c.rgb * uBrightness;
   if (uMode == 1) {
     float v = uChannel == 0 ? c.r : uChannel == 1 ? c.g : uChannel == 2 ? c.b : c.a;
-    rgb = vec3(stretch(v));
+    rgb = vec3(v * uBrightness);
   } else if (uMode == 2) {
     rgb = unpackVec2ToNormal(c.xy) * 0.5 + 0.5;
   } else if (uMode == 3) {
-    rgb = vec3(stretch(unpackRGBAToDepth(c)));
+    rgb = vec3(depthShade(c.r) * uBrightness);
   } else if (uMode == 4) {
+    rgb = vec3(depthShade(unpackRGBAToDepth(c)) * uBrightness);
+  } else if (uMode == 5) {
     int m = int(c.r + 0.5);
     rgb = vec3(0.0);
     if ((m & 1) != 0) rgb += vec3(1.0, 0.0, 0.0);
@@ -109,7 +123,10 @@ export class DebugBlitPass extends Pass {
         tSource: { value: null },
         uMode: { value: 0 },
         uChannel: { value: 0 },
-        uRange: { value: new Vector2(0, 1) },
+        uBrightness: { value: 1 },
+        uLogDepth: { value: true },
+        uLogFar: { value: 20 },
+        uRefDistance: { value: 100 },
       },
       vertexShader,
       fragmentShader,
@@ -130,9 +147,21 @@ export class DebugBlitPass extends Pass {
     this.material.uniforms.uChannel.value = index;
   }
 
-  /** Value range mapped to black..white in the scalar modes. */
-  setRange(min: number, max: number): void {
-    (this.material.uniforms.uRange.value as Vector2).set(min, max);
+  /**
+   * How the depth modes read depth. With a logarithmic depth buffer (the
+   * view's default) depth is turned back into distance and shaded from
+   * `refDistance` (black) to 50× it (white); otherwise it is shown raw.
+   */
+  setDepthScale(logDepth: boolean, far: number, refDistance: number): void {
+    const u = this.material.uniforms;
+    u.uLogDepth.value = logDepth;
+    u.uLogFar.value = Math.log2(far + 1);
+    u.uRefDistance.value = Math.max(refDistance, 1);
+  }
+
+  /** Multiplier for every mode but `normal` and `bitmask`. */
+  set brightness(value: number) {
+    this.material.uniforms.uBrightness.value = value;
   }
 
   render(renderer: WebGLRenderer, inputBuffer: WebGLRenderTarget | null): void {

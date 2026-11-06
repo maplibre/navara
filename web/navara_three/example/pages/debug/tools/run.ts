@@ -21,7 +21,7 @@ import {
 import { installDebugTools } from "../../../helpers/debugTools";
 
 export const run = async () => {
-  const view = new ThreeView<DefaultDescriptions>();
+  const view = new ThreeView<DefaultDescriptions>({shadow: true});
   const defaultPlugin = new DefaultPlugin();
   view.addPlugin(defaultPlugin);
   installDebugTools(view);
@@ -83,7 +83,7 @@ export const run = async () => {
   view.addLayer({
     type: "3d-tiles",
     source: tilesSource,
-    model: { show: true, color: new Color().setStyle("#ffffff") },
+    model: { show: true, color: new Color().setStyle("#ffffff"), castShadow: true , receiveShadow: true },
   });
 
   attribution?.add([

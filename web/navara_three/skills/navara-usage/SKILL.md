@@ -20,7 +20,7 @@ Navara is a 3D globe map engine: reusable GIS logic lives in a Rust/WASM core, a
 | `@navaramap/three-default-descs`  | Individual descriptor classes/types (`BoxMeshDesc`, `SSREffectDesc`, `SunLightDesc`, …)                                                                                                 | Typed `addMesh<T>`/`addEffect<T>` calls, or manual registration without DefaultPlugin |
 | `@navaramap/three-plugins`        | `PersonViewPlugin`, `OverlayPlugin`, `CesiumIonPlugin`, `TileJsonPlugin`                                                                                                                | Per feature                                                                           |
 | `@navaramap/three-api`            | Standalone GIS math (no view)                                                                                                                                                           | Pure geometry computation                                                             |
-| `@navaramap/three-debug`          | `DebugPanel` + `ProfilerPlugin` (frame/pass/GPU timings, memory, network, texture viewer); development only                                                                             | Diagnosing performance; never in a production bundle                                  |
+| `@navaramap/three-debug`          | `DebugPanel`, `ProfilerPlugin` (frame/pass/GPU timings, memory, downloads, buffer viewer), `LayerDebuggerPlugin` (layer costs, live style form); development only                       | Diagnosing performance or styling; never in a production bundle                       |
 
 Most apps need only the first two.
 

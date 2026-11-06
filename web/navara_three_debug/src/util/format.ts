@@ -11,19 +11,25 @@ export function formatBytes(bytes: number): string {
   return `${value.toFixed(unit === 0 ? 0 : 1)} ${UNITS[unit]}`;
 }
 
-/** Milliseconds with two decimals, or `"-"` when unknown. */
+/** Milliseconds: two decimals below 10, one above, or `"–"` when unknown. */
 export function formatMs(ms: number | undefined): string {
-  return ms === undefined ? "-" : ms.toFixed(2);
+  if (ms === undefined) return "–";
+  return ms < 10 ? ms.toFixed(2) : ms.toFixed(1);
 }
 
-/** Right-aligns `value` in a field of `width` characters. */
-export function padLeft(value: string | number, width: number): string {
-  return String(value).padStart(width);
+/** `4312566` → `"4.3 M"`, `12500` → `"12.5 k"`. */
+export function formatCount(n: number): string {
+  if (n >= 1e6) return `${(n / 1e6).toFixed(1)} M`;
+  if (n >= 1e4) return `${(n / 1e3).toFixed(1)} k`;
+  return String(Math.round(n));
 }
 
-/** Left-aligns `value` in a field of `width` characters, truncating. */
-export function padRight(value: string, width: number): string {
-  return value.length > width
-    ? value.slice(0, width - 1) + "…"
-    : value.padEnd(width);
+/** The host of a URL, or the text itself when it does not parse. */
+export function hostOf(url: string | undefined): string {
+  if (!url) return "";
+  try {
+    return new URL(url, window.location.href).host;
+  } catch {
+    return url;
+  }
 }

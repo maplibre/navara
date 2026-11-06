@@ -10,7 +10,7 @@ export type DebugPanelOptions = {
    * input element has focus. `null` disables it. @defaultValue `` "`" ``
    */
   hotkey?: string | null;
-  /** Panel width in CSS pixels. @defaultValue `400` */
+  /** Panel width in CSS pixels. @defaultValue `440` */
   width?: number;
   /** Whether the panel starts visible. @defaultValue `true` */
   visible?: boolean;
@@ -49,7 +49,7 @@ export class DebugPanel {
     style.position = "absolute";
     style.top = "8px";
     style.right = "8px";
-    style.width = `${options.width ?? 400}px`;
+    style.width = `${options.width ?? 440}px`;
     style.maxHeight = "calc(100vh - 16px)";
     style.overflow = "auto";
     style.zIndex = "1000";

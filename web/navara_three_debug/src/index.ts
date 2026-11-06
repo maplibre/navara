@@ -4,6 +4,7 @@ export {
   type DebugContainer,
   type DebugPluginOptions,
 } from "./DebugPlugin";
+export { BufferViewer } from "./profiler/contentViewer";
 export {
   ProfilerPlugin,
   type CapturedFrame,
@@ -29,5 +30,14 @@ export {
   LayerDebuggerPlugin,
   type LayerDebuggerPluginOptions,
 } from "./layers/LayerDebuggerPlugin";
-export { LayerEditor, describeLayerAsCode } from "./layers/layerEditor";
+export {
+  StyleEditor,
+  describeLayerAsCode,
+  type StyleEditorOptions,
+} from "./layers/layerEditor";
+export {
+  MATERIAL_SCHEMA,
+  type FieldKind,
+  type MaterialField,
+} from "./layers/materialSchema.generated";
 export { collectLayerCosts, type LayerCost } from "./layers/layerCost";
