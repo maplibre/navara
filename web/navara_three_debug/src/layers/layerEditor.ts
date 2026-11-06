@@ -229,8 +229,6 @@ export class StyleEditor {
     this.undoButton = this.container
       .addButton({ title: "Undo my changes" })
       .on("click", () => this.undo());
-    this.undoButton.element.title =
-      "Puts back every value this panel changed on this layer. A field that was unset gets its engine default.";
     this.controls.push(this.undoButton);
     this.syncUndo();
   }
@@ -462,21 +460,41 @@ export class StyleEditor {
     this.undoButton.title =
       n > 0 ? `Undo my changes (${n})` : "Undo my changes";
     this.undoButton.disabled = n === 0;
+    // `layer.update` cannot unset a field (undefined is skipped when merged),
+    // so one that was unset and has no default can't be put back in place.
+    const stuck = Array.from(this.options.originals)
+      .filter(([path, original]) => revertValue(path, original) === undefined)
+      .map(([path]) => path);
+    this.undoButton.element.title =
+      "Puts back every value this panel changed on this layer. A field that was unset gets its engine default." +
+      (stuck.length > 0
+        ? `\nCannot unset again (the engine derives them): ${stuck.join(", ")}. Delete and restore the layer to reset those.`
+        : "");
   }
 
   private undo(): void {
     const patch: Patch = {};
     for (const [path, original] of this.options.originals) {
-      const [key, name] = path.split(".");
-      const field = MATERIAL_SCHEMA[key]?.find((f) => f.name === name);
-      const value = original !== undefined ? original : field?.default;
+      const value = revertValue(path, original);
       if (value === undefined) continue;
+      const [key, name] = path.split(".");
       patch[key] = { ...patch[key], [name]: value };
     }
     this.options.originals.clear();
     this.applyNow(patch);
     this.options.onStructureChange();
   }
+}
+
+/**
+ * The value that reverts `key.field` to `original`: the original itself, or
+ * the engine default when it was unset; `undefined` when the field has no
+ * default (the engine derives it), which an update cannot restore.
+ */
+function revertValue(path: string, original: unknown): unknown {
+  if (original !== undefined) return original;
+  const [key, name] = path.split(".");
+  return MATERIAL_SCHEMA[key]?.find((f) => f.name === name)?.default;
 }
 
 /** Typed arrays as plain arrays, for display. */

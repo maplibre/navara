@@ -1,6 +1,6 @@
 import type ThreeView from "@navaramap/three";
 import { Plugin, type ViewContext } from "@navaramap/three";
-import { Pane, type FolderApi } from "tweakpane";
+import { Pane, type FolderApi, type TabPageApi } from "tweakpane";
 
 import type { DebugPanel } from "./DebugPanel";
 
@@ -37,6 +37,8 @@ export abstract class DebugPlugin<
 
   private readonly panel: DebugPanel | undefined;
   private ownPane: Pane | undefined;
+  /** This plugin's tab of the shared panel, when one was given. */
+  private page: TabPageApi | undefined;
   private _enabled: boolean;
   private ready = false;
   private readonly state = { enabled: true };
@@ -52,7 +54,7 @@ export abstract class DebugPlugin<
     this.view = view;
     this.ctx = ctx;
     if (this.panel) {
-      this.ui = this.panel.addPage(this.title);
+      this.ui = this.page = this.panel.addPage(this.title);
     } else {
       this.ownPane = new Pane({ title: this.title, expanded: true });
       const style = this.ownPane.element.style;
@@ -106,5 +108,7 @@ export abstract class DebugPlugin<
     this.onDispose();
     this.ownPane?.dispose();
     this.ownPane = undefined;
+    if (this.page) this.panel?.removePage(this.page);
+    this.page = undefined;
   }
 }

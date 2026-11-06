@@ -14,7 +14,6 @@ import type {
 } from "three";
 import invariant from "tiny-invariant";
 
-import type { Layer } from "../layer";
 import type { LayersManager } from "../layersManager";
 import { LineDashAtlas, type LineCap } from "../lineDash";
 import { type ResolvedGBufferOptions } from "../material/gbufferLayout";
@@ -67,7 +66,7 @@ type ViewContextEvents = {
 
 /** In-flight frontend jobs of one kind (see `guide/FRONTEND_JOB_PROTOCOL.md`). */
 export type JobKindStats = {
-  /** The job handler's name (`"tileMesh"`, `"dataRequester"`, ...). */
+  /** The job handler's name (`"tile mesh"`, `"data requester"`, ...). */
   name: string;
   /** Live jobs of this kind, settled ones included. */
   jobs: number;
@@ -421,11 +420,6 @@ export class ViewContext extends EventHandler<ViewContextEvents> {
   /** @internal Iterate over all registered mesh descriptors. */
   _getMeshes(): Generator<MeshHandle> {
     return this.layersManager.getMeshDescs();
-  }
-
-  /** @internal Iterate over the resource layers. */
-  _getLayers(): Generator<Layer> {
-    return this.layersManager.getResourceLayers();
   }
 
   /**

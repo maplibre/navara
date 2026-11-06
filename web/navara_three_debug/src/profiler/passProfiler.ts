@@ -79,24 +79,6 @@ export class PassProfiler {
     }
   }
 
-  /** Sum over the passes that ran this tick. */
-  totals(): { cpuMs: number; gpuMs: number | undefined; calls: number } {
-    let cpuMs = 0;
-    let gpuMs = 0;
-    let calls = 0;
-    let gpuKnown = false;
-    for (const sample of this.samples.values()) {
-      if (!sample.ran) continue;
-      cpuMs += sample.cpuMs;
-      calls += sample.calls;
-      if (sample.gpuMs !== undefined) {
-        gpuMs += sample.gpuMs;
-        gpuKnown = true;
-      }
-    }
-    return { cpuMs, gpuMs: gpuKnown ? gpuMs : undefined, calls };
-  }
-
   dispose(): void {
     this.disable();
     this.gpu.dispose();

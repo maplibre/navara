@@ -240,7 +240,6 @@ export async function processRenderableFeatureAdded(
 
   // Tag the root for per-layer accounting (debug tooling walks the scenes).
   obj.userData.layerId = featureLayerId;
-  obj.userData.featureSetId = bits;
 
   // Add to MRT scene if not draped (draped features render to texturized scene)
   const isDraped =
@@ -310,7 +309,6 @@ export async function processRenderableFeatureAdded(
     }
     outline.renderOrder = FEATURE_RENDER_ORDER;
     outline.userData.layerId = featureLayerId;
-    outline.userData.featureSetId = bits;
     scenes.mrt.add(outline);
 
     obj.outline = outline;

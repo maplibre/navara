@@ -41,7 +41,12 @@ export type NetworkRates = {
 /** Matches request URLs to a source id. */
 export type NetworkSourceMatcher = {
   id: string;
-  test: (url: string) => boolean;
+  /**
+   * How closely an absolute request URL matches the source: 0 is no match,
+   * higher is closer. A request goes to the matcher scoring highest, so a
+   * source's own URL beats another source's enclosing directory.
+   */
+  score: (url: string) => number;
 };
 
 const MAX_ENTRIES = 4000;
@@ -55,7 +60,11 @@ const MAX_ENTRIES = 4000;
  */
 export class NetworkMeter {
   readonly entries: NetworkEntry[] = [];
+  private active = false;
+  /** The `fetch` this meter wrapped, while its wrapper is installed. */
   private originalFetch: typeof fetch | undefined;
+  /** Our wrapper; it stays in place (passing through) while another wraps it. */
+  private wrapper: typeof fetch | undefined;
   private observer: PerformanceObserver | undefined;
   private matchers: NetworkSourceMatcher[] = [];
   private inFlight = 0;
@@ -63,24 +72,58 @@ export class NetworkMeter {
   private totalBytes = 0;
 
   get enabled(): boolean {
-    return this.originalFetch !== undefined;
+    return this.active;
   }
 
   enable(): void {
-    if (this.originalFetch) return;
+    if (this.active) return;
+    this.active = true;
+    if (!this.wrapper) this.installWrapper();
+
+    if (typeof PerformanceObserver !== "undefined") {
+      this.observer = new PerformanceObserver((list) => {
+        for (const item of list.getEntries()) {
+          this.applyTiming(item as PerformanceResourceTiming);
+        }
+      });
+      this.observer.observe({ type: "resource", buffered: false });
+    }
+  }
+
+  /**
+   * Stops counting. `fetch` is restored only when our wrapper is still the
+   * outermost one: putting the original back would also remove whatever
+   * wrapped `fetch` after us (another meter, the app, a mock). Otherwise the
+   * wrapper stays and passes requests through until re-enabled.
+   */
+  disable(): void {
+    if (!this.active) return;
+    this.active = false;
+    if (this.originalFetch && globalThis.fetch === this.wrapper) {
+      globalThis.fetch = this.originalFetch;
+      this.originalFetch = undefined;
+      this.wrapper = undefined;
+    }
+    this.observer?.disconnect();
+    this.observer = undefined;
+  }
+
+  private installWrapper(): void {
     const original = globalThis.fetch;
     this.originalFetch = original;
+    const isActive = () => this.active;
     const begin = (url: string) => this.begin(url);
     const finish = (
       entry: NetworkEntry,
       status: number | undefined,
       headers: Headers | undefined,
     ) => this.finish(entry, status, headers);
-    globalThis.fetch = function (
+    this.wrapper = globalThis.fetch = function (
       this: unknown,
       input: RequestInfo | URL,
       init?: RequestInit,
     ): Promise<Response> {
+      if (!isActive()) return original.call(this, input, init);
       const entry = begin(urlOf(input));
       return original.call(this, input, init).then(
         (response) => {
@@ -93,23 +136,6 @@ export class NetworkMeter {
         },
       );
     };
-
-    if (typeof PerformanceObserver !== "undefined") {
-      this.observer = new PerformanceObserver((list) => {
-        for (const item of list.getEntries()) {
-          this.applyTiming(item as PerformanceResourceTiming);
-        }
-      });
-      this.observer.observe({ type: "resource", buffered: false });
-    }
-  }
-
-  disable(): void {
-    if (!this.originalFetch) return;
-    globalThis.fetch = this.originalFetch;
-    this.originalFetch = undefined;
-    this.observer?.disconnect();
-    this.observer = undefined;
   }
 
   /** Replaces the source matchers; existing entries are re-attributed. */
@@ -238,17 +264,32 @@ export class NetworkMeter {
   }
 
   private match(url: string): string | undefined {
+    let best: string | undefined;
+    let bestScore = 0;
     for (const matcher of this.matchers) {
-      if (matcher.test(url)) return matcher.id;
+      const score = matcher.score(url);
+      if (score > bestScore) {
+        best = matcher.id;
+        bestScore = score;
+      }
     }
-    return undefined;
+    return best;
   }
 }
 
 function urlOf(input: RequestInfo | URL): string {
-  if (typeof input === "string") return input;
+  if (typeof input === "string") return absoluteUrl(input);
   if (input instanceof URL) return input.href;
   return input.url;
+}
+
+/** Resolves a relative URL against the page, as `fetch` does. */
+function absoluteUrl(url: string): string {
+  try {
+    return new URL(url, globalThis.location?.href).href;
+  } catch {
+    return url;
+  }
 }
 
 function escapeRegExp(text: string): string {
@@ -256,22 +297,34 @@ function escapeRegExp(text: string): string {
 }
 
 /**
- * Builds a URL matcher from a source URL: a tile template (`{z}/{x}/{y}` or
- * any other `{…}` placeholder) matches one path segment per placeholder; a
- * plain URL (a tileset, a PMTiles archive, a GeoJSON file) matches itself and
- * everything under its directory, which is where a tileset's content lives.
+ * Builds a URL scorer (see `NetworkSourceMatcher.score`) from a source URL,
+ * resolved against the page:
+ * - a tile template (`{z}/{x}/{y}` or any other `{…}` placeholder) matches
+ *   one path segment per placeholder, scored by its literal prefix;
+ * - a plain URL (a tileset, a PMTiles archive, a GeoJSON file) matches itself
+ *   best, then anything under its directory (where a tileset's content
+ *   lives), scored by the directory's length so the deepest source wins. A
+ *   directory that is a host root matches nothing, since it would claim the
+ *   host's unrelated requests (fonts, sprites, other sources).
  */
-export function sourceUrlMatcher(url: string): (candidate: string) => boolean {
+export function sourceUrlMatcher(url: string): (candidate: string) => number {
+  const absolute = absoluteUrl(url);
   if (url.includes("{")) {
-    const pattern =
-      "^" +
-      url
-        .split(/\{[^}]*\}/)
-        .map(escapeRegExp)
-        .join("[^/?#]+");
-    const re = new RegExp(pattern);
-    return (candidate) => re.test(candidate);
+    // Resolving percent-encodes the braces; split the raw URL instead.
+    const parts = url.split(/\{[^}]*\}/);
+    if (parts[0]) parts[0] = absoluteUrl(parts[0]);
+    const re = new RegExp("^" + parts.map(escapeRegExp).join("[^/?#]+"));
+    const score = parts[0].length + 1;
+    return (candidate) => (re.test(candidate) ? score : 0);
   }
-  const directory = url.slice(0, url.lastIndexOf("/") + 1);
-  return (candidate) => candidate === url || candidate.startsWith(directory);
+  const exact = Number.MAX_SAFE_INTEGER;
+  const path = absolute.split(/[?#]/)[0];
+  const directory = path.slice(0, path.lastIndexOf("/") + 1);
+  const root = /^[a-z][a-z0-9+.-]*:\/\/[^/]*\/$/i.test(directory);
+  return (candidate) =>
+    candidate === absolute
+      ? exact
+      : !root && directory && candidate.startsWith(directory)
+        ? directory.length
+        : 0;
 }

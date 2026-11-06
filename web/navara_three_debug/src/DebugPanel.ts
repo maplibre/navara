@@ -70,6 +70,19 @@ export class DebugPanel {
     return this.tab.addPage({ title });
   }
 
+  /** Removes a page added by `addPage`, with its controls. */
+  removePage(page: TabPageApi): void {
+    const index = this.tab?.pages.indexOf(page) ?? -1;
+    if (!this.tab || index < 0) return;
+    if (this.tab.pages.length === 1) {
+      // The tab bar goes with its last page.
+      this.tab.dispose();
+      this.tab = undefined;
+    } else {
+      this.tab.removePage(index);
+    }
+  }
+
   get visible(): boolean {
     return this.pane.element.style.display !== "none";
   }

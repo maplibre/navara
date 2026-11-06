@@ -32,6 +32,9 @@ export function installDebugTools(
     panel,
     profiler,
     enabled: wants("layers"),
+    // Retaining geometry arrays inflates the JS heap the profiler reports;
+    // pay for it only when the layer tool was asked for.
+    wireframe: wants("layers"),
   });
   view.addPlugin(layers);
   return { panel, profiler, layers };

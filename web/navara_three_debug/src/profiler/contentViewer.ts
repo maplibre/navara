@@ -152,6 +152,8 @@ export class BufferViewer {
   private status: HtmlBlock | undefined;
   private brightnessBinding: { hidden: boolean } | undefined;
   private registered = false;
+  /** What the shown view resolved to at the last `apply`. */
+  private shown: Texture | string | undefined;
 
   constructor(
     private readonly view: ThreeView,
@@ -206,6 +208,8 @@ export class BufferViewer {
       this.ctx.insertPassBefore("final", PASS_NAME, this.pass);
       this.registered = true;
     }
+    // `disable` turned them off without clearing the checkbox.
+    if (this.state.shadowMaps) this.view.shadowMapViewersEnabled = true;
     this.apply();
   }
 
@@ -223,9 +227,18 @@ export class BufferViewer {
     this.pass.dispose();
   }
 
-  /** Re-evaluates availability: optional buffers come and go with effects. */
+  /**
+   * Re-evaluates availability: optional buffers come and go with effects.
+   * Called on the profiler's UI tick, so it redraws only when the buffer
+   * appeared, went away or was replaced; an idle map stays idle.
+   */
   refresh(): void {
-    if (this.state.show) this.apply();
+    if (!this.state.show) return;
+    if (this.currentView().resolve(this.ctx) !== this.shown) this.apply();
+  }
+
+  private currentView(): BufferView {
+    return VIEWS.find((v) => v.name === this.state.view) ?? VIEWS[0];
   }
 
   /** Shades depth from the camera's height above the ground (black) outward. */
@@ -239,19 +252,22 @@ export class BufferViewer {
   }
 
   private apply(): void {
-    const view = VIEWS.find((v) => v.name === this.state.view) ?? VIEWS[0];
+    const view = this.currentView();
     const resolved = view.resolve(this.ctx);
+    this.shown = resolved;
     const texture = typeof resolved === "string" ? undefined : resolved;
+    const depth = view.mode === "depth" || view.mode === "packedDepth";
     this.pass.source = () => {
       const r = view.resolve(this.ctx);
-      return typeof r === "string" ? undefined : r;
+      if (typeof r === "string") return undefined;
+      // Per render, so the shading follows the camera height. The engine
+      // camera exists from the first update on, which precedes any render.
+      if (depth) this.updateDepthScale();
+      return r;
     };
     this.pass.mode = view.mode;
     this.pass.channel = view.channel ?? 0;
     this.pass.brightness = this.state.brightness;
-    // The engine camera exists only after the first update, which follows
-    // `view.init()`; the viewer is first shown by a click or a tick after it.
-    if (this.state.show) this.updateDepthScale();
     this.pass.corner = CORNERS[this.state.corner];
     this.pass.scale = this.state.size;
     this.pass.enabled = this.state.show && texture !== undefined;

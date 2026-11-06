@@ -194,10 +194,14 @@ export class DebugBlitPass extends Pass {
     renderer.getViewport(this.viewport);
     renderer.getScissor(this.scissor);
 
+    // The rectangle is in the target's pixels, but `setViewport` and
+    // `setScissor` take CSS pixels and multiply by the pixel ratio for any
+    // bound target, so divide it back out.
+    const ratio = renderer.getPixelRatio();
     renderer.setRenderTarget(target);
     renderer.autoClear = false;
-    renderer.setViewport(x, y, width, height);
-    renderer.setScissor(x, y, width, height);
+    renderer.setViewport(x / ratio, y / ratio, width / ratio, height / ratio);
+    renderer.setScissor(x / ratio, y / ratio, width / ratio, height / ratio);
     renderer.setScissorTest(true);
     renderer.render(this.scene, this.camera);
 

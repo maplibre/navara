@@ -62,6 +62,10 @@ export class LayerDebuggerPlugin extends DebugPlugin {
   private readonly toggles = { wireframe: false, boxes: false };
   private wireframeBinding!: { hidden: boolean; refresh(): void };
   private boxesBinding!: { hidden: boolean; refresh(): void };
+  /** Set while `syncToggles` pushes the layer's state into the toggles. */
+  private syncingToggles = false;
+  /** Pending coalesced handling of `layerAdded` / `layerRemoved`. */
+  private layersSync: ReturnType<typeof setTimeout> | undefined;
   private styleFolder!: FolderApi;
   private editor: StyleEditor | undefined;
   private editedLayer: Layer | undefined;
@@ -120,11 +124,13 @@ export class LayerDebuggerPlugin extends DebugPlugin {
   protected onDisable(): void {
     this.view.off("layerAdded", this.onLayersChanged);
     this.view.off("layerRemoved", this.onLayersChanged);
+    this.cancelLayersSync();
     this.ticker.stop();
     this.showAll();
   }
 
   protected onDispose(): void {
+    this.cancelLayersSync();
     if (this.editRebuild !== undefined) clearTimeout(this.editRebuild);
     this.editor?.dispose();
     this.editedLayer?.off("updated", this.onEdited);
@@ -194,23 +200,42 @@ export class LayerDebuggerPlugin extends DebugPlugin {
       if (action) action[2]();
     });
 
+    // `refresh()` in `syncToggles` emits `change` too; only a click may act.
     this.wireframeBinding = folder
       .addBinding(this.toggles, "wireframe")
-      .on("change", (ev) => this.setWireframe(ev.value));
+      .on("change", (ev) => {
+        if (!this.syncingToggles) this.setWireframe(ev.value);
+      });
     this.boxesBinding = folder
       .addBinding(this.toggles, "boxes", { label: "bounding boxes" })
-      .on("change", (ev) => this.setBoundingBoxes(ev.value));
+      .on("change", (ev) => {
+        if (!this.syncingToggles) this.setBoundingBoxes(ev.value);
+      });
     hint(
       this.boxesBinding as unknown as { element: HTMLElement },
       "Draws each tile's or model's bounding box: the volume used for culling and level of detail.",
     );
   }
 
+  /**
+   * Coalesced: a style can add hundreds of layers in one go, and each sync
+   * walks every scene. The selection form is rebuilt only if the selected
+   * layer changed.
+   */
   private readonly onLayersChanged = (): void => {
-    if (!this.selected()) this.selectedId = this.layerList()[0]?.id ?? "";
-    this.syncSelection();
-    this.refresh();
+    if (this.layersSync !== undefined) return;
+    this.layersSync = setTimeout(() => {
+      this.layersSync = undefined;
+      if (!this.selected()) this.selectedId = this.layerList()[0]?.id ?? "";
+      this.syncSelection();
+    }, 0);
   };
+
+  private cancelLayersSync(): void {
+    if (this.layersSync === undefined) return;
+    clearTimeout(this.layersSync);
+    this.layersSync = undefined;
+  }
 
   private readonly onListClick = (event: MouseEvent): void => {
     const target = event.target as HTMLElement;
@@ -232,19 +257,23 @@ export class LayerDebuggerPlugin extends DebugPlugin {
     return Array.from(this.view.layers);
   }
 
-  /** Points the actions and the style form at the selected layer. */
+  /**
+   * Points the actions and the style form at the selected layer, rebuilding
+   * them only when it changed, then refreshes the list.
+   */
   private syncSelection(): void {
     const layer = this.selected();
     if (layer !== this.editedLayer) {
       this.editedLayer?.off("updated", this.onEdited);
       this.editedLayer = layer;
       layer?.on("updated", this.onEdited);
+      this.syncToggles();
+      this.rebuildEditor();
     }
+    // The name follows the description, which edits change.
     this.actions.title = layer
       ? `Selected: ${labelLayer(this.view, layer).name}`
       : "Selected layer";
-    this.syncToggles();
-    this.rebuildEditor();
     this.refresh();
   }
 
@@ -272,8 +301,13 @@ export class LayerDebuggerPlugin extends DebugPlugin {
     this.boxesBinding.hidden = boxGroup === undefined;
     this.toggles.boxes =
       boxGroup !== undefined && desc[boxGroup]?.showBoundingBox === true;
-    this.wireframeBinding.refresh();
-    this.boxesBinding.refresh();
+    this.syncingToggles = true;
+    try {
+      this.wireframeBinding.refresh();
+      this.boxesBinding.refresh();
+    } finally {
+      this.syncingToggles = false;
+    }
   }
 
   private scheduleEditorRebuild(): void {

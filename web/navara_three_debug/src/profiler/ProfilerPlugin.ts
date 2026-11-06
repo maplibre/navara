@@ -95,6 +95,8 @@ export class ProfilerPlugin extends DebugPlugin {
   private jsHeapBytes: number | undefined;
   private readonly programHistory: { at: number; count: number }[] = [];
   private capture: CapturedFrame[] | undefined;
+  /** Resolves the pending `record()`, if any. */
+  private captureDone: ((frames: CapturedFrame[]) => void) | undefined;
 
   private readonly graphs = { frameMs: 0, kbPerSecond: 0 };
   private readonly captureState = { frames: 300, status: "not recording" };
@@ -213,6 +215,7 @@ export class ProfilerPlugin extends DebugPlugin {
     this.viewer.disable();
     this.uiTicker.stop();
     this.memoryTicker.stop();
+    this.finishCapture();
     this.capture = undefined;
     this.captureState.status = "not recording";
   }
@@ -248,21 +251,17 @@ export class ProfilerPlugin extends DebugPlugin {
     return new Map(this.network.perSource().map((s) => [s.sourceId, s]));
   }
 
-  /** Records the next `count` drawn frames; resolves with them. */
+  /**
+   * Records the next `count` drawn frames; resolves with them. Frames are
+   * drawn on demand, so on an idle map it waits until something redraws.
+   * Disabling the profiler, or starting another recording, resolves it early
+   * with the frames recorded so far; while disabled it resolves with none.
+   */
   record(count = this.captureState.frames): Promise<CapturedFrame[]> {
     this.captureState.frames = count;
-    this.startCapture();
+    if (!this.startCapture()) return Promise.resolve([]);
     return new Promise((resolve) => {
-      const check = () => {
-        if (this.capture && this.capture.length >= count) {
-          resolve(this.capture);
-        } else if (this.capture) {
-          setTimeout(check, 100);
-        } else {
-          resolve([]);
-        }
-      };
-      check();
+      this.captureDone = resolve;
     });
   }
 
@@ -287,6 +286,9 @@ export class ProfilerPlugin extends DebugPlugin {
           triangles: info.render.triangles,
         });
         this.captureState.status = `${this.capture.length} / ${this.captureState.frames} frames`;
+        if (this.capture.length >= this.captureState.frames) {
+          this.finishCapture();
+        }
       }
     }
     this.passes.beginTick(timing.tick + 1);
@@ -303,7 +305,7 @@ export class ProfilerPlugin extends DebugPlugin {
       hint: `${kind} source ${source.id}${url ? `\n${url}` : ""}`,
     });
     if (!url) return;
-    this.matchers.push({ id: source.id, test: sourceUrlMatcher(url) });
+    this.matchers.push({ id: source.id, score: sourceUrlMatcher(url) });
     this.network.setMatchers(this.matchers);
   };
 
@@ -660,9 +662,23 @@ ${rows.join("\n")}
     if (this.enabled) this.workers = workers;
   }
 
-  private startCapture(): void {
+  /** Starts a recording; false (and nothing recorded) while disabled. */
+  private startCapture(): boolean {
+    this.finishCapture();
+    if (!this.enabled) {
+      this.captureState.status = "enable the profiler first";
+      return false;
+    }
     this.capture = [];
     this.captureState.status = `0 / ${this.captureState.frames} frames`;
+    return true;
+  }
+
+  /** Settles a pending `record()` with the frames captured so far. */
+  private finishCapture(): void {
+    const done = this.captureDone;
+    this.captureDone = undefined;
+    done?.(this.capture ?? []);
   }
 
   private downloadCapture(): void {
