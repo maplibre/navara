@@ -144,7 +144,7 @@ import { Color } from "@navaramap/three";
 
 **Description:** Specifies the number of shadow cascades. More cascades improve shadow quality distribution but consume more GPU resources.
 
-**Default:** `4`
+**Default:** `4` (`2` when `mobileOptimization` is in effect)
 
 **Example:**
 
@@ -162,7 +162,7 @@ import { Color } from "@navaramap/three";
 
 **Description:** Specifies the shadow map resolution (per cascade). Higher values improve shadow quality but consume more GPU memory.
 
-**Default:** `2048`
+**Default:** `2048` (`1024` when `mobileOptimization` is in effect)
 
 **Example:**
 
@@ -180,7 +180,7 @@ import { Color } from "@navaramap/three";
 
 **Description:** The maximum distance from the camera beyond which shadows are not rendered. The unit is meters.
 
-**Default:** `50000`
+**Default:** `50000` (`10000` when `mobileOptimization` is in effect)
 
 **Example:**
 
@@ -256,7 +256,7 @@ import { Color } from "@navaramap/three";
 
 **Description:** Enables smooth transitions between shadow cascades to reduce visible seams.
 
-**Default:** `true`
+**Default:** `true` (`false` when `mobileOptimization` is in effect)
 
 **Example:**
 
