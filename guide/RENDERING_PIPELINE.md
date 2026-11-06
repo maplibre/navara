@@ -80,10 +80,11 @@ nothing to any G-buffer attachment.
 
 Per frame, in order:
 
-1. **Shadow maps** — `globe + mrt + opaque` are gathered into a temporary
-   `shadowScene` and rendered to a dummy target with
-   `renderer.shadowMap.needsUpdate = true`, so CSM shadow maps include casters
-   from all three scenes.
+1. **Shadow maps** — `renderShadowMaps` renders only the lights to a dummy
+   target with `renderer.shadowMap.needsUpdate = true`, and for that call points
+   `shadowMap.render` at a temporary scene holding `globe + mrt + opaque`. CSM
+   shadow maps include casters from all three scenes, and those casters get no
+   regular draw here.
 2. **G-buffer defines stamping** — see section 5. Runs every frame; the
    per-material work is `WeakSet`-gated, so the steady-state cost is the
    scene traversal alone.

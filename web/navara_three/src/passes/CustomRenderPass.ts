@@ -68,7 +68,8 @@ export class CustomRenderPass extends RenderPass {
   private drapedTempScene = new Scene();
 
   // Used to render only the shadow map
-  private shadowScene = new Scene();
+  private shadowLightScene = new Scene();
+  private shadowCasterScene = new Scene();
   private dummyShadowRenderTarget = new WebGLRenderTarget(1, 1, {
     depthBuffer: true,
     stencilBuffer: false,
@@ -397,15 +398,8 @@ export class CustomRenderPass extends RenderPass {
       this.clearPass.render(renderer, inputBuffer, null);
     }
 
-    // Render shadow map
     if (renderer.shadowMap.enabled && !this.disableShadow) {
-      renderer.setRenderTarget(this.dummyShadowRenderTarget);
-      this.shadowScene.add(this._scenes.globe);
-      this.shadowScene.add(this._scenes.mrt);
-      this.shadowScene.add(this._scenes.opaque);
-      renderer.shadowMap.needsUpdate = true;
-      this._renderWithLight(renderer, this.shadowScene);
-      this.shadowScene.clear();
+      this.renderShadowMaps(renderer);
     }
 
     const clearDepth =
@@ -507,6 +501,29 @@ export class CustomRenderPass extends RenderPass {
     this.allDepthCopyPass.setDepthTexture(finalTarget?.depthTexture ?? null);
     this.allDepthCopyPass.copyDepth(clearDepth);
     this.allDepthCopyPass.render(renderer, null, null);
+  }
+
+  // `shadowMap.render` needs the render state only `renderer.render` sets up,
+  // and three has no shadow-only render. So only the lights are rendered, and
+  // the shadow map is pointed at the casters, which then get no regular draw.
+  private renderShadowMaps(renderer: WebGLRenderer): void {
+    const casters = this.shadowCasterScene;
+    casters.add(this._scenes.globe);
+    casters.add(this._scenes.mrt);
+    casters.add(this._scenes.opaque);
+    casters.updateMatrixWorld();
+
+    const shadowMap = renderer.shadowMap;
+    const renderShadowMap = shadowMap.render;
+    shadowMap.render = (lights, _scene, camera) => {
+      renderShadowMap.call(shadowMap, lights, casters, camera);
+    };
+    shadowMap.needsUpdate = true;
+    renderer.setRenderTarget(this.dummyShadowRenderTarget);
+    this._renderWithLight(renderer, this.shadowLightScene);
+    shadowMap.render = renderShadowMap;
+
+    casters.clear();
   }
 
   // The composer-provided depth texture is intentionally ignored: the gbuffer
