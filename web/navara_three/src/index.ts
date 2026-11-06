@@ -410,6 +410,17 @@ export type Options = {
    */
   dynamicSse?: Partial<DynamicSseSettings>;
   /**
+   * Number of tile workers (decode and mesh-build threads). Each worker holds
+   * its own JS isolate and WASM heap, so a smaller pool uses less memory at
+   * the cost of slower tile loading during fast camera moves. Clamped to
+   * `[1, navigator.hardwareConcurrency]`; an explicit value bypasses the
+   * mobile cap. Where `navigator.deviceMemory` is reported (desktop), the
+   * default `memoryBudget.maxWorkerHeapBytes` shrinks as the pool grows;
+   * elsewhere it is fixed per worker, so a larger pool raises peak memory.
+   * @defaultValue `navigator.hardwareConcurrency` (at most 2 with `mobileOptimization`)
+   */
+  workerPoolSize?: number;
+  /**
    * Overrides for the worker-side memory budgets (per-tile-worker WASM heap
    * recycle threshold and the font worker's cache budget). Defaults derive
    * from the device memory together with `cacheBytes` — see
@@ -1477,7 +1488,10 @@ export default class ThreeView<
     this._initialized = true;
 
     const mobileOptimized = this.isMobileOptimized();
-    const concurrencyManager = createDefaultConcurrencyManager(mobileOptimized);
+    const concurrencyManager = createDefaultConcurrencyManager(
+      mobileOptimized,
+      this._options.workerPoolSize,
+    );
     if (mobileOptimized) {
       this._hillshadeContext.normalMapScale = 0.5;
     }

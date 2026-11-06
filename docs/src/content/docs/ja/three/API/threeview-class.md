@@ -441,6 +441,22 @@ const view = new ThreeView({
 });
 ```
 
+### workerPoolSize
+
+**Type:** `number | undefined`
+
+**Description:** タイルのデコードとメッシュ構築を行うバックグラウンドワーカーの数。各ワーカーは JavaScript エンジンのインスタンスと WebAssembly ヒープを個別に持つため、プールを小さくするとメモリ使用量が減りますが、カメラを素早く動かした後のタイル読み込みは遅くなります。値は `1` から `navigator.hardwareConcurrency` の範囲に制限されます。明示的に指定した値は `mobileOptimization` 有効時にも適用されます。`navigator.deviceMemory` を報告するデスクトップブラウザでは、`memoryBudget.maxWorkerHeapBytes` のデフォルトはプールが大きいほど小さくなります。それ以外の環境ではワーカーごとに固定値のため、プールを大きくするとワーカーのピークメモリが増えます。
+
+**Default:** `navigator.hardwareConcurrency`（`mobileOptimization` 有効時は最大 `2`）
+
+**Example:**
+
+```typescript
+const view = new ThreeView({
+  workerPoolSize: 4,
+});
+```
+
 ### memoryBudget
 
 **Type:** `object | undefined`

@@ -441,6 +441,22 @@ const view = new ThreeView({
 });
 ```
 
+### workerPoolSize
+
+**Type:** `number | undefined`
+
+**Description:** Number of background workers that decode tiles and build their meshes. Each worker holds its own JavaScript engine instance and WebAssembly heap, so a smaller pool uses less memory, at the cost of slower tile loading after fast camera moves. The value is clamped to the range from `1` to `navigator.hardwareConcurrency`. An explicit value also applies with `mobileOptimization`. On desktop browsers that report `navigator.deviceMemory`, the default `memoryBudget.maxWorkerHeapBytes` shrinks as the pool grows. Elsewhere it is a fixed amount per worker, so a larger pool raises the peak worker memory.
+
+**Default:** `navigator.hardwareConcurrency` (at most `2` with `mobileOptimization`)
+
+**Example:**
+
+```typescript
+const view = new ThreeView({
+  workerPoolSize: 4,
+});
+```
+
 ### memoryBudget
 
 **Type:** `object | undefined`
