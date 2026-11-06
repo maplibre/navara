@@ -51,10 +51,9 @@ const ZOOM_FOLLOWING_SYMBOL_PROPERTIES = {
     "icon-padding",
     "text-optional",
     "icon-optional",
+    "text-line-height",
   ],
   paint: [
-    "text-halo-color",
-    "text-halo-width",
     "text-translate",
     "text-translate-anchor",
     "icon-translate",
@@ -156,16 +155,26 @@ export function getSymbolPlacement(
 /**
  * Source geometry a symbol layer consumes. Along-line placement takes lines
  * only. Point placement labels every geometry, as MapLibre does: a line once
- * at its first vertex, a polygon at its pole of inaccessibility. The plugin
- * evaluates a symbol layer's filter as a single geometry type, though, so a
- * filter that tests it (`$type`, `["geometry-type"]`) would pass lines and
- * polygons as points; such layers keep the native point geometry only.
+ * at its first vertex, a polygon at its pole of inaccessibility.
  */
 function getSymbolGeometryTypes(
   styleLayer: StyleLayer,
   placement: SymbolPlacement,
 ): SourceGeometryType[] | undefined {
   if (placement !== "point") return ["line"];
+  return getAllGeometryTypesUnlessFiltered(styleLayer);
+}
+
+/**
+ * Every source geometry type, for a point-like layer (circle, point-placed
+ * symbol) that MapLibre draws on lines and polygons too. The plugin evaluates
+ * such a layer's filter as a single geometry type (`"Point"`), though, so a
+ * filter that tests it (`$type`, `["geometry-type"]`) would pass lines and
+ * polygons as points; such layers keep the native point geometry only.
+ */
+function getAllGeometryTypesUnlessFiltered(
+  styleLayer: StyleLayer,
+): SourceGeometryType[] | undefined {
   const filter = "filter" in styleLayer ? styleLayer.filter : undefined;
   return expressionUsesGeometryType(filter)
     ? undefined
@@ -361,13 +370,30 @@ function createCircleLayer(
   source: Source,
   styleLayer: StyleLayer,
 ): LayerDescription {
+  const geometryTypes = getAllGeometryTypesUnlessFiltered(styleLayer);
+  const circleSpec = PAINT_SPECS_BY_TYPE.circle;
+  // Unset paint properties are not evaluated per feature, so the material
+  // carries the spec defaults; otherwise an unset `circle-color` would be the
+  // point material's own default, white.
+  const defaultColor = toNavaraColor(circleSpec["circle-color"].default);
   return {
     type: "vector",
     source,
     ...getSourceLayersField(styleLayer),
     point: {
       clampToGround: true,
-      anchor: "bottom",
+      ...(defaultColor && { color: defaultColor.color }),
+      // `circle-radius` is in screen pixels, and circles are centered on
+      // their point, as in MapLibre. `size` is the full width, so twice the
+      // radius.
+      size: 2 * circleSpec["circle-radius"].default,
+      sizeInMeters: false,
+      anchor: "center",
+      // MapLibre never collides circles: overlapping ones are all drawn.
+      declutter: false,
+      // MapLibre draws a circle at every vertex of lines and polygon rings,
+      // which is the default `placement: "point"`.
+      ...(geometryTypes && { geometryTypes }),
     },
   };
 }
@@ -649,11 +675,6 @@ function createSymbolLayer(
       declutter: true, // Enable declutter to hide duplicate/overlapping labels
     };
 
-    // Apply text-halo properties (outlineColor/outlineWidth/outlineOpacity)
-    // TODO: Text halo is currently a layer-level property, evaluated at the layer's zoom with
-    // properties=undefined. This means text-halo expressions cannot use feature properties.
-    // To fix this, Navara's EvaluatedValue should support outlineColor/outlineWidth fields so
-    // they can be evaluated per-feature.
     if (engine && orientation && styleLayer.type === "symbol") {
       Object.assign(layerDesc.text, {
         placement,
@@ -676,68 +697,19 @@ function createSymbolLayer(
               ),
               10,
             ),
-        ...(geometryTypes && { geometryTypes }),
-        ...(alongLine && { spacing: orientation.spacing }),
-      } satisfies Partial<TextDescription>);
-
-      // Track color alpha separately to combine with explicit opacity at the end
-      let haloColorAlpha = 1.0;
-
-      if (styleLayer.paint?.["text-halo-color"] !== undefined) {
-        // Convert to Navara Color and extract alpha (don't set opacity yet)
-        const colorResult = toNavaraColor(
+        lineHeight: finiteOr(
           evaluateLayerProperty(
             engine,
             styleLayer,
-            "paint",
-            "text-halo-color",
+            "layout",
+            "text-line-height",
             zoom,
           ),
-        );
-        if (colorResult) {
-          layerDesc.text.outlineColor = colorResult.color;
-          haloColorAlpha = colorResult.alpha;
-        }
-      }
-
-      if (styleLayer.paint?.["text-halo-width"] !== undefined) {
-        const widthValue = evaluateLayerProperty(
-          engine,
-          styleLayer,
-          "paint",
-          "text-halo-width",
-          zoom,
-        );
-        if (typeof widthValue === "number" && Number.isFinite(widthValue)) {
-          // MapLibre text-halo-width is in screen pixels
-          // Navara outlineWidth is in texels at 64px/em reference density
-          // For now, use the value directly (may need adjustment based on text-size)
-          layerDesc.text.outlineWidth = widthValue;
-        }
-      }
-
-      // Combine color alpha with explicit opacity (if text-halo-opacity is evaluated in future)
-      // Only set opacity if a halo color was configured (avoid forcing default when no halo)
-      if (layerDesc.text.outlineColor !== undefined) {
-        const explicitOpacity = layerDesc.text.outlineOpacity;
-        // Only set opacity if there's an explicit value or the color has alpha < 1
-        // This preserves undefined behavior when haloColorAlpha === 1.0 (engine default)
-        if (explicitOpacity !== undefined || haloColorAlpha !== 1.0) {
-          const finalOpacity =
-            explicitOpacity !== undefined
-              ? haloColorAlpha * explicitOpacity
-              : haloColorAlpha;
-          // Validate finalOpacity is finite, fall back to 1.0 if NaN/Infinity
-          const validOpacity = Number.isFinite(finalOpacity)
-            ? finalOpacity
-            : 1.0;
-          // Clamp to [0, 1] to handle invalid input or multiplication overflow
-          layerDesc.text.outlineOpacity = Math.max(
-            0,
-            Math.min(1, validOpacity),
-          );
-        }
-      }
+          1.2,
+        ),
+        ...(geometryTypes && { geometryTypes }),
+        ...(alongLine && { spacing: orientation.spacing }),
+      } satisfies Partial<TextDescription>);
     }
   }
 
@@ -750,7 +722,8 @@ function createSymbolLayer(
  * @param source - Navara source object
  * @param styleLayer - MapLibre layer specification
  * @param fontFamily - Optional font family name for text rendering (ignores style's text-font)
- * @param engine - Optional style engine for evaluating expressions (e.g., text-halo properties)
+ * @param engine - Optional style engine for evaluating layer-level symbol
+ *   properties
  * @param zoom - Zoom to evaluate the layer-level symbol properties that can
  *   follow it at (see {@link symbolLayerFollowsZoom}); defaults to
  *   {@link CONSTRUCTION_ZOOM}

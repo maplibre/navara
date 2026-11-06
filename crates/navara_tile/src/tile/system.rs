@@ -637,16 +637,42 @@ pub fn transfer_mesh(
         }
 
         // Extract shared elevation heatmap configuration (or use defaults)
-        let (cast_shadow, receive_shadow, lit, terrain_show_bounding_box) = terrain_layer
-            .and_then(|l| l.appearance.as_ref())
-            .map_or((false, false, None, false), |appearance| {
+        let (
+            cast_shadow,
+            receive_shadow,
+            lit,
+            terrain_show_bounding_box,
+            water_mask_color,
+            wave_exaggeration,
+            wave_strength,
+            wave_direction,
+            flow_speed,
+        ) = terrain_layer.and_then(|l| l.appearance.as_ref()).map_or(
+            (
+                false,
+                false,
+                None,
+                false,
+                None,
+                1.0,
+                navara_material::DEFAULT_WAVE_STRENGTH,
+                0.0,
+                0.0,
+            ),
+            |appearance| {
                 (
                     appearance.cast_shadow,
                     appearance.receive_shadow,
                     appearance.lit,
                     appearance.show_bounding_box,
+                    appearance.water_mask_color,
+                    appearance.wave_exaggeration,
+                    appearance.wave_strength,
+                    appearance.wave_direction,
+                    appearance.flow_speed,
                 )
-            });
+            },
+        );
 
         // The initial material carries only terrain-owned hillshade entities;
         // regular raster textures are pulled by extent in `update_mesh_material`.
@@ -665,6 +691,11 @@ pub fn transfer_mesh(
             receive_shadow: Some(receive_shadow),
             lit,
             show_bounding_box: Some(tile_show_bounding_box || terrain_show_bounding_box),
+            water_mask_color,
+            wave_exaggeration,
+            wave_strength,
+            wave_direction,
+            flow_speed,
 
             // Elevation Heatmap fields
             elevation_heatmap_layers,
@@ -1400,16 +1431,31 @@ pub fn update_terrain_layer(
             let receive_shadow = Some(u.material.receive_shadow);
             let lit = u.material.lit;
             let show_bounding_box = Some(u.material.show_bounding_box);
+            let water_mask_color = u.material.water_mask_color;
+            let wave_exaggeration = u.material.wave_exaggeration;
+            let wave_strength = u.material.wave_strength;
+            let wave_direction = u.material.wave_direction;
+            let flow_speed = u.material.flow_speed;
             for mut material in &mut tile_materials {
                 if material.cast_shadow != cast_shadow
                     || material.receive_shadow != receive_shadow
                     || material.lit != lit
                     || material.show_bounding_box != show_bounding_box
+                    || material.water_mask_color != water_mask_color
+                    || material.wave_exaggeration != wave_exaggeration
+                    || material.wave_strength != wave_strength
+                    || material.wave_direction != wave_direction
+                    || material.flow_speed != flow_speed
                 {
                     material.cast_shadow = cast_shadow;
                     material.receive_shadow = receive_shadow;
                     material.lit = lit;
                     material.show_bounding_box = show_bounding_box;
+                    material.water_mask_color = water_mask_color;
+                    material.wave_exaggeration = wave_exaggeration;
+                    material.wave_strength = wave_strength;
+                    material.wave_direction = wave_direction;
+                    material.flow_speed = flow_speed;
                 }
             }
         }

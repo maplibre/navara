@@ -16,7 +16,13 @@ export type SkyMeshEvents = {
 
 export type SkyMeshOptions = {
   visible?: boolean;
+  /**
+   * @default true, or false with `envMap`
+   */
   sun?: boolean;
+  /**
+   * @default true, or false with `envMap`
+   */
   moon?: boolean;
   /**
    * @default 1
@@ -31,7 +37,9 @@ export type SkyMeshOptions = {
    */
   sunAngularRadius?: number;
   /**
-   * Render as env map
+   * Render as env map. A disc as small as the sun is a single bright texel of a
+   * cube face, which a smooth reflection shows as a square, so the sun and moon
+   * stay out unless `sun` or `moon` asks for them.
    */
   envMap?: boolean;
 };
@@ -52,8 +60,8 @@ export class SkyMesh extends EventHandler<SkyMeshEvents> {
     this.options = options;
 
     const skyMaterial = new SkyMaterial({
-      sun: options.sun ?? true,
-      moon: options.moon ?? true,
+      sun: options.sun ?? !options.envMap,
+      moon: options.moon ?? !options.envMap,
       depthWrite: false,
       sunAngularRadius: options.sunAngularRadius,
     });

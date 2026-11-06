@@ -3,9 +3,10 @@ import { describe, expect, it } from "vitest";
 import {
   generateTileCommonInjection,
   generateTileMapFragment,
+  generateTileNormalBufferReplacement,
   generateTileNormalFragmentMaps,
+  generateTileOutgoingLight,
   type TileShaderFeatures,
-  WATERMASK_OCEAN_REFLECTIVITY,
 } from "./tileShader";
 
 const FEATURES_OFF: TileShaderFeatures = {
@@ -31,7 +32,7 @@ describe("generateTileCommonInjection", () => {
 });
 
 describe("generateTileMapFragment", () => {
-  const src = generateTileMapFragment(16, FEATURES_OFF);
+  const src = generateTileMapFragment(16);
 
   it("discards fragments outside the fill quadrants", () => {
     expect(src).toContain("if (uFillQuadrants != 0) {");
@@ -76,26 +77,15 @@ describe("generateTileMapFragment", () => {
     expect(src).not.toMatch(/mix\(diffuseColor\.rgb,\s*atlasColor\.rgb/);
   });
 
-  it("omits the ocean reflectivity fallback when no watermask is present", () => {
-    expect(src).not.toContain("useWater && !hasSlotWaterParams");
-  });
-
-  it("overrides reflectivity/roughness on watermask water pixels", () => {
-    // Watermask water under a raster winner (or no winner – open ocean) must
-    // clear the SSR mask threshold; a texturized (vector) winner keeps its own
-    // per-slot params.
-    const masked = generateTileMapFragment(16, {
-      ...FEATURES_OFF,
-      hasWatermask: true,
-    });
-    expect(masked).toContain("if (useWater && !hasSlotWaterParams)");
-    expect(masked).toContain(
-      `tileReflectivity = ${WATERMASK_OCEAN_REFLECTIVITY.toFixed(4)};`,
+  it("makes a vector winner water only through its own water flag", () => {
+    // attr.r ORs the watermask in, so a non-water vector layer over the sea
+    // would otherwise grow waves.
+    expect(src).toContain(
+      "vec2 tileWaterParams = (hasWinner && isTexturizedLayer) ? uWaterParams[winIdx] : vec2(uWaterMaskExaggeration, 1.0);",
     );
-    // The override must land AFTER the per-slot reads so it wins.
-    expect(
-      masked.indexOf("if (useWater && !hasSlotWaterParams)"),
-    ).toBeGreaterThan(masked.indexOf("uReflectivities[winIdx]"));
+    expect(src).toContain(
+      "bool tileWater = useWater && tileWaterParams.y > 0.5;",
+    );
   });
 });
 
@@ -122,22 +112,49 @@ describe("generateTileNormalFragmentMaps", () => {
     expect(src).toContain("uHillshadeExaggeration");
   });
 
-  it("omits water specular call when hasWater is off", () => {
-    const src = generateTileNormalFragmentMaps({
-      ...FEATURES_OFF,
-      hasHillshade: false,
-      hasWater: false,
-    });
-    expect(src).not.toContain("computeWaterSpecular");
+  it("omits the water surface when neither water nor a watermask is present", () => {
+    const src = generateTileNormalFragmentMaps(FEATURES_OFF);
+    expect(src).not.toContain("nvrWaterSurface");
     expect(src).toContain("computeSpecular(");
   });
 
-  it("emits computeWaterSpecular when hasWater is on", () => {
+  it.each([
+    ["water layer", { hasWater: true }],
+    ["watermask", { hasWatermask: true }],
+  ])("emits the water surface for a %s", (_, features) => {
     const src = generateTileNormalFragmentMaps({
       ...FEATURES_OFF,
-      hasHillshade: false,
-      hasWater: true,
+      ...features,
     });
-    expect(src).toContain("computeWaterSpecular(");
+    expect(src).toContain("nvrWaterSurface(");
+    // The sea keeps its waves around a river, and each layer keeps its own.
+    expect(src.includes("1 + winIdx - TILE_FIRST_VECTOR_SLOT")).toBe(
+      "hasWater" in features,
+    );
+    // The coordinate takes derivatives, so it stays outside the branch.
+    expect(src.indexOf("nvrWaterCoord(")).toBeLessThan(
+      src.indexOf("if (tileWater)"),
+    );
+  });
+});
+
+describe("water output", () => {
+  const WATERMASK = { ...FEATURES_OFF, hasWatermask: true };
+
+  it("shades water pixels with the water surface", () => {
+    expect(generateTileOutgoingLight(WATERMASK)).toContain("nvrWaterShade(");
+    expect(generateTileOutgoingLight(FEATURES_OFF)).not.toContain(
+      "nvrWaterShade(",
+    );
+  });
+
+  it("writes the water's reflectance and roughness to the G-buffer", () => {
+    const src = generateTileNormalBufferReplacement(WATERMASK);
+    expect(src).toContain(
+      "GBUFFER_WRITE_NORMAL(nvr_waterSurface.gbufferNormal, NVR_WATER_F0, nvr_waterSurface.gbufferRoughness)",
+    );
+    expect(generateTileNormalBufferReplacement(FEATURES_OFF)).not.toContain(
+      "nvr_waterSurface",
+    );
   });
 });

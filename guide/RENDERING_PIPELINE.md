@@ -80,10 +80,11 @@ nothing to any G-buffer attachment.
 
 Per frame, in order:
 
-1. **Shadow maps** — `globe + mrt + opaque` are gathered into a temporary
-   `shadowScene` and rendered to a dummy target with
-   `renderer.shadowMap.needsUpdate = true`, so CSM shadow maps include casters
-   from all three scenes.
+1. **Shadow maps** — `renderShadowMaps` renders only the lights to a dummy
+   target with `renderer.shadowMap.needsUpdate = true`, and for that call points
+   `shadowMap.render` at a temporary scene holding `globe + mrt + opaque`. CSM
+   shadow maps include casters from all three scenes, and those casters get no
+   regular draw here.
 2. **G-buffer defines stamping** — see section 5. Runs every frame; the
    per-material work is `WeakSet`-gated, so the steady-state cost is the
    scene traversal alone.
@@ -156,7 +157,7 @@ there unconverted, so a model's metalness reaches readers as its F0 as is:
 | model / 3D Tiles glTF (`MeshStandard`/`Physical`)                    | real `metalnessFactor`                                                   | real `roughnessFactor`                                         |
 | polygon                                                              | `reflectivity` ref, **default 0**                                        | `roughness` ref, **default `GBUFFER_PHONG_ROUGHNESS`**         |
 | terrain tile, `useNormal` on                                         | `tileReflectivity`, **default 0**                                        | draped slot's roughness, **default `GBUFFER_PHONG_ROUGHNESS`** |
-| terrain watermask ocean                                              | 0.02 (water's F0)                                                        | 0.4 (Cox-Munk wave slopes)                                     |
+| water (watermask sea, `water` polygon/model)                         | 0.02 (water's F0), whatever `reflectivity` says                          | `mss^(1/4)` of the wave slopes the normal leaves out           |
 | terrain tile, `useNormal` off (`MeshBasicMaterial`)                  | 0                                                                        | 1.0, and **RG is NaN** (no `normal` attribute)                 |
 | polyline, outline, sprite, SDF text, points, custom `ShaderMaterial` | 0                                                                        | 1.0                                                            |
 | any other Lambert/Basic/Phong                                        | 0 (three's `reflectivity` is an env-map weight, not an F0)               | 1.0                                                            |
@@ -462,7 +463,44 @@ class MyEffectDesc extends EffectDesc<...> {
 registered key (e.g. inherit the sun's intensity/direction);
 `_getEffects/_getLights/_getMeshes` iterate them all.
 
-## 10. Instrumentation hooks
+## 10. Water surface
+
+Every water surface (the tile shader's water slots and watermask sea,
+`polygonWaterEnhancer`, `modelWaterEnhancer`) calls the same chunk,
+`shaders/glsl/chunks/water_pars_fragment.glsl`, with uniforms owned by
+`WaterState` (`src/water/waterState.ts`, one per view in
+`CommonUniforms.water`). It replaces the surface's lit color in the forward
+pass and writes its own normal and roughness to the G-buffer. The wave model,
+level of detail, shading, sky env map and invariants are in
+[WATER.md](WATER.md).
+
+## 11. Lightweight skybox
+
+`SkyBoxMeshDesc` renders a single fullscreen triangle at far depth in the
+`opaque` scene with premultiplied normal alpha blending. Its shaders approximate the sky
+without atmosphere LUTs, texture fetches, or ray marching. The configured
+`dayColor`, `nightColor`, and `sunColor` remain the palette controls.
+
+The vertex shader computes geodetic local up in view space, solar elevation,
+and camera altitude. The fragment shader adds a desaturated horizon gradient,
+a sun-facing twilight tint, and a small antialiased solar disc with a compact
+exponential halo. Disc distance uses the chord between normalized view rays
+for precision near the sun; derivative smoothing adapts the edge to resolution.
+The solar disc and compact halo remain visible at every altitude; globe depth
+occludes them when the planet is in front of them.
+
+Sky opacity stays at 1.0 below 100 km to occlude background stars and smoothly
+reaches zero at 190 km. A fixed 0.3 RGB scale preserves the sky brightness.
+Stars disable depth writes after material construction (the upstream constructor
+overrides that option), allowing the far-depth skybox to cover star pixels.
+The shader premultiplies sky RGB by sky opacity and adds the solar disc and halo
+independently. The halo is additive and does not increase coverage. Output alpha
+combines sky opacity and disc coverage, hiding stars behind the sun even in space
+while leaving the surrounding star field visible.
+Do not apply another alpha multiplication to the output. Screen-pixel dithering
+reduces gradient banding and fades with the sky.
+
+## 12. Instrumentation hooks
 
 `ThreeView` and `ViewContext` expose what `@navaramap/three-debug`'s
 profiler reads; nothing in the pipeline depends on them.
@@ -488,30 +526,3 @@ profiler reads; nothing in the pipeline depends on them.
   owning pass (`utils/fixedGpuFootprint.ts`, the same walk that feeds the
   memory ledger's `fixed_gpu_bytes`). `getJobStats()` is the dispatcher's
   per-kind in-flight counts.
-
-## 11. Lightweight skybox
-
-
-`SkyBoxMeshDesc` renders a single fullscreen triangle at far depth in the
-`opaque` scene with premultiplied normal alpha blending. Its shaders approximate the sky
-without atmosphere LUTs, texture fetches, or ray marching. The configured
-`dayColor`, `nightColor`, and `sunColor` remain the palette controls.
-
-The vertex shader computes geodetic local up in view space, solar elevation,
-and camera altitude. The fragment shader adds a desaturated horizon gradient,
-a sun-facing twilight tint, and a small antialiased solar disc with a compact
-exponential halo. Disc distance uses the chord between normalized view rays
-for precision near the sun; derivative smoothing adapts the edge to resolution.
-The solar disc and compact halo remain visible at every altitude; globe depth
-occludes them when the planet is in front of them.
-
-Sky opacity stays at 1.0 below 100 km to occlude background stars and smoothly
-reaches zero at 190 km. A fixed 0.3 RGB scale preserves the sky brightness.
-Stars disable depth writes after material construction (the upstream constructor
-overrides that option), allowing the far-depth skybox to cover star pixels.
-The shader premultiplies sky RGB by sky opacity and adds the solar disc and halo
-independently. The halo is additive and does not increase coverage. Output alpha
-combines sky opacity and disc coverage, hiding stars behind the sun even in space
-while leaving the surrounding star field visible.
-Do not apply another alpha multiplication to the output. Screen-pixel dithering
-reduces gradient banding and fades with the sky.

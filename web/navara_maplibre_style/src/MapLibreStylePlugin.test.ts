@@ -125,6 +125,9 @@ function createMockView(initialZoom = 10): ThreeView {
   const mockCamera = {
     zoom: initialZoom,
     fov: 50, // Default FOV
+    // The camera's current pose, kept for properties a style omits
+    positionGeographic: { lng: 135, lat: 35, height: 1000000 },
+    orientation: { heading: 10, pitch: -60, roll: 2 },
     on: vi.fn(),
     off: vi.fn(),
   };
@@ -875,7 +878,7 @@ describe("MapLibreStylePlugin", () => {
       expect(view.setCamera).toHaveBeenCalled();
     });
 
-    it("should use default values for omitted optional camera properties", async () => {
+    it("should keep the current orientation for omitted bearing, pitch, and roll", async () => {
       const style: StyleSpecification = {
         version: 8,
         center: [100, 50],
@@ -888,20 +891,19 @@ describe("MapLibreStylePlugin", () => {
       const view = createMockView();
       await plugin.init(view, mockViewContext);
 
-      // Verify setCamera was called with defaults
       expect(view.setCamera).toHaveBeenCalledWith(
         expect.objectContaining({
           lng: 100,
           lat: 50,
           height: 0, // default centerAltitude
-          heading: 0, // default bearing
-          pitch: -90, // default pitch (straight down)
-          roll: 0, // default roll
+          heading: 10,
+          pitch: -60,
+          roll: 2,
         }),
       );
     });
 
-    it("should not apply camera when center is missing", async () => {
+    it("should keep the current center when only zoom is set", async () => {
       const style: StyleSpecification = {
         version: 8,
         zoom: 12,
@@ -913,11 +915,18 @@ describe("MapLibreStylePlugin", () => {
       const view = createMockView();
       await plugin.init(view, mockViewContext);
 
-      // setCamera should not be called
-      expect(view.setCamera).not.toHaveBeenCalled();
+      expect(view.setCamera).toHaveBeenCalledWith(
+        expect.objectContaining({ lng: 135, lat: 35 }),
+      );
+      expect(view.zoomLevelToCameraDistance).toHaveBeenCalledWith(
+        12,
+        35,
+        512,
+        undefined,
+      );
     });
 
-    it("should not apply camera when zoom is missing", async () => {
+    it("should keep the current zoom when only center is set", async () => {
       const style: StyleSpecification = {
         version: 8,
         center: [139.7, 35.7],
@@ -926,11 +935,102 @@ describe("MapLibreStylePlugin", () => {
       };
 
       const plugin = new MapLibreStylePlugin(style);
+      const view = createMockView(7);
+      await plugin.init(view, mockViewContext);
+
+      expect(view.setCamera).toHaveBeenCalledWith(
+        expect.objectContaining({ lng: 139.7, lat: 35.7 }),
+      );
+      expect(view.zoomLevelToCameraDistance).toHaveBeenCalledWith(
+        7,
+        35.7,
+        512,
+        undefined,
+      );
+    });
+
+    it("should apply pitch and bearing without center or zoom", async () => {
+      const style: StyleSpecification = {
+        version: 8,
+        pitch: 60,
+        bearing: 45,
+        sources: {},
+        layers: [],
+      };
+
+      const plugin = new MapLibreStylePlugin(style);
+      const view = createMockView(7);
+      await plugin.init(view, mockViewContext);
+
+      expect(view.setCamera).toHaveBeenCalledWith(
+        expect.objectContaining({
+          lng: 135,
+          lat: 35,
+          heading: 45,
+          pitch: -30,
+          roll: 2,
+        }),
+      );
+      expect(view.zoomLevelToCameraDistance).toHaveBeenCalledWith(
+        7,
+        35,
+        512,
+        undefined,
+      );
+    });
+
+    it("should keep the application's camera when the style sets no camera property", async () => {
+      const style: StyleSpecification = {
+        version: 8,
+        sources: {},
+        layers: [],
+      };
+
+      const plugin = new MapLibreStylePlugin(style);
       const view = createMockView();
       await plugin.init(view, mockViewContext);
 
-      // setCamera should not be called
       expect(view.setCamera).not.toHaveBeenCalled();
+    });
+
+    it("should force MapLibre FOV even when the style sets no camera property", async () => {
+      const style: StyleSpecification = {
+        version: 8,
+        sources: {},
+        layers: [],
+      };
+
+      const plugin = new MapLibreStylePlugin(style, {
+        forceMapLibreFov: true,
+      });
+      const view = createMockView();
+      await plugin.init(view, mockViewContext);
+
+      expect(view.camera.fov).toBeCloseTo(36.87, 1);
+      expect(view.setCamera).not.toHaveBeenCalled();
+    });
+
+    it("should pass MapLibre FOV to the zoom conversion for a partial camera", async () => {
+      const style: StyleSpecification = {
+        version: 8,
+        zoom: 12,
+        sources: {},
+        layers: [],
+      };
+
+      const plugin = new MapLibreStylePlugin(style, {
+        forceMapLibreFov: true,
+      });
+      const view = createMockView();
+      await plugin.init(view, mockViewContext);
+
+      expect(view.camera.fov).toBeCloseTo(36.87, 1);
+      expect(view.zoomLevelToCameraDistance).toHaveBeenCalledWith(
+        12,
+        35,
+        512,
+        0.6435011087932844,
+      );
     });
 
     it("should register frustumChanged listener when camera not ready", async () => {
@@ -1174,6 +1274,93 @@ describe("MapLibreStylePlugin", () => {
           minzoom: 0,
           maxzoom: 18,
         }),
+      );
+    });
+
+    it("should pass scheme tms to a raster source with a tiles array", async () => {
+      const style: StyleSpecification = {
+        version: 8,
+        sources: {
+          "raster-source": {
+            type: "raster",
+            tiles: ["https://example.com/{z}/{x}/{y}.png"],
+            scheme: "tms",
+          },
+        },
+        layers: [],
+      };
+
+      const plugin = new MapLibreStylePlugin(style);
+      const view = createMockView();
+      await plugin.init(view, mockViewContext);
+
+      expect(view.addSource).toHaveBeenCalledWith(
+        expect.objectContaining({ type: "raster-tile", tms: true }),
+      );
+    });
+
+    it("should not set tms for a raster source with the default scheme", async () => {
+      const style: StyleSpecification = {
+        version: 8,
+        sources: {
+          "raster-source": {
+            type: "raster",
+            tiles: ["https://example.com/{z}/{x}/{y}.png"],
+          },
+        },
+        layers: [],
+      };
+
+      const plugin = new MapLibreStylePlugin(style);
+      const view = createMockView();
+      await plugin.init(view, mockViewContext);
+
+      expect(view.addSource).toHaveBeenCalledWith(
+        expect.not.objectContaining({ tms: true }),
+      );
+    });
+
+    it("should pass scheme to TileJsonPlugin for a raster url source", async () => {
+      const style: StyleSpecification = {
+        version: 8,
+        sources: {
+          "raster-source": {
+            type: "raster",
+            url: "https://example.com/raster-tiles.json",
+            scheme: "tms",
+          },
+        },
+        layers: [],
+      };
+
+      const plugin = new MapLibreStylePlugin(style);
+      const view = createMockView();
+      await plugin.init(view, mockViewContext);
+
+      expect(mockTileJsonPluginAddSource).toHaveBeenCalledWith(
+        expect.objectContaining({ type: "raster-tile", scheme: "tms" }),
+      );
+    });
+
+    it("should not pass scheme for a vector source", async () => {
+      const style: StyleSpecification = {
+        version: 8,
+        sources: {
+          "vector-source": {
+            type: "vector",
+            tiles: ["https://example.com/{z}/{x}/{y}.pbf"],
+            scheme: "tms",
+          },
+        },
+        layers: [],
+      };
+
+      const plugin = new MapLibreStylePlugin(style);
+      const view = createMockView();
+      await plugin.init(view, mockViewContext);
+
+      expect(view.addSource).toHaveBeenCalledWith(
+        expect.not.objectContaining({ tms: true }),
       );
     });
 
@@ -1467,7 +1654,52 @@ describe("MapLibreStylePlugin", () => {
       expect(mockLayer.update).toHaveBeenCalledTimes(1);
     });
 
-    it("updates a symbol layer when only its halo color crosses a zoom step", async () => {
+    it("updates a symbol layer when only its line height crosses a zoom step", async () => {
+      const mockLayer = {
+        delete: vi.fn(),
+        on: vi.fn(),
+        forceUpdate: vi.fn(),
+        update: vi.fn(),
+      };
+      const plugin = new MapLibreStylePlugin({
+        version: 8,
+        "font-faces": { Test: "https://example.com/test.woff2" },
+        sources: {
+          test: {
+            type: "geojson",
+            data: { type: "FeatureCollection", features: [] },
+          },
+        },
+        layers: [
+          {
+            id: "labels",
+            type: "symbol",
+            source: "test",
+            layout: {
+              "text-field": "{name}",
+              "text-font": ["Test"],
+              "text-line-height": ["step", ["zoom"], 1.2, 14, 1.5],
+            },
+          },
+        ],
+      } as StyleSpecification);
+      const view = createMockView(10);
+      view.addLayer = vi.fn().mockReturnValue(mockLayer);
+
+      await plugin.init(view, mockViewContext);
+      expect((view.addLayer as any).mock.calls[0][0].text).toBeDefined();
+
+      const moveListener = (view.camera.on as any).mock.calls.find(
+        (call: any) => call[0] === "move",
+      )[1];
+      moveListener();
+      setMockZoom(view, 15);
+      moveListener();
+
+      expect(mockLayer.update).toHaveBeenCalledTimes(1);
+    });
+
+    it("re-evaluates features without a layer update when only the halo follows zoom", async () => {
       const mockLayer = {
         delete: vi.fn(),
         on: vi.fn(),
@@ -1499,16 +1731,17 @@ describe("MapLibreStylePlugin", () => {
       view.addLayer = vi.fn().mockReturnValue(mockLayer);
 
       await plugin.init(view, mockViewContext);
-      expect((view.addLayer as any).mock.calls[0][0].text).toBeDefined();
-
       const moveListener = (view.camera.on as any).mock.calls.find(
         (call: any) => call[0] === "move",
       )[1];
       moveListener();
+      expect(mockLayer.forceUpdate).toHaveBeenCalledTimes(1);
+
       setMockZoom(view, 15);
       moveListener();
 
-      expect(mockLayer.update).toHaveBeenCalledTimes(1);
+      expect(mockLayer.forceUpdate).toHaveBeenCalledTimes(2);
+      expect(mockLayer.update).not.toHaveBeenCalled();
     });
 
     it("does not update symbol layers whose layer-level properties are constant", async () => {

@@ -264,7 +264,7 @@ describe("buildLabelLayout word grouping", () => {
 
   const options = {
     maxWidth: 0,
-    lineHeight: 1,
+    lineHeight: undefined,
     textAlign: 0,
     spreadGlyphs: false,
   };
@@ -459,7 +459,7 @@ describe("letter spacing", () => {
 
     const base = {
       maxWidth: 0,
-      lineHeight: 1,
+      lineHeight: undefined,
       textAlign: 0,
       spreadGlyphs: false,
     };
@@ -527,7 +527,7 @@ describe("anchor box", () => {
   }
   const base = {
     maxWidth: 0,
-    lineHeight: 1,
+    lineHeight: undefined,
     textAlign: 0,
     spreadGlyphs: false,
   };
@@ -538,14 +538,20 @@ describe("anchor box", () => {
     expect(layout.bottomEm).toBeCloseTo(-0.2);
   });
 
-  it("adds one line pitch, gap and multiplier included, per extra line", () => {
-    // Pitch = (800 + 200 + 200) / 1000 × 1.5 = 1.8 em, centred on 0.3.
+  it("adds the natural line pitch, gap included, per extra line", () => {
+    // Pitch = (800 + 200 + 200) / 1000 = 1.2 em, centred on 0.3.
+    const layout = buildLabelLayout(shaped("a\nb\nc", 200), base);
+    expect(layout.topEm).toBeCloseTo(0.3 + 0.6);
+    expect(layout.bottomEm).toBeCloseTo(0.3 - 0.6 - 2 * 1.2);
+  });
+
+  it("takes an explicit line height in ems, whatever the font's metrics", () => {
     const layout = buildLabelLayout(shaped("a\nb\nc", 200), {
       ...base,
       lineHeight: 1.5,
     });
-    expect(layout.topEm).toBeCloseTo(0.3 + 0.9);
-    expect(layout.bottomEm).toBeCloseTo(0.3 - 0.9 - 2 * 1.8);
+    expect(layout.topEm).toBeCloseTo(0.3 + 0.75);
+    expect(layout.bottomEm).toBeCloseTo(0.3 - 0.75 - 2 * 1.5);
   });
 });
 

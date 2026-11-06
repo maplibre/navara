@@ -54,7 +54,6 @@ import {
   Texture,
   Vector2,
   LinearFilter,
-  RepeatWrapping,
   Group,
   PCFShadowMap,
 } from "three";
@@ -66,7 +65,6 @@ import { ThreeViewCamera } from "./camera";
 import { Color } from "./Color";
 import { ColorMapAtlas } from "./colorMapAtlas";
 import { createDefaultConcurrencyManager } from "./concurrency";
-import { WATER_NORMAL_URL } from "./constants/assets";
 import {
   LightDesc,
   EffectDesc,
@@ -113,7 +111,6 @@ import {
   type TileHandler,
   type WorkerTaskHandler,
 } from "./event";
-import { TEXTURE_LOADER } from "./event/loaders";
 import { createTileHandler } from "./event/tileHandler";
 import { InMemoryBufferStore } from "./inMemoryBufferStore";
 import { registerInputEvents } from "./input";
@@ -149,6 +146,7 @@ import { TexturizedSceneByTileCoordinates, type Scenes } from "./scene";
 import { ShadowMapViewers } from "./ShadowMapViewers";
 import { Source } from "./source";
 import { RendererStats } from "./stats";
+import { queueTask } from "./tasks/queueTask";
 import { IDENTITY_TERRAIN_EXAGGERATION } from "./terrain/exaggeration";
 import {
   sampleTerrainMostDetailed,
@@ -174,6 +172,7 @@ import {
 } from "./type";
 import type { CommonUniforms } from "./uniforms";
 import { isWorker, convertScreenPos, type TextureSlot } from "./utils";
+import { WaterState } from "./water/waterState";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 /** @ts-ignore ignore: https://v3.vitejs.dev/guide/features.html#import-with-query-suffixes  */
 import WorkerURL from "./worker?url&worker";
@@ -269,6 +268,12 @@ export { type BlendMode, blendFunction, createReplacer } from "./utils";
 export type { RenderTargetEntry } from "./utils/fixedGpuFootprint";
 
 export { Atmosphere, type AtmosphereOptions } from "./atmosphere";
+export type {
+  WaterState,
+  WaterUniforms,
+  WaterWaves,
+  WaterWavesRef,
+} from "./water/waterState";
 export type { Quality } from "./quality";
 export type { CustomObject3DEventMap } from "./object3DEvent";
 export type {
@@ -292,10 +297,12 @@ export {
   getDefaultDynamicSse,
   getDefaultLodFog,
   getDefaultMemoryBudgets,
+  getDefaultSunShadow,
   MB,
   type DynamicSseSettings,
   type LodFogSettings,
   type MemoryBudgets,
+  type SunShadowDefaults,
 } from "./device";
 
 /**
@@ -428,16 +435,6 @@ export type Options = {
      * killed. Defaults per device — see `getDefaultSseMultiplierRange`.
      */
     sseMultiplierMax?: number;
-  };
-  /**
-   * Enables shared water texture. When enabled, a single water normal texture
-   * is loaded once and shared across all meshes that have water effects enabled.
-   */
-  waterTexture?: {
-    /** Whether to enable the shared water texture. */
-    enabled: boolean;
-    /** Custom water normal texture URL. Uses built-in texture if not specified. */
-    url?: string;
   };
   /**
    * Attribution (credit) UI, on by default (accessed via
@@ -1225,7 +1222,10 @@ export default class ThreeView<
       fov: { value: (this._camera.raw.fov * Math.PI) / 180 },
       screenHeightPx: { value: height },
       time: { value: 0 },
-      waterTexture: { value: null },
+      water: new WaterState(
+        this._renderer.capabilities.getMaxAnisotropy(),
+        () => queueTask("generateWaveTexture"),
+      ),
       terrainExaggeration: { value: IDENTITY_TERRAIN_EXAGGERATION },
       // Set from the engine's first `terrain_exaggeration_updated` event.
       horizonMinHeight: { value: 0 },
@@ -1244,23 +1244,6 @@ export default class ThreeView<
         Math.max(this._renderer.capabilities.maxTextures, 8) -
         NUM_CASCADED_SHADOW_MAPS,
     };
-
-    // Load shared water texture if enabled
-    if (options.waterTexture?.enabled) {
-      const waterUrl = options.waterTexture.url ?? WATER_NORMAL_URL;
-      this._uniforms.waterTexture.value = TEXTURE_LOADER.load(
-        waterUrl,
-        (texture) => {
-          texture.wrapS = RepeatWrapping;
-          texture.wrapT = RepeatWrapping;
-        },
-      );
-      // Track additional texture usage
-      this._defaultTextureOptions.additionalTexturesInUse = {
-        ...this._defaultTextureOptions.additionalTexturesInUse,
-        waterTexture: true,
-      };
-    }
 
     this._atmosphere = new Atmosphere(
       this._renderer,
@@ -1879,6 +1862,7 @@ export default class ThreeView<
     }
 
     this._fontManager.dispose();
+    this._uniforms.water.dispose();
     this._atmosphere._dispose();
 
     this.skyEnvMap?.delete();
@@ -2043,6 +2027,7 @@ export default class ThreeView<
       this.skyEnvMap.ref.raw?.getEnvMapTexture() ?? null;
     this._uniforms.inverseProjectionMatrix.value =
       this._camera.raw.projectionMatrixInverse;
+    this._uniforms.water.setSkyEnvMap(this._uniforms.tSkyEnvMap.value ?? null);
 
     // Vertical fov in radians (raw.fov is kept in sync with the engine).
     this._uniforms.fov.value = fovY;
@@ -2234,6 +2219,11 @@ export default class ThreeView<
     this._rasterRevision = this._core?.rasterRevision() ?? this._rasterRevision;
 
     this._uniforms.time.value = updatedAt;
+    this._uniforms.water.update(
+      this._camera.raw.position,
+      this._camera.raw.matrixWorldInverse,
+      updatedAt,
+    );
 
     this._atmosphere._update(this._uniforms.terrainExaggeration.value);
 

@@ -127,7 +127,7 @@ describe("generateCompositeFragmentShader", () => {
     // Watermask priority: max() with step() over the slot-loop result so the
     // watermask flips isWater on even when no slot's uWaters[k] was true.
     expect(src).toMatch(
-      /isWater = max\(isWater, step\(0\.5, texture\(uWatermask, vUv\)\.r\)\);/,
+      /isWater = max\(isWater, step\(0\.5, nvrWatermaskBSpline\(vUv\)\)\);/,
     );
   });
 

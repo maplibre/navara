@@ -50,6 +50,21 @@ fn parse_facing(field: &str, value: &Option<String>) -> Option<navara_material::
     }
 }
 
+/// Parse a JS-facing water scale name, warning on an unknown value so the
+/// caller keeps the material's current value.
+fn parse_water_scale(value: &Option<String>) -> Option<navara_material::WaterScale> {
+    let name = value.as_ref()?;
+    match navara_material::WaterScale::parse(name) {
+        Some(scale) => Some(scale),
+        None => {
+            bevy_log::warn!(
+                "waterScale: unknown value {name:?} (expected \"ocean\", \"large\", \"medium\" or \"small\")"
+            );
+            None
+        }
+    }
+}
+
 /// Parse a JS-facing line cap name, warning on an unknown value so the caller
 /// keeps the material's current value.
 fn parse_line_cap(value: &Option<String>) -> Option<navara_material::LineCap> {
@@ -937,11 +952,11 @@ pub struct TextMaterial {
     // pub corner_radius: Option<f32>,
     // pub padding: Option<Vec2>,
     // outline
-    // TODO: support outlineBlur and outlineOffset later.
-    /// Outline blur radius in CSS pixels. Defaults to `0.0`.
-    // #[wasm_bindgen(js_name = outlineBlur)]
-    // #[serde(rename = "outlineBlur")]
-    // pub outline_blur: Option<f32>,
+    /// Width over which the outline's outer edge fades out, centered on that
+    /// edge, in the unit of `outlineWidth`. Defaults to `0.0`.
+    #[wasm_bindgen(js_name = outlineBlur)]
+    #[serde(rename = "outlineBlur")]
+    pub outline_blur: Option<f32>,
     #[wasm_bindgen(js_name = outlineColor)]
     #[serde(rename = "outlineColor")]
     pub outline_color: Option<u32>, // outlineColor Defalut:black
@@ -953,7 +968,9 @@ pub struct TextMaterial {
     #[wasm_bindgen(js_name = outlineOpacity)]
     #[serde(rename = "outlineOpacity")]
     pub outline_opacity: Option<f32>, // outlineOpacity Default:1
-    /// Outline thickness measured in CSS pixels. Defaults to `0.0`.
+    /// Outline thickness in 1/64 em: pixels of text drawn 64 pixels tall, so
+    /// the outline keeps its proportion to the glyphs at any size. Defaults
+    /// to `0.0`.
     #[wasm_bindgen(js_name = outlineWidth)]
     #[serde(rename = "outlineWidth")]
     pub outline_width: Option<f32>,
@@ -980,8 +997,9 @@ pub struct TextMaterial {
     #[wasm_bindgen(js_name = maxWidth)]
     #[serde(rename = "maxWidth")]
     pub max_width: Option<f32>,
-    /// Line height as a multiplier of the font's natural line height
-    /// (ascender − descender + line gap). Defaults to `1.0`.
+    /// Distance between the baselines of a multi-line label, in ems
+    /// (multiples of `size`). Defaults to the font's natural line height
+    /// (ascender − descender + line gap).
     #[wasm_bindgen(js_name = lineHeight)]
     #[serde(rename = "lineHeight")]
     pub line_height: Option<f32>,
@@ -1096,7 +1114,7 @@ impl From<TextMaterial> for navara_material::TextMaterial {
             border_width: val.border_width.unwrap_or(default.border_width),
             // corner_radius: val.corner_radius.unwrap_or(default.corner_radius),
             // padding: val.padding.unwrap_or(default.padding.into()).into(),
-            // outline_blur: val.outline_blur.unwrap_or(default.outline_blur),
+            outline_blur: val.outline_blur.unwrap_or(default.outline_blur),
             outline_color: val.outline_color.unwrap_or(default.outline_color),
             // outline_offset: val
             //     .outline_offset
@@ -1111,7 +1129,7 @@ impl From<TextMaterial> for navara_material::TextMaterial {
             transparent: val.transparent.unwrap_or(default.transparent),
 
             max_width: val.max_width.unwrap_or(default.max_width),
-            line_height: val.line_height.unwrap_or(default.line_height),
+            line_height: val.line_height.or(default.line_height),
             text_align: val.text_align.unwrap_or(default.text_align),
             letter_spacing: val.letter_spacing.unwrap_or(default.letter_spacing),
 
@@ -1164,7 +1182,7 @@ impl<'a> From<&'a navara_material::TextMaterial> for TextMaterial {
             border_width: Some(value.border_width),
             // corner_radius: Some(value.corner_radius),
             // padding: Some(value.padding.into()),
-            // outline_blur: Some(value.outline_blur),
+            outline_blur: Some(value.outline_blur),
             outline_color: Some(value.outline_color),
             // outline_offset: Some(value.outline_offset.into()),
             outline_opacity: Some(value.outline_opacity),
@@ -1176,7 +1194,7 @@ impl<'a> From<&'a navara_material::TextMaterial> for TextMaterial {
             transparent: Some(value.transparent),
 
             max_width: Some(value.max_width),
-            line_height: Some(value.line_height),
+            line_height: value.line_height,
             text_align: Some(value.text_align.clone()),
             letter_spacing: Some(value.letter_spacing),
 
@@ -1230,7 +1248,7 @@ impl TextMaterial {
             border_width: self.border_width.unwrap_or(other.border_width),
             // corner_radius: self.corner_radius.unwrap_or(other.corner_radius),
             // padding: self.padding.unwrap_or(other.padding.into()).into(),
-            // outline_blur: self.outline_blur.unwrap_or(other.outline_blur),
+            outline_blur: self.outline_blur.unwrap_or(other.outline_blur),
             outline_color: self.outline_color.unwrap_or(other.outline_color),
             // outline_offset: self
             //     .outline_offset
@@ -1245,7 +1263,7 @@ impl TextMaterial {
             transparent: self.transparent.unwrap_or(other.transparent),
 
             max_width: self.max_width.unwrap_or(other.max_width),
-            line_height: self.line_height.unwrap_or(other.line_height),
+            line_height: self.line_height.or(other.line_height),
             text_align: self.text_align.clone().unwrap_or(other.text_align.clone()),
             letter_spacing: self.letter_spacing.unwrap_or(other.letter_spacing),
 
@@ -1605,22 +1623,39 @@ pub struct PolygonMaterial {
 
     /// Apply a water material on the polygon. It might slow down the loading of the mesh.
     pub water: Option<bool>,
-    /// Scale water normal. Decreasing this value will make the water surface rough.
-    #[wasm_bindgen(js_name = waterScaleNormal)]
-    #[serde(rename = "waterScaleNormal")]
-    pub water_scale_normal: Option<f32>,
-    /// Water wave speed.
-    #[wasm_bindgen(js_name = waterSpeed)]
-    #[serde(rename = "waterSpeed")]
-    pub water_speed: Option<f32>,
+    /// Scales the water's wave slopes; 0 is a flat mirror.
+    #[wasm_bindgen(js_name = waveExaggeration)]
+    #[serde(rename = "waveExaggeration")]
+    pub wave_exaggeration: Option<f32>,
+    /// Extent of the water body, which bounds how far the wind blows over it
+    /// and so how large its waves grow: `"ocean"` (the default; open sea),
+    /// `"large"` (a bay or a large lake, about 20 km), `"medium"` (a lake or a
+    /// wide river, about 2 km) or `"small"` (a river or a pond, about 200 m).
+    #[wasm_bindgen(js_name = waterScale, getter_with_clone)]
+    #[serde(rename = "waterScale")]
+    pub water_scale: Option<String>,
+    /// Sets the size, steepness and speed of the water's waves: about 1 is a
+    /// calm ripple, 5 moderate and 20 a storm. Default: 5.
+    #[wasm_bindgen(js_name = waveStrength)]
+    #[serde(rename = "waveStrength")]
+    pub wave_strength: Option<f32>,
+    /// Where the water's waves travel, in degrees clockwise from north.
+    /// Default: 0.
+    #[wasm_bindgen(js_name = waveDirection)]
+    #[serde(rename = "waveDirection")]
+    pub wave_direction: Option<f32>,
+    /// Speed in m/s of the current carrying the water's waves
+    /// along `waveDirection`. Default: 0.
+    #[wasm_bindgen(js_name = flowSpeed)]
+    #[serde(rename = "flowSpeed")]
+    pub flow_speed: Option<f32>,
+    /// Phong shininess of the non-water `specular` highlight.
     pub shininess: Option<f32>,
     #[wasm_bindgen(js_name = specularStrength)]
     #[serde(rename = "specularStrength")]
     pub specular_strength: Option<f32>,
-    #[wasm_bindgen(js_name = applyWaterNormal)]
-    #[serde(rename = "applyWaterNormal")]
-    pub apply_water_normal: Option<bool>,
     /// Enabling this value allows using `shininess` and `specular_strength`.
+    /// Has no effect on water.
     pub specular: Option<bool>,
     pub ior: Option<f32>,
     /// Shade the extruded sides with the surface normal instead of their own.
@@ -1691,11 +1726,13 @@ impl PolygonMaterial {
 
             // These are unnecessary for polygon geometry construction.
             water: None,
-            water_scale_normal: None,
-            water_speed: None,
+            wave_exaggeration: None,
+            water_scale: None,
+            wave_strength: None,
+            wave_direction: None,
+            flow_speed: None,
             shininess: None,
             specular_strength: None,
-            apply_water_normal: None,
             specular: None,
             ior: None,
             shade_sides_as_surface: None,
@@ -1743,11 +1780,13 @@ impl PolygonMaterial {
             outline_color: self.outline_color.unwrap_or(other.outline_color),
             outline_width: self.outline_width.unwrap_or(other.outline_width),
             water: self.water.unwrap_or(other.water),
-            water_scale_normal: self.water_scale_normal.unwrap_or(other.water_scale_normal),
-            water_speed: self.water_speed.unwrap_or(other.water_speed),
+            wave_exaggeration: self.wave_exaggeration.unwrap_or(other.wave_exaggeration),
+            water_scale: parse_water_scale(&self.water_scale).unwrap_or(other.water_scale),
+            wave_strength: self.wave_strength.unwrap_or(other.wave_strength),
+            wave_direction: self.wave_direction.unwrap_or(other.wave_direction),
+            flow_speed: self.flow_speed.unwrap_or(other.flow_speed),
             shininess: self.shininess.unwrap_or(other.shininess),
             specular_strength: self.specular_strength.unwrap_or(other.specular_strength),
-            apply_water_normal: self.apply_water_normal.unwrap_or(other.apply_water_normal),
             specular: self.specular.unwrap_or(other.specular),
             ior: self.ior.unwrap_or(other.ior),
             shade_sides_as_surface: self
@@ -1793,11 +1832,13 @@ impl From<PolygonMaterial> for navara_material::PolygonMaterial {
             outline_color: val.outline_color.unwrap_or(default.outline_color),
             outline_width: val.outline_width.unwrap_or(default.outline_width),
             water: val.water.unwrap_or(default.water),
-            water_scale_normal: val.water_scale_normal.unwrap_or(default.water_scale_normal),
-            water_speed: val.water_speed.unwrap_or(default.water_speed),
+            wave_exaggeration: val.wave_exaggeration.unwrap_or(default.wave_exaggeration),
+            water_scale: parse_water_scale(&val.water_scale).unwrap_or(default.water_scale),
+            wave_strength: val.wave_strength.unwrap_or(default.wave_strength),
+            wave_direction: val.wave_direction.unwrap_or(default.wave_direction),
+            flow_speed: val.flow_speed.unwrap_or(default.flow_speed),
             shininess: val.shininess.unwrap_or(default.shininess),
             specular_strength: val.specular_strength.unwrap_or(default.specular_strength),
-            apply_water_normal: val.apply_water_normal.unwrap_or(default.apply_water_normal),
             specular: val.specular.unwrap_or(default.specular),
             ior: val.ior.unwrap_or(default.ior),
             shade_sides_as_surface: val
@@ -1837,11 +1878,13 @@ impl<'a> From<&'a navara_material::PolygonMaterial> for PolygonMaterial {
             outline_color: Some(value.outline_color),
             outline_width: Some(value.outline_width),
             water: Some(value.water),
-            water_scale_normal: Some(value.water_scale_normal),
-            water_speed: Some(value.water_speed),
+            wave_exaggeration: Some(value.wave_exaggeration),
+            water_scale: Some(value.water_scale.as_str().to_string()),
+            wave_strength: Some(value.wave_strength),
+            wave_direction: Some(value.wave_direction),
+            flow_speed: Some(value.flow_speed),
             shininess: Some(value.shininess),
             specular_strength: Some(value.specular_strength),
-            apply_water_normal: Some(value.apply_water_normal),
             specular: Some(value.specular),
             ior: Some(value.ior),
             shade_sides_as_surface: Some(value.shade_sides_as_surface),
@@ -1879,11 +1922,13 @@ impl From<navara_material::PolygonMaterial> for PolygonMaterial {
             outline_color: Some(value.outline_color),
             outline_width: Some(value.outline_width),
             water: Some(value.water),
-            water_scale_normal: Some(value.water_scale_normal),
-            water_speed: Some(value.water_speed),
+            wave_exaggeration: Some(value.wave_exaggeration),
+            water_scale: Some(value.water_scale.as_str().to_string()),
+            wave_strength: Some(value.wave_strength),
+            wave_direction: Some(value.wave_direction),
+            flow_speed: Some(value.flow_speed),
             shininess: Some(value.shininess),
             specular_strength: Some(value.specular_strength),
-            apply_water_normal: Some(value.apply_water_normal),
             specular: Some(value.specular),
             ior: Some(value.ior),
             shade_sides_as_surface: Some(value.shade_sides_as_surface),
@@ -1957,22 +2002,39 @@ pub struct ModelMaterial {
     pub reflectivity: Option<f32>,
     /// Apply a water material on the polygon. It might slow down the loading of the mesh.
     pub water: Option<bool>,
-    /// Scale water normal. Decreasing this value will make the water surface rough.
-    #[wasm_bindgen(js_name = waterScaleNormal)]
-    #[serde(rename = "waterScaleNormal")]
-    pub water_scale_normal: Option<f32>,
-    /// Water wave speed.
-    #[wasm_bindgen(js_name = waterSpeed)]
-    #[serde(rename = "waterSpeed")]
-    pub water_speed: Option<f32>,
+    /// Scales the water's wave slopes; 0 is a flat mirror.
+    #[wasm_bindgen(js_name = waveExaggeration)]
+    #[serde(rename = "waveExaggeration")]
+    pub wave_exaggeration: Option<f32>,
+    /// Extent of the water body, which bounds how far the wind blows over it
+    /// and so how large its waves grow: `"ocean"` (the default; open sea),
+    /// `"large"` (a bay or a large lake, about 20 km), `"medium"` (a lake or a
+    /// wide river, about 2 km) or `"small"` (a river or a pond, about 200 m).
+    #[wasm_bindgen(js_name = waterScale, getter_with_clone)]
+    #[serde(rename = "waterScale")]
+    pub water_scale: Option<String>,
+    /// Sets the size, steepness and speed of the water's waves: about 1 is a
+    /// calm ripple, 5 moderate and 20 a storm. Default: 5.
+    #[wasm_bindgen(js_name = waveStrength)]
+    #[serde(rename = "waveStrength")]
+    pub wave_strength: Option<f32>,
+    /// Where the water's waves travel, in degrees clockwise from north.
+    /// Default: 0.
+    #[wasm_bindgen(js_name = waveDirection)]
+    #[serde(rename = "waveDirection")]
+    pub wave_direction: Option<f32>,
+    /// Speed in m/s of the current carrying the water's waves
+    /// along `waveDirection`. Default: 0.
+    #[wasm_bindgen(js_name = flowSpeed)]
+    #[serde(rename = "flowSpeed")]
+    pub flow_speed: Option<f32>,
+    /// Phong shininess of the non-water `specular` highlight.
     pub shininess: Option<f32>,
     #[wasm_bindgen(js_name = specularStrength)]
     #[serde(rename = "specularStrength")]
     pub specular_strength: Option<f32>,
-    #[wasm_bindgen(js_name = applyWaterNormal)]
-    #[serde(rename = "applyWaterNormal")]
-    pub apply_water_normal: Option<bool>,
     /// Enabling this value allows using `shininess` and `specular_strength`.
+    /// Has no effect on water.
     pub specular: Option<bool>,
     pub ior: Option<f32>,
     // animation
@@ -2043,11 +2105,13 @@ impl From<ModelMaterial> for navara_material::ModelMaterial {
             roughness: val.roughness.unwrap_or(default.roughness),
             reflectivity: val.reflectivity.unwrap_or(default.reflectivity),
             water: val.water.unwrap_or(default.water),
-            water_scale_normal: val.water_scale_normal.unwrap_or(default.water_scale_normal),
-            water_speed: val.water_speed.unwrap_or(default.water_speed),
+            wave_exaggeration: val.wave_exaggeration.unwrap_or(default.wave_exaggeration),
+            water_scale: parse_water_scale(&val.water_scale).unwrap_or(default.water_scale),
+            wave_strength: val.wave_strength.unwrap_or(default.wave_strength),
+            wave_direction: val.wave_direction.unwrap_or(default.wave_direction),
+            flow_speed: val.flow_speed.unwrap_or(default.flow_speed),
             shininess: val.shininess.unwrap_or(default.shininess),
             specular_strength: val.specular_strength.unwrap_or(default.specular_strength),
-            apply_water_normal: val.apply_water_normal.unwrap_or(default.apply_water_normal),
             specular: val.specular.unwrap_or(default.specular),
             ior: val.ior.unwrap_or(default.ior),
             // animation
@@ -2085,11 +2149,13 @@ impl<'a> From<&'a navara_material::ModelMaterial> for ModelMaterial {
             roughness: Some(value.roughness),
             reflectivity: Some(value.reflectivity),
             water: Some(value.water),
-            water_scale_normal: Some(value.water_scale_normal),
-            water_speed: Some(value.water_speed),
+            wave_exaggeration: Some(value.wave_exaggeration),
+            water_scale: Some(value.water_scale.as_str().to_string()),
+            wave_strength: Some(value.wave_strength),
+            wave_direction: Some(value.wave_direction),
+            flow_speed: Some(value.flow_speed),
             shininess: Some(value.shininess),
             specular_strength: Some(value.specular_strength),
-            apply_water_normal: Some(value.apply_water_normal),
             specular: Some(value.specular),
             ior: Some(value.ior),
             // animation
@@ -2129,11 +2195,13 @@ impl ModelMaterial {
             roughness: self.roughness.unwrap_or(other.roughness),
             reflectivity: self.reflectivity.unwrap_or(other.reflectivity),
             water: self.water.unwrap_or(other.water),
-            water_scale_normal: self.water_scale_normal.unwrap_or(other.water_scale_normal),
-            water_speed: self.water_speed.unwrap_or(other.water_speed),
+            wave_exaggeration: self.wave_exaggeration.unwrap_or(other.wave_exaggeration),
+            water_scale: parse_water_scale(&self.water_scale).unwrap_or(other.water_scale),
+            wave_strength: self.wave_strength.unwrap_or(other.wave_strength),
+            wave_direction: self.wave_direction.unwrap_or(other.wave_direction),
+            flow_speed: self.flow_speed.unwrap_or(other.flow_speed),
             shininess: self.shininess.unwrap_or(other.shininess),
             specular_strength: self.specular_strength.unwrap_or(other.specular_strength),
-            apply_water_normal: self.apply_water_normal.unwrap_or(other.apply_water_normal),
             specular: self.specular.unwrap_or(other.specular),
             ior: self.ior.unwrap_or(other.ior),
             // animation
@@ -2298,6 +2366,30 @@ pub struct RasterTileInternalMaterial {
     #[wasm_bindgen(js_name = showBoundingBox)]
     #[serde(rename = "showBoundingBox")]
     pub show_bounding_box: Option<bool>,
+    /// Body color of the watermask's water from the terrain layer; `None`
+    /// keeps the imagery or globe color.
+    #[wasm_bindgen(js_name = waterMaskColor)]
+    #[serde(rename = "waterMaskColor")]
+    pub water_mask_color: Option<u32>,
+    /// Scales the wave slopes on the watermask's water; 0 is a flat mirror.
+    #[wasm_bindgen(js_name = waveExaggeration)]
+    #[serde(rename = "waveExaggeration")]
+    pub wave_exaggeration: f32,
+    /// Sets the size, slope and speed of the waves on the watermask's water, in
+    /// m/s.
+    #[wasm_bindgen(js_name = waveStrength)]
+    #[serde(rename = "waveStrength")]
+    pub wave_strength: f32,
+    /// Where the waves on the watermask's water travel, in degrees clockwise
+    /// from north.
+    #[wasm_bindgen(js_name = waveDirection)]
+    #[serde(rename = "waveDirection")]
+    pub wave_direction: f32,
+    /// Speed in m/s of the current carrying the waves on the watermask's water
+    /// along `waveDirection`.
+    #[wasm_bindgen(js_name = flowSpeed)]
+    #[serde(rename = "flowSpeed")]
+    pub flow_speed: f32,
     /// Per-slot layer IDs used to look up each layer's colorMap atlas row; an
     /// empty string for slots without an elevation heatmap.
     #[wasm_bindgen(getter_with_clone, js_name = colorMapLayerIds)]
@@ -2526,6 +2618,11 @@ impl<'a> From<&'a navara_material::RasterTileInternalMaterial> for RasterTileInt
             receive_shadow: m.receive_shadow,
             lit: m.lit,
             show_bounding_box: m.show_bounding_box,
+            water_mask_color: m.water_mask_color,
+            wave_exaggeration: m.wave_exaggeration,
+            wave_strength: m.wave_strength,
+            wave_direction: m.wave_direction,
+            flow_speed: m.flow_speed,
 
             // Elevation Heatmap fields
             color_map_layer_ids: heatmap.color_map_layer_ids,
@@ -2647,6 +2744,63 @@ pub struct TerrainMaterial {
     #[wasm_bindgen(js_name = exaggerationRelativeHeight)]
     #[serde(rename = "exaggerationRelativeHeight")]
     pub exaggeration_relative_height: Option<f64>,
+    /// Outer `None`: the update leaves the color as it was. `Some(None)`: the
+    /// update clears it (`null` or an explicit `undefined`).
+    #[wasm_bindgen(skip)]
+    #[serde(
+        rename = "waterMaskColor",
+        default,
+        deserialize_with = "deserialize_clearable"
+    )]
+    pub water_mask_color: Option<Option<u32>>,
+    /// Scales the wave slopes on the watermask's water, keeping their size and
+    /// speed; 0 is a flat mirror. Default: 1.
+    #[wasm_bindgen(js_name = waveExaggeration)]
+    #[serde(rename = "waveExaggeration")]
+    pub wave_exaggeration: Option<f32>,
+    /// Sets the size, steepness and speed of the waves on the watermask's water:
+    /// about 1 is a calm ripple, 5 moderate and 20 a storm. Default: 5.
+    #[wasm_bindgen(js_name = waveStrength)]
+    #[serde(rename = "waveStrength")]
+    pub wave_strength: Option<f32>,
+    /// Where the waves on the watermask's water travel, in degrees clockwise
+    /// from north. Default: 0.
+    #[wasm_bindgen(js_name = waveDirection)]
+    #[serde(rename = "waveDirection")]
+    pub wave_direction: Option<f32>,
+    /// Speed in m/s of the current carrying the waves on the watermask's water
+    /// along `waveDirection`. Default: 0.
+    #[wasm_bindgen(js_name = flowSpeed)]
+    #[serde(rename = "flowSpeed")]
+    pub flow_speed: Option<f32>,
+}
+
+/// Deserializes a field that is present (even as `null`) to `Some`, so a
+/// `#[serde(default)]` absent field (`None`) stays distinguishable from a
+/// cleared one (`Some(None)`).
+fn deserialize_clearable<'de, D, T>(deserializer: D) -> Result<Option<Option<T>>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    T: Deserialize<'de>,
+{
+    Option::<T>::deserialize(deserializer).map(Some)
+}
+
+#[wasm_bindgen]
+impl TerrainMaterial {
+    /// Body color of the water the source's watermask marks. The water shows
+    /// this color under its reflections instead of the imagery or globe color
+    /// beneath it. Requires `requestWaterMask` on a quantized-mesh source.
+    /// An update with `undefined` uses that imagery or globe color.
+    #[wasm_bindgen(getter, js_name = waterMaskColor)]
+    pub fn water_mask_color(&self) -> Option<u32> {
+        self.water_mask_color.flatten()
+    }
+
+    #[wasm_bindgen(setter, js_name = waterMaskColor)]
+    pub fn set_water_mask_color(&mut self, color: Option<u32>) {
+        self.water_mask_color = Some(color);
+    }
 }
 
 impl From<TerrainMaterial> for navara_material::TerrainMaterial {
@@ -2672,6 +2826,11 @@ impl TerrainMaterial {
             exaggeration_relative_height: self
                 .exaggeration_relative_height
                 .unwrap_or(other.exaggeration_relative_height),
+            water_mask_color: self.water_mask_color.unwrap_or(other.water_mask_color),
+            wave_exaggeration: self.wave_exaggeration.unwrap_or(other.wave_exaggeration),
+            wave_strength: self.wave_strength.unwrap_or(other.wave_strength),
+            wave_direction: self.wave_direction.unwrap_or(other.wave_direction),
+            flow_speed: self.flow_speed.unwrap_or(other.flow_speed),
         }
     }
 }

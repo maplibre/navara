@@ -159,6 +159,10 @@ evaluate(
 | `offset` | `{ x: number, y: number }` | アンカー位置からのずれ。`x` は右、`y` は下向きで、テキストでは em 単位、ポイントとビルボードでは `size` と同じ単位です。マテリアルの `offset`（[`offset`](../../../three/material/text-material/#offset) を参照）を上書きします |
 | `variableAnchors` | `{ anchor: Anchor, offset?: { x: number, y: number } }[]` | デクラッタリングが順に試すラベルの配置（テキスト地物用、オフセットは em 単位）。マテリアルの [`variableAnchors`](../../../three/material/text-material/#variableanchors) を上書きします |
 | `textAlign` | `"left" \| "center" \| "right" \| "auto"` | 行の揃え方（テキスト地物用）。`"auto"` はラベルの `anchor` に従います。マテリアルの [`textAlign`](../../../three/material/text-material/#textalign) を上書きします |
+| `outlineColor` | `Color` | アウトラインの色（テキスト地物用）。マテリアルの [`outlineColor`](../../../three/material/text-material/#outlinecolor) を上書きします |
+| `outlineOpacity` | `number` | アウトラインの不透明度、範囲 0.0-1.0（テキスト地物用）。マテリアルの [`outlineOpacity`](../../../three/material/text-material/#outlineopacity) を上書きします |
+| `outlineWidth` | `number` | アウトラインの太さ、1/64 em 単位（テキスト地物用）。マテリアルの [`outlineWidth`](../../../three/material/text-material/#outlinewidth) を上書きします |
+| `outlineBlur` | `number` | アウトラインをぼかす幅、1/64 em 単位（テキスト地物用）。マテリアルの [`outlineBlur`](../../../three/material/text-material/#outlineblur) を上書きします |
 | `emissive` | `Color` | 発光色（バッチ化されたポリゴン/3D Tiles モデル/ポイント/ビルボード/テキスト用。batch/feature id を持たないモデルでは無視されます）。`emissiveIntensity` と組み合わせて Selective Bloom を駆動します。テキストではグリフの塗り部分のみが発光し、アウトラインと背景は発光しません |
 | `emissiveIntensity` | `number` | 発光強度の乗数（バッチ化されたポリゴン/3D Tiles モデル/ポイント/ビルボード/テキスト用） |
 
@@ -364,6 +368,17 @@ type EvaluatedValue = {
   /** 行の揃え方（テキスト用）。`"auto"` は `anchor` に従います。
    * マテリアルの `textAlign` を上書きします */
   textAlign?: "left" | "center" | "right" | "auto";
+  /** アウトラインの色（テキスト用）。マテリアルの `outlineColor` を上書きします */
+  outlineColor?: Color;
+  /** アウトラインの不透明度、範囲 0.0-1.0（テキスト用）。
+   * マテリアルの `outlineOpacity` を上書きします */
+  outlineOpacity?: number;
+  /** アウトラインの太さ、1/64 em 単位（テキスト用）。
+   * マテリアルの `outlineWidth` を上書きします */
+  outlineWidth?: number;
+  /** アウトラインをぼかす幅、1/64 em 単位（テキスト用）。
+   * マテリアルの `outlineBlur` を上書きします */
+  outlineBlur?: number;
   /** 発光色（バッチ化されたポリゴン/3D Tiles モデル/ポイント/ビルボード/
    * テキスト用。batch/feature id を持たないモデルでは無視されます）。
    * `emissiveIntensity` と組み合わせて Selective Bloom を駆動します。

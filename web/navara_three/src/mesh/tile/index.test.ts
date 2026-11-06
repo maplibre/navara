@@ -1,4 +1,4 @@
-import { Mesh, BoxGeometry, MeshBasicMaterial } from "three";
+import { Box3, BoxGeometry, DataTexture, Mesh, MeshBasicMaterial } from "three";
 import { describe, expect, it, vi } from "vitest";
 
 import { TexturizedSceneByTileCoordinates } from "../../scene";
@@ -409,5 +409,79 @@ describe("TileMesh handle registration", () => {
 
     incoming.dispose(ctx.tileMapByHandle);
     expect(ctx.tileMapByHandle.has(1n)).toBe(false);
+  });
+});
+
+describe("TileMesh shadow casting", () => {
+  it("leaves the skirt out of the shadow draw only", () => {
+    const { tile } = makeTile();
+    tile["terrainIndexCount"] = 6;
+
+    tile["_onBeforeShadow"]();
+    expect(tile.geometry.drawRange).toEqual({ start: 0, count: 6 });
+
+    tile["_onAfterShadow"]();
+    expect(tile.geometry.drawRange).toEqual({ start: 0, count: Infinity });
+  });
+});
+
+describe("TileMesh geometry replacement", () => {
+  /** Replace the geometry with one that does or does not carry a watermask. */
+  function replaceWith(tile: TileMesh, watermask: boolean) {
+    const internals = tile as unknown as {
+      installGeometry: () => unknown;
+    };
+    vi.spyOn(internals, "installGeometry").mockImplementation(() => {
+      tile.userData.watermask = watermask
+        ? {
+            data: new Uint8Array(1),
+            isUniform: true,
+            texture: new DataTexture(),
+          }
+        : undefined;
+      tile.userData.hasNormalAttribute = false;
+      return new Box3();
+    });
+    tile.replaceGeometry(
+      {} as unknown as Parameters<TileMesh["replaceGeometry"]>[0],
+    );
+  }
+
+  it("recompiles and rebakes when a watermask appears", () => {
+    const { tile, ctx } = makeTile();
+    const version = tile.material.version;
+
+    replaceWith(tile, true);
+
+    expect(tile.material.version).toBeGreaterThan(version);
+    expect(ctx.tileTextureCompositor.markDirty).toHaveBeenCalledWith(
+      1n,
+      "watermask",
+    );
+  });
+
+  it("rebakes without recompiling when the watermask is replaced", () => {
+    const { tile, ctx } = makeTile();
+    replaceWith(tile, true);
+    const version = tile.material.version;
+    vi.mocked(ctx.tileTextureCompositor.markDirty).mockClear();
+
+    replaceWith(tile, true);
+
+    expect(tile.material.version).toBe(version);
+    expect(ctx.tileTextureCompositor.markDirty).toHaveBeenCalledWith(
+      1n,
+      "watermask",
+    );
+  });
+
+  it("leaves a tile without a watermask alone", () => {
+    const { tile, ctx } = makeTile();
+    const version = tile.material.version;
+
+    replaceWith(tile, false);
+
+    expect(tile.material.version).toBe(version);
+    expect(ctx.tileTextureCompositor.markDirty).not.toHaveBeenCalled();
   });
 });

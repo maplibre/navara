@@ -35,21 +35,17 @@ color.
 - `combinations/background-translucent--background-translucent`: Navara shows
   only the upper layer.
 
-### `circle-radius` is applied in meters, so circles vanish at low zoom
+### Circles draw above layers listed after them
 
-No circle appears in any case. The cause is the size unit, not the color.
+Circles are sprites drawn above the globe, while backgrounds, fills, and lines
+are draped into its surface, so a circle shows on top whatever the layer
+order.
 
-- Verified: `createCircleLayer` in `src/adapters/toLayerDescription.ts`
-  builds a `point` material without `sizeInMeters: false`, so
-  `circle-radius: 8` becomes 8 m (the symbol materials in the same file do set
-  it).
-- The same `circle-color/literal` style viewed at z18 over a white background
-  shows the blue circle. At the fixtures' z0–z2 it is sub-pixel, even over
-  white.
-- Once fixed in pixels, also check that `size` matches MapLibre's radius
-  semantics (MapLibre's value is a radius, not a diameter).
-- Cases: `circle-*/*`, `filter/*`, `regressions/mapbox-gl-js#4124`, `#4651`,
-  `regressions/mapbox-gl-native#14402`, `combinations/*circle*`.
+- `combinations/circle-translucent--background-opaque`: the opaque blue
+  background listed after the circles should cover them; Navara shows red
+  circles on blue.
+- `combinations/circle-translucent--fill-opaque`: the blue fill should cover
+  the inner quarter of each red circle; Navara draws whole circles over it.
 
 ### Unset paint colors render white instead of the spec default (black)
 
@@ -101,12 +97,6 @@ The extrusions render once the scene has lights, which the harness adds
 - Cases: `hillshade-*/default`, `hillshade-accent-color/terrarium`,
   `hillshade-maxzoom/*`, `resampling/hillshade/default`.
 
-### Overzoomed GeoJSON lines are partially missing
-
-- `regressions/mapbox-gl-js#9009`: a GeoJSON source with `maxzoom: 10` is
-  viewed at z18.
-- Only part of the 20 px wide V-shaped line is drawn.
-
 ### `interpolate-hcl` (legacy `colorSpace: "hcl"`) yields a different color
 
 - `background-color/colorSpace-hcl`: Navara draws `(224, 38, 88)` and MapLibre
@@ -126,15 +116,6 @@ The extrusions render once the scene has lights, which the harness adds
 - `projection/globe/pole-cap`: a GeoJSON polygon spanning the eastern
   hemisphere up to 90°N, seen pitched from 85°N, is missing entirely.
 - The background reaches the pole, and MapLibre draws the fill there too.
-
-### A vector source's `scheme: "tms"` is ignored
-
-- `tms/tms` requests `{z}-{x}-{y}.tms.mvt` with XYZ rows, so it hits tiles the
-  fixture does not ship and renders nothing.
-- Verified: `MapLibreStylePlugin` never reads `scheme`, and the engine's
-  vector-tile source has no `tms` flag (`request_mvt_data` in
-  `crates/navara_mvt` always builds URLs with `tms: false`). Raster and
-  raster-dem sources already support it.
 
 ### Symbol text is never drawn
 
@@ -181,26 +162,6 @@ Both styles are valid for MapLibre, but `MapLibreStylePlugin` throws from
 but found number`). maplibre-gl-js never migrates at render time.
 - Likely fix: validate the original style, then migrate, and throw only on
   `severity` other than `"warning"`. Report the `migrate()` output upstream.
-
-### TileJSON without a `tilejson` field is rejected
-
-- `tilejson-bounds/overwrite-bounds`: `TileJsonPlugin: invalid or missing
-"tilejson" version field`, so the source and its layer are dropped.
-- MapLibre accepts such TileJSON.
-
-### A style with only one of `center` and `zoom` gets no camera
-
-Verified: `setupCameraFromStyle` and `applyCamera` in
-`src/MapLibreStylePlugin.ts` return unless both are set, so the view keeps
-Navara's default camera. MapLibre fills the missing one from its `Map`
-defaults (`center: [0, 0]`, `zoom: 0`).
-
-- 191 styles set only `zoom` and 2 only `center` (e.g.
-  `background-pattern/zoomed`, `feature-state/promote-id-circle`,
-  `regressions/mapbox-gl-js#4551`). Another 620 set neither, where keeping the
-  application's camera may be intended.
-- Hidden from the render tests: `lib/test-page.ts` fills in the same
-  defaults before passing the style to the plugin.
 
 ## Packaging and docs
 

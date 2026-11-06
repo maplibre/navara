@@ -23,11 +23,20 @@
         },
         "fill-pattern": {
           "status": "❌"
+        },
+        "fill-layer-opacity": {
+          "status": "❌"
+        },
+        "fill-layer-blend": {
+          "status": "❌"
         }
       },
       "layout": {
         "visibility": {
           "status": "✅"
+        },
+        "fill-sort-key": {
+          "status": "❌"
         }
       }
     },
@@ -62,6 +71,9 @@
       "layout": {
         "visibility": {
           "status": "✅"
+        },
+        "fill-extrusion-rounded-corner-distance": {
+          "status": "❌"
         }
       }
     },
@@ -94,6 +106,18 @@
         },
         "line-gradient": {
           "status": "❌"
+        },
+        "line-layer-opacity": {
+          "status": "❌"
+        },
+        "line-layer-blend": {
+          "status": "❌"
+        },
+        "line-translate": {
+          "status": "❌"
+        },
+        "line-translate-anchor": {
+          "status": "❌"
         }
       },
       "layout": {
@@ -111,6 +135,9 @@
         },
         "visibility": {
           "status": "✅"
+        },
+        "line-sort-key": {
+          "status": "❌"
         }
       }
     },
@@ -154,6 +181,9 @@
       "layout": {
         "visibility": {
           "status": "✅"
+        },
+        "circle-sort-key": {
+          "status": "❌"
         }
       }
     },
@@ -173,13 +203,13 @@
           "status": "✅"
         },
         "text-halo-color": {
-          "status": "⚠️ Follows zoom, but is the same for every feature in the layer"
+          "status": "✅"
         },
         "text-halo-width": {
-          "status": "⚠️ Follows zoom, but is the same for every feature in the layer"
+          "status": "✅"
         },
         "text-halo-blur": {
-          "status": "❌"
+          "status": "✅"
         },
         "icon-halo-color": {
           "status": "❌"
@@ -316,10 +346,34 @@
           "status": "✅"
         },
         "text-line-height": {
-          "status": "❌"
+          "status": "✅"
         },
         "visibility": {
           "status": "✅"
+        },
+        "symbol-avoid-edges": {
+          "status": "❌"
+        },
+        "symbol-z-order": {
+          "status": "❌"
+        },
+        "icon-text-fit": {
+          "status": "❌"
+        },
+        "icon-text-fit-padding": {
+          "status": "❌"
+        },
+        "icon-keep-upright": {
+          "status": "❌"
+        },
+        "text-writing-mode": {
+          "status": "❌"
+        },
+        "symbol-height-offset": {
+          "status": "❌"
+        },
+        "symbol-height-anchor": {
+          "status": "❌"
         }
       }
     },
@@ -349,6 +403,9 @@
         },
         "raster-resampling": {
           "status": "❌"
+        },
+        "resampling": {
+          "status": "❌"
         }
       },
       "layout": {
@@ -376,6 +433,15 @@
           "status": "❌"
         },
         "hillshade-accent-color": {
+          "status": "❌"
+        },
+        "hillshade-illumination-altitude": {
+          "status": "❌"
+        },
+        "hillshade-method": {
+          "status": "❌"
+        },
+        "resampling": {
           "status": "❌"
         }
       },
@@ -432,10 +498,54 @@
   },
   "source": {
     "geojson": {
-      "status": "✅"
+      "status": "⚠️ Only data is applied; other options are ignored",
+      "properties": {
+        "data": {
+          "status": "✅"
+        },
+        "maxzoom": {
+          "status": "❌"
+        },
+        "attribution": {
+          "status": "❌"
+        },
+        "buffer": {
+          "status": "❌"
+        },
+        "filter": {
+          "status": "❌"
+        },
+        "tolerance": {
+          "status": "❌"
+        },
+        "cluster": {
+          "status": "❌"
+        },
+        "clusterRadius": {
+          "status": "❌"
+        },
+        "clusterMaxZoom": {
+          "status": "❌"
+        },
+        "clusterMinPoints": {
+          "status": "❌"
+        },
+        "clusterProperties": {
+          "status": "❌"
+        },
+        "lineMetrics": {
+          "status": "❌"
+        },
+        "generateId": {
+          "status": "❌"
+        },
+        "promoteId": {
+          "status": "❌"
+        }
+      }
     },
     "vector": {
-      "status": "⚠️ MapLibre Tiles (mlt encoding) are not supported",
+      "status": "⚠️ mlt encoding, bounds and scheme are not supported",
       "encoding": {
         "mvt": {
           "status": "✅"
@@ -443,19 +553,118 @@
         "mlt": {
           "status": "❌"
         }
+      },
+      "properties": {
+        "url": {
+          "status": "✅"
+        },
+        "tiles": {
+          "status": "⚠️ Only the first URL is used"
+        },
+        "bounds": {
+          "status": "❌"
+        },
+        "scheme": {
+          "status": "❌"
+        },
+        "minzoom": {
+          "status": "✅"
+        },
+        "maxzoom": {
+          "status": "✅"
+        },
+        "attribution": {
+          "status": "⚠️ Ignored in the style; a TileJSON document's attribution is shown"
+        },
+        "promoteId": {
+          "status": "❌"
+        },
+        "volatile": {
+          "status": "⚠️ Ignored; it only hints at caching"
+        }
       }
     },
     "raster": {
-      "status": "✅"
+      "status": "⚠️ bounds is ignored; tileSize is not applied",
+      "properties": {
+        "url": {
+          "status": "✅"
+        },
+        "tiles": {
+          "status": "⚠️ Only the first URL is used"
+        },
+        "bounds": {
+          "status": "❌"
+        },
+        "minzoom": {
+          "status": "✅"
+        },
+        "maxzoom": {
+          "status": "✅"
+        },
+        "tileSize": {
+          "status": "⚠️ Not applied; tiles are always handled as 256 px"
+        },
+        "scheme": {
+          "status": "✅"
+        },
+        "attribution": {
+          "status": "⚠️ Ignored in the style; a TileJSON document's attribution is shown"
+        },
+        "volatile": {
+          "status": "⚠️ Ignored; it only hints at caching"
+        }
+      }
     },
     "raster-dem": {
-      "status": "✅",
+      "status": "⚠️ bounds and custom encoding are not supported",
       "encoding": {
         "terrarium": {
           "status": "✅"
         },
         "mapbox": {
           "status": "✅"
+        },
+        "custom": {
+          "status": "❌"
+        }
+      },
+      "properties": {
+        "url": {
+          "status": "✅"
+        },
+        "tiles": {
+          "status": "⚠️ Only the first URL is used"
+        },
+        "bounds": {
+          "status": "❌"
+        },
+        "minzoom": {
+          "status": "✅"
+        },
+        "maxzoom": {
+          "status": "✅"
+        },
+        "tileSize": {
+          "status": "✅"
+        },
+        "attribution": {
+          "status": "⚠️ Ignored in the style; a TileJSON document's attribution is shown"
+        },
+        "redFactor": {
+          "status": "❌"
+        },
+        "greenFactor": {
+          "status": "❌"
+        },
+        "blueFactor": {
+          "status": "❌"
+        },
+        "baseShift": {
+          "status": "❌"
+        },
+        "volatile": {
+          "status": "⚠️ Ignored; it only hints at caching"
         }
       }
     },

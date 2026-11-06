@@ -191,7 +191,7 @@ type TileJsonDemEncoding = "mapbox" | "terrarium";
 
 | プロパティ    | 型                    | デフォルト | 説明                                                                                          |
 | ------------- | --------------------- | ---------- | --------------------------------------------------------------------------------------------- |
-| `tilejson`    | `string`              | —          | ドキュメントが準拠する TileJSON 仕様の semver（例: `"3.0.0"`）。必須です。                    |
+| `tilejson`    | `string`              | —          | ドキュメントが準拠する TileJSON 仕様の semver（例: `"3.0.0"`）。省略可能です。                    |
 | `tiles`       | `string[]`            | —          | タイル URL テンプレート（`{z}/{x}/{y}`）。仕様上、必須かつ空でない配列です。                  |
 | `attribution` | `string \| undefined` | —          | ビュー組み込みのアトリビューション UI を通じて表示されるアトリビューション／クレジット HTML。 |
 | `minzoom`     | `number \| undefined` | `0`        | 最小ズームレベル。ラスターソースにのみ適用されます。                                          |
@@ -200,7 +200,7 @@ type TileJsonDemEncoding = "mapbox" | "terrarium";
 | `tileSize`    | `number \| undefined` | `512`      | タイルサイズ（ピクセル）。TileJSON 仕様にはありませんが、MapLibre 向けタイルサーバーが出力します。`raster-dem` ソースにのみ適用されます。 |
 | `encoding`    | `TileJsonDemEncoding \| undefined` | `"mapbox"` | DEM タイルの標高エンコーディング。TileJSON 仕様にはありませんが、MapLibre 向けタイルサーバーが出力します。`raster-dem` ソースにのみ適用されます。 |
 
-ドキュメントは取得時に検証されます。`tilejson` が欠けている、または `major.minor.patch` 形式のバージョンでない場合、あるいは `tiles` が欠けている、または空の場合、`addSource()` は失敗します。
+ドキュメントは取得時に検証されます。`tilejson` が存在するが `major.minor.patch` 形式のバージョンでない場合、あるいは `tiles` が欠けている、または空の場合、`addSource()` は失敗します。`tilejson` が欠けている場合は、MapLibre と同様に受け付けます。
 
 ## 補足
 

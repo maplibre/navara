@@ -117,6 +117,47 @@ impl LineCap {
     }
 }
 
+/// `waveStrength` of a water surface that does not set one.
+pub const DEFAULT_WAVE_STRENGTH: f32 = 5.0;
+
+/// Extent of a water body, which bounds how far the wind blows over it and so
+/// how large its waves grow.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum WaterScale {
+    /// Open sea: the waves grow as large as the wind allows.
+    #[default]
+    Ocean,
+    /// A bay or a large lake, about 20 km across.
+    Large,
+    /// A lake or a wide river, about 2 km across.
+    Medium,
+    /// A river or a pond, about 200 m across.
+    Small,
+}
+
+impl WaterScale {
+    /// Parse the JS-facing name (`"ocean" | "large" | "medium" | "small"`).
+    pub fn parse(value: &str) -> Option<Self> {
+        match value {
+            "ocean" => Some(Self::Ocean),
+            "large" => Some(Self::Large),
+            "medium" => Some(Self::Medium),
+            "small" => Some(Self::Small),
+            _ => None,
+        }
+    }
+
+    /// JS-facing name of this scale.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Ocean => "ocean",
+            Self::Large => "large",
+            Self::Medium => "medium",
+            Self::Small => "small",
+        }
+    }
+}
+
 /// Plane a label or sprite quad lies in.
 ///
 /// Orthogonal to the material's `rotate_with_camera`, which picks what the
@@ -753,11 +794,15 @@ pub struct TextMaterial {
     // pub corner_radius: f32, // 0 ~ 0.5, the ratio of the corner radius to the height
     // pub padding: Vec2,
     // outline
-    // pub outline_blur: f32,    // outlineBlur Defalut:0
+    /// Width over which the outline's outer edge fades out, centered on that
+    /// edge, in the unit of `outline_width`. Default `0.0`.
+    pub outline_blur: f32,
     pub outline_color: u32, // outlineColor Defalut:black
     // pub outline_offset: Vec2, // outlineOffset Default: (0,0)
     pub outline_opacity: f32, // outlineOpacity Default:1
-    pub outline_width: f32,   // outlineWidth Default:0
+    /// Outline thickness in 1/64 em: pixels of text drawn 64 pixels tall.
+    /// Default `0.0`.
+    pub outline_width: f32,
     pub lang: String,
     /// Enable high-quality glyph rendering. When `true`, text uses an MTSDF
     /// atlas via `fdsm` — preserves sharp corners at large sizes but per-glyph
@@ -776,9 +821,10 @@ pub struct TextMaterial {
     /// characters in `text` always break lines. Em units keep the wrap width
     /// stable whether `size_in_meters` is on or off.
     pub max_width: f32,
-    /// Line height as a multiplier of the font's natural line height
-    /// (ascender − descender + line gap). Default `1.0`.
-    pub line_height: f32,
+    /// Distance between the baselines of a multi-line label, in ems
+    /// (multiples of `size`). `None` (the default) uses the font's natural
+    /// line height (ascender − descender + line gap).
+    pub line_height: Option<f32>,
     /// Horizontal alignment of lines within a multi-line block:
     /// `"left"`, `"center"` (default), `"right"`, or `"auto"`, which aligns
     /// towards the horizontal side of `anchor`.
@@ -860,7 +906,7 @@ impl Default for TextMaterial {
             border_width: 0.05,
             // corner_radius: 0.1,
             // padding: Vec2::new(5.0, 2.0),
-            // outline_blur: 0.0,
+            outline_blur: 0.0,
             outline_color: 0x000000,
             // outline_offset: Vec2::new(0.0, 0.0),
             outline_opacity: 1.0,
@@ -872,7 +918,7 @@ impl Default for TextMaterial {
             transparent: true,
 
             max_width: 0.0,
-            line_height: 1.0,
+            line_height: None,
             text_align: "center".to_string(),
             letter_spacing: 0.0,
 
@@ -1006,11 +1052,19 @@ pub struct PolygonMaterial {
     pub outline_width: f32,
 
     pub water: bool,
-    pub water_scale_normal: f32,
-    pub water_speed: f32,
+    /// Scales the water's wave slopes; 0 is a flat mirror.
+    pub wave_exaggeration: f32,
+    /// Extent of the water body, which sets its wave size.
+    pub water_scale: WaterScale,
+    /// Sets the waves' size, slope and speed.
+    pub wave_strength: f32,
+    /// Where the waves travel, in degrees clockwise from north.
+    pub wave_direction: f32,
+    /// Speed in m/s of the current carrying the water's waves
+    /// along `wave_direction`.
+    pub flow_speed: f32,
     pub shininess: f32,
     pub specular_strength: f32,
-    pub apply_water_normal: bool,
     pub specular: bool,
     pub ior: f32,
     pub shade_sides_as_surface: bool,
@@ -1048,11 +1102,13 @@ impl Default for PolygonMaterial {
             outline_width: 1.,
 
             water: false,
-            water_scale_normal: 0.1,
-            water_speed: 0.0003,
+            wave_exaggeration: 1.0,
+            water_scale: WaterScale::Ocean,
+            wave_strength: DEFAULT_WAVE_STRENGTH,
+            wave_direction: 0.0,
+            flow_speed: 0.0,
             shininess: 100.0,
             specular_strength: 2.0,
-            apply_water_normal: false,
             specular: false,
             ior: 1.33333,
             shade_sides_as_surface: false,
@@ -1098,11 +1154,19 @@ pub struct ModelMaterial {
     pub roughness: f32,
     pub reflectivity: f32,
     pub water: bool,
-    pub water_scale_normal: f32,
-    pub water_speed: f32,
+    /// Scales the water's wave slopes; 0 is a flat mirror.
+    pub wave_exaggeration: f32,
+    /// Extent of the water body, which sets its wave size.
+    pub water_scale: WaterScale,
+    /// Sets the waves' size, slope and speed.
+    pub wave_strength: f32,
+    /// Where the waves travel, in degrees clockwise from north.
+    pub wave_direction: f32,
+    /// Speed in m/s of the current carrying the water's waves
+    /// along `wave_direction`.
+    pub flow_speed: f32,
     pub shininess: f32,
     pub specular_strength: f32,
-    pub apply_water_normal: bool,
     pub specular: bool,
     pub ior: f32,
     // animation
@@ -1147,11 +1211,13 @@ impl Default for ModelMaterial {
             roughness: 1.0,
             reflectivity: 0.0,
             water: false,
-            water_scale_normal: 0.01,
-            water_speed: 0.0003,
+            wave_exaggeration: 1.0,
+            water_scale: WaterScale::Ocean,
+            wave_strength: DEFAULT_WAVE_STRENGTH,
+            wave_direction: 0.0,
+            flow_speed: 0.0,
             shininess: 100.0,
             specular_strength: 2.0,
-            apply_water_normal: false,
             specular: false,
             ior: 1.33333,
             // animation
@@ -1247,6 +1313,19 @@ pub struct RasterTileInternalMaterial {
     pub receive_shadow: Option<bool>,
     pub lit: Option<bool>,
     pub show_bounding_box: Option<bool>,
+    /// Body color of the terrain watermask's water; `None` keeps the imagery
+    /// or globe color.
+    pub water_mask_color: Option<u32>,
+    /// Scales the wave slopes on the watermask's water; 0 is a flat mirror.
+    pub wave_exaggeration: f32,
+    /// Sets the waves' size, slope and speed on the terrain watermask's water.
+    pub wave_strength: f32,
+    /// Where the waves on the terrain watermask's water travel, in degrees
+    /// clockwise from north.
+    pub wave_direction: f32,
+    /// Speed in m/s of the current carrying the waves on the watermask's water
+    /// along `wave_direction`.
+    pub flow_speed: f32,
 
     /// Per-layer elevation heatmap data. `Some` when the layer is an elevation heatmap
     /// with a raster-dem source that has a decoder; `None` for layers without an elevation heatmap.
@@ -1300,6 +1379,19 @@ pub struct TerrainMaterial {
     pub exaggeration: f64,
     /// Height (meters) that stays fixed while the terrain is exaggerated.
     pub exaggeration_relative_height: f64,
+    /// Body color of the watermask's water; `None` keeps the imagery or globe
+    /// color.
+    pub water_mask_color: Option<u32>,
+    /// Scales the wave slopes on the watermask's water; 0 is a flat mirror.
+    pub wave_exaggeration: f32,
+    /// Sets the waves' size, slope and speed on the watermask's water.
+    pub wave_strength: f32,
+    /// Where the waves on the watermask's water travel, in degrees clockwise
+    /// from north.
+    pub wave_direction: f32,
+    /// Speed in m/s of the current carrying the waves on the watermask's water
+    /// along `wave_direction`.
+    pub flow_speed: f32,
 }
 
 impl Default for TerrainMaterial {
@@ -1314,6 +1406,11 @@ impl Default for TerrainMaterial {
             skirt_exaggeration: 1.0,
             exaggeration: 1.0,
             exaggeration_relative_height: 0.0,
+            water_mask_color: None,
+            wave_exaggeration: 1.0,
+            wave_strength: DEFAULT_WAVE_STRENGTH,
+            wave_direction: 0.0,
+            flow_speed: 0.0,
         }
     }
 }
@@ -1321,6 +1418,19 @@ impl Default for TerrainMaterial {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn water_scale_round_trips_its_js_name() {
+        for scale in [
+            WaterScale::Ocean,
+            WaterScale::Large,
+            WaterScale::Medium,
+            WaterScale::Small,
+        ] {
+            assert_eq!(WaterScale::parse(scale.as_str()), Some(scale));
+        }
+        assert_eq!(WaterScale::parse("sea"), None);
+    }
 
     #[test]
     fn clone_model_or_default_returns_the_model_material() {

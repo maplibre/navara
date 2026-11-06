@@ -3,13 +3,13 @@ import { describe, expect, it } from "vitest";
 
 import { applyWaterMaterialConfig } from "./material";
 import { DEFAULT_WATER_STATE } from "./state";
-import type { PolygonWaterState } from "./types";
+import type { WaterSurfaceState } from "./types";
 
-describe("polygonWaterEnhancer/material", () => {
+describe("water/material", () => {
   describe("applyWaterMaterialConfig", () => {
     it("should trigger material.needsUpdate when water flag changes", () => {
       const material = new MeshLambertMaterial();
-      const state: PolygonWaterState = {
+      const state: WaterSurfaceState = {
         ...DEFAULT_WATER_STATE,
         useWater: true,
       };
@@ -22,13 +22,13 @@ describe("polygonWaterEnhancer/material", () => {
         configurable: true,
       });
 
-      applyWaterMaterialConfig(material, state, false, false);
+      applyWaterMaterialConfig(material, state, false);
       expect(needsUpdateCalled).toBe(true);
     });
 
     it("should not trigger material.needsUpdate when water flag stays the same", () => {
       const material = new MeshLambertMaterial();
-      const state: PolygonWaterState = {
+      const state: WaterSurfaceState = {
         ...DEFAULT_WATER_STATE,
         useWater: true,
       };
@@ -41,7 +41,7 @@ describe("polygonWaterEnhancer/material", () => {
         configurable: true,
       });
 
-      applyWaterMaterialConfig(material, state, false, true);
+      applyWaterMaterialConfig(material, state, true);
       expect(needsUpdateCalled).toBe(false);
     });
   });

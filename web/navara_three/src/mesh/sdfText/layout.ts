@@ -262,8 +262,9 @@ export type LabelLayout = {
 export type LayoutOptions = {
   /** Wrap width in ems (multiples of font size); 0 disables soft wrapping. */
   maxWidth: number;
-  /** Multiplier on the font's natural line height. */
-  lineHeight: number;
+  /** Baseline-to-baseline distance in ems; the font's natural line height
+   *  when undefined. */
+  lineHeight: number | undefined;
   /** 0 left, 0.5 center, 1 right. */
   textAlign: number;
   /** Make every glyph its own rigid piece along a line instead of its word. */
@@ -337,8 +338,11 @@ export function buildLabelLayout(
   // predate line metrics; fall back to one em.
   const naturalLineHeight = ascender - descender + lineGap;
   const lineHeightFu =
-    (naturalLineHeight > 0 ? naturalLineHeight : unitsPerEm) *
-    options.lineHeight;
+    options.lineHeight !== undefined
+      ? options.lineHeight * unitsPerEm
+      : naturalLineHeight > 0
+        ? naturalLineHeight
+        : unitsPerEm;
 
   // `maxWidth` and `letterSpacing` are in ems so they track the font size in
   // both sizeInMeters modes; font units are ems × unitsPerEm.

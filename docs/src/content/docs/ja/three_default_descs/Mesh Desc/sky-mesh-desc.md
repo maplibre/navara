@@ -35,7 +35,7 @@ sidebar:
 
 **Description:** 太陽を表示するかどうかを指定します。
 
-**Default:** `true`
+**Default:** `true`（`envMap` を指定した場合は `false`）
 
 **Example:**
 
@@ -53,7 +53,7 @@ sidebar:
 
 **Description:** 月を表示するかどうかを指定します。
 
-**Default:** `true`
+**Default:** `true`（`envMap` を指定した場合は `false`）
 
 **Example:**
 
@@ -123,7 +123,7 @@ sidebar:
 
 **Type:** `boolean`
 
-**Description:** 環境マップとしてレンダリングするかどうかを指定します。
+**Description:** 環境マップとしてレンダリングするかどうかを指定します。環境マップには、`sun` や `moon` を指定しない限り太陽と月を含めません。これほど小さい円盤は、なめらかな水面に四角く映るためです。水面に映る太陽は水面側で描画します。
 
 **Default:** `false`
 

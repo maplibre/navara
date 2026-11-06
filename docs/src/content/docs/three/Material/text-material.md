@@ -450,9 +450,9 @@ view.addFontFamily({
 
 **Type:** `number | undefined`
 
-**Description:** Specifies the line height of multi-line text as a multiplier of the font's natural line height (ascender − descender + line gap).
+**Description:** Specifies the distance between the baselines of multi-line text in ems (multiples of `size`), as MapLibre's `text-line-height` does. When unset, lines are spaced by the font's natural line height (ascender − descender + line gap), so the spacing then differs from font to font.
 
-**Default:** `1.0`
+**Default:** `undefined` (the font's natural line height)
 
 **Example:**
 
@@ -581,6 +581,25 @@ Can also be set per feature from a [feature evaluator](../../api/feature-evaluat
 }
 ```
 
+### outlineBlur
+
+**Type:** `number | undefined`
+
+**Description:** Specifies the width over which the outline's outer edge fades out, centered on that edge, in the same unit as [`outlineWidth`](#outlinewidth). The outline and its fade reach at most 17.5/64 em past the glyph (8/64 em with `highQuality`), less half a screen pixel kept for antialiasing, and a fade that would go further is narrowed to fit. Can be set per feature from a feature evaluator.
+
+**Default:** `0.0`
+
+**Example:**
+
+```typescript
+{
+  text: {
+    outlineWidth: 4,
+    outlineBlur: 4
+  }
+}
+```
+
 ### outlineColor
 
 **Type:** `Color | undefined`
@@ -623,7 +642,7 @@ import { Color } from "@navaramap/three";
 
 **Type:** `number | undefined`
 
-**Description:** Specifies the outline thickness in CSS pixels.
+**Description:** Specifies the outline thickness in 1/64 em: pixels of text drawn 64 pixels tall, so the outline keeps its proportion to the glyphs at any `size`. A 2 pixel outline on 16 pixel text is `2 / 16 × 64 = 8`. The outline reaches at most 17.5/64 em past the glyph (8/64 em with `highQuality`), less half a screen pixel kept for antialiasing, so near that limit small text gets proportionally thinner outlines: at 10 pixels, a 16/64 em outline draws about 2.2 pixels wide instead of 2.5. Can be set per feature from a feature evaluator.
 
 **Default:** `0.0`
 
@@ -632,7 +651,7 @@ import { Color } from "@navaramap/three";
 ```typescript
 {
   text: {
-    outlineWidth: 2
+    outlineWidth: 8
   }
 }
 ```
