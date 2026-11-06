@@ -1,6 +1,8 @@
 import { Pass as PostProcessingPass } from "postprocessing";
+import invariant from "tiny-invariant";
 import { beforeAll, describe, expect, it, vi } from "vitest";
 
+import { Pass } from "../effects";
 import type ThreeView from "../index";
 import { initTestEngine } from "../test-utils/engine";
 
@@ -14,6 +16,18 @@ class TestEffectDesc extends EffectDesc<EffectConfig, object, TestInstance> {
 
   createPass(): TestInstance {
     return { raw: new PostProcessingPass("TestEffectPass"), visible: true };
+  }
+}
+
+class WrappedEffectDesc extends EffectDesc<
+  EffectConfig,
+  object,
+  Pass<PostProcessingPass, null>
+> {
+  static key = "wrappedEffect";
+
+  createPass() {
+    return new Pass(new PostProcessingPass("WrappedEffectPass"), null);
   }
 }
 
@@ -59,5 +73,34 @@ describe("EffectDesc.onDestroy", () => {
     expect(ctx.getPass("testEffect")).toBeUndefined();
     expect(desc.raw).toBeUndefined();
     expect(desc.destroyed).toBe(true);
+  });
+
+  it("disposes the pass it created", () => {
+    const ctx = makeCtx();
+    const desc = new TestEffectDesc({} as ThreeView, ctx, {});
+    desc.onCreate();
+    const dispose = vi.spyOn(
+      desc.raw as unknown as PostProcessingPass,
+      "dispose",
+    );
+
+    desc.onDestroy();
+
+    expect(dispose).toHaveBeenCalledOnce();
+  });
+
+  it("disposes a Pass wrapper through its own dispose", () => {
+    const ctx = makeCtx();
+    const desc = new WrappedEffectDesc({} as ThreeView, ctx, {});
+    desc.onCreate();
+    const wrapper = desc.raw;
+    invariant(wrapper);
+    const wrapperDispose = vi.spyOn(wrapper, "dispose");
+    const rawDispose = vi.spyOn(wrapper.rawPass, "dispose");
+
+    desc.onDestroy();
+
+    expect(wrapperDispose).toHaveBeenCalledOnce();
+    expect(rawDispose).toHaveBeenCalledOnce();
   });
 });

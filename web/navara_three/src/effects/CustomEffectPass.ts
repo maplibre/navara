@@ -25,4 +25,13 @@ export class CustomEffectPass extends EffectPass {
   getCustomDepthTexture(): Texture | null {
     return this.customDepthTexture;
   }
+
+  /**
+   * The custom depth texture belongs to the pass that renders it, and
+   * `Pass.dispose()` disposes every texture in the pass's own properties.
+   */
+  dispose(): void {
+    this.customDepthTexture = null;
+    super.dispose();
+  }
 }

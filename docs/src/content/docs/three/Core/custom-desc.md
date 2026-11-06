@@ -747,6 +747,10 @@ createPass() {
 }
 ```
 
+### Disposal
+
+When the effect is deleted (`handle.delete()`, or `view.dispose()` for every effect still added), the base `onDestroy()` removes the pass from the pipeline and disposes it: it calls the instance's `dispose()`, or `raw.dispose()` when the instance is a wrapper without one. A postprocessing pass's `dispose()` releases the render targets, materials, and textures held in its own properties and in those of its effects, so return a pass that owns them. Keep a texture shared with other effects (for example the MRT buffers from `find()`) in a uniform, not in a property of the pass or of one of its effects.
+
 ## Custom Light Desc
 
 ### Type Parameters

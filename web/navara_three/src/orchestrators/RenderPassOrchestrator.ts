@@ -153,11 +153,16 @@ export class RenderPassOrchestrator {
   }
 
   /**
-   * Dispose all GPU resources held by the effect composer.
+   * Dispose all GPU resources held by the effect composer, including the
+   * passes still in the pipeline.
    */
   dispose(): void {
-    this.clearPasses();
+    // `effectComposer.dispose()` disposes only the passes still in its list,
+    // and `removePass` does not dispose, so the list is not cleared first.
     this.effectComposer.dispose();
+    this.passMap.list = [];
+    this.passMap.indexMap = {};
+    this.onPassesChanged?.();
   }
 
   /**

@@ -111,6 +111,7 @@ import {
   type TileHandler,
   type WorkerTaskHandler,
 } from "./event";
+import { disposeAllObjects } from "./event/objectRemoved";
 import { createTileHandler } from "./event/tileHandler";
 import { InMemoryBufferStore } from "./inMemoryBufferStore";
 import { registerInputEvents } from "./input";
@@ -541,10 +542,6 @@ export default class ThreeView<
   private skyEnvMap!: EffectHandle<SkyEnvMapEffectDesc>;
   /** Handle for the Multi-Render Target pass that outputs color and normal buffers. */
   private mrtPass!: EffectHandle<MRTPassEffectDesc>;
-  /** Handle for the transparent objects rendering pass. */
-  private transparentPass!: EffectHandle<TransparentPassEffectDesc>;
-  /** Handle for the final compositing pass that outputs to screen. */
-  private finalPass!: EffectHandle<FinalCopyEffectDesc>;
 
   /** The render pass orchestrator that manages the post-processing effect pipeline. */
   private renderPassOrchestrator: RenderPassOrchestrator;
@@ -556,6 +553,8 @@ export default class ThreeView<
   private _options: Options;
   private _stats: RendererStats | undefined;
   private _eventDisposer: (() => void) | undefined;
+  /** Removes the view's own canvas listeners on dispose. */
+  private _canvasListeners = new AbortController();
   private _disposed = false;
   private _renderFlag: RenderFlag = {
     forceUpdate: false,
@@ -1011,9 +1010,13 @@ export default class ThreeView<
     this._terrainPicker = new TerrainPicker();
 
     // disable right-click
-    options.canvas?.addEventListener("contextmenu", (e) => {
-      e.preventDefault();
-    });
+    options.canvas?.addEventListener(
+      "contextmenu",
+      (e) => {
+        e.preventDefault();
+      },
+      { signal: this._canvasListeners.signal },
+    );
 
     const renderer = new WebGLRenderer({
       // If it's true, some noise will happen. So use other AA algorithm instead.
@@ -1251,10 +1254,10 @@ export default class ThreeView<
         // debugNormal: true,
       },
     });
-    this.transparentPass = this.addEffect<TransparentPassEffectDesc>({
+    this.addEffect<TransparentPassEffectDesc>({
       transparent: {},
     });
-    this.finalPass = this.addEffect<FinalCopyEffectDesc>({
+    this.addEffect<FinalCopyEffectDesc>({
       final: {},
     });
   }
@@ -1704,8 +1707,16 @@ export default class ThreeView<
     // tolerance, with no pinch and no cancellation. Camera drags never
     // fire it.
     let clickStart: Vector2 | undefined;
+    const canvas = this._renderer.domElement;
+    const listen = <K extends keyof HTMLElementEventMap>(
+      type: K,
+      listener: (event: HTMLElementEventMap[K]) => void,
+    ) =>
+      canvas.addEventListener(type, listener, {
+        signal: this._canvasListeners.signal,
+      });
 
-    this._renderer.domElement.addEventListener("pointerdown", (event) => {
+    listen("pointerdown", (event) => {
       // A second finger turns the gesture into a pinch, not a tap.
       clickStart =
         event.isPrimary && event.button === 0
@@ -1717,28 +1728,28 @@ export default class ThreeView<
       }
     });
 
-    this._renderer.domElement.addEventListener("pointerenter", (event) => {
+    listen("pointerenter", (event) => {
       const mapEvent = this.convertToMapEvent(event);
       if (mapEvent) {
         this.emit("pointerenter", mapEvent);
       }
     });
 
-    this._renderer.domElement.addEventListener("pointerleave", (event) => {
+    listen("pointerleave", (event) => {
       const mapEvent = this.convertToMapEvent(event);
       if (mapEvent) {
         this.emit("pointerleave", mapEvent);
       }
     });
 
-    this._renderer.domElement.addEventListener("pointermove", (event) => {
+    listen("pointermove", (event) => {
       const mapEvent = this.convertToMapEvent(event);
       if (mapEvent) {
         this.emit("pointermove", mapEvent);
       }
     });
 
-    this._renderer.domElement.addEventListener("pointerup", (event) => {
+    listen("pointerup", (event) => {
       const mapEvent = this.convertToMapEvent(event);
       if (mapEvent) {
         this.emit("pointerup", mapEvent);
@@ -1762,7 +1773,7 @@ export default class ThreeView<
       }
     });
 
-    this._renderer.domElement.addEventListener("pointercancel", (event) => {
+    listen("pointercancel", (event) => {
       clickStart = undefined;
       this.emit("pointercancel", event);
     });
@@ -1799,6 +1810,7 @@ export default class ThreeView<
       this._eventDisposer();
       this._eventDisposer = undefined;
     }
+    this._canvasListeners.abort();
 
     if (this._pickHelper) {
       this._pickHelper.dispose();
@@ -1809,17 +1821,24 @@ export default class ThreeView<
       this._terrainPicker.dispose();
     }
 
+    // Abort all in-flight jobs (fetches, worker tasks, mesh builds).
+    this._dispatcher.dispose();
+    // Live meshes are the view's to dispose. Their removal releases into the
+    // font manager, declutter and tile compositor, so it runs before those.
+    if (this.eventContext) {
+      disposeAllObjects(this.eventContext);
+    }
+
+    // Delete every effect, so each descriptor disposes its pass. Newest
+    // first: the built-in passes (MRT, final) are added before the effects
+    // that read their buffers.
+    for (const handle of [...this.layersManager.getEffectDescs()].reverse()) {
+      handle.delete();
+    }
+
     this._fontManager.dispose();
     this._uniforms.water.dispose();
     this._atmosphere._dispose();
-
-    this.skyEnvMap?.delete();
-    this.mrtPass?.delete();
-    this.transparentPass?.delete();
-    this.finalPass?.delete();
-
-    // Abort all in-flight jobs (fetches, worker tasks, mesh builds).
-    this._dispatcher.dispose();
 
     // Dispose loaded textures (closes any ImageBitmap backing so the decoded
     // pixels are freed, not just the GL texture).
@@ -2491,6 +2510,8 @@ export default class ThreeView<
     // so tune effects via `update()` rather than re-adding them.
     this._syncGBuffers();
     l.on("deleted", () => {
+      // `dispose()` deletes every effect; nothing is left to re-derive for.
+      if (this._disposed) return;
       this._syncGBuffers();
       this.forceUpdate();
     });

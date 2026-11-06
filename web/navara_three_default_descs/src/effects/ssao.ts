@@ -152,4 +152,13 @@ export class SSAO extends Pass<N8AOPostPass, unknown, SSAOOptions> {
 
     this.emit("needsUpdate");
   }
+
+  /**
+   * The depth texture is the composer's, and `Pass.dispose()` disposes every
+   * texture in the pass's own properties.
+   */
+  dispose() {
+    this.rawPass.depthTexture = null;
+    super.dispose();
+  }
 }
