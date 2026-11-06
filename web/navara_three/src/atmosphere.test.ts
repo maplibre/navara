@@ -1,4 +1,10 @@
-import { type WebGLRenderer } from "three";
+import {
+  DataTexture,
+  HalfFloatType,
+  RGBAFormat,
+  type Texture,
+  type WebGLRenderer,
+} from "three";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { Atmosphere, type AtmosphereOptions } from "./atmosphere";
@@ -33,12 +39,12 @@ vi.mock("@takram/three-geospatial", async (importOriginal) => {
     Ellipsoid,
     EXRTextureLoader: MockLoader,
     EXR3DTextureLoader: MockLoader,
-    isFloatLinearSupported: () => false,
-    reinterpretType: () => {},
   };
 });
 
-const fakeTexture = () => ({ image: {}, dispose: vi.fn() });
+/** What the EXR loaders resolve with: half floats in a `Uint16Array`. */
+const fakeTexture = () =>
+  new DataTexture(new Uint16Array(4), 1, 1, RGBAFormat, HalfFloatType);
 
 /** Resolves every load immediately with a fake texture, recording the URL. */
 const autoResolveLoads = () => {
@@ -51,8 +57,11 @@ const requestedFiles = () =>
     return url.slice(url.lastIndexOf("/") + 1).replace(/\?.*$/, "");
   });
 
-const createAtmosphere = (options?: Partial<AtmosphereOptions>) =>
-  new Atmosphere({} as unknown as WebGLRenderer, {
+const createAtmosphere = (
+  options?: Partial<AtmosphereOptions>,
+  canvas = new EventTarget(),
+) =>
+  new Atmosphere({ domElement: canvas } as unknown as WebGLRenderer, {
     date: new Date(0),
     ...options,
   });
@@ -148,6 +157,158 @@ describe("Atmosphere.initTextures", () => {
 
     for (const [url] of loadAsyncMock.mock.calls as [string][]) {
       expect(url).toMatch(/^https:\/\/example\.com\/assets\/[a-z_]+\.exr$/);
+    }
+  });
+});
+
+describe("Atmosphere texture data", () => {
+  beforeEach(() => {
+    loadAsyncMock.mockReset();
+  });
+
+  const dataOf = (texture: Texture | undefined) =>
+    (texture?.image as { data: unknown } | undefined)?.data;
+
+  const uploadAll = (atmosphere: Atmosphere) => {
+    for (const texture of Object.values(atmosphere.textures)) {
+      texture.onUpdate?.(texture);
+    }
+  };
+
+  it("keeps the loaded half-float data", async () => {
+    const loadedData: unknown[] = [];
+    loadAsyncMock.mockImplementation(() => {
+      const texture = fakeTexture();
+      loadedData.push(texture.image.data);
+      return Promise.resolve(texture);
+    });
+    const atmosphere = createAtmosphere();
+
+    await atmosphere.initTextures();
+
+    const textures = Object.values(atmosphere.textures);
+    expect(textures.map((t) => t.type)).toEqual(Array(4).fill(HalfFloatType));
+    for (const texture of textures) {
+      expect(loadedData).toContain(dataOf(texture));
+    }
+  });
+
+  it("drops the CPU copy of the 3D textures once uploaded", async () => {
+    autoResolveLoads();
+    const atmosphere = createAtmosphere();
+    await atmosphere.initTextures();
+
+    uploadAll(atmosphere);
+
+    const { textures } = atmosphere;
+    expect(dataOf(textures.scatteringTexture)).toBeNull();
+    expect(dataOf(textures.higherOrderScatteringTexture)).toBeNull();
+    expect(dataOf(textures.transmittanceTexture)).toBeInstanceOf(Uint16Array);
+    expect(dataOf(textures.irradianceTexture)).toBeInstanceOf(Uint16Array);
+  });
+
+  it("re-fetches the released textures after a context restore", async () => {
+    autoResolveLoads();
+    const canvas = new EventTarget();
+    const atmosphere = createAtmosphere({}, canvas);
+    await atmosphere.initTextures();
+    uploadAll(atmosphere);
+    const scattering = atmosphere.textures.scatteringTexture;
+    const version = scattering?.version ?? 0;
+    const onLoaded = vi.fn();
+    atmosphere.on("textureLoaded", onLoaded);
+    loadAsyncMock.mockClear();
+
+    canvas.dispatchEvent(new Event("webglcontextrestored"));
+    await flush();
+
+    expect(requestedFiles().sort()).toEqual([
+      "higher_order_scattering.exr",
+      "scattering.exr",
+    ]);
+    expect(atmosphere.textures.scatteringTexture).toBe(scattering);
+    expect(dataOf(scattering)).toBeInstanceOf(Uint16Array);
+    expect(scattering?.version).toBeGreaterThan(version);
+    expect(
+      dataOf(atmosphere.textures.higherOrderScatteringTexture),
+    ).toBeInstanceOf(Uint16Array);
+    expect(onLoaded).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not re-fetch textures that still hold their data", async () => {
+    autoResolveLoads();
+    const canvas = new EventTarget();
+    const atmosphere = createAtmosphere({}, canvas);
+    await atmosphere.initTextures();
+    loadAsyncMock.mockClear();
+
+    canvas.dispatchEvent(new Event("webglcontextrestored"));
+    await flush();
+
+    expect(loadAsyncMock).not.toHaveBeenCalled();
+  });
+
+  it("retries a failed re-fetch with backoff", async () => {
+    autoResolveLoads();
+    const canvas = new EventTarget();
+    const atmosphere = createAtmosphere({}, canvas);
+    await atmosphere.initTextures();
+    uploadAll(atmosphere);
+    const { scatteringTexture, higherOrderScatteringTexture } =
+      atmosphere.textures;
+    let offline = true;
+    loadAsyncMock.mockImplementation(() =>
+      offline
+        ? Promise.reject(new Error("offline"))
+        : Promise.resolve(fakeTexture()),
+    );
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.useFakeTimers();
+    try {
+      canvas.dispatchEvent(new Event("webglcontextrestored"));
+      await vi.advanceTimersByTimeAsync(0);
+      expect(dataOf(scatteringTexture)).toBeNull();
+
+      offline = false;
+      await vi.advanceTimersByTimeAsync(1000);
+
+      expect(dataOf(scatteringTexture)).toBeInstanceOf(Uint16Array);
+      expect(dataOf(higherOrderScatteringTexture)).toBeInstanceOf(Uint16Array);
+      expect(error).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+      error.mockRestore();
+    }
+  });
+
+  it("stops listening and retrying once disposed", async () => {
+    autoResolveLoads();
+    const canvas = new EventTarget();
+    const add = vi.spyOn(canvas, "addEventListener");
+    const remove = vi.spyOn(canvas, "removeEventListener");
+    const atmosphere = createAtmosphere({}, canvas);
+    await atmosphere.initTextures();
+    uploadAll(atmosphere);
+    loadAsyncMock.mockImplementation(() =>
+      Promise.reject(new Error("offline")),
+    );
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.useFakeTimers();
+    try {
+      canvas.dispatchEvent(new Event("webglcontextrestored"));
+      await vi.advanceTimersByTimeAsync(0);
+      expect(vi.getTimerCount()).toBe(2);
+
+      atmosphere._dispose();
+
+      expect(vi.getTimerCount()).toBe(0);
+      expect(remove).toHaveBeenCalledWith(
+        "webglcontextrestored",
+        add.mock.calls[0][1],
+      );
+    } finally {
+      vi.useRealTimers();
+      error.mockRestore();
     }
   });
 });

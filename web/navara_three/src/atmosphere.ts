@@ -20,17 +20,11 @@ import {
   Ellipsoid,
   EXR3DTextureLoader,
   EXRTextureLoader,
-  Float16Array,
-  isFloatLinearSupported,
-  reinterpretType,
 } from "@takram/three-geospatial";
 import {
-  FloatType,
-  HalfFloatType,
   LinearFilter,
   Matrix4,
   Vector3,
-  type DataTextureImageData,
   type Texture,
   type WebGLRenderer,
 } from "three";
@@ -96,6 +90,14 @@ const ATMOSPHERE_TEXTURE_FILES: Record<AtmosphereTextureName, string> = {
 const ALL_ATMOSPHERE_TEXTURE_NAMES = Object.keys(
   ATMOSPHERE_TEXTURE_KEYS,
 ) as AtmosphereTextureName[];
+
+type TextureImageData = { data: ArrayBufferView | null };
+
+/** Textures whose CPU data is dropped once uploaded to the GPU. */
+const CPU_RELEASED_TEXTURE_NAMES: readonly AtmosphereTextureName[] = [
+  "scattering",
+  "higherOrderScattering",
+];
 
 /**
  * The textures guaranteed to be present in an {@link Atmosphere.onTexturesReady}
@@ -218,8 +220,14 @@ export class Atmosphere extends EventHandler<AtmosphereEvents> {
   private texturePromises = new Map<AtmosphereTextureName, Promise<void>>();
 
   /**
+   * Pending retries of {@link reloadReleasedTexture}.
+   * @private
+   */
+  private reloadTimers = new Set<ReturnType<typeof setTimeout>>();
+
+  /**
    * Creates a new Atmosphere instance.
-   * @param renderer - The WebGL renderer used for texture type detection.
+   * @param renderer - The WebGL renderer the textures are uploaded to.
    * @param options - Configuration options for the atmosphere.
    * @param camera - Camera reference used by {@link setDateAt}.
    */
@@ -231,6 +239,10 @@ export class Atmosphere extends EventHandler<AtmosphereEvents> {
     super();
 
     this.renderer = renderer;
+    renderer.domElement.addEventListener(
+      "webglcontextrestored",
+      this.onContextRestored,
+    );
     this.options = { ...DEFAULT_ATMOSPHERE_OPTIONS, ...options };
     this._camera = camera;
 
@@ -269,30 +281,17 @@ export class Atmosphere extends EventHandler<AtmosphereEvents> {
   private loadTexture(name: AtmosphereTextureName): Promise<void> {
     let promise = this.texturePromises.get(name);
     if (promise == null) {
-      const assetsUrl = this.options.atmosphereAssetsUrl;
-      const file = ATMOSPHERE_TEXTURE_FILES[name];
-      const url =
-        assetsUrl == null
-          ? ATMOSPHERE_TEXTURE_URLS[file]
-          : `${assetsUrl.replace(/\/+$/, "")}/${file}`;
-      promise = this.fetchTexture(name, url)
+      promise = this.fetchTexture(name)
         .then((texture) => {
-          const type = isFloatLinearSupported(this.renderer)
-            ? FloatType
-            : HalfFloatType;
-          texture.type = type;
-          // EXR data is parsed to Uint16Array, which must be converted to
-          // Float32Array when FloatType is used.
-          if (type === FloatType) {
-            reinterpretType<DataTextureImageData>(texture.image);
-            if (texture.image.data != null) {
-              texture.image.data = new Float32Array(
-                new Float16Array(texture.image.data.buffer),
-              );
-            }
-          }
           texture.minFilter = LinearFilter;
           texture.magFilter = LinearFilter;
+          if (CPU_RELEASED_TEXTURE_NAMES.includes(name)) {
+            // Only the 2D textures are sampled on the CPU (sun light color,
+            // sky light probe); onContextRestored re-fetches the 3D ones.
+            texture.onUpdate = () => {
+              (texture.image as TextureImageData).data = null;
+            };
+          }
           Object.assign(this.textures, {
             [ATMOSPHERE_TEXTURE_KEYS[name]]: texture,
           });
@@ -309,10 +308,62 @@ export class Atmosphere extends EventHandler<AtmosphereEvents> {
     return promise;
   }
 
-  private fetchTexture(
-    name: AtmosphereTextureName,
-    url: string,
-  ): Promise<Texture> {
+  /**
+   * three.js re-uploads every texture from its CPU data after a WebGL context
+   * restore, so the textures whose data was released are fetched again
+   * (usually from the HTTP cache).
+   * @private
+   */
+  private onContextRestored = () => {
+    for (const name of CPU_RELEASED_TEXTURE_NAMES) {
+      this.reloadReleasedTexture(name);
+    }
+  };
+
+  /**
+   * Fetches the data of a released texture into the same texture object,
+   * retrying with backoff until it succeeds, the data is back, or the texture
+   * is disposed.
+   * @private
+   */
+  private reloadReleasedTexture(name: AtmosphereTextureName, attempt = 0) {
+    const key = ATMOSPHERE_TEXTURE_KEYS[name];
+    const texture = this.textures[key];
+    if (texture == null || (texture.image as TextureImageData).data != null) {
+      return;
+    }
+    this.fetchTexture(name)
+      .then((reloaded) => {
+        if (this.textures[key] !== texture) return;
+        texture.image = reloaded.image;
+        texture.needsUpdate = true;
+        this.emit("textureLoaded");
+      })
+      .catch((e: unknown) => {
+        console.error("Failed to reload atmosphere texture:", e);
+        const timer = setTimeout(
+          () => {
+            this.reloadTimers.delete(timer);
+            this.reloadReleasedTexture(name, attempt + 1);
+          },
+          Math.min(1000 * 2 ** attempt, 30_000),
+        );
+        this.reloadTimers.add(timer);
+      });
+  }
+
+  /**
+   * Loads a texture file. The EXR loaders decode to half floats
+   * (`HalfFloatType`, `Uint16Array`).
+   * @private
+   */
+  private fetchTexture(name: AtmosphereTextureName): Promise<Texture> {
+    const assetsUrl = this.options.atmosphereAssetsUrl;
+    const file = ATMOSPHERE_TEXTURE_FILES[name];
+    const url =
+      assetsUrl == null
+        ? ATMOSPHERE_TEXTURE_URLS[file]
+        : `${assetsUrl.replace(/\/+$/, "")}/${file}`;
     switch (name) {
       case "transmittance":
         return new EXRTextureLoader({
@@ -338,6 +389,14 @@ export class Atmosphere extends EventHandler<AtmosphereEvents> {
    * @private
    */
   _dispose() {
+    this.renderer.domElement.removeEventListener(
+      "webglcontextrestored",
+      this.onContextRestored,
+    );
+    for (const timer of this.reloadTimers) {
+      clearTimeout(timer);
+    }
+    this.reloadTimers.clear();
     for (const texture of Object.values(this.textures)) {
       texture?.dispose();
     }
