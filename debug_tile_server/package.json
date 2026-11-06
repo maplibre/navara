@@ -1,6 +1,7 @@
 {
   "scripts": {
-    "dev": "tsx watch src/index.ts"
+    "dev": "tsx watch src/index.ts",
+    "device-log": "tsx src/deviceLog.ts"
   },
   "private": true,
   "dependencies": {
