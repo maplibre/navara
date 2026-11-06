@@ -115,11 +115,11 @@ See [Atmosphere class](../../../three/api/atmosphere/) for details on the atmosp
 
 ### shadowCascadeCount
 
-**Type:** `number | undefined`
+**Type:** `number | null | undefined`
 
-**Description:** Specifies the number of shadow map cascades.
+**Description:** Specifies the number of shadow map cascades. When omitted, the `qualityPreset` decides.
 
-**Default:** `3`
+**Default:** `null` (`2` for the `low` preset, `3` otherwise)
 
 **Example:**
 
@@ -477,11 +477,11 @@ import { Vector2 } from "three";
 
 ### shadowMapSize
 
-**Type:** `Vector2 | undefined`
+**Type:** `Vector2 | null | undefined`
 
-**Description:** Specifies the shadow map size as a `Vector2`.
+**Description:** Specifies the shadow map size as a `Vector2`. When omitted, the `qualityPreset` decides.
 
-**Default:** `Vector2(512, 512)`
+**Default:** `null` (`Vector2(256, 256)` for the `low` and `medium` presets, `Vector2(512, 512)` for `high`, `Vector2(1024, 1024)` for `ultra`)
 
 **Example:**
 
