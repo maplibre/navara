@@ -13,12 +13,10 @@ use crate::{
 /// `setMemoryCostHints`.
 #[derive(Debug, Clone, Copy)]
 pub struct CostHints {
-    /// Composite atlas cost per terrain tile. Every terrain tile pays this:
-    /// the JS `TileMesh` acquires an atlas eagerly in its constructor, so a
-    /// raster-only terrain scene still holds one per tile. Seeded into
-    /// `TerrainTileGpuCost.drape` at mesh-attach time (see
-    /// `attach_terrain_mesh_cost`) so it binds against the budget even before
-    /// any vector layer drapes.
+    /// Composite atlas cost per terrain tile, held by every terrain tile that
+    /// has been rendered (raster-only scenes included). The ledger charges it
+    /// when JS reports the tile's drape term; this hint feeds only the terrain
+    /// reservation estimate.
     pub atlas_tile_bytes: u64,
     /// Raster texture cost per fragment (w×h×4 plus mipmap overhead).
     pub raster_tile_bytes: u64,
@@ -46,8 +44,8 @@ impl CostHints {
     /// Derivation from what a landed terrain tile actually costs the ledger:
     /// the decoded DEM / mesh-geometry buffers (a RasterDEM decode is on the
     /// order of one raster tile; quantized-mesh varies with vertex count —
-    /// the EMA takes over for that) plus the composite atlas EVERY terrain
-    /// tile pays at mesh attach (`atlas_tile_bytes`, ~3 MB — the dominant
+    /// the EMA takes over for that) plus the composite atlas a terrain tile
+    /// allocates once rendered (`atlas_tile_bytes`, ~3 MB — the dominant
     /// term). Seeding only the raster hint here, as this used to, undercounts
     /// the eventual resident cost by roughly an order of magnitude and lets a
     /// camera-move terrain burst slip past the load gate.

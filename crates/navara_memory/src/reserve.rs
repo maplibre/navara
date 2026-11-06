@@ -130,8 +130,8 @@ pub enum ReserveKey {
     /// would buy nothing). Unlike hillshade the landed cost is NOT a
     /// per-source constant: quantized-mesh payloads vary with vertex count
     /// (terrain roughness), and the resident cost is dominated by the mesh
-    /// geometry plus the composite-atlas seed. Fed the full per-tile mesh
-    /// cost from `attach_terrain_mesh_cost`.
+    /// geometry plus the composite atlas. Fed the per-tile mesh geometry plus
+    /// the atlas hint from `attach_terrain_mesh_cost`.
     Terrain,
 }
 

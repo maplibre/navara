@@ -104,13 +104,12 @@ function drapeRtBytes(size: number): number {
 }
 /** GPU bytes for the per-tile composite atlas at side length `size`: one MRT
  * with three size² RGBA attachments. A terrain tile acquires this atlas in its
- * constructor and holds it for its whole lifetime (raster-only tiles
- * included), so Rust seeds it into the tile's cost at mesh-attach time and
- * every drape report from here must keep including it. The side length is 512²
- * on both desktop and mobile (so ~3MB per tile with three attachments) and
- * flows in from the compositor, which is the SAME source of truth
- * `getDefaultMemoryCostHints` feeds to the Rust ledger — so the reported bytes
- * always match the seed. */
+ * constructor, but three allocates it only on the first composite pass, so the
+ * drape report includes it only from then on (see
+ * `reportDrapeGpuBytesIfChanged`). The side length is 512² on both desktop and
+ * mobile (so ~3MB per tile with three attachments) and flows in from the
+ * compositor, which is the SAME source of truth `getDefaultMemoryCostHints`
+ * feeds to the Rust reservation estimate. */
 function compositeAtlasBytes(size: number): number {
   return size * size * 4 * ATLAS_ATTACHMENTS;
 }
@@ -159,11 +158,9 @@ export class TileMesh
   /** Current `Mesh::fill_quadrants` mask (see `setFillQuadrants`). */
   private fillQuadrants = 0;
   // Drape footprint (bytes) last reported to the memory ledger, so a report
-  // only crosses the WASM boundary when it actually changes. Starts at the
-  // atlas cost to match the seed Rust charges at mesh-attach time (the atlas
-  // is acquired in the constructor) — a tile that never drapes therefore
-  // never reports. Assigned in the constructor once `atlasBytes` is known.
-  private reportedDrapeGpuBytes: number;
+  // only crosses the WASM boundary when it actually changes. Starts at 0 to
+  // match the drape term Rust seeds at mesh-attach time.
+  private reportedDrapeGpuBytes = 0;
   private _waterMaskWaves: WaterWavesRef | undefined;
 
   readonly ctx: EventContext;
@@ -189,7 +186,6 @@ export class TileMesh
     // it always matches the ledger cost hints (see device.ts).
     this.drapeRtSize = this.compositor.size;
     this.atlasBytes = compositeAtlasBytes(this.compositor.size);
-    this.reportedDrapeGpuBytes = this.atlasBytes;
 
     // Acquire the per-tile composite atlas from the compositor. Pairing the
     // acquire with the mesh keeps the atlas lifecycle tied to the tile and lets
@@ -254,6 +250,9 @@ export class TileMesh
       : new DirectRasterDrapeResolver();
 
     tileMapByHandle.set(handle, this);
+    // A pooled atlas, or one shared with the mesh this one replaces, may
+    // already be allocated.
+    this.reportDrapeGpuBytesIfChanged();
 
     this.onBeforeRender = this._onBeforeRender;
     this.onBeforeShadow = this._onBeforeShadow;
@@ -262,18 +261,19 @@ export class TileMesh
 
   /**
    * Report the tile's drape GPU footprint (composite atlas + vector and baked-raster
-   * drape render targets) to the memory ledger when it changed. The atlas is acquired
-   * in the constructor and held for the tile's lifetime regardless of draping, so it
-   * is always part of the report — otherwise a tile whose last draped layer vanished
-   * would report 0 and wipe the atlas cost Rust seeds at mesh-attach time. The render
-   * targets on top of it scale with terrain subdivision past the layers' maxZoom — a
-   * cost per-source-tile accounting cannot see.
+   * drape render targets) to the memory ledger when it changed. The atlas counts once
+   * it is allocated and stays counted for the tile's lifetime regardless of draping.
+   * The render targets on top of it scale with terrain subdivision past the layers'
+   * maxZoom — a cost per-source-tile accounting cannot see.
    */
   private reportDrapeGpuBytesIfChanged() {
     const rtCount =
       this.vectorDrape.liveRenderTargetCount() +
       this.rasterDrape.liveRenderTargetCount();
-    const bytes = this.atlasBytes + rtCount * drapeRtBytes(this.drapeRtSize);
+    const atlasBytes = this.compositor.isAtlasAllocated(this.handle)
+      ? this.atlasBytes
+      : 0;
+    const bytes = atlasBytes + rtCount * drapeRtBytes(this.drapeRtSize);
     if (bytes === this.reportedDrapeGpuBytes) return;
     // Only the mesh currently registered for this position-stable handle may
     // report. During a terrain mesh replacement the outgoing mesh briefly
@@ -281,8 +281,8 @@ export class TileMesh
     // (constructor's `tileMapByHandle.set`) and been seeded by
     // `attach_terrain_mesh_cost`. A stray report from the outgoing mesh would
     // resolve on the Rust side (via `Without<Deleted>`) to the NEW live entity
-    // and overwrite its freshly-seeded atlas cost — the same hazard the
-    // dispose() 0-report guards against, here on the non-zero path.
+    // and overwrite its drape cost — the same hazard the dispose() 0-report
+    // guards against, here on the non-zero path.
     if (this.ctx.tileMapByHandle.get(this.handle) !== this) return;
     this.reportedDrapeGpuBytes = bytes;
     this.tileHandler.reportDrapeGpuBytes(this.handle, bytes);
@@ -306,12 +306,13 @@ export class TileMesh
       this.texturizedSceneIndexFrom,
       this.maxTextures,
     );
-    this.compositor.runCompositePassIfDirty(
+    const baked = this.compositor.runCompositePassIfDirty(
       this.handle,
       plan,
       globals,
       deriveCompositeFeatures(layers, globals),
     );
+    if (baked) this.reportDrapeGpuBytesIfChanged();
   };
 
   // The skirt casts no shadow.
@@ -1719,7 +1720,7 @@ ${generateTileCommonInjection(maxTextures)}
     // mesh-replacement path the old entity is marked `Deleted` while a NEW live
     // mesh reuses the same position-stable handle, so `reportDrapeGpuBytes(0)`
     // would resolve (via `Without<Deleted>`) to the NEW entity and wipe the
-    // atlas cost `attach_terrain_mesh_cost` just seeded. Leaving accounting to
+    // atlas cost the incoming mesh reported. Leaving accounting to
     // the entity despawn keeps both paths correct.
     this.reportedDrapeGpuBytes = 0;
 

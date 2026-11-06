@@ -45,6 +45,9 @@ export type CompositeAtlas = {
   readonly color: Texture;
   readonly attr: Texture;
   readonly normal: Texture;
+  /** three allocates the target on its first render, so an atlas that was
+   * never baked holds no GPU memory. Survives pooling. */
+  allocated: boolean;
   dispose: () => void;
 };
 
