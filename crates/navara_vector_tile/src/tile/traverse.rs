@@ -1,6 +1,7 @@
 use bevy_ecs::prelude::*;
 use navara_component::{OrderByDistance, Priority};
-use navara_core::Ellipsoid;
+use navara_core::{Ellipsoid, TileXYZ};
+use rustc_hash::{FxHashMap, FxHashSet};
 
 use navara_buffer_store::BufferStore;
 use navara_feature_component::{id::FeatureId, render::RenderableFeature};
@@ -53,6 +54,7 @@ pub fn traverse_tile(
     rendered_tiles: &Query<&RenderedTile>,
     features: &Query<&FeatureId, With<VectorTileFeatureMarker>>,
     renderable_features: &mut Query<&mut RenderableFeature>,
+    activations: &mut TileActivations,
     fog: &Fog,
     dynamic_sse: DynamicSseTerm,
     degrade: SseDegrade,
@@ -248,7 +250,14 @@ pub fn traverse_tile(
         }
 
         if !were_children_rendered {
-            return TraversalResult::NotFound;
+            // A failed request is never retried: report it as such, or the
+            // parent waits on this tile forever and never hands over to its
+            // other children.
+            return if is_tile_failed {
+                TraversalResult::Failed
+            } else {
+                TraversalResult::NotFound
+            };
         }
     }
 
@@ -289,6 +298,7 @@ pub fn traverse_tile(
                 rendered_tiles,
                 features,
                 renderable_features,
+                activations,
                 fog,
                 dynamic_sse,
                 degrade,
@@ -429,38 +439,12 @@ pub fn traverse_tile(
                 if prepared_children_indices.contains(&i) || hidden_children_indices.contains(&i) {
                     if activation_state.is_some_and(|state| state.any_active) {
                         tile.is_rendered = false;
-                        activate_all_renderable_features(
-                            tc,
-                            child,
-                            rendered_tiles,
-                            features,
-                            renderable_features,
-                            false,
-                        );
                     }
+                    activations.set(*child, false);
                     continue;
                 }
 
-                let target_active = are_all_children_mesh_prepared && !hide_children;
-                // An empty tile reads as all active whatever it is set to, so
-                // it must not ask for another pass, or the traversal would re-run
-                // every frame.
-                let needs_activation_update = activation_state
-                    .is_some_and(|state| !state.is_empty && state.all_active != target_active);
-
-                if needs_activation_update {
-                    // Re-run this traverse if `active` is updated, because the child tiles are updated depending on the parent state.
-                    tc.needs_update = true;
-
-                    activate_all_renderable_features(
-                        tc,
-                        child,
-                        rendered_tiles,
-                        features,
-                        renderable_features,
-                        target_active,
-                    );
-                }
+                activations.set(*child, are_all_children_mesh_prepared && !hide_children);
             }
 
             if !meets_sse && !meets_sse_ancestors {
@@ -587,6 +571,99 @@ pub fn activate_if_changed(mut feature: Mut<RenderableFeature>, active: bool) {
     } else {
         feature.activate(active);
     }
+}
+
+/// The activation targets one traversal decides, written by [`Self::apply`]
+/// once the whole quadtree is traversed.
+///
+/// A tile's child loop activates its children before its own parent decides
+/// whether to hand over to it, so a parent that falls back to drawing itself
+/// (a sibling is not ready) would leave those descendants active beside it.
+/// Applying after the traversal keeps every tile under an active ancestor
+/// inactive.
+#[derive(Default)]
+pub struct TileActivations(FxHashMap<TileHandle, bool>);
+
+impl TileActivations {
+    pub fn set(&mut self, handle: TileHandle, active: bool) {
+        self.0.insert(handle, active);
+    }
+
+    /// Writes the targets. A tile whose state changes flags `tc` for another
+    /// pass, because its parent's decisions read it.
+    pub fn apply(
+        self,
+        qt: &VectorTileQuadtree,
+        tc: &mut TileCacheManager,
+        rendered_tiles: &Query<&RenderedTile>,
+        features: &Query<&FeatureId, With<VectorTileFeatureMarker>>,
+        renderable_features: &mut Query<&mut RenderableFeature>,
+    ) {
+        for (handle, active) in self.resolve(|handle| qt.qt.get(handle).unwrap().coords) {
+            let Some(state) = get_renderable_feature_activation_state(
+                tc,
+                &handle,
+                rendered_tiles,
+                features,
+                renderable_features,
+            ) else {
+                continue;
+            };
+            // An empty tile reads as all active whatever it is set to, so it
+            // must not ask for another pass, or the traversal would re-run
+            // every frame.
+            let changed = !state.is_empty
+                && if active {
+                    !state.all_active
+                } else {
+                    state.any_active
+                };
+            if changed {
+                tc.needs_update = true;
+                activate_all_renderable_features(
+                    tc,
+                    &handle,
+                    rendered_tiles,
+                    features,
+                    renderable_features,
+                    active,
+                );
+            }
+        }
+    }
+
+    /// The targets, with every tile under an ancestor targeted active turned
+    /// inactive.
+    fn resolve(self, coords: impl Fn(TileHandle) -> TileXYZ) -> Vec<(TileHandle, bool)> {
+        let targets: Vec<(TileHandle, TileXYZ, bool)> = self
+            .0
+            .into_iter()
+            .map(|(handle, active)| (handle, coords(handle), active))
+            .collect();
+        let active: FxHashSet<TileXYZ> = targets
+            .iter()
+            .filter(|(_, _, active)| *active)
+            .map(|(_, coords, _)| *coords)
+            .collect();
+        targets
+            .into_iter()
+            .map(|(handle, coords, target)| (handle, target && !has_ancestor_in(coords, &active)))
+            .collect()
+    }
+}
+
+fn has_ancestor_in(mut coords: TileXYZ, tiles: &FxHashSet<TileXYZ>) -> bool {
+    while coords.z > 0 {
+        coords = TileXYZ {
+            x: coords.x / 2,
+            y: coords.y / 2,
+            z: coords.z - 1,
+        };
+        if tiles.contains(&coords) {
+            return true;
+        }
+    }
+    false
 }
 
 pub fn are_all_renderable_features_active(
@@ -821,6 +898,68 @@ mod test {
         expected.sort();
         assert_eq!(changed, expected);
         assert!(!world.get::<RenderableFeature>(draped).unwrap().is_active());
+    }
+
+    fn resolve(targets: &[(TileXYZ, bool)]) -> Vec<(TileXYZ, bool)> {
+        let mut activations = TileActivations::default();
+        for (i, (_, active)) in targets.iter().enumerate() {
+            activations.set(i as TileHandle, *active);
+        }
+        let mut resolved: Vec<(TileXYZ, bool)> = activations
+            .resolve(|handle| targets[handle as usize].0)
+            .into_iter()
+            .map(|(handle, active)| (targets[handle as usize].0, active))
+            .collect();
+        resolved.sort_by_key(|(c, _)| (c.z, c.x, c.y));
+        resolved
+    }
+
+    fn xyz(z: usize, x: usize, y: usize) -> TileXYZ {
+        TileXYZ { x, y, z }
+    }
+
+    /// A parent that falls back to drawing itself while a child's own loop
+    /// activated the grandchildren under it: only the parent stays active.
+    #[test]
+    fn it_should_keep_tiles_under_an_active_ancestor_inactive() {
+        let resolved = resolve(&[
+            (xyz(6, 57, 26), true),
+            (xyz(7, 114, 53), false),
+            (xyz(8, 228, 107), true),
+            (xyz(8, 229, 107), true),
+            (xyz(9, 458, 215), true),
+        ]);
+        assert_eq!(
+            resolved,
+            vec![
+                (xyz(6, 57, 26), true),
+                (xyz(7, 114, 53), false),
+                (xyz(8, 228, 107), false),
+                (xyz(8, 229, 107), false),
+                (xyz(9, 458, 215), false),
+            ]
+        );
+    }
+
+    /// A completed hand-over (parent deactivated) and tiles outside the
+    /// active tile's footprint keep their targets.
+    #[test]
+    fn it_should_keep_targets_without_an_active_ancestor() {
+        let resolved = resolve(&[
+            (xyz(6, 57, 26), false),
+            (xyz(6, 56, 26), true),
+            (xyz(7, 114, 53), true),
+            (xyz(7, 115, 53), true),
+        ]);
+        assert_eq!(
+            resolved,
+            vec![
+                (xyz(6, 56, 26), true),
+                (xyz(6, 57, 26), false),
+                (xyz(7, 114, 53), true),
+                (xyz(7, 115, 53), true),
+            ]
+        );
     }
 
     #[test]

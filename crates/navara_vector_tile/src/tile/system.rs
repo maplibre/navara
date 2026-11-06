@@ -33,8 +33,8 @@ use crate::{
 
 use super::render::{OwningVectorTile, RenderedTile, VectorTileGpuCost};
 use super::traverse::{
-    TraversalResult, activate_all_renderable_features, activate_if_changed,
-    are_all_renderable_features_active, spawn_tile_entity, traverse_tile,
+    TileActivations, TraversalResult, activate_if_changed, are_all_renderable_features_active,
+    spawn_tile_entity, traverse_tile,
 };
 
 /// Generic tile update system that delegates to `TileSource::prepare_tile`.
@@ -181,6 +181,7 @@ pub fn update_tiles(
 
             qt.qt.get_mut(zero_tile_handle).unwrap().is_rendered = false;
 
+            let mut activations = TileActivations::default();
             match traverse_tile(
                 &mut commands,
                 &source.source_id,
@@ -197,6 +198,7 @@ pub fn update_tiles(
                 &rendered_tiles,
                 &features,
                 &mut renderable_features,
+                &mut activations,
                 &fog,
                 dynamic_sse,
                 degrade,
@@ -218,14 +220,7 @@ pub fn update_tiles(
                         &frame,
                         zero_tile_handle,
                     );
-                    activate_all_renderable_features(
-                        &tc,
-                        &zero_tile_handle,
-                        &rendered_tiles,
-                        &features,
-                        &mut renderable_features,
-                        true,
-                    );
+                    activations.set(zero_tile_handle, true);
 
                     qt.qt.get_mut(zero_tile_handle).unwrap().is_rendered = is_rendered;
                 }
@@ -242,17 +237,17 @@ pub fn update_tiles(
                     );
                 }
                 TraversalResult::ChildrenMeshPrepared => {
-                    activate_all_renderable_features(
-                        &tc,
-                        &zero_tile_handle,
-                        &rendered_tiles,
-                        &features,
-                        &mut renderable_features,
-                        false,
-                    );
+                    activations.set(zero_tile_handle, false);
                 }
                 _ => {}
             };
+            activations.apply(
+                &qt,
+                &mut tc,
+                &rendered_tiles,
+                &features,
+                &mut renderable_features,
+            );
 
             if std::mem::take(&mut tc.drape_sources_changed) {
                 terrain.2.bump();
