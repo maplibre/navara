@@ -1567,7 +1567,52 @@ describe("MapLibreStylePlugin", () => {
       expect(mockLayer.update).toHaveBeenCalledTimes(1);
     });
 
-    it("updates a symbol layer when only its halo color crosses a zoom step", async () => {
+    it("updates a symbol layer when only its line height crosses a zoom step", async () => {
+      const mockLayer = {
+        delete: vi.fn(),
+        on: vi.fn(),
+        forceUpdate: vi.fn(),
+        update: vi.fn(),
+      };
+      const plugin = new MapLibreStylePlugin({
+        version: 8,
+        "font-faces": { Test: "https://example.com/test.woff2" },
+        sources: {
+          test: {
+            type: "geojson",
+            data: { type: "FeatureCollection", features: [] },
+          },
+        },
+        layers: [
+          {
+            id: "labels",
+            type: "symbol",
+            source: "test",
+            layout: {
+              "text-field": "{name}",
+              "text-font": ["Test"],
+              "text-line-height": ["step", ["zoom"], 1.2, 14, 1.5],
+            },
+          },
+        ],
+      } as StyleSpecification);
+      const view = createMockView(10);
+      view.addLayer = vi.fn().mockReturnValue(mockLayer);
+
+      await plugin.init(view, mockViewContext);
+      expect((view.addLayer as any).mock.calls[0][0].text).toBeDefined();
+
+      const moveListener = (view.camera.on as any).mock.calls.find(
+        (call: any) => call[0] === "move",
+      )[1];
+      moveListener();
+      setMockZoom(view, 15);
+      moveListener();
+
+      expect(mockLayer.update).toHaveBeenCalledTimes(1);
+    });
+
+    it("re-evaluates features without a layer update when only the halo follows zoom", async () => {
       const mockLayer = {
         delete: vi.fn(),
         on: vi.fn(),
@@ -1599,16 +1644,17 @@ describe("MapLibreStylePlugin", () => {
       view.addLayer = vi.fn().mockReturnValue(mockLayer);
 
       await plugin.init(view, mockViewContext);
-      expect((view.addLayer as any).mock.calls[0][0].text).toBeDefined();
-
       const moveListener = (view.camera.on as any).mock.calls.find(
         (call: any) => call[0] === "move",
       )[1];
       moveListener();
+      expect(mockLayer.forceUpdate).toHaveBeenCalledTimes(1);
+
       setMockZoom(view, 15);
       moveListener();
 
-      expect(mockLayer.update).toHaveBeenCalledTimes(1);
+      expect(mockLayer.forceUpdate).toHaveBeenCalledTimes(2);
+      expect(mockLayer.update).not.toHaveBeenCalled();
     });
 
     it("does not update symbol layers whose layer-level properties are constant", async () => {

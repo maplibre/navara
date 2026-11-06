@@ -20,6 +20,7 @@ export {
   GlyphCharClass,
   GlyphDirection,
   SDF_PX_SIZE,
+  atlasPaddingPx,
   atlasRangePx,
 } from "./types";
 export type {

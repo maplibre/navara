@@ -17,6 +17,7 @@ import {
   type EvaluationContext,
   type PropertySpec,
   type StyleLayer,
+  type SymbolLayer,
   type ValueExpression,
 } from "../engine/types";
 import { expressionUsesFeatureData } from "../utils/expressionHelpers";
@@ -46,7 +47,21 @@ type EvaluatedResult = {
   offset?: { x: number; y: number };
   variableAnchors?: VariableAnchor[];
   textAlign?: TextAlign;
+  outlineColor?: Color;
+  outlineOpacity?: number;
+  /** 1/64 em, like `outlineBlur`. */
+  outlineWidth?: number;
+  outlineBlur?: number;
 };
+
+/** Navara's outline unit: pixels of text drawn 64 pixels tall. */
+const OUTLINE_UNITS_PER_EM = 64;
+
+/**
+ * MapLibre fades a halo over `±1.19 × text-halo-blur` around its edge
+ * (`symbol_sdf.fragment.glsl`); Navara's `outlineBlur` is the whole fade.
+ */
+const HALO_BLUR_TO_FADE = 2 * 1.19;
 
 /**
  * Convert MapLibre color value to Navara Color and extract alpha.
@@ -451,6 +466,40 @@ function applyTextTransform(text: string, transform: unknown): string {
 }
 
 /**
+ * Apply `text-halo-*`. MapLibre draws a halo in pixels of the text laid out
+ * at its `text-size` (its shader divides them by the font scale), so they
+ * convert to ems of that size. An unset halo color is transparent.
+ *
+ * MapLibre skips the halo, blur included, when `text-halo-width` reads no
+ * feature data and is 0 (`draw_symbol.ts`: `constantOr(1) !== 0`); a
+ * data-driven width of 0 still draws the blurred edge.
+ */
+function applyTextHalo(
+  result: EvaluatedResult,
+  paintValues: Record<string, unknown>,
+  haloWidthExpr: unknown,
+  textSize: number,
+): void {
+  const color = paintValues["text-halo-color"];
+  const width = paintValues["text-halo-width"];
+  const blur = paintValues["text-halo-blur"];
+  if (color === undefined && width === undefined && blur === undefined) return;
+
+  const halo = color === undefined ? undefined : toNavaraColor(color);
+  if (halo) result.outlineColor = halo.color;
+  result.outlineOpacity = halo?.alpha ?? 0;
+  const toOutlineUnits = (px: unknown) =>
+    typeof px === "number" && Number.isFinite(px) && textSize > 0
+      ? (px / textSize) * OUTLINE_UNITS_PER_EM
+      : 0;
+  result.outlineWidth = toOutlineUnits(width);
+  result.outlineBlur =
+    result.outlineWidth === 0 && !expressionUsesFeatureData(haloWidthExpr)
+      ? 0
+      : toOutlineUnits(blur) * HALO_BLUR_TO_FADE;
+}
+
+/**
  * Apply the per-feature placement properties shared by icons and text:
  * `*-anchor`, `*-offset` (multiplied by `offsetScale`), `*-rotate` and
  * `symbol-sort-key`.
@@ -500,7 +549,7 @@ function processSymbolLayer(
   paintValues: Record<string, unknown>,
   layoutValues: Record<string, unknown> | undefined,
   meshGeomType: GeometryType | undefined,
-  layerId: string,
+  styleLayer: SymbolLayer,
   warnedLayers?: Set<string>, // Set to track layers that have already warned (prevents log spam)
 ): void {
   // Determine what this specific feature has based on evaluated layout values
@@ -516,14 +565,14 @@ function processSymbolLayer(
   // Symbol layers MUST have a valid meshGeomType to avoid ambiguous evaluation
   if (meshGeomType !== "billboard" && meshGeomType !== "text") {
     // Warn once per layer to avoid log spam when evaluating thousands of features
-    if (warnedLayers && !warnedLayers.has(layerId)) {
-      warnedLayers.add(layerId);
+    if (warnedLayers && !warnedLayers.has(styleLayer.id)) {
+      warnedLayers.add(styleLayer.id);
       const reason =
         meshGeomType === undefined
           ? "missing meshGeomType"
           : `invalid meshGeomType "${meshGeomType}"`;
       console.warn(
-        `Symbol layer "${layerId}": ${reason}. Expected "billboard" or "text" from mesh.getGeometryType(). Skipping symbol evaluation (falling back to layer defaults).`,
+        `Symbol layer "${styleLayer.id}": ${reason}. Expected "billboard" or "text" from mesh.getGeometryType(). Skipping symbol evaluation (falling back to layer defaults).`,
       );
     }
     return;
@@ -580,6 +629,12 @@ function processSymbolLayer(
       if (typeof textSize === "number" && Number.isFinite(textSize)) {
         result.size = textSize;
       }
+      applyTextHalo(
+        result,
+        paintValues,
+        styleLayer.paint?.["text-halo-width"],
+        result.size ?? 16,
+      );
 
       // Ems, like Navara's `letterSpacing`; always present (spec default 0).
       const letterSpacing = layoutValues?.["text-letter-spacing"];
@@ -655,7 +710,7 @@ export function toEvaluatedValue(
         paintValues,
         layoutValues,
         meshGeomType,
-        styleLayer.id,
+        styleLayer,
         warnedLayers,
       );
       break;

@@ -236,6 +236,82 @@ describe("BatchedSdfTextMesh material updates vs per-feature values", () => {
   });
 });
 
+describe("BatchedSdfTextMesh outline", () => {
+  const outlineOf = (mesh: BatchedSdfTextMesh, batchIndex: number) => {
+    const read = (key: "outlineOpacity" | "outlineWidth" | "outlineBlur") =>
+      readBatchScalar(batchMat(mesh), batchIndex, key);
+    return {
+      red: readBatchVec3(batchMat(mesh), batchIndex, "outlineColor", _readColor)
+        ?.r,
+      opacity: read("outlineOpacity"),
+      width: read("outlineWidth"),
+      blur: read("outlineBlur"),
+    };
+  };
+
+  it("allocates no outline slots while nothing is outlined", () => {
+    const { mesh } = makeMesh();
+    mesh.setTextByBatchIndex(0, "AB");
+    expect(outlineOf(mesh, 0).width).toBeUndefined();
+  });
+
+  it("writes the material's outline", () => {
+    const { mesh } = makeMesh(
+      material({
+        outlineColor: 0xff0000,
+        outlineOpacity: 0.5,
+        outlineWidth: 7,
+        outlineBlur: 3.5,
+      }),
+    );
+    mesh.setTextByBatchIndex(0, "AB");
+
+    const outline = outlineOf(mesh, 0);
+    expect(outline.red).toBe(1);
+    expect(outline.opacity).toBe(0.5);
+    expect(outline.width).toBe(7);
+    expect(outline.blur).toBe(3.5);
+  });
+
+  it("outlines one feature without touching the others", () => {
+    const { mesh } = makeMesh();
+    mesh.setTextByBatchIndex(0, "AB");
+    mesh.setTextByBatchIndex(1, "CD");
+    mesh.setFeatureOutlineByBatchIndex(1, { color: 0xff0000, width: 7 });
+
+    expect(outlineOf(mesh, 1)).toMatchObject({ red: 1, opacity: 1, width: 7 });
+    expect(outlineOf(mesh, 0)).toMatchObject({ red: 0, width: 0, blur: 0 });
+  });
+
+  it("skips the write when a feature's outline is unchanged", () => {
+    const { mesh } = makeMesh();
+    mesh.setTextByBatchIndex(0, "AB");
+    mesh.setFeatureOutlineByBatchIndex(0, { color: 0xff0000, width: 7 });
+    const writeOutline = vi.spyOn(
+      mesh as unknown as { _writeOutline(record: unknown): void },
+      "_writeOutline",
+    );
+
+    mesh.setFeatureOutlineByBatchIndex(0, { color: 0xff0000, width: 7 });
+    expect(writeOutline).not.toHaveBeenCalled();
+
+    mesh.setFeatureOutlineByBatchIndex(0, { width: 8 });
+    expect(writeOutline).toHaveBeenCalledTimes(1);
+  });
+
+  it("overwrites only the outline fields a material change touches", async () => {
+    const { mesh } = makeMesh();
+    mesh.setFeatureOutlineByBatchIndex(0, { color: 0xff0000, width: 7 });
+
+    await mesh._update(textMeshEvent(material({ outlineBlur: 3.5 })));
+
+    const outline = outlineOf(mesh, 0);
+    expect(outline.red).toBe(1);
+    expect(outline.width).toBe(7);
+    expect(outline.blur).toBe(3.5);
+  });
+});
+
 // Letter spacing is baked into the glyph quads, so it shows up in the label's
 // block width (500 font units per glyph at 1000 units/em: "AB" is 1 em wide).
 describe("BatchedSdfTextMesh letter spacing", () => {

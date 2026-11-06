@@ -217,6 +217,7 @@ export type SymbolLayout = {
   "text-rotate"?: ValueExpression;
   "text-transform"?: ValueExpression;
   "text-max-width"?: ValueExpression;
+  "text-line-height"?: ValueExpression;
   "text-justify"?: ValueExpression;
   "text-max-angle"?: ValueExpression;
   "text-keep-upright"?: ValueExpression;
@@ -241,6 +242,7 @@ export type SymbolPaint = {
   "text-opacity"?: ValueExpression;
   "text-halo-color"?: ValueExpression;
   "text-halo-width"?: ValueExpression;
+  "text-halo-blur"?: ValueExpression;
   "text-translate"?: ValueExpression;
   "text-translate-anchor"?: ValueExpression;
   "icon-translate"?: ValueExpression;
