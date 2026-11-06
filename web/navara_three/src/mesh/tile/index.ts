@@ -134,8 +134,9 @@ export class TileMesh
   private readonly vectorDrape: VectorDrapeResolver;
   private readonly rasterDrape: DrapeResolver;
 
-  // Separate mesh for shadow casting (uses terrain-only geometry without skirt)
-  private shadowMesh?: Mesh<BufferGeometry, TileMaterial>;
+  // Index count of the terrain surface, which sits in front of the skirt in
+  // the geometry's index buffer.
+  private terrainIndexCount = 0;
   private boundingBoxHelper?: Box3Helper;
   // Unexaggerated geometry bounds (`Mesh::aabb`) and the height range they
   // span (`Mesh::min_height`/`max_height`), kept to rebuild the exaggerated bounds
@@ -255,6 +256,8 @@ export class TileMesh
     tileMapByHandle.set(handle, this);
 
     this.onBeforeRender = this._onBeforeRender;
+    this.onBeforeShadow = this._onBeforeShadow;
+    this.onAfterShadow = this._onAfterShadow;
   }
 
   /**
@@ -309,6 +312,15 @@ export class TileMesh
       globals,
       deriveCompositeFeatures(layers, globals),
     );
+  };
+
+  // The skirt casts no shadow.
+  private _onBeforeShadow = () => {
+    this.geometry.setDrawRange(0, this.terrainIndexCount);
+  };
+
+  private _onAfterShadow = () => {
+    this.geometry.setDrawRange(0, Infinity);
   };
 
   /** The waves of the watermask's water, held for as long as the tile lives. */
@@ -501,9 +513,8 @@ export class TileMesh
       tileMeshToFragmentIds,
     } = this.ctx;
 
-    const installed = this.installGeometry(mesh);
-    if (!installed) return;
-    const { geometry, terrainGeometry, boundingBox } = installed;
+    const boundingBox = this.installGeometry(mesh);
+    if (!boundingBox) return;
 
     if (mat.showBoundingBox) {
       this.boundingBoxHelper = new Box3Helper(boundingBox, 0x00ff00);
@@ -521,12 +532,11 @@ export class TileMesh
     );
     this.setupTextures(loadedTexs, textureOptions, maxTextures, mat);
 
-    this.attachShadowMesh(
-      geometry,
-      terrainGeometry,
-      !!mat.castShadow,
-      !!mat.receiveShadow,
+    this.customDepthMaterial = terrainDepthMaterial(
+      this.ctx.uniforms.terrainExaggeration,
     );
+    this.castShadow = !!mat.castShadow;
+    this.receiveShadow = !!mat.receiveShadow;
     applyLitOption(this.material, mat.lit);
 
     this.visible = false;
@@ -584,27 +594,12 @@ export class TileMesh
    */
   replaceGeometry(mesh: EventMesh) {
     const outgoing = this.geometry;
-    const outgoingShadow = this.shadowMesh?.geometry;
     const hadNormalAttribute = !!this.userData.hasNormalAttribute;
     const hadWatermask = this.userData.watermask != null;
-    // Shadow flags carry over from the mesh being replaced: the skirt-bearing
-    // main mesh never casts, its terrain-only shadow mesh does.
-    const castShadow = this.shadowMesh?.castShadow ?? this.castShadow;
 
-    const installed = this.installGeometry(mesh);
-    if (!installed) return;
-    const { geometry, terrainGeometry } = installed;
+    if (!this.installGeometry(mesh)) return;
 
-    // Release the outgoing geometry; the shadow mesh shares its attributes.
     outgoing.dispose();
-    outgoingShadow?.dispose();
-
-    this.attachShadowMesh(
-      geometry,
-      terrainGeometry,
-      castShadow,
-      this.receiveShadow,
-    );
 
     if (hadNormalAttribute !== this.userData.hasNormalAttribute) {
       // USE_VERTEX_NORMAL is compiled into the program: recompile it.
@@ -626,15 +621,9 @@ export class TileMesh
   }
 
   // Build the geometry from `mesh`'s buffer handles and make it this tile's
-  // geometry, along with its bounds, watermask and the terrain-only geometry
-  // the shadow mesh renders. Undefined when the buffers are gone.
-  private installGeometry(mesh: EventMesh):
-    | {
-        geometry: BufferGeometry;
-        terrainGeometry: BufferGeometry;
-        boundingBox: Box3;
-      }
-    | undefined {
+  // geometry, along with its bounds and watermask. Returns the bounding box, or
+  // undefined when the buffers are gone.
+  private installGeometry(mesh: EventMesh): Box3 | undefined {
     const { buf } = this.ctx;
 
     // Read the AABB before grabbing the buffer views below. `mesh.aabb` (and its
@@ -662,14 +651,9 @@ export class TileMesh
     // reads non-allocating handle getters and consecutive buf.* views, then
     // copies them once — into the combined buffers when a skirt exists, or via
     // slice() otherwise.
-    // Terrain-only geometry (for shadow rendering). createSkirtMesh fills it:
-    // when a skirt exists it shares the combined geometry's buffers (with the
-    // skirt cut off via drawRange).
-    const terrainGeometry = new BufferGeometry();
-
+    this.terrainIndexCount = indices.length;
     const geometry = this.createSkirtMesh(
       mesh,
-      terrainGeometry,
       position,
       uv,
       indices,
@@ -689,7 +673,7 @@ export class TileMesh
     this.userData.hasNormalAttribute = normals != null;
 
     this.geometry = geometry;
-    const boundingBox = this.applyExaggeratedBounds(terrainGeometry);
+    const boundingBox = this.applyExaggeratedBounds();
 
     // Drop the CPU-side typed arrays (position/uv/normal/index, and the skirt
     // data merged into the same combined buffers above) once the GPU upload
@@ -701,11 +685,9 @@ export class TileMesh
     // path, so releasing is safe. CONSTRAINT: once released these geometries
     // can no longer be re-uploaded on a WebGL context loss — acceptable because
     // terrain is re-fetched from Rust on demand, not restored from CPU memory.
-    // When a skirt exists, `terrainGeometry` (shadow mesh) shares these exact
-    // BufferAttribute instances, so this one call releases both meshes' arrays.
     releaseGeometryArraysAfterUpload(geometry);
 
-    return { geometry, terrainGeometry, boundingBox };
+    return boundingBox;
   }
 
   /**
@@ -714,7 +696,7 @@ export class TileMesh
    * culling bounds need updating when it changes.
    */
   updateTerrainExaggeration() {
-    this.applyExaggeratedBounds(this.shadowMesh?.geometry ?? this.geometry);
+    this.applyExaggeratedBounds();
   }
 
   /** Re-read the vector drape sources Rust handed over for this tile on the
@@ -723,9 +705,7 @@ export class TileMesh
     this.vectorDrape.markSourcesChanged();
   }
 
-  // Set the exaggerated bounds on the geometry and the terrain-only geometry
-  // (the same object when there is no skirt).
-  private applyExaggeratedBounds(terrainGeometry: BufferGeometry): Box3 {
+  private applyExaggeratedBounds(): Box3 {
     const { center, extent, minHeight, maxHeight } = this.rawBounds;
     const { box, sphere } = exaggeratedTerrainBounds(
       center,
@@ -736,56 +716,17 @@ export class TileMesh
     );
     this.geometry.boundingBox = box;
     this.geometry.boundingSphere = sphere;
-    if (terrainGeometry !== this.geometry) {
-      terrainGeometry.boundingBox = box.clone();
-      terrainGeometry.boundingSphere = sphere.clone();
-    }
     if (this.boundingBoxHelper) {
       this.boundingBoxHelper.box = box;
     }
     return box;
   }
 
-  // With a skirt, the terrain-only geometry casts shadows through a separate
-  // mesh so the skirt casts none, and the main mesh only receives; without
-  // one the main mesh does both.
-  private attachShadowMesh(
-    geometry: BufferGeometry,
-    terrainGeometry: BufferGeometry,
-    castShadow: boolean,
-    receiveShadow: boolean,
-  ) {
-    this.customDepthMaterial ??= terrainDepthMaterial(
-      this.ctx.uniforms.terrainExaggeration,
-    );
-    if (geometry !== terrainGeometry) {
-      if (this.shadowMesh) {
-        this.shadowMesh.geometry = terrainGeometry;
-      } else {
-        this.shadowMesh = new Mesh(terrainGeometry, this.material);
-        this.shadowMesh.customDepthMaterial = this.customDepthMaterial;
-        this.add(this.shadowMesh);
-      }
-      this.shadowMesh.castShadow = castShadow;
-      this.shadowMesh.receiveShadow = receiveShadow;
-      this.castShadow = false;
-    } else {
-      if (this.shadowMesh) {
-        this.remove(this.shadowMesh);
-        this.shadowMesh = undefined;
-      }
-      this.castShadow = castShadow;
-    }
-    this.receiveShadow = receiveShadow;
-  }
-
-  // Create combined geometry (terrain + skirt) for rendering, and populate
-  // `terrainGeometry` (used by shadowMesh so the skirt casts no shadow) with
-  // the same buffers, restricted to the terrain via drawRange.
+  // Create the geometry for rendering, with the terrain data at the front of
+  // every buffer and the skirt, if any, behind it.
   // Normals are computed dynamically in the fragment shader from vPosition.
   createSkirtMesh(
     mesh: EventMesh,
-    terrainGeometry: BufferGeometry,
     position: Float32Array,
     uv: Float32Array | null,
     indices: Uint32Array,
@@ -812,25 +753,18 @@ export class TileMesh
       skirtHeightsHandle != null ? buf.f32(skirtHeightsHandle) : null;
     const vertexCount = position.length / 3;
 
-    // Create combined geometry (terrain + skirt) for main rendering
-    let geometry: BufferGeometry;
+    const geometry = new BufferGeometry();
     if (hasSkirt && skirtPosition && skirtIndices) {
-      geometry = new BufferGeometry();
-
-      // The terrain data sits at the front of every combined buffer, so the
-      // terrain-only (shadow) geometry shares the combined attributes — one
-      // CPU array and one GPU buffer per attribute — and drawRange below cuts
-      // the skirt off.
-
       // Combine vertices: terrain vertices + skirt vertices
       const combinedPosition = new Float32Array(
         position.length + skirtPosition.length,
       );
       combinedPosition.set(position);
       combinedPosition.set(skirtPosition, position.length);
-      const positionAttribute = new BufferAttribute(combinedPosition, 3);
-      geometry.setAttribute("position", positionAttribute);
-      terrainGeometry.setAttribute("position", positionAttribute);
+      geometry.setAttribute(
+        "position",
+        new BufferAttribute(combinedPosition, 3),
+      );
 
       // Combine UVs
       if (uv) {
@@ -839,9 +773,7 @@ export class TileMesh
         if (skirtUv) {
           combinedUv.set(skirtUv, uv.length);
         }
-        const uvAttribute = new BufferAttribute(combinedUv, 2);
-        geometry.setAttribute("uv", uvAttribute);
-        terrainGeometry.setAttribute("uv", uvAttribute);
+        geometry.setAttribute("uv", new BufferAttribute(combinedUv, 2));
       }
 
       // Combine normals: terrain normals + skirt normals (computed in Rust as edge normals)
@@ -853,9 +785,10 @@ export class TileMesh
         if (skirtNormals) {
           combinedNormals.set(skirtNormals, normals.length);
         }
-        const normalAttribute = new BufferAttribute(combinedNormals, 3);
-        geometry.setAttribute("normal", normalAttribute);
-        terrainGeometry.setAttribute("normal", normalAttribute);
+        geometry.setAttribute(
+          "normal",
+          new BufferAttribute(combinedNormals, 3),
+        );
       }
 
       // Combine heights: terrain heights + skirt heights. A flat tile's
@@ -866,9 +799,10 @@ export class TileMesh
       );
       if (heights) combinedHeights.set(heights);
       combinedHeights.set(skirtHeights, vertexCount);
-      const heightAttribute = new BufferAttribute(combinedHeights, 1);
-      geometry.setAttribute("terrainHeight", heightAttribute);
-      terrainGeometry.setAttribute("terrainHeight", heightAttribute);
+      geometry.setAttribute(
+        "terrainHeight",
+        new BufferAttribute(combinedHeights, 1),
+      );
 
       // Combine indices: terrain indices + skirt indices
       const combinedIndices = new Uint32Array(
@@ -876,36 +810,31 @@ export class TileMesh
       );
       combinedIndices.set(indices);
       combinedIndices.set(skirtIndices, indices.length);
-      const indexAttribute = new BufferAttribute(combinedIndices, 1);
-      geometry.setIndex(indexAttribute);
-
-      terrainGeometry.setIndex(indexAttribute);
-      terrainGeometry.setDrawRange(0, indices.length);
+      geometry.setIndex(new BufferAttribute(combinedIndices, 1));
     } else {
       // No skirt data - build the terrain geometry from the arrays. slice()
       // copies out of the WASM-memory views since BufferAttribute retains them.
-      terrainGeometry.setAttribute(
+      geometry.setAttribute(
         "position",
         new BufferAttribute(position.slice(), 3),
       );
       if (uv) {
-        terrainGeometry.setAttribute("uv", new BufferAttribute(uv.slice(), 2));
+        geometry.setAttribute("uv", new BufferAttribute(uv.slice(), 2));
       }
       if (normals) {
-        terrainGeometry.setAttribute(
+        geometry.setAttribute(
           "normal",
           new BufferAttribute(normals.slice(), 3),
         );
       }
-      terrainGeometry.setAttribute(
+      geometry.setAttribute(
         "terrainHeight",
         new BufferAttribute(
           heights ? heights.slice() : new Float32Array(vertexCount),
           1,
         ),
       );
-      terrainGeometry.setIndex(new BufferAttribute(indices.slice(), 1));
-      geometry = terrainGeometry;
+      geometry.setIndex(new BufferAttribute(indices.slice(), 1));
     }
 
     return geometry;
@@ -1157,20 +1086,8 @@ ${generateTileCommonInjection(maxTextures)}
     }
 
     // Update shadow settings
-    // If shadowMesh exists, it handles castShadow while main mesh only receives shadows
-    if (this.shadowMesh) {
-      if (this.shadowMesh.castShadow !== changedMaterial.castShadow) {
-        this.shadowMesh.castShadow = !!changedMaterial.castShadow;
-      }
-      if (this.shadowMesh.receiveShadow !== changedMaterial.receiveShadow) {
-        this.shadowMesh.receiveShadow = !!changedMaterial.receiveShadow;
-      }
-      // Main mesh with skirt never casts shadow
-      this.castShadow = false;
-    } else {
-      if (this.castShadow !== changedMaterial.castShadow) {
-        this.castShadow = !!changedMaterial.castShadow;
-      }
+    if (this.castShadow !== changedMaterial.castShadow) {
+      this.castShadow = !!changedMaterial.castShadow;
     }
     if (this.receiveShadow !== changedMaterial.receiveShadow) {
       this.receiveShadow = !!changedMaterial.receiveShadow;
@@ -1212,10 +1129,6 @@ ${generateTileCommonInjection(maxTextures)}
       // Create new material with correct type. Per-layer UV uniforms will be
       // re-populated by setupTextures before the next render.
       this.material = this.initMaterial(mat, this.ctx.uniforms, globe);
-
-      if (this.shadowMesh) {
-        this.shadowMesh.material = this.material;
-      }
 
       // Dispose old material
       this.ctx.viewContext?.removeShadowMaterial(oldMaterial);
@@ -1793,13 +1706,8 @@ ${generateTileCommonInjection(maxTextures)}
 
     this.ctx.viewContext?.removeShadowMaterial(this.material);
 
-    // Note: geometry disposal (including shadowMesh.geometry) is handled by
-    // disposeObject3D() in event/index.ts before removedFromWorld is dispatched.
-    // We only need to remove shadowMesh from the scene graph here.
-    if (this.shadowMesh) {
-      this.remove(this.shadowMesh);
-      this.shadowMesh = undefined;
-    }
+    // Note: geometry disposal is handled by disposeObject3D() in event/index.ts
+    // before removedFromWorld is dispatched.
 
     // Dispose the drape resolvers' WebGLRenderTargets to free GPU memory
     this.vectorDrape.dispose();

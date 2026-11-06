@@ -295,10 +295,12 @@ export {
   getDefaultDynamicSse,
   getDefaultLodFog,
   getDefaultMemoryBudgets,
+  getDefaultSunShadow,
   MB,
   type DynamicSseSettings,
   type LodFogSettings,
   type MemoryBudgets,
+  type SunShadowDefaults,
 } from "./device";
 
 /**

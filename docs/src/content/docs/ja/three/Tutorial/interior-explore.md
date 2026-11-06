@@ -91,7 +91,7 @@ layers.sun.update({
 });
 ```
 
-`sun.shadowFar` の既定値は 50km で、シャドウカスケードが広がりすぎて人物サイズの影は解像されません。`shadowFar`をキャラクターが歩く範囲まで寄せると、キャラクターの影が見えるようになります。
+`sun.shadowFar` の既定値は 50km（モバイルでは 10km）で、シャドウカスケードが広がりすぎて人物サイズの影は解像されません。`shadowFar`をキャラクターが歩く範囲まで寄せると、キャラクターの影が見えるようになります。
 
 :::note[モデルデータの準備]
 このチュートリアルでは Three.js 公式サンプルに含まれる `Soldier.glb` を使用します。[Three.js GitHub リポジトリ](https://github.com/mrdoob/three.js/tree/dev/examples/models/gltf/Soldier.glb) からダウンロードしてください。アニメーション付きの GLTF モデルであれば任意のものを使えます。その場合は `idleClip`、`walkClip`、 `dashClip` をモデルが持つクリップ名に合わせて変更してください。

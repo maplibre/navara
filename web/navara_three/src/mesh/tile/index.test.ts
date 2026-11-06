@@ -1,11 +1,4 @@
-import {
-  Box3,
-  BoxGeometry,
-  BufferGeometry,
-  DataTexture,
-  Mesh,
-  MeshBasicMaterial,
-} from "three";
+import { Box3, BoxGeometry, DataTexture, Mesh, MeshBasicMaterial } from "three";
 import { describe, expect, it, vi } from "vitest";
 
 import { TexturizedSceneByTileCoordinates } from "../../scene";
@@ -419,12 +412,24 @@ describe("TileMesh handle registration", () => {
   });
 });
 
+describe("TileMesh shadow casting", () => {
+  it("leaves the skirt out of the shadow draw only", () => {
+    const { tile } = makeTile();
+    tile["terrainIndexCount"] = 6;
+
+    tile["_onBeforeShadow"]();
+    expect(tile.geometry.drawRange).toEqual({ start: 0, count: 6 });
+
+    tile["_onAfterShadow"]();
+    expect(tile.geometry.drawRange).toEqual({ start: 0, count: Infinity });
+  });
+});
+
 describe("TileMesh geometry replacement", () => {
   /** Replace the geometry with one that does or does not carry a watermask. */
   function replaceWith(tile: TileMesh, watermask: boolean) {
     const internals = tile as unknown as {
       installGeometry: () => unknown;
-      attachShadowMesh: () => void;
     };
     vi.spyOn(internals, "installGeometry").mockImplementation(() => {
       tile.userData.watermask = watermask
@@ -435,13 +440,8 @@ describe("TileMesh geometry replacement", () => {
           }
         : undefined;
       tile.userData.hasNormalAttribute = false;
-      return {
-        geometry: new BufferGeometry(),
-        terrainGeometry: new BufferGeometry(),
-        boundingBox: new Box3(),
-      };
+      return new Box3();
     });
-    vi.spyOn(internals, "attachShadowMesh").mockImplementation(() => {});
     tile.replaceGeometry(
       {} as unknown as Parameters<TileMesh["replaceGeometry"]>[0],
     );

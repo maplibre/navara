@@ -91,7 +91,7 @@ layers.sun.update({
 });
 ```
 
-`sun.shadowFar` defaults to 50 km, which spreads the shadow cascades so thin that a person-sized shadow never resolves. Setting `shadowFar` to the range in which the character walks makes the shadow visible.
+`sun.shadowFar` defaults to 50 km (10 km on mobile), which spreads the shadow cascades so thin that a person-sized shadow never resolves. Setting `shadowFar` to the range in which the character walks makes the shadow visible.
 
 :::note[Preparing Model Data]
 This tutorial uses `Soldier.glb` from the official Three.js samples. Download it from the [Three.js GitHub repository](https://github.com/mrdoob/three.js/tree/dev/examples/models/gltf/Soldier.glb). Any animated GLTF model works. Just match `idleClip`, `walkClip` and `dashClip` to the clip names your model exposes.
