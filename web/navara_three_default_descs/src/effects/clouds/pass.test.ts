@@ -4,8 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { Clouds, type CloudsOptions } from "./pass";
 
-// The real package starts the worker pool on import; Clouds only needs the
-// pass base class.
+// Isolate the pass from the full engine entry point.
 vi.mock("@navaramap/three", async () => {
   const { EventHandler } = await import("@navaramap/core");
   const { EffectPass } = await import("postprocessing");
@@ -72,5 +71,16 @@ describe("Clouds shadow map", () => {
     });
     expect(clouds.shadowMapSize.toArray()).toEqual([1024, 1024]);
     expect(clouds.shadowCascadeCount).toBe(4);
+  });
+
+  it("keeps in-place size changes out of the preset", () => {
+    const clouds = createClouds({ qualityPreset: "medium" });
+    clouds.shadowMapSize.set(1024, 1024);
+    clouds.qualityPreset = "high";
+    clouds.qualityPreset = "medium";
+    expect(clouds.shadowMapSize.toArray()).toEqual([256, 256]);
+    expect(
+      createClouds({ qualityPreset: "medium" }).shadowMapSize.toArray(),
+    ).toEqual([256, 256]);
   });
 });
