@@ -191,7 +191,7 @@ The subset of a TileJSON 3.0.0 document this plugin consumes. Other spec fields 
 
 | Property      | Type                  | Default | Description                                                                     |
 | ------------- | --------------------- | ------- | ------------------------------------------------------------------------------- |
-| `tilejson`    | `string`              | —       | Semver of the TileJSON spec the document conforms to, e.g. `"3.0.0"`. Required. |
+| `tilejson`    | `string`              | —       | Semver of the TileJSON spec the document conforms to, e.g. `"3.0.0"`. Optional. |
 | `tiles`       | `string[]`            | —       | Tile URL templates (`{z}/{x}/{y}`). Required and non-empty per the spec.        |
 | `attribution` | `string \| undefined` | —       | Attribution / credit HTML shown through the view's built-in attribution UI.     |
 | `minzoom`     | `number \| undefined` | `0`     | Minimum zoom level. Applied to raster sources only.                             |
@@ -200,7 +200,7 @@ The subset of a TileJSON 3.0.0 document this plugin consumes. Other spec fields 
 | `tileSize`    | `number \| undefined` | `512`   | Tile size in pixels. Not part of the TileJSON spec, but emitted by MapLibre-oriented tile servers. Applied to `raster-dem` sources only. |
 | `encoding`    | `TileJsonDemEncoding \| undefined` | `"mapbox"` | Elevation encoding of DEM tiles. Not part of the TileJSON spec, but emitted by MapLibre-oriented tile servers. Applied to `raster-dem` sources only. |
 
-The document is validated when fetched: `addSource()` rejects if `tilejson` is missing or is not a `major.minor.patch` version, or if `tiles` is missing or empty.
+The document is validated when fetched: `addSource()` rejects if `tilejson` is present but is not a `major.minor.patch` version, or if `tiles` is missing or empty. A missing `tilejson` is accepted, as in MapLibre.
 
 ## Notes
 

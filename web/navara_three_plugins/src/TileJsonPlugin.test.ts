@@ -331,6 +331,16 @@ describe("TileJsonPlugin.addSource", () => {
     ).rejects.toThrow(/tilejson.*version/i);
   });
 
+  it("accepts a document without a tilejson version field", async () => {
+    const { view } = makeFakeView();
+    const plugin = initPlugin(view);
+    stubTileJson({ tiles: ["https://a/{z}/{x}/{y}.png"] });
+
+    await expect(
+      plugin.addSource({ type: "raster-tile", url: DOC_URL }),
+    ).resolves.toBeDefined();
+  });
+
   it("rejects a missing/empty tiles array", async () => {
     const { view } = makeFakeView();
     const plugin = initPlugin(view);

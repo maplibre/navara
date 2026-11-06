@@ -96,8 +96,12 @@ export type TileJsonDemEncoding = "mapbox" | "terrarium";
  * fields (`bounds`, `center`, `grids`, ...) are ignored.
  */
 export type TileJson = {
-  /** Semver of the TileJSON spec the document conforms to, e.g. `"3.0.0"`. */
-  tilejson: string;
+  /**
+   * Semver of the TileJSON spec the document conforms to, e.g. `"3.0.0"`.
+   * Optional because many tilesets omit it (MapLibre accepts that); a value
+   * that is present must still be a `major.minor.patch` version.
+   */
+  tilejson?: string;
   /** Tile URL templates (`{z}/{x}/{y}`). Required and non-empty per the spec. */
   tiles: string[];
   /** Attribution/credit HTML shown through the view's attribution UI. */
@@ -212,15 +216,16 @@ export type TileJsonPluginEventMap = {
 
 /**
  * Validates the fields this plugin relies on. Throws with an actionable message
- * when the `tilejson` version or the `tiles` array is missing or malformed.
+ * when a present `tilejson` version is malformed or the `tiles` array is
+ * missing or empty.
  */
 function validateTileJson(doc: TileJson): void {
   if (
-    typeof doc.tilejson !== "string" ||
-    !TILEJSON_VERSION.test(doc.tilejson)
+    doc.tilejson !== undefined &&
+    (typeof doc.tilejson !== "string" || !TILEJSON_VERSION.test(doc.tilejson))
   ) {
     throw new Error(
-      `TileJsonPlugin: invalid or missing "tilejson" version field (got ${JSON.stringify(doc.tilejson)}).`,
+      `TileJsonPlugin: invalid "tilejson" version field (got ${JSON.stringify(doc.tilejson)}).`,
     );
   }
   if (!Array.isArray(doc.tiles) || doc.tiles.length === 0) {
