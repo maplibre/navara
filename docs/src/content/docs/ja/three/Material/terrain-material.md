@@ -167,9 +167,17 @@ terrainLayer.update({
 
 **Default:** `0`
 
+### flowSpeed
+
+**Type:** `number | undefined`
+
+**Description:** watermask の水域の波を `waveDirection` の向きに運ぶ流れの速さ（m/s）です。波の大きさや傾きは変わりません。
+
+**Default:** `0`
+
 ```typescript
 terrainLayer.update({
-  terrain: { waveStrength: 12, waveDirection: 225 },
+  terrain: { waveStrength: 12, waveDirection: 225, flowSpeed: 2 },
 });
 ```
 

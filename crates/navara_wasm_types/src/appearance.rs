@@ -1641,6 +1641,11 @@ pub struct PolygonMaterial {
     #[wasm_bindgen(js_name = waveDirection)]
     #[serde(rename = "waveDirection")]
     pub wave_direction: Option<f32>,
+    /// Speed in m/s of the current carrying the water's waves
+    /// along `waveDirection`. Default: 0.
+    #[wasm_bindgen(js_name = flowSpeed)]
+    #[serde(rename = "flowSpeed")]
+    pub flow_speed: Option<f32>,
     /// Phong shininess of the non-water `specular` highlight.
     pub shininess: Option<f32>,
     #[wasm_bindgen(js_name = specularStrength)]
@@ -1722,6 +1727,7 @@ impl PolygonMaterial {
             water_scale: None,
             wave_strength: None,
             wave_direction: None,
+            flow_speed: None,
             shininess: None,
             specular_strength: None,
             specular: None,
@@ -1775,6 +1781,7 @@ impl PolygonMaterial {
             water_scale: parse_water_scale(&self.water_scale).unwrap_or(other.water_scale),
             wave_strength: self.wave_strength.unwrap_or(other.wave_strength),
             wave_direction: self.wave_direction.unwrap_or(other.wave_direction),
+            flow_speed: self.flow_speed.unwrap_or(other.flow_speed),
             shininess: self.shininess.unwrap_or(other.shininess),
             specular_strength: self.specular_strength.unwrap_or(other.specular_strength),
             specular: self.specular.unwrap_or(other.specular),
@@ -1826,6 +1833,7 @@ impl From<PolygonMaterial> for navara_material::PolygonMaterial {
             water_scale: parse_water_scale(&val.water_scale).unwrap_or(default.water_scale),
             wave_strength: val.wave_strength.unwrap_or(default.wave_strength),
             wave_direction: val.wave_direction.unwrap_or(default.wave_direction),
+            flow_speed: val.flow_speed.unwrap_or(default.flow_speed),
             shininess: val.shininess.unwrap_or(default.shininess),
             specular_strength: val.specular_strength.unwrap_or(default.specular_strength),
             specular: val.specular.unwrap_or(default.specular),
@@ -1871,6 +1879,7 @@ impl<'a> From<&'a navara_material::PolygonMaterial> for PolygonMaterial {
             water_scale: Some(value.water_scale.as_str().to_string()),
             wave_strength: Some(value.wave_strength),
             wave_direction: Some(value.wave_direction),
+            flow_speed: Some(value.flow_speed),
             shininess: Some(value.shininess),
             specular_strength: Some(value.specular_strength),
             specular: Some(value.specular),
@@ -1914,6 +1923,7 @@ impl From<navara_material::PolygonMaterial> for PolygonMaterial {
             water_scale: Some(value.water_scale.as_str().to_string()),
             wave_strength: Some(value.wave_strength),
             wave_direction: Some(value.wave_direction),
+            flow_speed: Some(value.flow_speed),
             shininess: Some(value.shininess),
             specular_strength: Some(value.specular_strength),
             specular: Some(value.specular),
@@ -2010,6 +2020,11 @@ pub struct ModelMaterial {
     #[wasm_bindgen(js_name = waveDirection)]
     #[serde(rename = "waveDirection")]
     pub wave_direction: Option<f32>,
+    /// Speed in m/s of the current carrying the water's waves
+    /// along `waveDirection`. Default: 0.
+    #[wasm_bindgen(js_name = flowSpeed)]
+    #[serde(rename = "flowSpeed")]
+    pub flow_speed: Option<f32>,
     /// Phong shininess of the non-water `specular` highlight.
     pub shininess: Option<f32>,
     #[wasm_bindgen(js_name = specularStrength)]
@@ -2091,6 +2106,7 @@ impl From<ModelMaterial> for navara_material::ModelMaterial {
             water_scale: parse_water_scale(&val.water_scale).unwrap_or(default.water_scale),
             wave_strength: val.wave_strength.unwrap_or(default.wave_strength),
             wave_direction: val.wave_direction.unwrap_or(default.wave_direction),
+            flow_speed: val.flow_speed.unwrap_or(default.flow_speed),
             shininess: val.shininess.unwrap_or(default.shininess),
             specular_strength: val.specular_strength.unwrap_or(default.specular_strength),
             specular: val.specular.unwrap_or(default.specular),
@@ -2134,6 +2150,7 @@ impl<'a> From<&'a navara_material::ModelMaterial> for ModelMaterial {
             water_scale: Some(value.water_scale.as_str().to_string()),
             wave_strength: Some(value.wave_strength),
             wave_direction: Some(value.wave_direction),
+            flow_speed: Some(value.flow_speed),
             shininess: Some(value.shininess),
             specular_strength: Some(value.specular_strength),
             specular: Some(value.specular),
@@ -2179,6 +2196,7 @@ impl ModelMaterial {
             water_scale: parse_water_scale(&self.water_scale).unwrap_or(other.water_scale),
             wave_strength: self.wave_strength.unwrap_or(other.wave_strength),
             wave_direction: self.wave_direction.unwrap_or(other.wave_direction),
+            flow_speed: self.flow_speed.unwrap_or(other.flow_speed),
             shininess: self.shininess.unwrap_or(other.shininess),
             specular_strength: self.specular_strength.unwrap_or(other.specular_strength),
             specular: self.specular.unwrap_or(other.specular),
@@ -2364,6 +2382,11 @@ pub struct RasterTileInternalMaterial {
     #[wasm_bindgen(js_name = waveDirection)]
     #[serde(rename = "waveDirection")]
     pub wave_direction: f32,
+    /// Speed in m/s of the current carrying the waves on the watermask's water
+    /// along `waveDirection`.
+    #[wasm_bindgen(js_name = flowSpeed)]
+    #[serde(rename = "flowSpeed")]
+    pub flow_speed: f32,
     /// Per-slot layer IDs used to look up each layer's colorMap atlas row; an
     /// empty string for slots without an elevation heatmap.
     #[wasm_bindgen(getter_with_clone, js_name = colorMapLayerIds)]
@@ -2596,6 +2619,7 @@ impl<'a> From<&'a navara_material::RasterTileInternalMaterial> for RasterTileInt
             wave_exaggeration: m.wave_exaggeration,
             wave_strength: m.wave_strength,
             wave_direction: m.wave_direction,
+            flow_speed: m.flow_speed,
 
             // Elevation Heatmap fields
             color_map_layer_ids: heatmap.color_map_layer_ids,
@@ -2741,6 +2765,11 @@ pub struct TerrainMaterial {
     #[wasm_bindgen(js_name = waveDirection)]
     #[serde(rename = "waveDirection")]
     pub wave_direction: Option<f32>,
+    /// Speed in m/s of the current carrying the waves on the watermask's water
+    /// along `waveDirection`. Default: 0.
+    #[wasm_bindgen(js_name = flowSpeed)]
+    #[serde(rename = "flowSpeed")]
+    pub flow_speed: Option<f32>,
 }
 
 /// Deserializes a field that is present (even as `null`) to `Some`, so a
@@ -2798,6 +2827,7 @@ impl TerrainMaterial {
             wave_exaggeration: self.wave_exaggeration.unwrap_or(other.wave_exaggeration),
             wave_strength: self.wave_strength.unwrap_or(other.wave_strength),
             wave_direction: self.wave_direction.unwrap_or(other.wave_direction),
+            flow_speed: self.flow_speed.unwrap_or(other.flow_speed),
         }
     }
 }

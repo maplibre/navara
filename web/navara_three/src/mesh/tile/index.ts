@@ -1482,6 +1482,7 @@ ${generateTileCommonInjection(maxTextures)}
       strength: mat.waveStrength,
       direction: mat.waveDirection,
       scale: "ocean",
+      flowSpeed: mat.flowSpeed,
     });
     m.userData.waterWaves.value[0] = waterMaskWaves.waves;
     m.userData.waterMaskExaggeration.value = mat.waveExaggeration;
