@@ -29,10 +29,10 @@ total slope statistics at every distance.
 
 | Surface                          | Where it calls the chunk                                       | Per-surface inputs                                |
 | -------------------------------- | -------------------------------------------------------------- | ------------------------------------------------- |
-| Terrain watermask sea and rivers | `material/macro/tileShader.ts` (`tileWater`, `watermaskWater`) | ocean scale, `terrain.waveExaggeration`, `waveStrength`, `waveDirection`, `waterMaskColor` |
+| Terrain watermask sea and rivers | `material/macro/tileShader.ts` (`tileWater`, `watermaskWater`) | ocean scale, `terrain.waveExaggeration`, `waveStrength`, `waveDirection`, `flowSpeed`, `waterMaskColor` |
 | Vector layers draped on terrain  | `tileShader.ts`, the winning slot's `uWaterParams[N]`          | `water`, `waveExaggeration` and waves per slot (section 2) |
-| Polygon meshes                   | `material/enhancer/polygon/polygonWaterEnhancer`               | `uWaveExaggeration`, and waves from `waveStrength`, `waveDirection`, `waterScale` |
-| Model meshes                     | `material/enhancer/model/modelWaterEnhancer`                   | `uWaveExaggeration`, and waves from `waveStrength`, `waveDirection`, `waterScale` |
+| Polygon meshes                   | `material/enhancer/polygon/polygonWaterEnhancer`               | `uWaveExaggeration`, and waves from `waveStrength`, `waveDirection`, `flowSpeed`, `waterScale` |
+| Model meshes                     | `material/enhancer/model/modelWaterEnhancer`                   | `uWaveExaggeration`, and waves from `waveStrength`, `waveDirection`, `flowSpeed`, `waterScale` |
 
 - In the tile shader, the attr atlas's water flag ORs the watermask into the
   winner's flag. A vector layer drawn over the sea counts as water only when
@@ -63,6 +63,8 @@ Each layer sets its waves with `waveStrength` and `waveDirection`
 the wave size, slope and speed together. `waveExaggeration` then scales only the
 slopes, like a height exaggeration, and `0` gives a mirror. `waveStrength` of 0
 keeps the calm ripples.
+`flowSpeed` is a current in m/s along `waveDirection`: it moves the whole
+pattern and leaves the wave model alone (section 4).
 
 **Wave sets.** `WaterState.createWaves(conditions)` returns a `WaterWavesRef` that
 holds one `NvrWaterWaves` (taps, cascades, gust patch) and its f64 phases.
@@ -160,7 +162,10 @@ recompiling any material.
 - **Gust patches.** One more tap per scale, 40 cascade-0 tiles long, drifting
   at `0.5·U`, scales the slopes by `1 ± NVR_WATER_PATCH_AMOUNT` (0.15). This
   gives the brighter and darker wind patches seen from low altitude.
-- **Current.** `nvrWaterFlowSurface(coord, normal, exaggeration, flow, waves)` also
+- **Uniform current.** `flowSpeed` adds to every tap's phase on the CPU, as the
+  opposite of a camera moving at that speed. The pattern moves rigidly, so this
+  takes no shader change and no extra taps, and the gust patch moves with it.
+- **Varying current.** `nvrWaterFlowSurface(coord, normal, exaggeration, flow, waves)` also
   carries the waves along a per-fragment current (east/north m/s). Two layers
   drift with the flow for one `WATER_FLOW_PERIOD` (8 s) cycle each, half a
   cycle apart, and crossfade with variance-preserving weights, so a varying

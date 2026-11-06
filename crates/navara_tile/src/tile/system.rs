@@ -646,6 +646,7 @@ pub fn transfer_mesh(
             wave_exaggeration,
             wave_strength,
             wave_direction,
+            flow_speed,
         ) = terrain_layer.and_then(|l| l.appearance.as_ref()).map_or(
             (
                 false,
@@ -655,6 +656,7 @@ pub fn transfer_mesh(
                 None,
                 1.0,
                 navara_material::DEFAULT_WAVE_STRENGTH,
+                0.0,
                 0.0,
             ),
             |appearance| {
@@ -667,6 +669,7 @@ pub fn transfer_mesh(
                     appearance.wave_exaggeration,
                     appearance.wave_strength,
                     appearance.wave_direction,
+                    appearance.flow_speed,
                 )
             },
         );
@@ -692,6 +695,7 @@ pub fn transfer_mesh(
             wave_exaggeration,
             wave_strength,
             wave_direction,
+            flow_speed,
 
             // Elevation Heatmap fields
             elevation_heatmap_layers,
@@ -1431,6 +1435,7 @@ pub fn update_terrain_layer(
             let wave_exaggeration = u.material.wave_exaggeration;
             let wave_strength = u.material.wave_strength;
             let wave_direction = u.material.wave_direction;
+            let flow_speed = u.material.flow_speed;
             for mut material in &mut tile_materials {
                 if material.cast_shadow != cast_shadow
                     || material.receive_shadow != receive_shadow
@@ -1440,6 +1445,7 @@ pub fn update_terrain_layer(
                     || material.wave_exaggeration != wave_exaggeration
                     || material.wave_strength != wave_strength
                     || material.wave_direction != wave_direction
+                    || material.flow_speed != flow_speed
                 {
                     material.cast_shadow = cast_shadow;
                     material.receive_shadow = receive_shadow;
@@ -1449,6 +1455,7 @@ pub fn update_terrain_layer(
                     material.wave_exaggeration = wave_exaggeration;
                     material.wave_strength = wave_strength;
                     material.wave_direction = wave_direction;
+                    material.flow_speed = flow_speed;
                 }
             }
         }

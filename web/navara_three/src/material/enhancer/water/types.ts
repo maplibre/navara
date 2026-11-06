@@ -17,6 +17,8 @@ export type WaterOnlyProps = {
   waveStrength?: number;
   /** Where the waves travel, in degrees clockwise from north. */
   waveDirection?: number;
+  /** Speed in m/s of the current carrying the waves along `waveDirection`. */
+  flowSpeed?: number;
   // The non-water `specular` highlight.
   shininess?: number;
   specularStrength?: number;
@@ -37,6 +39,7 @@ export type WaterSurfaceState = Readonly<{
   waterScale: WaterScale;
   waveStrength: number;
   waveDirection: number;
+  flowSpeed: number;
   shininess: number;
   specularStrength: number;
   specular: boolean;

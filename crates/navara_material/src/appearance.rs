@@ -1060,6 +1060,9 @@ pub struct PolygonMaterial {
     pub wave_strength: f32,
     /// Where the waves travel, in degrees clockwise from north.
     pub wave_direction: f32,
+    /// Speed in m/s of the current carrying the water's waves
+    /// along `wave_direction`.
+    pub flow_speed: f32,
     pub shininess: f32,
     pub specular_strength: f32,
     pub specular: bool,
@@ -1103,6 +1106,7 @@ impl Default for PolygonMaterial {
             water_scale: WaterScale::Ocean,
             wave_strength: DEFAULT_WAVE_STRENGTH,
             wave_direction: 0.0,
+            flow_speed: 0.0,
             shininess: 100.0,
             specular_strength: 2.0,
             specular: false,
@@ -1158,6 +1162,9 @@ pub struct ModelMaterial {
     pub wave_strength: f32,
     /// Where the waves travel, in degrees clockwise from north.
     pub wave_direction: f32,
+    /// Speed in m/s of the current carrying the water's waves
+    /// along `wave_direction`.
+    pub flow_speed: f32,
     pub shininess: f32,
     pub specular_strength: f32,
     pub specular: bool,
@@ -1208,6 +1215,7 @@ impl Default for ModelMaterial {
             water_scale: WaterScale::Ocean,
             wave_strength: DEFAULT_WAVE_STRENGTH,
             wave_direction: 0.0,
+            flow_speed: 0.0,
             shininess: 100.0,
             specular_strength: 2.0,
             specular: false,
@@ -1315,6 +1323,9 @@ pub struct RasterTileInternalMaterial {
     /// Where the waves on the terrain watermask's water travel, in degrees
     /// clockwise from north.
     pub wave_direction: f32,
+    /// Speed in m/s of the current carrying the waves on the watermask's water
+    /// along `wave_direction`.
+    pub flow_speed: f32,
 
     /// Per-layer elevation heatmap data. `Some` when the layer is an elevation heatmap
     /// with a raster-dem source that has a decoder; `None` for layers without an elevation heatmap.
@@ -1378,6 +1389,9 @@ pub struct TerrainMaterial {
     /// Where the waves on the watermask's water travel, in degrees clockwise
     /// from north.
     pub wave_direction: f32,
+    /// Speed in m/s of the current carrying the waves on the watermask's water
+    /// along `wave_direction`.
+    pub flow_speed: f32,
 }
 
 impl Default for TerrainMaterial {
@@ -1396,6 +1410,7 @@ impl Default for TerrainMaterial {
             wave_exaggeration: 1.0,
             wave_strength: DEFAULT_WAVE_STRENGTH,
             wave_direction: 0.0,
+            flow_speed: 0.0,
         }
     }
 }

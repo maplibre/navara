@@ -319,7 +319,7 @@ import { Color } from "@navaramap/three";
 
 ### その他のマテリアルオプション
 
-[`PolygonMaterial`](../../../three/material/polygon-material/) の次の見た目のオプションは、そちらの説明どおりに使えます: `wireframe`、`emissiveColor`、`emissiveIntensity`、`reflectivity`、`roughness`、`water`、`waveExaggeration`、`waterScale`、`waveStrength`、`waveDirection`、`specular`、`shininess`、`specularStrength`、`ior`。
+[`PolygonMaterial`](../../../three/material/polygon-material/) の次の見た目のオプションは、そちらの説明どおりに使えます: `wireframe`、`emissiveColor`、`emissiveIntensity`、`reflectivity`、`roughness`、`water`、`waveExaggeration`、`waterScale`、`waveStrength`、`waveDirection`、`flowSpeed`、`specular`、`shininess`、`specularStrength`、`ior`。
 
 レイヤー専用のオプション `tiled`、`show`、`surfaceShow`、`outline`、`outlineShow`、`outlineColor`、`outlineWidth`、`lit` は使えません。`show` と `lit` の代わりにメッシュ設定の `visible` と `lit` を使い、輪郭線は同じリングに [`PolylineMeshDesc`](../polyline-mesh-desc) を重ねて描画してください。
 

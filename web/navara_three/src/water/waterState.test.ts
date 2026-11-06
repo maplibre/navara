@@ -98,7 +98,12 @@ describe("wind statistics", () => {
 });
 
 describe("WaterState", () => {
-  const OCEAN = { strength: 5, direction: 0, scale: "ocean" } as const;
+  const OCEAN = {
+    strength: 5,
+    direction: 0,
+    scale: "ocean",
+    flowSpeed: 0,
+  } as const;
 
   it("keeps a ground point at the same texture coordinate as the camera moves", () => {
     const state = createState();
@@ -210,6 +215,25 @@ describe("WaterState", () => {
     expect(waves.cascades[0].tileLength).toBe(
       windToCascades(5, WATER_SCALE_FETCHES.small).cascades[0].tileLength,
     );
+  });
+
+  it("carries the pattern with the current", () => {
+    const state = createState();
+    const carried = state.createWaves({
+      ...OCEAN,
+      direction: 90,
+      flowSpeed: 3,
+    });
+    const crossing = state.createWaves({ ...OCEAN, direction: 90 });
+    state.advance(0, 0, 2);
+    for (let tap = 0; tap < 6; tap++) {
+      // What was at the origin has moved 6 m east, up to whole repeats.
+      const [u, v] = carried.tapUv(tap, 6, 0);
+      const [u0, v0] = crossing.tapUv(tap, 0, 0);
+      expect(Math.abs(u - u0 - Math.round(u - u0))).toBeLessThan(1e-9);
+      expect(Math.abs(v - v0 - Math.round(v - v0))).toBeLessThan(1e-9);
+    }
+    expect(carried.waves).not.toBe(crossing.waves);
   });
 
   it("stops advancing sets nobody holds", () => {

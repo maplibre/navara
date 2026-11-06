@@ -167,9 +167,17 @@ terrainLayer.update({
 
 **Default:** `0`
 
+### flowSpeed
+
+**Type:** `number | undefined`
+
+**Description:** The speed in m/s of a current that carries the waves on the watermask's water along `waveDirection`, without changing their size or slope.
+
+**Default:** `0`
+
 ```typescript
 terrainLayer.update({
-  terrain: { waveStrength: 12, waveDirection: 225 },
+  terrain: { waveStrength: 12, waveDirection: 225, flowSpeed: 2 },
 });
 ```
 

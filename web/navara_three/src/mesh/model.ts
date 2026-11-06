@@ -390,6 +390,7 @@ export class ModelMesh
         waterScale: material.waterScale,
         waveStrength: material.waveStrength,
         waveDirection: material.waveDirection,
+        flowSpeed: material.flowSpeed,
         shininess: material.shininess,
         specularStrength: material.specularStrength,
         specular: material.specular,
