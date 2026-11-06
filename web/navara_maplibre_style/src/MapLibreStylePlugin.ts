@@ -492,6 +492,9 @@ export class MapLibreStylePlugin extends Plugin<ThreeView, ViewContext> {
   /**
    * Helper to add a tile source with TileJSON or direct tiles URL support.
    * Handles both `url` (TileJSON) and `tiles` (direct URL array) fields.
+   *
+   * The style's `scheme` is forwarded for raster sources only, since the
+   * engine's vector-tile source has no `tms` option.
    */
   private async addTileSource(
     view: ThreeView,
@@ -501,6 +504,7 @@ export class MapLibreStylePlugin extends Plugin<ThreeView, ViewContext> {
       tiles?: unknown;
       minzoom?: number;
       maxzoom?: number;
+      scheme?: unknown;
     },
     tileJsonDesc: Partial<Parameters<TileJsonPlugin["addSource"]>[0]> & {
       type: "raster-tile" | "vector-tile" | "raster-dem";
@@ -510,6 +514,8 @@ export class MapLibreStylePlugin extends Plugin<ThreeView, ViewContext> {
     },
     sourceTypeName: string,
   ): Promise<Source | null> {
+    const tms =
+      tileJsonDesc.type === "raster-tile" && sourceSpec.scheme === "tms";
     if (typeof sourceSpec.url === "string") {
       return await this.tileJsonPlugin.addSource({
         ...tileJsonDesc,
@@ -517,6 +523,11 @@ export class MapLibreStylePlugin extends Plugin<ThreeView, ViewContext> {
         id: sourceId,
         minzoom: sourceSpec.minzoom,
         maxzoom: sourceSpec.maxzoom,
+        // Overrides the TileJSON document's own scheme only when the style sets one
+        ...(tileJsonDesc.type === "raster-tile" &&
+          (sourceSpec.scheme === "tms" || sourceSpec.scheme === "xyz") && {
+            scheme: sourceSpec.scheme,
+          }),
       });
     } else if (
       Array.isArray(sourceSpec.tiles) &&
@@ -540,7 +551,8 @@ export class MapLibreStylePlugin extends Plugin<ThreeView, ViewContext> {
         url: sourceSpec.tiles[0],
         minZoom: sourceSpec.minzoom,
         maxZoom: sourceSpec.maxzoom,
-      });
+        ...(tms && { tms: true }),
+      } as Parameters<typeof view.addSource>[0]);
     } else {
       console.warn(
         `${sourceTypeName} source "${sourceId}" missing both "tiles" array and "url" field. ` +
