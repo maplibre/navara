@@ -2,7 +2,11 @@ import { NamedIndexMap } from "@navaramap/core";
 import { EffectComposer, Pass as PostProcessingPass } from "postprocessing";
 import { HalfFloatType, Scene, WebGLRenderer, Group } from "three";
 
-import { estimateFixedGpuBytes } from "../utils/fixedGpuFootprint";
+import {
+  estimateFixedGpuBytes,
+  listRenderTargets,
+  type RenderTargetEntry,
+} from "../utils/fixedGpuFootprint";
 
 export type RenderPassOrchestratorOptions = {
   halfFloat?: boolean;
@@ -146,10 +150,12 @@ export class RenderPassOrchestrator {
    * reporting into the memory ledger's `fixed_gpu_bytes` term.
    */
   estimateFixedGpuBytes(): number {
-    return estimateFixedGpuBytes(
-      this.effectComposer,
-      this.passMap.list.map((p) => p.pass),
-    );
+    return estimateFixedGpuBytes(this.effectComposer, this.passMap.list);
+  }
+
+  /** Every render target of the fixed stack, attributed to its owning pass. */
+  listRenderTargets(): RenderTargetEntry[] {
+    return listRenderTargets(this.effectComposer, this.passMap.list);
   }
 
   /**

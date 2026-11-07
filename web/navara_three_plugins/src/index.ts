@@ -40,3 +40,6 @@ export {
   type TileJsonLoadedEvent,
   type TileJsonPluginEventMap,
 } from "./TileJsonPlugin";
+
+// Development-only tools (tweakpane panels); see the README.
+export * from "./debug";

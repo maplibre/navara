@@ -238,10 +238,14 @@ export async function processRenderableFeatureAdded(
       ? STROKE_RENDER_ORDER
       : FEATURE_RENDER_ORDER;
 
+  // Tag the root for per-layer accounting (debug tooling walks the scenes).
+  obj.userData.layerId = featureLayerId;
+
   // Add to MRT scene if not draped (draped features render to texturized scene)
   const isDraped =
     (obj instanceof PolygonMesh && obj.clampToGround) ||
     (obj instanceof PolylineMesh && obj.draped);
+
   if (!isDraped) {
     const material = point?.material ?? billboard?.material ?? text?.material;
     overlayScene(material, scenes).add(obj);
@@ -304,6 +308,7 @@ export async function processRenderableFeatureAdded(
       return obj;
     }
     outline.renderOrder = FEATURE_RENDER_ORDER;
+    outline.userData.layerId = featureLayerId;
     scenes.mrt.add(outline);
 
     obj.outline = outline;
