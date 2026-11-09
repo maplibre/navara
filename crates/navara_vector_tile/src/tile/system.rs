@@ -33,8 +33,8 @@ use crate::{
 
 use super::render::{OwningVectorTile, RenderedTile, VectorTileGpuCost};
 use super::traverse::{
-    TileActivations, TraversalResult, activate_if_changed, are_all_renderable_features_active,
-    spawn_tile_entity, traverse_tile,
+    PendingActivations, TraversalResult, activate_if_changed, are_all_renderable_features_active,
+    spawn_tile_entity, traverse_tile, write_activation,
 };
 
 /// Generic tile update system that delegates to `TileSource::prepare_tile`.
@@ -181,7 +181,7 @@ pub fn update_tiles(
 
             qt.qt.get_mut(zero_tile_handle).unwrap().is_rendered = false;
 
-            let mut activations = TileActivations::default();
+            let mut activations = PendingActivations::default();
             match traverse_tile(
                 &mut commands,
                 &source.source_id,
@@ -220,7 +220,16 @@ pub fn update_tiles(
                         &frame,
                         zero_tile_handle,
                     );
-                    activations.set(zero_tile_handle, true);
+                    for handle in activations.activate(zero_tile_handle, 0..activations.mark()) {
+                        write_activation(
+                            &mut tc,
+                            &handle,
+                            &rendered_tiles,
+                            &features,
+                            &mut renderable_features,
+                            false,
+                        );
+                    }
 
                     qt.qt.get_mut(zero_tile_handle).unwrap().is_rendered = is_rendered;
                 }
@@ -237,12 +246,18 @@ pub fn update_tiles(
                     );
                 }
                 TraversalResult::ChildrenMeshPrepared => {
-                    activations.set(zero_tile_handle, false);
+                    write_activation(
+                        &mut tc,
+                        &zero_tile_handle,
+                        &rendered_tiles,
+                        &features,
+                        &mut renderable_features,
+                        false,
+                    );
                 }
                 _ => {}
             };
             activations.apply(
-                &qt,
                 &mut tc,
                 &rendered_tiles,
                 &features,
