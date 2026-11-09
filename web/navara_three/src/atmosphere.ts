@@ -105,6 +105,9 @@ const CPU_RELEASED_TEXTURE_NAMES: readonly AtmosphereTextureName[] = [
  */
 const MAX_RELOAD_RETRIES = 5;
 
+/** A re-fetch of a released texture; `timer` is set while it waits to retry. */
+type Reload = { timer?: ReturnType<typeof setTimeout> };
+
 /**
  * The textures guaranteed to be present in an {@link Atmosphere.onTexturesReady}
  * callback for a given needs declaration.
@@ -226,14 +229,10 @@ export class Atmosphere extends EventHandler<AtmosphereEvents> {
   private texturePromises = new Map<AtmosphereTextureName, Promise<void>>();
 
   /**
-   * Re-fetch in progress per released texture; `timer` is set while it waits
-   * to retry.
+   * The re-fetch in progress for each released texture.
    * @private
    */
-  private reloads = new Map<
-    AtmosphereTextureName,
-    { timer?: ReturnType<typeof setTimeout> }
-  >();
+  private reloads = new Map<AtmosphereTextureName, Reload>();
 
   /**
    * Creates a new Atmosphere instance.
@@ -346,7 +345,7 @@ export class Atmosphere extends EventHandler<AtmosphereEvents> {
       this.reloads.delete(name);
       return;
     }
-    const reload: { timer?: ReturnType<typeof setTimeout> } = {};
+    const reload: Reload = {};
     this.reloads.set(name, reload);
     this.fetchTexture(name)
       .then((reloaded) => {

@@ -277,7 +277,7 @@ describe("Atmosphere texture data", () => {
     await vi.advanceTimersByTimeAsync(0);
   };
 
-  it("retries a failed re-fetch with backoff", async () => {
+  it("recovers on the first retry after a failed re-fetch", async () => {
     const canvas = new EventTarget();
     const atmosphere = await goOffline(canvas);
     const { scatteringTexture, higherOrderScatteringTexture } =
