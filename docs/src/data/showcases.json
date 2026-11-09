@@ -1,0 +1,136 @@
+[
+  {
+    "title": "Sumida River Fireworks - 3D Simulation",
+    "href": "https://eukarya-biz.github.io/sumidagawa-hanabi-navara/",
+    "image": "showcases/sumidagawa-hanabi-navara.avif",
+    "attributions": [
+      {
+        "text": "出典：地理院タイル（シームレス空中写真）／色調を編集・加工して使用",
+        "href": "https://maps.gsi.go.jp/development/ichiran.html"
+      },
+      {
+        "text": "出典：国土交通省 PLATEAU 3D都市モデル（東京都台東区・墨田区 建築物）／色を編集・加工して使用",
+        "href": "https://www.mlit.go.jp/plateau/"
+      },
+      { "text": "© Re:Earth Terrain", "href": "https://terrain.reearth.land/" },
+      {
+        "text": "出典：地理院タイル（ベクトルタイル提供実験）／道路データの表現を編集・加工して使用",
+        "href": "https://maps.gsi.go.jp/development/vt_expt.html"
+      },
+      { "text": "© Mapterhorn", "href": "https://mapterhorn.com/" }
+    ]
+  },
+  {
+    "title": "Navara Wind Visualization Demo",
+    "href": "https://eukarya-biz.github.io/navara-wind-visualization-demo/",
+    "image": "showcases/navara-wind-visualization-demo.avif",
+    "attributions": [
+      { "text": "Re:Earth Papers", "href": "https://papers.reearth.land/attribution" },
+      {
+        "text": "© OpenStreetMap contributors",
+        "href": "https://www.openstreetmap.org/copyright"
+      },
+      {
+        "text": "Sentinel-2 cloudless 2020 by EOX IT Services GmbH (contains modified Copernicus Sentinel data 2020)",
+        "href": "https://s2maps.eu"
+      },
+      {
+        "text": "Data: NOAA / NCEP / GFS",
+        "href": "https://www.ncei.noaa.gov/products/weather-climate-models/global-forecast"
+      }
+    ]
+  },
+  {
+    "title": "Japan's Seasonal Fronts",
+    "href": "https://eukarya-biz.github.io/navara-hw-mykyta/",
+    "image": "showcases/navara-hw-mykyta.avif",
+    "attributions": [
+      {
+        "text": "国土地理院 標高タイル・陰影起伏図",
+        "href": "https://maps.gsi.go.jp/development/ichiran.html"
+      },
+      {
+        "text": "© OpenStreetMap contributors",
+        "href": "https://www.openstreetmap.org/copyright"
+      },
+      { "text": "© CARTO", "href": "https://carto.com/attributions" }
+    ]
+  },
+  {
+    "title": "Earthquake Pulse",
+    "href": "https://eukarya-biz.github.io/earthquake-pulse/",
+    "image": "showcases/earthquake-pulse.avif",
+    "attributions": [
+      { "text": "Re:Earth Papers", "href": "https://papers.reearth.land/attribution" },
+      {
+        "text": "© OpenStreetMap contributors",
+        "href": "https://www.openstreetmap.org/copyright"
+      },
+      { "text": "© Re:Earth Terrain", "href": "https://terrain.reearth.land/" },
+      { "text": "Earthquake data: USGS", "href": "https://earthquake.usgs.gov/" },
+      { "text": "Plate Boundaries: USGS — Bird, P. (2003)", "href": "https://www.usgs.gov/" },
+      { "text": "Land data: Natural Earth", "href": "https://www.naturalearthdata.com/" },
+      { "text": "Elevation: Mapzen Terrain Tiles", "href": "https://github.com/tilezen/joerd" }
+    ]
+  },
+  {
+    "title": "Toon Navara",
+    "href": "https://eukarya-biz.github.io/toon-navara/",
+    "image": "showcases/toon-navara.avif",
+    "attributions": [
+      { "text": "Re:Earth Papers", "href": "https://papers.reearth.land/attribution" },
+      {
+        "text": "© OpenStreetMap contributors",
+        "href": "https://www.openstreetmap.org/copyright"
+      },
+      {
+        "text": "3D City Model (Project PLATEAU) Chiyoda Ward (FY2023) - MLIT PLATEAU",
+        "href": "https://www.geospatial.jp/ckan/dataset/plateau-13101-chiyoda-ku-2023"
+      },
+      {
+        "text": "3D City Model (Project PLATEAU) Chuo Ward (FY2023) - MLIT PLATEAU",
+        "href": "https://www.geospatial.jp/ckan/dataset/plateau-13102-chuo-ku-2023"
+      },
+      {
+        "text": "3D City Model (Project PLATEAU) Kyoto City Shimogyo Ward (FY2025) - MLIT PLATEAU",
+        "href": "https://www.geospatial.jp/ckan/dataset/plateau-26100-kyoto-shi-2025"
+      },
+      { "text": "© Re:Earth Terrain", "href": "https://terrain.reearth.land/" }
+    ]
+  },
+  {
+    "title": "Pax Atlas",
+    "href": "https://eukarya-biz.github.io/navara-study-bill/?empire=roman&goods=grain%2CwineOil%2Cgarum%2CsilkSpice%2Cmetals%2Cmarble%2CtextileDye",
+    "image": "showcases/navara-study-bill.avif",
+    "attributions": [
+      { "text": "Basemap by CARTO", "href": "https://carto.com/attributions" },
+      {
+        "text": "Data by OpenStreetMap contributors",
+        "href": "https://www.openstreetmap.org/copyright"
+      },
+      {
+        "text": "Territory outlines from historical-basemaps (GPL-3.0)",
+        "href": "https://github.com/aourednik/historical-basemaps"
+      },
+      {
+        "text": "Ship model by Kenney (CC0), via Poly Pizza",
+        "href": "https://poly.pizza/m/SPxFN3Oazd"
+      },
+      {
+        "text": "Camel model by jeremy (CC BY 3.0), via Poly Pizza",
+        "href": "https://poly.pizza/m/9mu4MbU4QtJ"
+      }
+    ]
+  },
+  {
+    "title": "Shinjuku Underground - A Child's-Eye Maze",
+    "href": "https://eukarya-biz.github.io/navara-hw-yamasaki/",
+    "image": "showcases/navara-hw-yamasaki.avif",
+    "attributions": [
+      {
+        "text": "3D City Model (Project PLATEAU) Shinjuku Ward (FY2025) - MLIT",
+        "href": "https://www.mlit.go.jp/plateau/"
+      }
+    ]
+  }
+]

@@ -160,8 +160,11 @@ export function generateTileMapFragment(maxTextures: number): string {
   vec2 tileWaterParams = (hasWinner && isTexturizedLayer) ? uWaterParams[winIdx] : vec2(uWaterMaskExaggeration, 1.0);
   bool tileWater = useWater && tileWaterParams.y > 0.5;
   float tileWaveExaggeration = tileWaterParams.x;
-  // Water no vector layer owns is the watermask's.
-  bool watermaskWater = tileWater && !(hasWinner && isTexturizedLayer);
+  // Water no vector layer owns is the watermask's. Equals
+  // tileWater && !(hasWinner && isTexturizedLayer), but must not read
+  // tileWater: the unlit path then never reads uWaterParams, and doing so
+  // there loses the WebGL context on iOS.
+  bool watermaskWater = useWater && !(hasWinner && isTexturizedLayer);
   float tileShininess         = hasWinner ? uShininesses[winIdx]       : 0.0;
   float tileSpecularStrength  = hasWinner ? uSpecularStrengths[winIdx] : 0.0;
   bool  useSpecular           = !tileWater && hasWinner && uSpeculars[winIdx];
