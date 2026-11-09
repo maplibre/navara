@@ -387,7 +387,9 @@ view.addLayer({ type: "raster", source: osm });
 
 ### dispose()
 
-Releases all resources and stops the rendering loop. Call this method when the view is no longer needed.
+Releases all resources and stops the rendering loop. Call this method when the view is no longer needed. The worker pool shared with other views on the page stays alive until the last view is disposed (see [Multiple Views](../threeview-class#multiple-views)).
+
+It is safe to call while `init()` is pending; that `init()` then resolves without starting the view. A disposed view cannot be initialized again.
 
 **Syntax:**
 
