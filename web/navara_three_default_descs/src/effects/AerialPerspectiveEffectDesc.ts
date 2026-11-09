@@ -107,8 +107,7 @@ export class AerialPerspectiveEffectDesc extends EffectDesc<
 
     if (!this._instance) return;
 
-    const { aerialPerspective: config, ...rest } = updates;
-    Object.assign(this.config, rest);
+    const config = updates.aerialPerspective;
     if (!config) return;
 
     // Merged, skipping `undefined` like the setters: the requirements derive

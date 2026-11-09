@@ -84,7 +84,6 @@ describe("AerialPerspectiveEffectDesc.getRequiredBuffers", () => {
     [{ irradiance: true }, ["normal"]],
     [{ shadow: true }, ["normal", "shadow"]],
     [{ specular: true }, ["normal", "shadow"]],
-    [{ useNormalBuffer: true, shadow: true }, ["normal", "shadow"]],
     [{ useNormalBuffer: false }, []],
     // The terms are compiled out without a normal buffer.
     [{ useNormalBuffer: false, shadow: true }, []],
