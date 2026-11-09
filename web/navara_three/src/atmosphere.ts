@@ -226,8 +226,8 @@ export class Atmosphere extends EventHandler<AtmosphereEvents> {
   private texturePromises = new Map<AtmosphereTextureName, Promise<void>>();
 
   /**
-   * The running re-fetch of each released texture, with its retry timer
-   * while it waits between attempts.
+   * Re-fetch in progress per released texture; `timer` is set while it waits
+   * to retry.
    * @private
    */
   private reloads = new Map<
@@ -237,7 +237,8 @@ export class Atmosphere extends EventHandler<AtmosphereEvents> {
 
   /**
    * Creates a new Atmosphere instance.
-   * @param renderer - The WebGL renderer the textures are uploaded to.
+   * @param renderer - The WebGL renderer whose context restores re-fetch the
+   * released textures.
    * @param options - Configuration options for the atmosphere.
    * @param camera - Camera reference used by {@link setDateAt}.
    */
@@ -319,10 +320,9 @@ export class Atmosphere extends EventHandler<AtmosphereEvents> {
   }
 
   /**
-   * three.js re-uploads every texture from its CPU data after a WebGL context
-   * restore, so the textures whose data was released are fetched again
-   * (usually from the HTTP cache). A fetch already in flight is kept; one
-   * waiting to retry starts over at once.
+   * three.js re-uploads textures from their CPU data after a context restore,
+   * so the released ones are fetched again (usually from the HTTP cache). A
+   * fetch in flight is kept; a pending retry starts over.
    * @private
    */
   private onContextRestored = () => {
@@ -335,10 +335,9 @@ export class Atmosphere extends EventHandler<AtmosphereEvents> {
   };
 
   /**
-   * Fetches the data of a released texture into the same texture object, so
-   * consumers keep their references. Retries with backoff up to
-   * {@link MAX_RELOAD_RETRIES} times, until the data is back or the texture is
-   * disposed.
+   * Fetches a released texture's data into the same texture object, so
+   * consumers keep their references. Retries up to {@link MAX_RELOAD_RETRIES}
+   * times and stops once the data is back or the atmosphere is disposed.
    * @private
    */
   private reloadReleasedTexture(name: AtmosphereTextureName, attempt = 0) {
