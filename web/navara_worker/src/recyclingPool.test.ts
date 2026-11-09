@@ -353,6 +353,17 @@ it("warmUp() warms a single worker first, then the rest in the background", asyn
   expect(nextPending(pools[1], "warmUp")).toBeDefined();
 });
 
+it("warmUp() starts no background warm-up once terminated", async () => {
+  const pool = new RecyclingWorkerPool("https://example.com", 2);
+
+  const warmed = pool.warmUp();
+  pool.terminate();
+  nextPending(pools[0], "warmUp")?.resolve();
+  await warmed;
+
+  expect(pools[1].executions).toHaveLength(0);
+});
+
 it("warmUp() falls back to the remaining workers when the first fails", async () => {
   const pool = new RecyclingWorkerPool("https://example.com", 2);
 

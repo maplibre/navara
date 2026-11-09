@@ -45,6 +45,10 @@ export function siteHref(locale: string, path = ""): string {
 }
 
 // The theme, as the inline style of <html>. --pri-ink duplicates --pri as the
-// always-dark side of the palette (see styles/lp-base.css).
-const { colors } = lp;
-export const lpRootStyle = `--pri:${colors.primary};--pri-ink:${colors.primary};--acc:${colors.accent};--sub:${colors.sub};--ml:${colors.maplibre};--acc-hero:${colors.heroAccent};--mark-why:${colors.whyUnderline}`;
+// always-dark side of the palette (see styles/lp-base.css). --acc-brand is the
+// brand palette's accent, the color hovered and pressed buttons and links light
+// up in on every page; --acc stays the LP theme's accent for its decoration.
+const { brand, colors } = lp;
+const brandAccent = brand.palette.find((c) => c.id === "accent")?.hex;
+if (!brandAccent) throw new Error("Brand palette color not defined in lp.json: accent");
+export const lpRootStyle = `--pri:${colors.primary};--pri-ink:${colors.primary};--acc:${colors.accent};--acc-brand:${brandAccent};--sub:${colors.sub};--ml:${colors.maplibre};--acc-hero:${colors.heroAccent};--mark-why:${colors.whyUnderline}`;
