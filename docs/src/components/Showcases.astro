@@ -158,7 +158,12 @@ const items = (showcases as Showcase[]).map((item) => {
       .lp-sc {
         --lp-sc-fab-gap: 24px;
       }
+      /* At least one screen tall, so a short list still leaves the footer
+         below the fold. The min-height sits on main, not on the grid, whose
+         rows would otherwise stretch past their square tiles. */
       .lp-sc main {
+        box-sizing: border-box;
+        min-height: 100svh;
         padding-top: var(--lp-sc-header-h, 64px);
       }
       .lp-sc-h1 {
@@ -203,7 +208,7 @@ const items = (showcases as Showcase[]).map((item) => {
         transform: scale(1.03);
       }
       .lp-sc-thumb:focus-visible {
-        outline: 2px solid var(--acc);
+        outline: 2px solid var(--acc-brand);
         outline-offset: -2px;
       }
       @media (prefers-reduced-motion: reduce) {
@@ -235,9 +240,10 @@ const items = (showcases as Showcase[]).map((item) => {
         box-shadow: 0 6px 20px rgb(0 0 0 / 0.35);
       }
       .lp a.lp-sc-submit:hover,
-      .lp a.lp-sc-submit:focus-visible {
-        background: var(--acc);
-        color: var(--on-acc);
+      .lp a.lp-sc-submit:focus-visible,
+      .lp a.lp-sc-submit:active {
+        background: var(--acc-brand);
+        color: var(--pri-ink);
       }
       .lp-sc-submit svg {
         width: 16px;
