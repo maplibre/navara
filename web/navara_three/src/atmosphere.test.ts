@@ -205,6 +205,9 @@ describe("Atmosphere texture data", () => {
     expect(dataOf(textures.higherOrderScatteringTexture)).toBeNull();
     expect(dataOf(textures.transmittanceTexture)).toBeInstanceOf(Uint16Array);
     expect(dataOf(textures.irradianceTexture)).toBeInstanceOf(Uint16Array);
+    // Without data, three must not upload after a context restore.
+    expect(textures.scatteringTexture?.source.dataReady).toBe(false);
+    expect(textures.transmittanceTexture?.source.dataReady).toBe(true);
   });
 
   it("re-fetches the released textures after a context restore", async () => {
@@ -229,10 +232,15 @@ describe("Atmosphere texture data", () => {
     expect(atmosphere.textures.scatteringTexture).toBe(scattering);
     expect(dataOf(scattering)).toBeInstanceOf(Uint16Array);
     expect(scattering?.version).toBeGreaterThan(version);
+    expect(scattering?.source.dataReady).toBe(true);
     expect(
       dataOf(atmosphere.textures.higherOrderScatteringTexture),
     ).toBeInstanceOf(Uint16Array);
     expect(onLoaded).toHaveBeenCalledTimes(2);
+
+    scattering?.onUpdate?.(scattering);
+    expect(dataOf(scattering)).toBeNull();
+    expect(scattering?.source.dataReady).toBe(false);
   });
 
   it("does not re-fetch textures that still hold their data", async () => {
@@ -316,6 +324,34 @@ describe("Atmosphere texture data", () => {
       expect(scatteringTimes).toEqual([0, 1000, 3000, 7000, 15000, 31000]);
       expect(fetchTimes).toHaveLength(12);
       expect(vi.getTimerCount()).toBe(0);
+    });
+  });
+
+  it("gives a fetch in flight the full retry budget on a new restore", async () => {
+    const canvas = new EventTarget();
+    await goOffline(canvas);
+    const pending: ((e: Error) => void)[] = [];
+    loadAsyncMock.mockImplementation(
+      () => new Promise((_, reject) => pending.push(reject)),
+    );
+    const failPending = async () => {
+      for (const reject of pending.splice(0)) reject(new Error("offline"));
+      await vi.advanceTimersByTimeAsync(0);
+    };
+
+    await withFakeTimers(async () => {
+      await restore(canvas);
+      for (let retry = 0; retry < 5; retry++) {
+        await failPending();
+        await vi.advanceTimersByTimeAsync(60_000);
+      }
+      // The last allowed attempt is in flight when the context is restored.
+      await restore(canvas);
+      await failPending();
+
+      expect(vi.getTimerCount()).toBe(2);
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(pending).toHaveLength(2);
     });
   });
 

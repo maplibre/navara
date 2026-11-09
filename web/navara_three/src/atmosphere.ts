@@ -106,7 +106,7 @@ const CPU_RELEASED_TEXTURE_NAMES: readonly AtmosphereTextureName[] = [
 const MAX_RELOAD_RETRIES = 5;
 
 /** A re-fetch of a released texture; `timer` is set while it waits to retry. */
-type Reload = { timer?: ReturnType<typeof setTimeout> };
+type Reload = { attempt: number; timer?: ReturnType<typeof setTimeout> };
 
 /**
  * The textures guaranteed to be present in an {@link Atmosphere.onTexturesReady}
@@ -298,8 +298,11 @@ export class Atmosphere extends EventHandler<AtmosphereEvents> {
           if (CPU_RELEASED_TEXTURE_NAMES.includes(name)) {
             // Only the 2D textures are sampled on the CPU (sun light color,
             // sky light probe); onContextRestored re-fetches the 3D ones.
+            // dataReady = false lets three allocate the texture after a
+            // context restore without uploading the missing data.
             texture.onUpdate = () => {
               (texture.image as TextureImageData).data = null;
+              texture.source.dataReady = false;
             };
           }
           Object.assign(this.textures, {
@@ -321,15 +324,22 @@ export class Atmosphere extends EventHandler<AtmosphereEvents> {
   /**
    * three.js re-uploads textures from their CPU data after a context restore,
    * so the released ones are fetched again (usually from the HTTP cache). A
-   * fetch in flight is kept; a pending retry starts over.
+   * fetch in flight is kept and a pending retry starts over, both with the
+   * full retry budget.
    * @private
    */
   private onContextRestored = () => {
     for (const name of CPU_RELEASED_TEXTURE_NAMES) {
       const reload = this.reloads.get(name);
-      if (reload != null && reload.timer == null) continue;
-      clearTimeout(reload?.timer);
-      this.reloadReleasedTexture(name);
+      if (reload == null) {
+        this.reloadReleasedTexture(name, { attempt: 0 });
+        continue;
+      }
+      reload.attempt = 0;
+      if (reload.timer != null) {
+        clearTimeout(reload.timer);
+        this.reloadReleasedTexture(name, reload);
+      }
     }
   };
 
@@ -339,32 +349,35 @@ export class Atmosphere extends EventHandler<AtmosphereEvents> {
    * times and stops once the data is back or the atmosphere is disposed.
    * @private
    */
-  private reloadReleasedTexture(name: AtmosphereTextureName, attempt = 0) {
+  private reloadReleasedTexture(name: AtmosphereTextureName, reload: Reload) {
     const texture = this.textures[ATMOSPHERE_TEXTURE_KEYS[name]];
     if (texture == null || (texture.image as TextureImageData).data != null) {
       this.reloads.delete(name);
       return;
     }
-    const reload: Reload = {};
+    reload.timer = undefined;
     this.reloads.set(name, reload);
     this.fetchTexture(name)
       .then((reloaded) => {
         if (this.reloads.get(name) !== reload) return;
         this.reloads.delete(name);
         texture.image = reloaded.image;
+        texture.source.dataReady = true;
         texture.needsUpdate = true;
         this.emit("textureLoaded");
       })
       .catch((e: unknown) => {
         if (this.reloads.get(name) !== reload) return;
         console.error("Failed to reload atmosphere texture:", e);
-        if (attempt >= MAX_RELOAD_RETRIES) {
+        if (reload.attempt >= MAX_RELOAD_RETRIES) {
           this.reloads.delete(name);
           return;
         }
+        const delay = 1000 * 2 ** reload.attempt;
+        reload.attempt += 1;
         reload.timer = setTimeout(
-          () => this.reloadReleasedTexture(name, attempt + 1),
-          1000 * 2 ** attempt,
+          () => this.reloadReleasedTexture(name, reload),
+          delay,
         );
       });
   }
