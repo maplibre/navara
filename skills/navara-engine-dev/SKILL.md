@@ -65,6 +65,18 @@ self-contained present-tense fact a newcomer can verify against the code.
     `navara_three`, take these functions as arguments (e.g.
     `FontManager.setWorkerCoreReservation`): each package bundles its own
     `@navaramap/worker`, so an import reaches an uninitialized pool.
+- **Initialize a wasm-bindgen module on the main thread through one shared
+  promise.** The generated init returns early only after a call has
+  finished; a second call while the first is in flight instantiates again
+  and swaps the module, leaving objects made from the first instance on
+  stale memory. The `@navaramap/engine*` packages stay external, so the page
+  has one copy of each, but the TS packages bundle each other
+  (`navara_three` carries its own `three-api` and `font`), so a module-level
+  memo is not shared between callers. A module initialized from more than
+  one package keeps its promise under a `Symbol.for` key on `globalThis`:
+  `@navaramap/engine-api` uses `"@navaramap/engine-api/init"`
+  (`initNavaraApi`, and `ensureApi` in `navara_font`); a new caller reuses
+  that key and its reset-on-failure handling.
 - **An asset used only inside a worker must also be referenced from the
   main bundle.** A consuming bundler copies a built worker chunk as an opaque
   file, so a `.wasm` referenced only from worker code is never emitted into
