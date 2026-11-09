@@ -215,10 +215,8 @@ skips it when it reaches the front.
 
 `ConcurrencyManager` counts the pool's in-flight tasks (`queueTask`
 increments and decrements it), oversubscription included, and its `total`
-is the pool size (`createDefaultConcurrencyManager`, defaults in
-[MEMORY_MANAGEMENT.md](MEMORY_MANAGEMENT.md#configuration-typescript-side)).
-Plugins read it through `ViewContext.concurrencyManager` (`total`,
-`actives`, `idles`) and cannot change it.
+is the pool size. Plugins read it through `ViewContext.concurrencyManager`
+(`total`, `actives`, `idles`) and cannot change it.
 
 A thread outside the pool (the font worker while it loads fonts or shapes
 text, Spark's workers while a splat loads) holds a core with
