@@ -17,8 +17,9 @@ type SiteHeaderProps = {
 /**
  * The Navara site header, mirroring the landing page / docs header
  * (docs/src/components/LpHeader.astro): brand logo (linking to the landing
- * page) on the left, Docs / GitHub / language picker on the right, on the
- * navy band with the same frosted backdrop as the LP's scrolled state.
+ * page) on the left, Docs / Examples / Showcases / GitHub / language picker
+ * on the right, on the navy band with the same frosted backdrop as the LP's
+ * scrolled state.
  */
 export const SiteHeader = ({ lang, setLang, langLabel }: SiteHeaderProps) => {
   return (
@@ -51,6 +52,12 @@ export const SiteHeader = ({ lang, setLang, langLabel }: SiteHeaderProps) => {
             href={withBase("/")}
           >
             Examples
+          </a>
+          <a
+            className="text-foreground no-underline hover:text-primary max-[640px]:hidden"
+            href={siteUrl(lang, "showcases/")}
+          >
+            Showcases
           </a>
           <a
             className="text-foreground hover:text-primary"

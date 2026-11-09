@@ -1,0 +1,279 @@
+---
+// Showcases page: works people have built with Navara, listed from
+// src/data/showcases.json (title, link, screenshot, optional provider logo
+// and credits). Built with the brand assets page's chrome (LpHeader /
+// LpFooter, styles/lp-base.css) on the same primary canvas; all copy
+// lives in src/data/lp-locales/<locale>.json (`showcases`). Rendered per
+// locale by pages that do <Showcases locale="..." />, built at
+// /docs/showcases/ and relocated to /showcases/ (and /<locale>/showcases/) by
+// scripts/assemble-site.mjs, like the LP.
+import lp from "../data/lp.json";
+import showcases from "../data/showcases.json";
+import googleMapsLogo from "../assets/lp/google-maps-logo.png";
+import ImageAttribution from "./ImageAttribution.astro";
+import LpFooter from "./LpFooter.astro";
+import LpHeader from "./LpHeader.astro";
+import { DOCS_BASE, getLpLocale, lpRootStyle } from "./lp-shared";
+import "../styles/lp-base.css";
+
+interface Props {
+  locale: string;
+}
+
+const { locale } = Astro.props;
+const t = getLpLocale(locale);
+const s = t.showcases;
+const { colors, links } = lp;
+
+interface Showcase {
+  title: string;
+  href: string;
+  // Path under src/assets/.
+  image: string;
+  // Provider logo the data terms require next to the credits (Google
+  // Photorealistic 3D Tiles must carry the Google Maps logo).
+  logo?: keyof typeof LOGOS;
+  // Credits extracted verbatim from the site's own attribution UI, minus its
+  // Navara self-credit; rows carrying several links are split so each credit
+  // keeps its link.
+  attributions?: { text: string; href?: string }[];
+}
+
+const LOGOS = {
+  "google-maps": { src: googleMapsLogo.src, alt: "Google Maps" },
+};
+
+const imageModules = import.meta.glob<{ default: ImageMetadata }>(
+  "../assets/showcases/*.{png,jpg,jpeg,webp,avif}",
+  { eager: true },
+);
+const resolveImage = (path: string): string => {
+  const mod = imageModules[`../assets/${path}`];
+  if (!mod) throw new Error(`Showcase image not found: ${path}`);
+  return mod.default.src;
+};
+
+const items = (showcases as Showcase[]).map((item) => {
+  const logo = item.logo ? LOGOS[item.logo] : undefined;
+  if (item.logo && !logo) throw new Error(`Unknown showcase logo: ${item.logo}`);
+  return {
+    ...item,
+    src: resolveImage(item.image),
+    logo,
+  };
+});
+---
+
+<html lang={t.htmlLang} style={lpRootStyle}>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>{s.meta.title}</title>
+    <meta name="description" content={s.meta.description} />
+    <meta property="og:site_name" content="Navara" />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content={s.meta.title} />
+    <meta property="og:description" content={s.meta.description} />
+    <meta property="og:image" content="https://navara.world/og.jpg" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:image" content="https://navara.world/og.jpg" />
+    {/* The whole page sits on the primary color; iOS Safari tints its
+        toolbars with this (see body's background below). */}
+    <meta name="theme-color" content={colors.primary} />
+    {/* TODO: Remove when Navara is released. */}
+    <meta name="robots" content="noindex,nofollow" />
+    <link rel="icon" href={`${DOCS_BASE}/favicon.png`} type="image/png" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Arsenal:wght@400;700&family=Zen+Kaku+Gothic+New:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+  </head>
+  <body class="lp-sc-body">
+    <div class="lp lp-sc">
+      <LpHeader locale={locale} variant="site" sitePath={links.showcases} />
+
+      <main>
+        <!-- No visible title band: the heading is for assistive tech only. -->
+        <h1 class="lp-sc-h1">{s.h1}</h1>
+
+        <!-- Full-bleed mosaic: the screenshots alone, edge to edge. The title
+             is only the tile's tooltip and the image's alt text. -->
+        <ul class="lp-sc-grid">
+          {
+            items.map((item) => (
+              <li class="lp-sc-tile">
+                {/* The credits overlay is a sibling of the link, not a
+                    child: a <button> inside an <a> is invalid. */}
+                <a class="lp-sc-thumb" href={item.href} title={item.title}>
+                  <img src={item.src} alt={item.title} loading="lazy" decoding="async" />
+                </a>
+                {(item.attributions?.length || item.logo) && (
+                  <ImageAttribution
+                    items={item.attributions ?? []}
+                    label={t.gallery.mediaAttributionLabel}
+                    corner="br"
+                    logo={item.logo?.src}
+                    logoAlt={item.logo?.alt}
+                  />
+                )}
+              </li>
+            ))
+          }
+        </ul>
+      </main>
+
+      <LpFooter locale={locale} />
+
+      <!-- Every submission starts with the showcase issue form
+           (.github/ISSUE_TEMPLATE/showcase.yml), which links the docs guide
+           for submitters who open the Pull Request themselves. -->
+      <a class="lp-sc-submit" href={links.showcaseSubmit}>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
+        {s.submit}
+      </a>
+    </div>
+
+    <style is:global>
+      /* One primary canvas for the whole page (the shared base sets the LP's
+         black), so everything below uses the on-band inks. */
+      body.lp-sc-body {
+        background: var(--pri);
+      }
+      .lp-sc {
+        color: var(--on-band);
+      }
+      /* Credit links keep the tooltip's white underlined look instead of the
+         LP link default (styles/lp-base.css). */
+      .lp .nv-attrib-list a,
+      .lp .nv-attrib-list a:hover {
+        color: var(--on-dark);
+        text-decoration: underline;
+        text-underline-offset: 2px;
+      }
+
+      /* The mosaic starts right under the fixed header; the padding tracks
+         the header's height at each breakpoint (LpHeader.astro). */
+      .lp-sc {
+        --lp-sc-fab-gap: 24px;
+      }
+      .lp-sc main {
+        padding-top: var(--lp-sc-header-h, 64px);
+      }
+      .lp-sc-h1 {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        overflow: hidden;
+        clip-path: inset(50%);
+        white-space: nowrap;
+      }
+
+      /* Full-bleed mosaic: square tiles with no gap between them, screenshots
+         of any other aspect ratio cropped to their center, the image zooming a
+         little under the pointer inside its tile. */
+      .lp-sc-grid {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+        display: grid;
+        grid-template-columns: repeat(5, minmax(0, 1fr));
+      }
+      .lp-sc-tile {
+        position: relative;
+        aspect-ratio: 1;
+        overflow: hidden;
+        background: color-mix(in oklab, var(--pri), black 30%);
+      }
+      .lp-sc-thumb {
+        display: block;
+        width: 100%;
+        height: 100%;
+      }
+      .lp-sc-thumb img {
+        display: block;
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        transition: transform 0.4s ease;
+      }
+      .lp-sc-thumb:hover img,
+      .lp-sc-thumb:focus-visible img {
+        transform: scale(1.03);
+      }
+      .lp-sc-thumb:focus-visible {
+        outline: 2px solid var(--acc);
+        outline-offset: -2px;
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .lp-sc-thumb img {
+          transition: none;
+        }
+      }
+
+      /* Floats over the mosaic, so it carries its own shadow to stay legible
+         on any screenshot. At the page end it sits over the footer, whose
+         centered content stays clear of it except on phones (see below). */
+      .lp a.lp-sc-submit {
+        position: fixed;
+        right: calc(var(--lp-sc-fab-gap) + var(--lp-safe-r));
+        bottom: calc(var(--lp-sc-fab-gap) + var(--lp-safe-b));
+        z-index: 5;
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        box-sizing: border-box;
+        height: 44px;
+        padding: 0 22px 0 18px;
+        border-radius: 999px;
+        background: var(--on-band);
+        color: var(--pri);
+        font-weight: 700;
+        font-size: 14px;
+        white-space: nowrap;
+        box-shadow: 0 6px 20px rgb(0 0 0 / 0.35);
+      }
+      .lp a.lp-sc-submit:hover,
+      .lp a.lp-sc-submit:focus-visible {
+        background: var(--acc);
+        color: var(--on-acc);
+      }
+      .lp-sc-submit svg {
+        width: 16px;
+        height: 16px;
+        fill: none;
+        stroke: currentColor;
+        stroke-width: 2;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+      }
+
+      @media (max-width: 960px) {
+        .lp-sc main {
+          --lp-sc-header-h: 60px;
+        }
+        .lp-sc-grid {
+          grid-template-columns: repeat(3, minmax(0, 1fr));
+        }
+      }
+
+      @media (max-width: 640px) {
+        .lp-sc main {
+          --lp-sc-header-h: 49px;
+        }
+        .lp-sc {
+          --lp-sc-fab-gap: 16px;
+        }
+        /* The footer's lines span the phone's width, so its end reserves the
+           submit button's height (44px) and gap. */
+        .lp-sc .lp-footer {
+          padding-bottom: calc(44px + 2 * var(--lp-sc-fab-gap) + var(--lp-safe-b));
+        }
+        .lp-sc-grid {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+      }
+    </style>
+  </body>
+</html>

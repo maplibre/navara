@@ -1,7 +1,7 @@
 ---
 // The Navara site header, shared between the landing page, the brand assets
-// page and the docs site. Theme colors and external links come from
-// src/data/lp.json; the nav labels and locale names come from
+// page, the showcases page and the docs site. Theme colors and external links
+// come from src/data/lp.json; the nav labels and locale names come from
 // src/data/lp-locales/<locale>.json. The brand logo always links to the
 // landing page (in the current locale).
 //
@@ -106,6 +106,7 @@ const themeVariants: [string, ThemeVariant][] =
   <nav class="lp-nav">
     <a href={localizeHref(links.docs)}>{t.nav.docs}</a>
     <a href={links.examples}>{t.nav.examples}</a>
+    <a href={siteHref(locale, links.showcases)}>{t.nav.showcases}</a>
     <a class="lp-nav-github" href={links.github} aria-label={t.nav.github} set:html={githubIcon} />
     <label class="lp-lang">
       <Globe size={16} stroke-width={1.8} aria-hidden="true" />
@@ -371,8 +372,8 @@ const themeVariants: [string, ThemeVariant][] =
     .lp-nav {
       gap: 18px;
     }
-    /* Docs/Examples text links don't fit; both stay reachable from the LP
-       footer / the docs sidebar and cards. */
+    /* Docs/Examples/Showcases text links don't fit; they stay reachable
+       from the site footer / the docs sidebar and cards. */
     .lp-nav > a:not([class]) {
       display: none;
     }
