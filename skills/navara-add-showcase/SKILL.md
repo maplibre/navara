@@ -24,7 +24,10 @@ Every showcase starts with an Issue from `.github/ISSUE_TEMPLATE/showcase.yml`
   (permission to list it, and the project shows its own data attribution) are
   the consent record. A URL from anywhere else is not enough: ask for an Issue.
 - **"I will open the Pull Request myself" checked:** the submitter does the work.
-  Review their PR against the rules below instead of opening a competing one.
+  The docs guide points submitters at this skill, so the agent may be working
+  for them: then do every step below in their fork and open the PR. Working for
+  a maintainer instead, review the submitter's PR against the rules below rather
+  than opening a competing one.
 - Fields: project name → `title`, URL → `href`, screenshot (required, any
   format), attribution (required, `None` when the project needs none).
 
@@ -98,5 +101,8 @@ branch.
 
 ## Pull Request
 
-Commit the AVIF and the JSON change, link the Issue (`Closes #<n>`), and note any
-attribution differences from the Issue.
+Commit the AVIF and the JSON change on a branch, link the Issue (`Closes #<n>`),
+and note any attribution differences from the Issue. From a submitter's fork,
+push to the fork and open the PR against upstream
+(`gh pr create -R maplibre/navara`). Before opening it, ask the submitter to
+look at their tile on the local page.

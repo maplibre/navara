@@ -31,6 +31,18 @@ cd navara
 pnpm install
 ```
 
+### Let an AI agent add it
+
+The repository includes an agent skill for this task, [`navara-add-showcase`](https://github.com/maplibre/navara/blob/main/skills/navara-add-showcase/SKILL.md). Claude Code loads it automatically when it runs in your clone. With another agent, point it at `skills/navara-add-showcase/SKILL.md`. Give it your Issue number:
+
+```text
+Add the showcase from issue #123 with the navara-add-showcase skill, then open a Pull Request.
+```
+
+The agent prepares the screenshot, adds the entry to `showcases.json`, runs the checks and opens a Pull Request linked to the Issue. Look at your image on the local page (see [Check the page locally](#check-the-page-locally)) before you submit.
+
+The rest of this section walks through the same steps by hand, for working without an agent or for checking what it did.
+
 ### Add a screenshot
 
 Save a screenshot of the project as `docs/src/assets/showcases/<project-name>.avif`. Use a square image around 1000×1000 pixels. The file must be AVIF and 150 KB or less. Convert other formats with an existing tool, for example [Squoosh](https://squoosh.app/) in the browser or `avifenc` from [libavif](https://github.com/AOMediaCodec/libavif) on the command line.
@@ -55,13 +67,13 @@ Add an object at the top of the array in `docs/src/data/showcases.json`, so the 
 }
 ```
 
-| Field          | Required | Description                                                                                                                  |
-| -------------- | -------- | ---------------------------------------------------------------------------------------------------------------------------- |
-| `title`        | Yes      | The project name, shown as the tile's tooltip and the image's alternative text.                                              |
-| `href`         | Yes      | The URL the tile links to.                                                                                                   |
-| `image`        | Yes      | The screenshot's path under `docs/src/assets/`. The build fails when the file does not exist.                                |
-| `attributions` | No       | The data credits shown from the tile's info icon. Copy them from the project's own attribution display, one credit per item. Omit the field when the project needs no attribution. |
-| `logo`         | No       | Set `"google-maps"` when the project uses Google Photorealistic 3D Tiles, whose terms require the Google Maps logo.            |
+| Field          | Description                                                                                                                                                                                      |
+| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `title`        | **Required.** The project name, shown as the tile's tooltip and the image's alternative text.                                                                                                    |
+| `href`         | **Required.** The URL the tile links to.                                                                                                                                                         |
+| `image`        | **Required.** The screenshot's path under `docs/src/assets/`. The build fails when the file does not exist.                                                                                      |
+| `attributions` | **Optional.** The data credits shown from the tile's info icon. Copy them from the project's own attribution display, one credit per item. Omit the field when the project needs no attribution. |
+| `logo`         | **Optional.** Set `"google-maps"` when the project uses Google Photorealistic 3D Tiles, whose terms require the Google Maps logo.                                                                |
 
 Each item of `attributions` has a `text` and an optional `href`. A credit that carries several links becomes one item per link.
 

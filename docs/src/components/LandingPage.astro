@@ -2118,9 +2118,10 @@ const heroScenes = [
         font-weight: 700;
         font-size: 14px;
       }
-      .lp a.lp-btn-primary:hover {
-        background: var(--acc);
-        color: var(--on-acc);
+      .lp a.lp-btn-primary:hover,
+      .lp a.lp-btn-primary:active {
+        background: var(--acc-brand);
+        color: var(--pri-ink);
       }
       .lp a.lp-btn-outline {
         border: 1.5px solid color-mix(in srgb, var(--on-band) 45%, transparent);
@@ -2130,9 +2131,10 @@ const heroScenes = [
         font-weight: 700;
         font-size: 14px;
       }
-      .lp a.lp-btn-outline:hover {
-        border-color: var(--acc);
-        color: var(--acc);
+      .lp a.lp-btn-outline:hover,
+      .lp a.lp-btn-outline:active {
+        border-color: var(--acc-brand);
+        color: var(--acc-brand);
       }
       .lp-getting-started {
         margin-top: 18px;
@@ -2140,10 +2142,10 @@ const heroScenes = [
         font-weight: 700;
       }
       .lp .lp-getting-started a {
-        color: var(--acc);
+        color: var(--on-band);
       }
       .lp .lp-getting-started a:hover {
-        color: var(--on-band);
+        color: var(--acc-brand);
       }
 
       /* Eyebrow labels */
@@ -2495,10 +2497,10 @@ const heroScenes = [
         font-weight: 700;
       }
       .lp .lp-hello-cta a {
-        color: var(--acc);
+        color: var(--on-dark);
       }
       .lp .lp-hello-cta a:hover {
-        color: var(--on-dark);
+        color: var(--acc-brand);
       }
 
       /* Architecture: primary band between the light hello band and the
@@ -3079,17 +3081,19 @@ const heroScenes = [
         background: var(--on-dark);
         color: var(--pri-ink);
       }
-      .lp .lp-outro-ctas a.lp-btn-primary:hover {
-        background: var(--acc);
-        color: var(--on-acc);
+      .lp .lp-outro-ctas a.lp-btn-primary:hover,
+      .lp .lp-outro-ctas a.lp-btn-primary:active {
+        background: var(--acc-brand);
+        color: var(--pri-ink);
       }
       .lp .lp-outro-ctas a.lp-btn-outline {
         border-color: color-mix(in srgb, #fff 45%, transparent);
         color: var(--on-dark);
       }
-      .lp .lp-outro-ctas a.lp-btn-outline:hover {
-        border-color: var(--acc);
-        color: var(--acc);
+      .lp .lp-outro-ctas a.lp-btn-outline:hover,
+      .lp .lp-outro-ctas a.lp-btn-outline:active {
+        border-color: var(--acc-brand);
+        color: var(--acc-brand);
       }
 
       /* The footer's own look lives in LpFooter.astro; here it sits over the
