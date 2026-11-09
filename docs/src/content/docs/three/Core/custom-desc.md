@@ -27,7 +27,7 @@ All base classes inherit from `BaseDesc` and share a common lifecycle.
 | `constructor(view, ctx, config)` | When the Descriptor is created   | Receives the ThreeView, ViewContext, and configuration                                                 |
 | `onCreate()`                     | When `addMesh()`/`addLight()`/`addEffect()` is called | Calls the factory method to create an instance and adds it to the scene. Implemented by the base class |
 | `onUpdateConfig(updates)`        | When `handle.update()` is called | Processes partial configuration updates                                                                |
-| `onDestroy()`                    | When `handle.delete()` is called | Releases resources and removes from the scene                                                          |
+| `onDestroy()`                    | When `handle.delete()` is called, or `view.dispose()` for effects | Releases resources and removes from the scene                                                          |
 | `update(time)`                   | Every frame (optional)           | Animation processing. Only called if implemented                                                       |
 | `onResize(width, height)`        | On viewport resize (optional)    | Mesh Descriptors only. Only called if implemented                                                           |
 

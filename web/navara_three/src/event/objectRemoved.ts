@@ -48,9 +48,11 @@ export function processObjectRemoved(
  * Dispose every live product, as its removal would, and empty the `meshes`
  * index. Also covers tile meshes outside the index: one whose geometry was
  * never installed still holds its drape targets and atlas reference.
+ * Descriptors' pickables share the index but stay theirs to dispose.
  */
 export function disposeAllObjects(ctx: EventContext): void {
-  for (const obj of ctx.meshes.values()) {
+  for (const [key, obj] of ctx.meshes) {
+    if (ctx.viewContext._isDescriptorPickable(key, obj)) continue;
     processObjectRemoved(ctx, obj);
   }
   ctx.meshes.clear();

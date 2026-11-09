@@ -79,6 +79,8 @@ export class ViewContext extends EventHandler<ViewContextEvents> {
   private _renderPass?: CustomRenderPass;
   private _registries?: Registries;
   private _lineDashAtlas = new LineDashAtlas();
+  /** Objects of {@link registerPickableMesh} by key: the mesh cache entries descriptors own. */
+  private _pickables = new Map<string, Object3D>();
 
   constructor(
     /** Scene containers for different rendering passes. */
@@ -451,6 +453,7 @@ export class ViewContext extends EventHandler<ViewContextEvents> {
    */
   registerPickableMesh(key: string, mesh: PickableMesh & Object3D): void {
     this._meshes?.set(key, mesh);
+    this._pickables.set(key, mesh);
   }
 
   /**
@@ -458,6 +461,15 @@ export class ViewContext extends EventHandler<ViewContextEvents> {
    * @param key - The key used during registration.
    */
   unregisterPickableMesh(key: string): void {
-    this._meshes?.delete(key);
+    // Keep an engine product that has since taken over the key.
+    if (this._meshes?.get(key) === this._pickables.get(key)) {
+      this._meshes?.delete(key);
+    }
+    this._pickables.delete(key);
+  }
+
+  /** @internal Whether `obj` is the pickable a descriptor registered as `key`. */
+  _isDescriptorPickable(key: string, obj: Object3D): boolean {
+    return this._pickables.get(key) === obj;
   }
 }

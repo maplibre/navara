@@ -77,7 +77,8 @@ without `removed` (see Event contract) do not leak. `dispose()` aborts
 everything and tears late products down with `ev === undefined`. It leaves
 settled products to their owner: `ThreeView.dispose()` tears them down right
 after, through `disposeAllObjects` (`event/objectRemoved.ts`), which runs
-`processObjectRemoved` on every indexed object and live tile mesh.
+`processObjectRemoved` on every indexed product and live tile mesh. Pickables
+that descriptors registered in the same index are left to their descriptors.
 `inFlight()` counts jobs with a call outstanding and is O(1).
 
 **Event ownership.** The dispatcher frees every WASM event object it takes:
