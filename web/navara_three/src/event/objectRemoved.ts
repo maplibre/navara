@@ -46,10 +46,8 @@ export function processObjectRemoved(
 
 /**
  * Dispose every live product, as its removal would, and empty the `meshes`
- * index. Covers tile meshes outside the index too (one whose geometry was
- * never installed still holds its drape targets and atlas reference). Run
- * after the dispatcher is disposed and before the managers their removal
- * releases into (compositor, font manager, declutter).
+ * index. Also covers tile meshes outside the index: one whose geometry was
+ * never installed still holds its drape targets and atlas reference.
  */
 export function disposeAllObjects(ctx: EventContext): void {
   for (const obj of ctx.meshes.values()) {

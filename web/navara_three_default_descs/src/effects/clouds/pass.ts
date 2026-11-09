@@ -323,7 +323,6 @@ export class Clouds extends Pass<
     super.dispose();
   }
 
-  /** Takes ownership of a loaded texture; one that arrives after dispose is freed. */
   private own(texture: Texture): boolean {
     if (this.disposed) {
       texture.dispose();
@@ -445,7 +444,7 @@ export class Clouds extends Pass<
 
   onSTBNLoad = (texture: Data3DTexture): void => {
     if (!this.own(texture)) return;
-    // The shadow reload replaces the STBN loaded by `loadAll()`.
+    // The shadow reload loads a second STBN; free the one it replaces.
     const previous = this.rawEffect.stbnTexture;
     if (
       previous &&
