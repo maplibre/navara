@@ -55,8 +55,8 @@ export class AerialPerspectiveEffectDesc extends EffectDesc<
     config: AerialPerspectiveConfig,
   ) {
     super(view, ctx, config);
-    // Copied: the requirements are derived from it, and the caller may pass
-    // the same object to another view.
+    // Copied: the requirements derive from it, and callers may share it
+    // between views.
     this.config = {
       ...config,
       aerialPerspective: { ...config.aerialPerspective },
@@ -65,9 +65,8 @@ export class AerialPerspectiveEffectDesc extends EffectDesc<
 
   /**
    * Both terms read the shadow attachment: R for the shadow amount, G for the
-   * deferred-lit mask. The shader compiles them out without a normal buffer,
-   * so `useNormalBuffer: false` reads neither attachment. Read before
-   * `onCreate`.
+   * deferred-lit mask. Without a normal buffer the shader compiles both out,
+   * so `useNormalBuffer: false` reads neither. Read before `onCreate`.
    */
   getRequiredBuffers(): readonly GBufferName[] {
     const options = this.config.aerialPerspective ?? {};
@@ -112,8 +111,8 @@ export class AerialPerspectiveEffectDesc extends EffectDesc<
     Object.assign(this.config, rest);
     if (!config) return;
 
-    // Merged rather than replaced, skipping `undefined` as the setters do:
-    // the requirements are derived from it.
+    // Merged, skipping `undefined` like the setters: the requirements derive
+    // from it.
     const required = this.getRequiredBuffers();
     this.config.aerialPerspective = {
       ...this.config.aerialPerspective,
