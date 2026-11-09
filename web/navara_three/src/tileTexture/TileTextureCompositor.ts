@@ -65,14 +65,6 @@ const FIRST_SOURCE_STENCIL_REF = 0xff;
 export const DRAPE_BAKE_SAMPLES = 4;
 
 /**
- * GPU bytes of a composite atlas at side length `size`: one size² RGBA8
- * attachment each for color and attr, plus normal when the atlas has it.
- */
-export function compositeAtlasBytes(size: number, withNormal: boolean): number {
-  return size * size * 4 * (withNormal ? 3 : 2);
-}
-
-/**
  * Default atlas factory: a single MRT WebGLRenderTarget sized `size × size`
  * with RGBA8 textures — color and attr, plus normal when `withNormal` — that
  * one draw call populates.
@@ -345,13 +337,13 @@ export class TileTextureCompositor {
     this.cache.markDirty(handle, reason);
   }
 
-  /** GPU bytes the handle's atlas holds: 0 while it has never been rendered
-   * (see `CompositeAtlas.allocated`). */
+  /** GPU bytes the handle's atlas holds: one size² RGBA8 texture per
+   * attachment, 0 while it has never been rendered (see
+   * `CompositeAtlas.allocated`). */
   atlasGpuBytes(handle: TileHandle): number {
     const atlas = this.cache.getEntry(handle)?.atlas;
-    return atlas?.allocated
-      ? compositeAtlasBytes(this.size, atlas.normal !== null)
-      : 0;
+    if (!atlas?.allocated) return 0;
+    return this.size * this.size * 4 * (atlas.normal ? 3 : 2);
   }
 
   // ---------------------------------------------------------------------

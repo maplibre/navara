@@ -217,7 +217,7 @@ describe("TileTextureCache normal attachment", () => {
     const small = cache.getEntry(1n)?.atlas;
     if (!small) throw new Error("expected entry to exist");
 
-    expect(cache.setNormalAttachment(1n, true)).toBe(true);
+    cache.setNormalAttachment(1n, true);
     expect(factory).toHaveBeenLastCalledWith(512, true);
     const big = cache.getEntry(1n)?.atlas;
     if (!big?.normal) throw new Error("expected an atlas with normals");
@@ -231,9 +231,11 @@ describe("TileTextureCache normal attachment", () => {
     // Pooling is disabled here, so the replaced atlas is freed.
     expect(small.dispose).toHaveBeenCalledOnce();
 
-    expect(cache.setNormalAttachment(1n, true)).toBe(false);
+    cache.setNormalAttachment(1n, true);
+    expect(cache.getEntry(1n)?.atlas).toBe(big);
+    expect(factory).toHaveBeenCalledTimes(2);
 
-    expect(cache.setNormalAttachment(1n, false)).toBe(true);
+    cache.setNormalAttachment(1n, false);
     expect(cache.getEntry(1n)?.atlas.normal).toBeNull();
     expect(out.normal).toBeNull();
     expect(big.dispose).toHaveBeenCalledOnce();
@@ -256,7 +258,7 @@ describe("TileTextureCache normal attachment", () => {
     cache.acquire(3n);
     const plain = cache.getEntry(3n)?.atlas;
     expect(plain?.normal).toBeNull();
-    expect(cache.setNormalAttachment(3n, true)).toBe(true);
+    cache.setNormalAttachment(3n, true);
     expect(cache.getEntry(3n)?.atlas).toBe(withNormal);
     expect(factory).toHaveBeenCalledTimes(3);
     expect(cache.pooledCount).toBe(1);
@@ -323,7 +325,8 @@ describe("TileTextureCache normal attachment", () => {
 
   it("is a no-op for unknown handles", () => {
     const { cache } = makeCache();
-    expect(cache.setNormalAttachment(999n, true)).toBe(false);
+    cache.setNormalAttachment(999n, true);
+    expect(cache.size).toBe(0);
   });
 });
 

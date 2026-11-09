@@ -112,11 +112,11 @@ export class TileTextureCache {
    * the other shape. The replacement starts with undefined contents, so call
    * this only right before rendering the whole atlas. The entry's outputs
    * switch to the new textures in place; the replaced atlas goes to
-   * `recycle`. Returns whether the atlas changed.
+   * `recycle`.
    */
-  setNormalAttachment(handle: TileHandle, withNormal: boolean): boolean {
+  setNormalAttachment(handle: TileHandle, withNormal: boolean): void {
     const entry = this.entries.get(handle);
-    if (!entry || (entry.atlas.normal !== null) === withNormal) return false;
+    if (!entry || (entry.atlas.normal !== null) === withNormal) return;
     const previous = entry.atlas;
     const index = this.pool.findIndex(
       (atlas) => (atlas.normal !== null) === withNormal,
@@ -130,7 +130,6 @@ export class TileTextureCache {
     entry.outputs.attr = atlas.attr;
     entry.outputs.normal = atlas.normal;
     this.recycle(previous);
-    return true;
   }
 
   /**
