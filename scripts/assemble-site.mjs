@@ -5,6 +5,7 @@
 //   site-dist/
 //     index.html, ja/index.html      <- LP, relocated from docs/dist/lp/
 //     brand-assets/index.html, ...   <- brand assets page, relocated likewise
+//     showcases/index.html, ...      <- showcases page, relocated likewise
 //     favicon.png, og.jpg, 404.html  <- copied from docs/dist for the site root
 //     docs/...                       <- docs/dist verbatim
 //     examples/...                   <- web/navara_three/dist-example verbatim
@@ -50,6 +51,7 @@ cpSync(docsDist, resolve(out, "docs"), { recursive: true });
 const SITE_PAGES = [
   ["lp", ""],
   ["brand-assets", "brand-assets"],
+  ["showcases", "showcases"],
 ];
 const lpLocales = readdirSync(resolve(out, "docs"), { withFileTypes: true })
   .filter((e) => e.isDirectory() && existsSync(resolve(out, "docs", e.name, "lp/index.html")))

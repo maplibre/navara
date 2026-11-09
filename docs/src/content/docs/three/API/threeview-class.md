@@ -90,6 +90,20 @@ view.setCamera({
 });
 ```
 
+## Multiple Views
+
+A page can run several `ThreeView` instances at once, for example to compare two maps side by side. Give each view its own canvas. The views can be initialized concurrently, and disposing one does not interrupt the others.
+
+```tsx
+const left = new ThreeView({ canvas: leftCanvas });
+const right = new ThreeView({ canvas: rightCanvas });
+await Promise.all([left.init(), right.init()]);
+```
+
+All views on a page share one pool of background workers, so their tile processing competes for the same CPU cores instead of multiplying them. The first view to call `init()` creates the pool, and its `workerPoolSize`, `mobileOptimization` and `memoryBudget.maxWorkerHeapBytes` decide the pool size and worker heap budget. The same options passed to a later view do not change the pool while it exists, and a console warning reports when they differ. The pool is shut down when the last view is disposed, and the next view to initialize creates a new one.
+
+Everything else belongs to each view: the WebGL context, the tile cache (`cacheBytes`), the remaining `memoryBudget` limits, and the font worker. Memory use therefore grows with the number of views, and data shown in two views is downloaded and decoded once per view. When showing several views on a memory-constrained device, lower `cacheBytes` on each of them.
+
 ## Properties
 
 ### container
@@ -445,7 +459,7 @@ const view = new ThreeView({
 
 **Type:** `number | undefined`
 
-**Description:** Number of background workers that decode tiles and build meshes. Each worker has its own JavaScript engine instance and WebAssembly heap, so a smaller pool uses less memory but loads tiles more slowly after fast camera moves. The value is clamped to the range from `1` to `navigator.hardwareConcurrency` and also applies with `mobileOptimization`. If the browser does not report `navigator.deviceMemory`, the default `memoryBudget.maxWorkerHeapBytes` is a fixed amount per worker, so a larger pool raises peak memory.
+**Description:** Number of background workers that decode tiles and build meshes. Each worker has its own JavaScript engine instance and WebAssembly heap, so a smaller pool uses less memory but loads tiles more slowly after fast camera moves. The value is clamped to the range from `1` to `navigator.hardwareConcurrency` and also applies with `mobileOptimization`. If the browser does not report `navigator.deviceMemory`, the default `memoryBudget.maxWorkerHeapBytes` is a fixed amount per worker, so a larger pool raises peak memory. All views on a page share one pool, so only the first view to call `init()` sets its size (see [Multiple Views](#multiple-views)).
 
 **Default:** `navigator.hardwareConcurrency` (at most `2` with `mobileOptimization`)
 

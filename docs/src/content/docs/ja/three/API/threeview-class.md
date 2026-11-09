@@ -90,6 +90,20 @@ view.setCamera({
 });
 ```
 
+## 複数ビュー
+
+1 つのページで複数の `ThreeView` インスタンスを同時に動かせます。たとえば 2 つの地図を左右に並べて比較する場合です。ビューごとに別の canvas を渡してください。複数のビューは並行して初期化でき、1 つを破棄しても他のビューは止まりません。
+
+```tsx
+const left = new ThreeView({ canvas: leftCanvas });
+const right = new ThreeView({ canvas: rightCanvas });
+await Promise.all([left.init(), right.init()]);
+```
+
+ページ上のすべてのビューは、バックグラウンド処理用の worker プールを 1 つ共有します。そのため、ビューを増やしても worker が増えるわけではなく、各ビューのタイル処理は同じ CPU コアを分け合います。プールは最初に `init()` を呼んだビューが作成し、そのビューの `workerPoolSize`、`mobileOptimization`、`memoryBudget.maxWorkerHeapBytes` でプールのサイズと worker のヒープ予算が決まります。プールが存在する間は、後から作ったビューに同じオプションを渡してもプールは変わらず、値が異なる場合はコンソールに警告が出ます。最後のビューを破棄するとプールは終了し、次に初期化したビューが新しいプールを作成します。
+
+それ以外のリソースはビューごとに持ちます。WebGL コンテキスト、タイルキャッシュ（`cacheBytes`）、`memoryBudget` の残りの上限、フォント worker です。このためメモリ使用量はビューの数に応じて増え、2 つのビューに表示されるデータはビューごとにダウンロードとデコードが行われます。メモリの少ない端末で複数のビューを表示する場合は、各ビューの `cacheBytes` を小さくしてください。
+
 ## Properties
 
 ### container
@@ -445,7 +459,7 @@ const view = new ThreeView({
 
 **Type:** `number | undefined`
 
-**Description:** タイルのデコードとメッシュ構築を行うバックグラウンドワーカーの数。各ワーカーは JavaScript エンジンのインスタンスと WebAssembly ヒープを個別に持つため、プールを小さくするとメモリ使用量が減りますが、カメラを素早く動かした後のタイル読み込みは遅くなります。値は `1` から `navigator.hardwareConcurrency` の範囲に制限され、`mobileOptimization` 有効時にも適用されます。ブラウザが `navigator.deviceMemory` を報告しない場合、`memoryBudget.maxWorkerHeapBytes` のデフォルトはワーカーごとの固定値のため、プールを大きくするとピークメモリが増えます。
+**Description:** タイルのデコードとメッシュ構築を行うバックグラウンドワーカーの数。各ワーカーは JavaScript エンジンのインスタンスと WebAssembly ヒープを個別に持つため、プールを小さくするとメモリ使用量が減りますが、カメラを素早く動かした後のタイル読み込みは遅くなります。値は `1` から `navigator.hardwareConcurrency` の範囲に制限され、`mobileOptimization` 有効時にも適用されます。ブラウザが `navigator.deviceMemory` を報告しない場合、`memoryBudget.maxWorkerHeapBytes` のデフォルトはワーカーごとの固定値のため、プールを大きくするとピークメモリが増えます。ページ上のすべてのビューは 1 つのプールを共有するため、サイズを決めるのは最初に `init()` を呼んだビューだけです（[複数ビュー](#複数ビュー)を参照）。
 
 **Default:** `navigator.hardwareConcurrency`（`mobileOptimization` 有効時は最大 `2`）
 
