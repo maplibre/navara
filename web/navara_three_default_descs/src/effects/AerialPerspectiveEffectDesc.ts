@@ -46,6 +46,9 @@ export class AerialPerspectiveEffectDesc extends EffectDesc<
 > {
   static key = "aerialPerspective";
   static insertAfter = ["mrt"];
+  // With `useNormalBuffer: false` it may require no buffer at all; meshes
+  // still render in the MRT pass so they sort with its transparent content.
+  static requiresMrtPass = true;
 
   private config: AerialPerspectiveConfig;
 

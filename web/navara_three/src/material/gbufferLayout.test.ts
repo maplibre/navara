@@ -18,6 +18,7 @@ import {
   computeGBufferDefines,
   computeGBufferTextureIndex,
   createGBufferAttachments,
+  exceededGBufferCapacity,
   resolveGBufferOptions,
   unionGBufferRequirements,
 } from "./gbufferLayout";
@@ -167,5 +168,49 @@ describe("globeNormal", () => {
 
   it("is excluded from the attachment-backed names", () => {
     expect(GBUFFER_ATTACHMENT_NAMES).not.toContain("globeNormal");
+  });
+});
+
+describe("exceededGBufferCapacity", () => {
+  const allocated = unionGBufferRequirements([["selectiveEffect", "emissive"]]);
+  // A growth to normal + shadow was rejected on a 4-draw-buffer device, so
+  // the requirements exceed what is allocated.
+  const requirements = [
+    ["selectiveEffect", "emissive"],
+    ["normal", "shadow"],
+  ] as const;
+
+  it("counts the requirements a rejected growth left unallocated", () => {
+    expect(
+      exceededGBufferCapacity(requirements, ["normal"], allocated, 4),
+    ).toBe(5);
+  });
+
+  it("accepts buffers that are already allocated", () => {
+    expect(
+      exceededGBufferCapacity(requirements, ["selectiveEffect"], allocated, 4),
+    ).toBeUndefined();
+  });
+
+  it("accepts what fits", () => {
+    expect(
+      exceededGBufferCapacity(
+        [["selectiveEffect", "emissive"]],
+        ["normal"],
+        allocated,
+        4,
+      ),
+    ).toBeUndefined();
+  });
+
+  it("counts the normal a globe normal implies", () => {
+    expect(
+      exceededGBufferCapacity(
+        [["selectiveEffect", "emissive", "shadow"]],
+        ["globeNormal"],
+        unionGBufferRequirements([["selectiveEffect", "emissive", "shadow"]]),
+        4,
+      ),
+    ).toBe(5);
   });
 });

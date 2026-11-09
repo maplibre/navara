@@ -126,6 +126,12 @@ describe("AerialPerspectiveEffectDesc.getRequiredBuffers", () => {
   });
 });
 
+describe("AerialPerspectiveEffectDesc.requiresMrtPass", () => {
+  it("keeps meshes in the MRT pass without a normal buffer", () => {
+    expect(AerialPerspectiveEffectDesc.requiresMrtPass).toBe(true);
+  });
+});
+
 describe("AerialPerspectiveEffectDesc.onUpdateConfig", () => {
   // `_syncGBuffers` reads the requirements synchronously inside the event.
   const recordRequirements = (

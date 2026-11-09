@@ -261,7 +261,9 @@ To read these buffers from a custom effect, use the [Buffer / Texture Access](#b
 
 The normal, effectIds, emissive, shadow and globeNormal buffers are optional: they exist only while an active effect declares them in its `static requiredBuffers` (e.g. `["normal"]`, `["selectiveEffect", "emissive"]`, `["shadow"]` or `["globeNormal"]`) or a mesh requests them (see [Requesting G-Buffers](#requesting-g-buffers)), and the accessors return `undefined` otherwise.
 
-An effect whose needs depend on its own configuration overrides `getRequiredBuffers()` instead. The override replaces the static entirely, so declare one or the other. It is read before `onCreate()`, so derive the result from the constructor config, and emit `gbufferRequirementsChanged` on `ctx` when an `update()` changes it. The view then re-derives the buffers. When the new attachments would exceed the device's `MAX_DRAW_BUFFERS`, the view logs an error and keeps the previous buffers. `addEffect()` and `addMesh()` throw in that case instead.
+An effect whose needs depend on its own configuration overrides `getRequiredBuffers()` instead. The override replaces the static entirely, so declare one or the other. It is read before `onCreate()`, so derive the result from the constructor config, and emit `gbufferRequirementsChanged` on `ctx` when an `update()` changes it. The view then re-derives the buffers. When the new attachments would exceed the device's `MAX_DRAW_BUFFERS`, the view logs an error and keeps the previous buffers. `addEffect()` and `addMesh()` throw in that case instead, unless the descriptor's buffers are already allocated.
+
+Meshes that support selective effects render in the G-buffer pass only while a selective effect or an optional buffer is active. An effect composited over the G-buffer output that may need no buffer at all sets `static requiresMrtPass = true` to keep them there, so they still sort with the pass's transparent content (aerial perspective does this).
 
 ```typescript
 import { type GBufferName } from "@navaramap/three";

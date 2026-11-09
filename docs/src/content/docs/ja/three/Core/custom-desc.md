@@ -257,7 +257,9 @@ view.addMesh<GlowSphereDesc>({
 
 法線・エフェクト ID・エミッシブ・シャドウ・globeNormal のバッファはオプションです。アクティブなエフェクトが `static requiredBuffers` で宣言している（例: `["normal"]` / `["selectiveEffect", "emissive"]` / `["shadow"]` / `["globeNormal"]`）か、メッシュが要求している（[G-Buffer の要求](#g-buffer-の要求)を参照）間だけ存在し、それ以外ではアクセサは `undefined` を返します。
 
-必要なバッファが自身の設定に依存するエフェクトは、代わりに `getRequiredBuffers()` をオーバーライドします。オーバーライドは static を完全に置き換えるので、どちらか一方だけを宣言してください。`onCreate()` より前に読まれるためコンストラクタの config から結果を導き、`update()` で結果が変わるときは `ctx` に `gbufferRequirementsChanged` を emit します。view はバッファを再導出します。新しいアタッチメントがデバイスの `MAX_DRAW_BUFFERS` を超える場合、view はエラーをログに出し、以前のバッファ構成を保ちます。`addEffect()` と `addMesh()` の時点で超える場合は throw します。
+必要なバッファが自身の設定に依存するエフェクトは、代わりに `getRequiredBuffers()` をオーバーライドします。オーバーライドは static を完全に置き換えるので、どちらか一方だけを宣言してください。`onCreate()` より前に読まれるためコンストラクタの config から結果を導き、`update()` で結果が変わるときは `ctx` に `gbufferRequirementsChanged` を emit します。view はバッファを再導出します。新しいアタッチメントがデバイスの `MAX_DRAW_BUFFERS` を超える場合、view はエラーをログに出し、以前のバッファ構成を保ちます。`addEffect()` と `addMesh()` の時点で超える場合は、そのディスクリプタのバッファがすでに確保されていない限り throw します。
+
+Selective Effect に対応するメッシュは、Selective Effect かオプションのバッファが有効な間だけ G-buffer パスで描画されます。G-buffer の出力に合成され、バッファを一つも必要としない場合があるエフェクトは、`static requiresMrtPass = true` を設定してメッシュをそこに留め、パスの半透明コンテンツと正しく前後関係を保ちます（大気透視がこれを行います）。
 
 ```typescript
 import { type GBufferName } from "@navaramap/three";

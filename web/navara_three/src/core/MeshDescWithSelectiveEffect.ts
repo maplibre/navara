@@ -64,6 +64,9 @@ export abstract class MeshDescWithSelectiveEffect<
     if (Object.values(this.view.buffers).some(Boolean)) {
       return "mrt";
     }
+    for (const handle of this.ctx._getEffects()) {
+      if (handle.ref.getConstructor().requiresMrtPass) return "mrt";
+    }
     // Otherwise MRT participation is pure overhead.
     return super.getPassKey();
   }

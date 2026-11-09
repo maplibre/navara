@@ -65,12 +65,14 @@ whole frame (vignette, color grading, AA) insert after it instead
 A mesh desc chooses its scene via `MeshDesc.getPassKey()` (default
 `"opaque"`). `MeshDescWithSelectiveEffect` overrides it: SE-capable meshes go
 to `"mrt"` when **either** a selective effect is registered
-(`selectiveEffectRegistry.slotCount > 0`) **or** any optional G-buffer is
-allocated (`view.buffers`). The second condition matters: a mesh outside the
-MRT pass leaves the G-buffer holding whatever is _behind_ it, so
-buffer-reading effects (deferred lighting, SSAO, …) would shade "through" the
-mesh. Placement is re-evaluated on the `effectSlotsChanged` and
-`gbufferChanged` ViewContext events.
+(`selectiveEffectRegistry.slotCount > 0`), **or** any optional G-buffer is
+allocated (`view.buffers`), **or** an active effect sets `static
+requiresMrtPass` (aerial perspective, which may need no buffer). The second
+condition matters: a mesh outside the MRT pass leaves the G-buffer holding
+whatever is _behind_ it, so buffer-reading effects (deferred lighting, SSAO, …)
+would shade "through" the mesh. The third keeps the meshes sorting with the
+MRT pass's transparent content. Placement is re-evaluated on the
+`effectSlotsChanged` and `gbufferChanged` ViewContext events.
 
 `opaque`/`transparent` scene content is deliberately outside the G-buffer
 (cheap path for meshes that don't need it); be aware their pixels contribute
@@ -205,10 +207,11 @@ because `addEffect`/`addMesh` read it for the `MAX_DRAW_BUFFERS` check before
 event, then pushes the result to `CustomRenderPass.setBuffers()`. That
 rebuilds the render target **as a fresh object** (reconfiguring a live target
 in place leaves the renderer's cached GL state sampling a texture the
-framebuffer no longer writes) while keeping the color/normal/depth `Texture`
-identities, which effects like SSR capture at creation. `addEffect` and
-`addMesh` throw for a descriptor whose buffers would exceed the device's
-`gl.MAX_DRAW_BUFFERS`. A requirement that grows later (an `update()`) is
+framebuffer no longer writes). Only the color and depth `Texture` identities
+survive; the optional attachments, normal included, are reallocated, so
+consumers re-fetch them every frame. `addEffect` and `addMesh` throw for a
+descriptor whose buffers, joined with the current requirements, would exceed
+the device's `gl.MAX_DRAW_BUFFERS`, unless they are already allocated. A requirement that grows later (an `update()`) is
 logged with `console.error` and the previous configuration is kept, rather
 than producing an incomplete framebuffer; the next re-derivation that fits
 applies.
