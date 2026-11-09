@@ -9,6 +9,7 @@
   "nav": {
     "docs": "Sənədlər",
     "examples": "Nümunələr",
+    "showcases": "Vitrin",
     "github": "GitHub"
   },
   "hero": {
@@ -123,6 +124,7 @@
   "footer": {
     "docs": "Sənədlər",
     "github": "GitHub",
+    "showcases": "Vitrin",
     "discord": "Discord",
     "credit": "Navara · MIT / Apache-2.0",
     "brandAssets": "Brend materialları"
@@ -158,6 +160,14 @@
         "accent": "Accent Color"
       }
     }
+  },
+  "showcases": {
+    "meta": {
+      "title": "Navara vitrini",
+      "description": "Navara ilə yaradılmış xəritələr və vizuallaşdırmalar."
+    },
+    "h1": "Vitrin",
+    "submit": "Layihə təqdim et"
   },
   "imageAlts": {
     "hero": "Əsas təsvir: Navara ilə çəkilmiş qlobus",

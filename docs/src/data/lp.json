@@ -24,7 +24,9 @@
     "github": "https://github.com/maplibre/navara",
     "discord": "#",
     "roadmap": "https://github.com/maplibre/navara/issues/757",
-    "brandAssets": "brand-assets/"
+    "brandAssets": "brand-assets/",
+    "showcases": "showcases/",
+    "showcaseSubmit": "https://github.com/maplibre/navara/issues/new?template=showcase.yml"
   },
   "brand": {
     "palette": [

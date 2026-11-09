@@ -9,6 +9,7 @@
   "nav": {
     "docs": "Docs",
     "examples": "Examples",
+    "showcases": "Showcases",
     "github": "GitHub"
   },
   "hero": {
@@ -123,6 +124,7 @@
   "footer": {
     "docs": "Docs",
     "github": "GitHub",
+    "showcases": "ショーケース",
     "discord": "Discord",
     "credit": "Navara · MIT / Apache-2.0",
     "brandAssets": "ブランドアセット"
@@ -158,6 +160,14 @@
         "accent": "Accent Color"
       }
     }
+  },
+  "showcases": {
+    "meta": {
+      "title": "Navara ショーケース",
+      "description": "Navara で作られた地図やビジュアライゼーションの作品を紹介します。"
+    },
+    "h1": "ショーケース",
+    "submit": "Submit project"
   },
   "imageAlts": {
     "hero": "Navara で描画した地球儀のメインビジュアル",

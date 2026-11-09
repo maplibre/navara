@@ -9,6 +9,7 @@
   "nav": {
     "docs": "Docs",
     "examples": "Examples",
+    "showcases": "Showcases",
     "github": "GitHub"
   },
   "hero": {
@@ -123,6 +124,7 @@
   "footer": {
     "docs": "Docs",
     "github": "GitHub",
+    "showcases": "Showcases",
     "discord": "Discord",
     "credit": "Navara · MIT / Apache-2.0",
     "brandAssets": "Brand Assets"
@@ -158,6 +160,14 @@
         "accent": "Accent Color"
       }
     }
+  },
+  "showcases": {
+    "meta": {
+      "title": "Navara showcases",
+      "description": "Maps and visualizations that people have built with Navara."
+    },
+    "h1": "Showcases",
+    "submit": "Submit project"
   },
   "imageAlts": {
     "hero": "Main visual: a globe rendered with Navara",
