@@ -1,3 +1,73 @@
+## 0.3.0 - 2026-11-09
+
+### 🚀 Features
+
+- Support camera settings in MapLibreStylePlugin ([#853](https://github.com/maplibre/navara/pull/853))
+- Line text  ([#847](https://github.com/maplibre/navara/pull/847))
+- Distribute skills ([#861](https://github.com/maplibre/navara/pull/861))
+- Support terrain exaggeration ([#859](https://github.com/maplibre/navara/pull/859))
+- Support letter spacing ([#860](https://github.com/maplibre/navara/pull/860))
+- Support dashed polyline ([#875](https://github.com/maplibre/navara/pull/875))
+- Improve polygon transparent APIs ([#881](https://github.com/maplibre/navara/pull/881))
+- Add getWaterTextureUniform ([#882](https://github.com/maplibre/navara/pull/882))
+- **BREAKING:** Support Color-relief of maplibre style ([#873](https://github.com/maplibre/navara/pull/873))
+- Text/sprite material support - maplibre style  ([#893](https://github.com/maplibre/navara/pull/893))
+- **BREAKING:** Anchor, offset, translate and variable anchors for text and sprites ([#899](https://github.com/maplibre/navara/pull/899))
+- Text outline and line height ([#900](https://github.com/maplibre/navara/pull/900))
+- Add flowSpeed in water material ([#911](https://github.com/maplibre/navara/pull/911))
+- Support multiple views ([#918](https://github.com/maplibre/navara/pull/918))
+
+### 🐛 Bug Fixes
+
+- Worker deps resolution ([#862](https://github.com/maplibre/navara/pull/862))
+- Switch to use RustStyleEngine ([#863](https://github.com/maplibre/navara/pull/863))
+- Resize and tilt reset camera roll. ([#867](https://github.com/maplibre/navara/pull/867))
+- Vector tile template url handling ([#869](https://github.com/maplibre/navara/pull/869))
+- Ios camera move ([#871](https://github.com/maplibre/navara/pull/871))
+- Make upright facing to be viewport facing ([#872](https://github.com/maplibre/navara/pull/872))
+- Hillshade interpolation ([#876](https://github.com/maplibre/navara/pull/876))
+- Sync maplibre plugin with core engine support for text/sprite styling ([#864](https://github.com/maplibre/navara/pull/864))
+- Avoid per-feature re-evaluation of zoom-dependent MapLibre layers ([#878](https://github.com/maplibre/navara/pull/878))
+- Avoid unnecessary tile AABB computatiion ([#894](https://github.com/maplibre/navara/pull/894))
+- Water artifact on tiles ([#896](https://github.com/maplibre/navara/pull/896))
+- Improve event scheduler ([#895](https://github.com/maplibre/navara/pull/895))
+- Improve water material ([#906](https://github.com/maplibre/navara/pull/906))
+- Render MapLibre circle layers like MapLibre ([#908](https://github.com/maplibre/navara/pull/908))
+- Merge MapLibre style camera over the current camera ([#909](https://github.com/maplibre/navara/pull/909))
+- Accept TileJSON without a version and skip unsupported source properties ([#910](https://github.com/maplibre/navara/pull/910))
+- Improve shadow drawcalls ([#912](https://github.com/maplibre/navara/pull/912))
+- Tile atlas memory ledger ([#913](https://github.com/maplibre/navara/pull/913))
+- Mobile crashes by shader trouble ([#916](https://github.com/maplibre/navara/pull/916))
+- 
+
+### 🧪 Testing
+
+- Integration test for maplibre style rendering ([#870](https://github.com/maplibre/navara/pull/870))
+
+### 🧹 Miscellaneous
+
+- Bump taiki-e/install-action ([#865](https://github.com/maplibre/navara/pull/865))
+- Bump the actions-minor group with 2 updates ([#866](https://github.com/maplibre/navara/pull/866))
+- Bump taiki-e/install-action ([#874](https://github.com/maplibre/navara/pull/874))
+- Fix deps meta ([#877](https://github.com/maplibre/navara/pull/877))
+- Update Rust ([#879](https://github.com/maplibre/navara/pull/879))
+- Update Node ([#880](https://github.com/maplibre/navara/pull/880))
+- Refresh LP showcase stills for redeployed sites ([#868](https://github.com/maplibre/navara/pull/868))
+- Resolve latest overturemap resource ([#889](https://github.com/maplibre/navara/pull/889))
+- Bump the cargo-major group with 9 updates ([#886](https://github.com/maplibre/navara/pull/886))
+- Bump the cargo-patch group across 1 directory with 6 updates ([#884](https://github.com/maplibre/navara/pull/884))
+- Bump the npm-major group across 1 directory with 3 updates ([#888](https://github.com/maplibre/navara/pull/888))
+- Bump the npm-patch group across 1 directory with 9 updates ([#891](https://github.com/maplibre/navara/pull/891))
+- Bump the npm-minor group across 1 directory with 31 updates ([#892](https://github.com/maplibre/navara/pull/892))
+- Bump the actions-patch group across 1 directory with 3 updates ([#883](https://github.com/maplibre/navara/pull/883))
+- Handle browser error correctly in MapLibre test ([#897](https://github.com/maplibre/navara/pull/897))
+- Bump taiki-e/install-action ([#902](https://github.com/maplibre/navara/pull/902))
+- Bump step-security/harden-runner ([#901](https://github.com/maplibre/navara/pull/901))
+- Bump the npm-patch group with 7 updates ([#903](https://github.com/maplibre/navara/pull/903))
+- Bump skrifa from 0.48.0 to 0.49.0 in the cargo-major group ([#904](https://github.com/maplibre/navara/pull/904))
+- Bump the npm-minor group with 6 updates ([#905](https://github.com/maplibre/navara/pull/905))
+- Debug shader skill on mobile ([#917](https://github.com/maplibre/navara/pull/917))
+
 ## v0.2.1 - 2026-10-08
 
 ### 🐛 Bug Fixes
