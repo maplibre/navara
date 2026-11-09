@@ -13,7 +13,7 @@ import { readFileSync, statSync } from "node:fs";
 import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const MAX_BYTES = 300 * 1024;
+const MAX_BYTES = 150 * 1024;
 
 const args = process.argv.slice(2);
 const all = args.includes("--all");

@@ -33,9 +33,9 @@ pnpm install
 
 ### Add a screenshot
 
-Save a screenshot of the project as `docs/src/assets/showcases/<project-name>.avif`. Use a 16:10 image around 1920×1200 pixels. The file must be AVIF and 300 KB or less. Convert other formats with an existing tool, for example [Squoosh](https://squoosh.app/) in the browser or `avifenc` from [libavif](https://github.com/AOMediaCodec/libavif) on the command line.
+Save a screenshot of the project as `docs/src/assets/showcases/<project-name>.avif`. Use a square image around 1000×1000 pixels. The file must be AVIF and 150 KB or less. Convert other formats with an existing tool, for example [Squoosh](https://squoosh.app/) in the browser or `avifenc` from [libavif](https://github.com/AOMediaCodec/libavif) on the command line.
 
-The tile on the page is square and shows the center of the screenshot, so keep the subject in the middle. Leave the page's own UI (panels, buttons and the attribution display) out of the shot where you can.
+The tile on the page is square. An image of another aspect ratio is cropped to its center square, so keep the subject in the middle. Leave the page's own UI (panels, buttons and the attribution display) out of the shot where you can.
 
 ### Add an entry to showcases.json
 

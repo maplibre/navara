@@ -33,9 +33,9 @@ pnpm install
 
 ### スクリーンショットを追加する
 
-プロジェクトのスクリーンショットを `docs/src/assets/showcases/<project-name>.avif` に保存します。1920×1200 ピクセル程度の 16:10 の画像を使ってください。ファイルは AVIF 形式で、300 KB 以下にする必要があります。ほかの形式の画像は、ブラウザで使える [Squoosh](https://squoosh.app/) や、コマンドラインの [libavif](https://github.com/AOMediaCodec/libavif) の `avifenc` といった既存のツールで変換してください。
+プロジェクトのスクリーンショットを `docs/src/assets/showcases/<project-name>.avif` に保存します。1000×1000 ピクセル程度の正方形の画像を使ってください。ファイルは AVIF 形式で、150 KB 以下にする必要があります。ほかの形式の画像は、ブラウザで使える [Squoosh](https://squoosh.app/) や、コマンドラインの [libavif](https://github.com/AOMediaCodec/libavif) の `avifenc` といった既存のツールで変換してください。
 
-ページ上のタイルは正方形で、スクリーンショットの中央部分が表示されます。主な被写体は中央に置いてください。パネルやボタン、帰属表示といったページ自身の UI は、できるだけ写らないようにしてください。
+ページ上のタイルは正方形です。ほかの縦横比の画像は中央の正方形部分が切り取られるので、主な被写体は中央に置いてください。パネルやボタン、帰属表示といったページ自身の UI は、できるだけ写らないようにしてください。
 
 ### showcases.json に項目を追加する
 

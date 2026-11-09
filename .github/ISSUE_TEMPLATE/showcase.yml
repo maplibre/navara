@@ -11,7 +11,7 @@ body:
     id: name
     attributes:
       label: Project name
-      description: The name shown as the tile's title.
+      description: The name shown as the title.
     validations:
       required: true
   - type: input
@@ -26,7 +26,7 @@ body:
     id: screenshot
     attributes:
       label: Screenshot
-      description: A 16:10 screenshot of the project with its subject near the center. Any image format is fine.
+      description: A screenshot of the project, square if you can, with its subject near the center. Any image format is fine.
     validations:
       required: true
   - type: textarea

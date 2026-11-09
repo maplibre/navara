@@ -58,7 +58,10 @@ Every showcase starts with an Issue from `.github/ISSUE_TEMPLATE/showcase.yml`
 
 ## Screenshot
 
-Must be **AVIF, 300 KB or less**, 16:10 at or below 1920×1200.
+Must be **AVIF, 150 KB or less**, square at about 1000×1000 (the largest
+tile, the LP's three-per-row grid, is ~480 CSS px, so ~960 px at 2x).
+Most scenes land at 30 to 120 KB with `avifenc -q 50`; dense particle or
+point scenes run larger, so lower `-q` for those.
 `pnpm -C docs showcases:check` (`docs/scripts/check-showcases.mjs`) fails on an
 image that is missing, not `.avif`, or over the limit. It only checks the
 entries added or changed since `--base <ref>` (default `origin/main`: an image
@@ -67,14 +70,16 @@ base, uncommitted edits included); `--all` checks every entry.
 `.github/workflows/docs.yml` runs it on pull requests against their base
 branch.
 
-- The tile is square and shows the **center** of the image: keep the subject in
-  the middle third horizontally.
+- Tiles are square (`object-fit: cover`), so a non-square image loses its
+  edges: crop to the center square yourself and check the subject survives.
+  Older entries are 16:10 and are center-cropped by the page.
 - **From the Issue:** download the attachment (`gh issue view <n> --json body`,
-  then `curl -L` the `user-attachments` URL into the scratchpad), crop to 16:10,
-  resize to fit 1920×1200, and encode with `avifenc -q 55` (lower `-q` until it
-  is under 300 KB).
+  then `curl -L` the `user-attachments` URL into the scratchpad), crop to a square
+  around the subject, resize to about 1000×1000, and encode with `avifenc -q 50` (lower `-q` until it
+  is under 150 KB).
 - **Capturing it yourself** (when the attached shot shows UI panels or is too
-  small): headed Playwright with `--enable-gpu` at 1920×1200, hide everything
+  small): headed Playwright with `--enable-gpu` at 1920×1200 (then crop
+  the center square), hide everything
   that is not a canvas or a canvas ancestor
   (`body *:not(:has(canvas)):not(canvas){visibility:hidden}`) and clip to the
   largest canvas. Many sites run a camera tour, so take a burst of frames over
