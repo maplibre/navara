@@ -75,9 +75,8 @@ export type DrapeResolver = {
 /** Apply the shared texturized-slot sampler settings to a drape render target's
  * texture. Returns the texture for call-site chaining.
  *
- * three allocates the mip chain, and regenerates it after every bake, whenever
- * `generateMipmaps` is set, whatever the min filter — so it is requested only
- * for a min filter that samples mips. */
+ * three allocates and regenerates the mip chain after every bake whenever
+ * `generateMipmaps` is set, even if the min filter never samples it. */
 export function configureTexturizedTexture(
   tex: Texture,
   textureOptions: TextureOptions,
