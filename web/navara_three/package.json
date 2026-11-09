@@ -25,7 +25,8 @@
     "lint:check": "eslint .",
     "format": "prettier --write --ignore-path ../../.gitignore --ignore-path ../../.prettierignore .",
     "format:check": "prettier --check --ignore-path ../../.gitignore --ignore-path ../../.prettierignore .",
-    "screenshots": "tsx scripts/generate-screenshots.ts"
+    "screenshots": "tsx scripts/generate-screenshots.ts",
+    "record-clip": "tsx scripts/record-video-clip.ts"
   },
   "license": "MIT OR Apache-2.0",
   "repository": {

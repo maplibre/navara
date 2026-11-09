@@ -35,6 +35,15 @@ jobs:
       - name: Install dependencies
         run: pnpm install --filter navara-developer-docs --frozen-lockfile
 
+      # Checks only the showcase images the pull request adds or changes.
+      - name: Check showcase images
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          git fetch --depth=1 origin "$BASE_REF"
+          pnpm -C docs showcases:check --base "origin/$BASE_REF"
+
       # rehype-mermaid renders diagrams in headless Chromium via Playwright.
       - name: Install Playwright browser
         run: pnpm -C docs exec playwright install --with-deps --only-shell chromium

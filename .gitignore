@@ -32,6 +32,8 @@ dist-ssr
 site-dist
 *.local
 !web/**/example/pages/debug
+# Scratch scenes for the release promotion video (skills/navara-release-video)
+web/**/example/pages/release-video
 
 # Docs (Astro)
 .astro/
