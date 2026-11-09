@@ -39,7 +39,7 @@ function setup() {
     .spyOn(internals, "renderFace")
     .mockImplementation(() => {});
   const render = () => pass.render({} as unknown as WebGLRenderer, null, null);
-  return { camera, render, fullUpdate, renderFace };
+  return { pass, camera, render, fullUpdate, renderFace };
 }
 
 describe("SkyEnvMapPass", () => {
@@ -75,5 +75,17 @@ describe("SkyEnvMapPass", () => {
     render();
 
     expect(fullUpdate).toHaveBeenCalledTimes(2);
+  });
+
+  it("renders the whole cube again once invalidated", () => {
+    const { pass, render, fullUpdate, renderFace } = setup();
+    render();
+    render();
+
+    pass.invalidate();
+    render();
+
+    expect(fullUpdate).toHaveBeenCalledTimes(2);
+    expect(renderFace).toHaveBeenCalledTimes(1);
   });
 });

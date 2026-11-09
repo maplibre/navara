@@ -197,6 +197,9 @@ export class Atmosphere extends EventHandler<AtmosphereEvents> {
    * Precomputed atmosphere textures used for rendering. Each texture is
    * loaded lazily when a consumer declares a need for it via
    * {@link onTexturesReady}, so the object may hold any subset at a time.
+   * The two 3D textures (`scatteringTexture`, `higherOrderScatteringTexture`)
+   * drop their CPU data once uploaded to this atmosphere's renderer: they
+   * cannot be read on the CPU or used with another renderer.
    */
   textures: Partial<PrecomputedTextures> = {};
 
@@ -357,16 +360,18 @@ export class Atmosphere extends EventHandler<AtmosphereEvents> {
     }
     reload.timer = undefined;
     this.reloads.set(name, reload);
-    this.fetchTexture(name)
-      .then((reloaded) => {
+    // Two handlers rather than .catch, so an error thrown by a textureLoaded
+    // listener is not taken for a failed fetch.
+    this.fetchTexture(name).then(
+      (reloaded) => {
         if (this.reloads.get(name) !== reload) return;
         this.reloads.delete(name);
         texture.image = reloaded.image;
         texture.source.dataReady = true;
         texture.needsUpdate = true;
         this.emit("textureLoaded");
-      })
-      .catch((e: unknown) => {
+      },
+      (e: unknown) => {
         if (this.reloads.get(name) !== reload) return;
         console.error("Failed to reload atmosphere texture:", e);
         if (reload.attempt >= MAX_RELOAD_RETRIES) {
@@ -379,7 +384,8 @@ export class Atmosphere extends EventHandler<AtmosphereEvents> {
           () => this.reloadReleasedTexture(name, reload),
           delay,
         );
-      });
+      },
+    );
   }
 
   /**

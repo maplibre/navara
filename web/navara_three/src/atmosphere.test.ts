@@ -392,6 +392,33 @@ describe("Atmosphere texture data", () => {
     );
   });
 
+  it("does not take a textureLoaded listener error for a failed re-fetch", async () => {
+    const canvas = new EventTarget();
+    const atmosphere = await goOffline(canvas);
+    autoResolveLoads();
+    const failure = new Error("listener");
+    atmosphere.on("textureLoaded", () => {
+      throw failure;
+    });
+    const unhandled: unknown[] = [];
+    const onUnhandled = (e: unknown) => unhandled.push(e);
+    // A listener of its own also tells vitest the rejection is expected.
+    process.on("unhandledRejection", onUnhandled);
+    try {
+      await withFakeTimers(async () => {
+        await restore(canvas);
+        await vi.advanceTimersByTimeAsync(60_000);
+
+        expect(loadAsyncMock).toHaveBeenCalledTimes(2);
+        expect(console.error).not.toHaveBeenCalled();
+      });
+      await flush();
+      expect(unhandled).toEqual([failure, failure]);
+    } finally {
+      process.off("unhandledRejection", onUnhandled);
+    }
+  });
+
   it("stops listening and retrying once disposed", async () => {
     const canvas = new EventTarget();
     const add = vi.spyOn(canvas, "addEventListener");

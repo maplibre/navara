@@ -39,8 +39,18 @@ export class SkyEnvMapEffectDesc extends EffectDesc<
     const resolution = this.config.skyEnvMap?.resolution ?? 256;
 
     const pass = new SkyEnvMapPass(scenes, camera, resolution);
+    // Faces rendered before an atmosphere texture arrived (e.g. re-fetched
+    // after a context restore) hold an empty sky.
+    this.view.atmosphere.on("textureLoaded", pass.invalidate);
 
     return pass;
+  }
+
+  onDestroy(): void {
+    if (this._instance) {
+      this.view.atmosphere.off("textureLoaded", this._instance.invalidate);
+    }
+    super.onDestroy();
   }
 
   onUpdateConfig(updates: SkyEnvMapPassUpdate): void {
