@@ -11,6 +11,7 @@ import { GITHUB_URL } from "./SiteHeader";
 const UI = {
   docs: { en: "Docs", ja: "Docs" },
   github: { en: "GitHub", ja: "GitHub" },
+  showcases: { en: "Showcases", ja: "Showcases" },
   brandAssets: { en: "Brand Assets", ja: "ブランドアセット" },
   credit: "Navara · MIT / Apache-2.0",
 } as const;
@@ -27,6 +28,7 @@ type SiteFooterProps = {
 export const SiteFooter = ({ lang }: SiteFooterProps) => {
   const links = [
     { label: UI.docs, href: `${DOCS_URL}${lang === "ja" ? "/ja" : ""}/` },
+    { label: UI.showcases, href: siteUrl(lang, "showcases/") },
     { label: UI.github, href: GITHUB_URL },
     { label: UI.brandAssets, href: siteUrl(lang, "brand-assets/") },
   ];

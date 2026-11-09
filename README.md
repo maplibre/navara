@@ -1,8 +1,10 @@
 <p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="./docs/public/logo/svg/white/white_Navara_Vertical_logo.svg">
-    <img src="./docs/public/logo/black/black_Navara_Vertical_logo_260819.svg" alt="Navara logo" width="220">
-  </picture>
+  <a href="https://navara.world">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="./docs/public/logo/svg/white/white_Navara_Vertical_logo.svg">
+      <img src="./docs/public/logo/black/black_Navara_Vertical_logo_260819.svg" alt="Navara logo" width="220">
+    </picture>
+  </a>
 </p>
 
 # Navara

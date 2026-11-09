@@ -216,6 +216,14 @@ cancelled while running drops from the former at once but keeps the worker
 busy until it ends. A task cancelled while queued costs nothing; workerpool
 skips it when it reaches the front.
 
+Every `ThreeView` on the page shares one pool: `acquireWorkerPool` creates
+it on the first claim (with that view's size and heap budget) and the last
+`release` terminates it. Each view's `external_load` then includes the
+other views' tasks, so their delegations share the pool's cap. That share is
+clamped to the cap minus the view's even share (`cap / holders`), so one view
+cannot take every slot while another has tasks waiting. The views' in-flight
+tasks may then exceed the cap until the busier view drains to its share.
+
 `ConcurrencyManager` counts the pool's in-flight tasks (`queueTask`
 increments and decrements it), oversubscription included, and its `total`
 is the pool size. Plugins read it through `ViewContext.concurrencyManager`
