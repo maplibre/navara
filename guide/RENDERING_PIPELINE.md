@@ -211,10 +211,10 @@ framebuffer no longer writes). Only the color and depth `Texture` identities
 survive; the optional attachments, normal included, are reallocated, so
 consumers re-fetch them every frame. `addEffect` and `addMesh` throw for a
 descriptor whose buffers, joined with the current requirements, would exceed
-the device's `gl.MAX_DRAW_BUFFERS`, unless they are already allocated. A requirement that grows later (an `update()`) is
-logged with `console.error` and the previous configuration is kept, rather
-than producing an incomplete framebuffer; the next re-derivation that fits
-applies.
+the device's `gl.MAX_DRAW_BUFFERS`, unless they are already allocated. A
+requirement that grows later (an `update()`) is logged with `console.error`
+and the previous configuration is kept, rather than producing an incomplete
+framebuffer; the next re-derivation that fits applies.
 
 A configuration change reallocates attachments and recompiles shaders — add
 effects once and tune them via `update()`, don't add/remove per frame.

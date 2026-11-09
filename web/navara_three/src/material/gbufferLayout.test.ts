@@ -203,6 +203,20 @@ describe("exceededGBufferCapacity", () => {
     ).toBeUndefined();
   });
 
+  it("does not count an allocated normal as a globe normal copy", () => {
+    expect(
+      exceededGBufferCapacity(
+        [
+          ["normal", "shadow"],
+          ["selectiveEffect", "emissive"],
+        ],
+        ["globeNormal"],
+        unionGBufferRequirements([["normal"], ["selectiveEffect", "emissive"]]),
+        4,
+      ),
+    ).toBe(5);
+  });
+
   it("counts the normal a globe normal implies", () => {
     expect(
       exceededGBufferCapacity(

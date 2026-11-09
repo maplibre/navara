@@ -2563,6 +2563,10 @@ export default class ThreeView<
    * when changed.
    */
   private _syncGBuffers = (): void => {
+    // Set first: the mesh requirements below go through `getPassKey()`.
+    this.viewContext._mrtPassRequired = [
+      ...this.layersManager.getEffectDescs(),
+    ].some((handle) => handle.ref.getConstructor().requiresMrtPass);
     const buffers = unionGBufferRequirements(this._gbufferRequirements());
     // `addEffect`/`addMesh` reject an over-limit descriptor up front. A
     // requirement that grows after creation is reported instead and the
@@ -2582,11 +2586,6 @@ export default class ThreeView<
     this.viewContext._setGBufferOptions(this._buffers);
   };
 
-  /**
-   * Throws when enabling a descriptor's required G-buffers would push the
-   * attachment count (color + enabled optional buffers) past the device's
-   * `MAX_DRAW_BUFFERS` limit.
-   */
   private _gbufferRequirements(): (readonly GBufferName[])[] {
     const requirements: (readonly GBufferName[])[] = [];
     for (const handle of this.layersManager.getHandles()) {
@@ -2600,6 +2599,11 @@ export default class ThreeView<
     return requirements;
   }
 
+  /**
+   * Throws when enabling a descriptor's required G-buffers would push the
+   * attachment count (color + enabled optional buffers) past the device's
+   * `MAX_DRAW_BUFFERS` limit.
+   */
   private _assertGBufferCapacity(
     required: readonly GBufferName[],
     label: string,

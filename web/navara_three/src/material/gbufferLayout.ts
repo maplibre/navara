@@ -138,9 +138,9 @@ export function exceededGBufferCapacity(
   maxDrawBuffers: number,
 ): number | undefined {
   const needed = unionGBufferRequirements([required]);
-  if (
-    GBUFFER_ATTACHMENT_NAMES.every((name) => !needed[name] || allocated[name])
-  ) {
+  // `globeNormal` included: allocated `normal` alone does not copy it.
+  const names = Object.keys(needed) as GBufferName[];
+  if (names.every((name) => !needed[name] || allocated[name])) {
     return undefined;
   }
   const count = countGBufferAttachments(

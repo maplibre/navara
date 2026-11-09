@@ -22,8 +22,7 @@ class TestMeshDesc extends MeshDescWithSelectiveEffect<
   }
 }
 
-/** One active effect per entry: its `static requiresMrtPass`. */
-const create = (effects: boolean[], buffers: GBufferName[] = []) => {
+const create = (mrtPassRequired: boolean, buffers: GBufferName[] = []) => {
   const scenes = {
     opaque: new Scene(),
     transparent: new Scene(),
@@ -39,11 +38,7 @@ const create = (effects: boolean[], buffers: GBufferName[] = []) => {
     applyShadowMaterial: vi.fn(),
     registerPickableMesh: vi.fn(),
     selectiveEffectRegistry: { slotCount: 0, computeMask: () => 0 },
-    *_getEffects() {
-      for (const requiresMrtPass of effects) {
-        yield { ref: { getConstructor: () => ({ requiresMrtPass }) } };
-      }
-    },
+    _mrtPassRequired: mrtPassRequired,
   } as unknown as ViewContext;
   const view = {
     buffers: resolveGBufferOptions(
@@ -54,22 +49,33 @@ const create = (effects: boolean[], buffers: GBufferName[] = []) => {
   } as unknown as ThreeView;
   const desc = new TestMeshDesc(view, ctx, {});
   desc.onCreate();
-  return { desc, scenes };
+  return { desc, scenes, ctx };
 };
 
 describe("MeshDescWithSelectiveEffect pass", () => {
   it("renders outside the MRT pass when nothing needs it", () => {
-    const { desc, scenes } = create([false]);
+    const { desc, scenes } = create(false);
     expect(desc.raw?.parent).toBe(scenes.opaque);
   });
 
   it("renders in the MRT pass while an optional buffer is allocated", () => {
-    const { desc, scenes } = create([], ["normal"]);
+    const { desc, scenes } = create(false, ["normal"]);
     expect(desc.raw?.parent).toBe(scenes.mrt);
   });
 
   it("renders in the MRT pass while an effect requires it", () => {
-    const { desc, scenes } = create([false, true]);
+    const { desc, scenes } = create(true);
+    expect(desc.raw?.parent).toBe(scenes.mrt);
+  });
+
+  it("moves into the MRT pass when an effect requiring it is added later", () => {
+    const { desc, scenes, ctx } = create(false);
+    ctx._mrtPassRequired = true;
+    const [, onGBufferChanged] =
+      vi
+        .mocked(ctx.on)
+        .mock.calls.find(([event]) => event === "gbufferChanged") ?? [];
+    (onGBufferChanged as () => void)();
     expect(desc.raw?.parent).toBe(scenes.mrt);
   });
 });
