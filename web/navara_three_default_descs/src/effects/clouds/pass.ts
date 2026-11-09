@@ -446,13 +446,7 @@ export class Clouds extends Pass<
     if (!this.own(texture)) return;
     // The shadow reload loads a second STBN; free the one it replaces.
     const previous = this.rawEffect.stbnTexture;
-    if (
-      previous &&
-      previous !== texture &&
-      this.loadedTextures.delete(previous)
-    ) {
-      previous.dispose();
-    }
+    if (previous && this.loadedTextures.delete(previous)) previous.dispose();
     this.rawEffect.stbnTexture = texture;
   };
 
