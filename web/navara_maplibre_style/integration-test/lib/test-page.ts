@@ -90,6 +90,14 @@ async function run(input: object | string) {
     defaultAttribution: false,
     picking: false,
     idleThreshold: 300,
+    // LOD fog relaxes SSE by ~2 px even for the nearest tiles at these camera
+    // distances, which costs DEM cases a level of detail (hillshade and
+    // color-relief look blurry). The harness does not need its savings.
+    ...(Object.values(style.sources ?? {}).some(
+      (s) => s.type === "raster-dem",
+    ) && {
+      lodFog: { enabled: false },
+    }),
   });
   view.on("postRender", () => {
     state.lastRender = performance.now();

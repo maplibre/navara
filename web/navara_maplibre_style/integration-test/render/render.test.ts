@@ -13,6 +13,7 @@ import {
   readSupportTable,
   type CaseResult,
 } from "../lib/config";
+import { buildDemTileFromChildren, isDemTilePath } from "../lib/demFallback";
 
 // Defaults from maplibre-gl-js test/integration/render/render.test.ts.
 const DEFAULT_SIZE = 512;
@@ -107,6 +108,27 @@ for (const id of listCaseIds()) {
         ? route.fulfill({ path: file })
         : route.fulfill({ status: 404 });
     });
+    // DEM tiles the fixtures lack are stitched from deeper fixtures (see
+    // lib/demFallback.ts). Registered last, so it takes precedence for them.
+    const builtDemTiles = new Set<string>();
+    await page.route(
+      (url) => {
+        const file = assetPath(url);
+        return file !== undefined && isDemTilePath(file);
+      },
+      async (route) => {
+        const file = assetPath(new URL(route.request().url()));
+        if (!file) return route.fulfill({ status: 404 });
+        if (fs.existsSync(file)) return route.fulfill({ path: file });
+        const body = await buildDemTileFromChildren(file);
+        if (!body) return route.fulfill({ status: 404 });
+        builtDemTiles.add(path.relative(ASSETS_DIR, file));
+        return route.fulfill({
+          body,
+          contentType: file.endsWith(".webp") ? "image/webp" : "image/png",
+        });
+      },
+    );
     page.on("response", (res) => {
       if (res.status() >= 400) {
         result.console.push(
@@ -129,6 +151,11 @@ for (const id of listCaseIds()) {
       } else if (status === "unstable") {
         result.console.push(
           `[harness] frame did not stabilize after ${MAX_CAPTURES} captures`,
+        );
+      }
+      if (builtDemTiles.size > 0) {
+        result.console.push(
+          `[harness] built ${builtDemTiles.size} DEM tiles from deeper fixtures: ${[...builtDemTiles].sort().join(", ")}`,
         );
       }
       fs.writeFileSync(path.join(caseDir, "actual.png"), png);
@@ -183,6 +210,33 @@ function resolveUpstreamAsset(url: string): string | undefined {
     // A literal `%` that is not an escape, or a missing file.
     return undefined;
   }
+}
+
+/** Where the test page and fixture TileJSONs ask Vite for assets. */
+const ASSETS_PATH_PREFIX = "/maplibre-gl-js/test/integration/assets/";
+
+/**
+ * The path under ASSETS_DIR for an asset request, whether it goes to Vite or
+ * to UPSTREAM_ASSET_ORIGIN, or undefined for any other request. The file need
+ * not exist.
+ */
+function assetPath(url: URL): string | undefined {
+  let relative: string;
+  if (url.href.startsWith(UPSTREAM_ASSET_ORIGIN)) {
+    relative = url.pathname.slice(1);
+  } else if (url.pathname.startsWith(ASSETS_PATH_PREFIX)) {
+    relative = url.pathname.slice(ASSETS_PATH_PREFIX.length);
+  } else {
+    return undefined;
+  }
+  try {
+    relative = decodeURIComponent(relative);
+  } catch {
+    // A literal `%` that is not an escape.
+    return undefined;
+  }
+  const file = path.resolve(ASSETS_DIR, relative);
+  return file.startsWith(ASSETS_DIR + path.sep) ? file : undefined;
 }
 
 function readablePath(url: string): string {
