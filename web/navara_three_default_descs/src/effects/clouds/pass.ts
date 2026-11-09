@@ -436,8 +436,7 @@ export class Clouds extends Pass<
   }
   set qualityPreset(v: CloudsQualityPreset) {
     this.rawEffect.qualityPreset = v;
-    // The preset assigns its own shared Vector2; in-place edits must not
-    // change the preset for other instances.
+    // Presets assign a shared Vector2; copy it so in-place edits stay local.
     this.rawEffect.shadow.mapSize = this.rawEffect.shadow.mapSize.clone();
 
     this.emit("needsUpdate");

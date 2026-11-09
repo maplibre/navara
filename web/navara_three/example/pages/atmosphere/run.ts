@@ -443,7 +443,7 @@ const addCloudsControl = (
   };
   const SHADOW_PARAMS = {
     shadows: DEFAULT_CLOUDS_OPTIONS.shadows,
-    // The default "medium" quality preset's shadow map.
+    // The default "medium" preset's values.
     shadowCascadeCount: 3,
     shadowMapSize: 256,
   };
