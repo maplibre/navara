@@ -383,6 +383,9 @@ export class RecyclingWorkerPool {
   // perpetuate itself through the work it triggers.
 
   private warmSlot(slot: Slot): Promise<void> {
+    // A terminated workerpool still spawns a worker on exec, and the
+    // background warm-ups can start after terminate().
+    if (this.terminated) return Promise.resolve();
     slot.inflight++;
     slot.internal++;
     const settle = () => {

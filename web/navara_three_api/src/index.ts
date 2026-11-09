@@ -49,11 +49,24 @@ export * from "./intersection";
 export * from "./rte";
 export * from "./ellipsoidGeodesic";
 
+// wasm-bindgen's init only short-circuits once a call has finished, so
+// concurrent callers must share one promise or the later instantiation
+// replaces the module the earlier caller's objects live in. @navaramap/font
+// initializes the same module, so the promise lives under a global key both
+// packages use.
+const API_READY = Symbol.for("@navaramap/engine-api/init");
+type ApiReadyHolder = { [API_READY]?: Promise<unknown> };
+
 /**
  * Initializes the Navara API WASM module. Must be called before using other API functions.
  */
 export async function initNavaraApi() {
-  await initApi();
+  const holder = globalThis as ApiReadyHolder;
+  holder[API_READY] ??= initApi().catch((e: unknown) => {
+    holder[API_READY] = undefined;
+    throw e;
+  });
+  await holder[API_READY];
 }
 
 /**

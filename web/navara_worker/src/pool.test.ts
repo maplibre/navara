@@ -3,7 +3,7 @@ import workerpool from "workerpool";
 import type Pool from "workerpool/types/Pool";
 
 import { createConcurrencyManager } from "./manager";
-import { initializeWorkerPool, queueTask } from "./pool";
+import { acquireWorkerPool, queueTask } from "./pool";
 
 const workPoolExecStates = (() => {
   const states = {
@@ -52,7 +52,7 @@ vi.spyOn(workerpool, "pool").mockImplementation(
 // Worker pool is initialized globally.
 const manager = createConcurrencyManager(1);
 const incrementFnMock = vi.spyOn(manager, "increment");
-initializeWorkerPool("https://example.com", manager);
+acquireWorkerPool("https://example.com", manager);
 
 beforeEach(() => {
   workPoolExecStates.reset();
