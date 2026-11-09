@@ -100,6 +100,8 @@ describe("TileTextureCompositor.acquire/release", () => {
     const entry = compositor.cache.getEntry(1n);
     if (!entry) throw new Error("expected entry");
     const atlas = entry.atlas;
+    // Only a rendered atlas is worth pooling.
+    atlas.allocated = true;
 
     compositor.release(1n);
     expect(atlas.dispose).not.toHaveBeenCalled();

@@ -30,6 +30,13 @@ function makeCache(maxPooled = 0) {
   return { cache, factory };
 }
 
+/** Mark a handle's atlas as rendered, as the composite pass does. */
+function rendered(cache: TileTextureCache, handle: bigint) {
+  const entry = cache.getEntry(handle);
+  if (!entry) throw new Error("expected entry to exist");
+  entry.atlas.allocated = true;
+}
+
 describe("TileTextureCache.acquire", () => {
   it("creates exactly one atlas per handle even across multiple acquires", () => {
     const { cache, factory } = makeCache();
@@ -86,6 +93,7 @@ describe("TileTextureCache atlas pooling", () => {
   it("pools a fully-released atlas and reuses it for the next acquire", () => {
     const { cache, factory } = makeCache(2);
     cache.acquire(1n);
+    rendered(cache, 1n);
     const entry = cache.getEntry(1n);
     if (!entry) throw new Error("expected entry to exist");
     const atlas = entry.atlas;
@@ -104,6 +112,7 @@ describe("TileTextureCache atlas pooling", () => {
   it("marks an entry backed by a pooled atlas fully dirty so it gets repainted", () => {
     const { cache } = makeCache(2);
     cache.acquire(1n);
+    rendered(cache, 1n);
     cache.consumeDirty(1n);
     cache.release(1n);
 
@@ -120,6 +129,8 @@ describe("TileTextureCache atlas pooling", () => {
     const { cache } = makeCache(1);
     cache.acquire(1n);
     cache.acquire(2n);
+    rendered(cache, 1n);
+    rendered(cache, 2n);
     const e1 = cache.getEntry(1n);
     const e2 = cache.getEntry(2n);
     if (!e1 || !e2) throw new Error("expected both entries");
@@ -138,6 +149,7 @@ describe("TileTextureCache atlas pooling", () => {
   it("disposeAll drains the pool", () => {
     const { cache } = makeCache(2);
     cache.acquire(1n);
+    rendered(cache, 1n);
     const entry = cache.getEntry(1n);
     if (!entry) throw new Error("expected entry to exist");
     const atlas = entry.atlas;
@@ -148,14 +160,40 @@ describe("TileTextureCache atlas pooling", () => {
     expect(atlas.dispose).toHaveBeenCalledTimes(1);
     expect(cache.pooledCount).toBe(0);
   });
-});
 
-/** Mark a handle's atlas as rendered, as the composite pass does. */
-function rendered(cache: TileTextureCache, handle: bigint) {
-  const entry = cache.getEntry(handle);
-  if (!entry) throw new Error("expected entry to exist");
-  entry.atlas.allocated = true;
-}
+  it("disposes a never-rendered atlas on release instead of pooling it", () => {
+    const { cache } = makeCache(2);
+    cache.acquire(1n);
+    const unrendered = cache.getEntry(1n)?.atlas;
+
+    cache.release(1n);
+
+    expect(unrendered?.dispose).toHaveBeenCalledOnce();
+    expect(cache.pooledCount).toBe(0);
+  });
+
+  it("keeps rendered atlases in a full pool when never-rendered tiles are released", () => {
+    const { cache, factory } = makeCache(2);
+    for (let h = 1n; h <= 4n; h++) cache.acquire(h);
+    rendered(cache, 1n);
+    rendered(cache, 2n);
+    const kept = [cache.getEntry(1n)?.atlas, cache.getEntry(2n)?.atlas];
+    cache.release(1n);
+    cache.release(2n);
+
+    // Tiles that never reached a composite pass, e.g. culled ones.
+    cache.release(3n);
+    cache.release(4n);
+
+    for (const atlas of kept) expect(atlas?.dispose).not.toHaveBeenCalled();
+    cache.acquire(5n);
+    cache.acquire(6n);
+    expect(factory).toHaveBeenCalledTimes(4);
+    expect([cache.getEntry(5n)?.atlas, cache.getEntry(6n)?.atlas]).toEqual(
+      expect.arrayContaining(kept),
+    );
+  });
+});
 
 /** What `TileTextureCompositor.runCompositePassIfDirty` does to the atlas. */
 function bake(cache: TileTextureCache, handle: bigint, hillshade: boolean) {

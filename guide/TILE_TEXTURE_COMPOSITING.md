@@ -417,7 +417,8 @@ other shape (a pooled one when available) and then bakes it in full. The
 cache's outputs object for the tile switches to the new textures in place, and
 the main material's atlas uniforms (`atlasUniforms`) read that object on every
 upload, so every mesh holding the handle follows the swap. The atlas pool keeps
-the most recently released atlases of either shape.
+the most recently released rendered atlases of either shape; an atlas that was
+never rendered holds no GPU memory and is disposed instead.
 
 That `attr.a` is how the absolute winning slot survives into the main shader,
 and `attr.g` is how raster and vector pixels stay distinguishable — both used in

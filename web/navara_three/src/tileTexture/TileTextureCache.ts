@@ -84,7 +84,7 @@ export class TileTextureCache {
 
   /**
    * Decrement refcount. When the last holder releases, the entry is forgotten
-   * and its atlas is pooled for reuse (or disposed once the pool is full).
+   * and its atlas goes to `recycle`.
    */
   release(handle: TileHandle): void {
     const entry = this.entries.get(handle);
@@ -113,10 +113,8 @@ export class TileTextureCache {
    * the atlas (with a pooled one of that shape when there is one) when it has
    * the other shape. The replacement starts with undefined contents, so call
    * this only right before rendering the whole atlas. The entry's outputs
-   * switch to the new textures in place. A replaced atlas that was never
-   * rendered is disposed rather than pooled: it holds no GPU memory, and
-   * pooling it would push out a rendered one. Returns whether the atlas
-   * changed.
+   * switch to the new textures in place; the replaced atlas goes to
+   * `recycle`. Returns whether the atlas changed.
    */
   setNormalAttachment(handle: TileHandle, withNormal: boolean): boolean {
     const entry = this.entries.get(handle);
@@ -133,18 +131,18 @@ export class TileTextureCache {
     entry.outputs.color = atlas.color;
     entry.outputs.attr = atlas.attr;
     entry.outputs.normal = atlas.normal;
-    if (previous.allocated) {
-      this.recycle(previous);
-    } else {
-      previous.dispose();
-    }
+    this.recycle(previous);
     return true;
   }
 
-  /** Pool an atlas no tile uses any more. A full pool disposes its oldest
-   * atlas instead, so the pool follows the shape tiles currently release. */
+  /**
+   * Pool an atlas no tile uses any more. An atlas that was never rendered is
+   * disposed instead: it holds no GPU memory, and pooling it would push out a
+   * rendered one. A full pool disposes its oldest atlas, so the pool follows
+   * the shape tiles currently release.
+   */
   private recycle(atlas: CompositeAtlas): void {
-    if (this.maxPooled === 0) {
+    if (!atlas.allocated || this.maxPooled === 0) {
       atlas.dispose();
       return;
     }
