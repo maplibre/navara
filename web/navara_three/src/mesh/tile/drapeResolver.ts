@@ -1,21 +1,12 @@
 import {
-  LinearMipmapLinearFilter,
-  LinearMipmapNearestFilter,
-  NearestMipmapLinearFilter,
-  NearestMipmapNearestFilter,
+  LinearFilter,
+  NearestFilter,
   type MagnificationTextureFilter,
   type MinificationTextureFilter,
   type Texture,
 } from "three";
 
 import type { TextureOptions } from "../../textures";
-
-const MIPMAP_MIN_FILTERS: ReadonlySet<number> = new Set([
-  NearestMipmapNearestFilter,
-  NearestMipmapLinearFilter,
-  LinearMipmapNearestFilter,
-  LinearMipmapLinearFilter,
-]);
 
 /**
  * A drape resolver owns one family of composite material slots for a terrain
@@ -85,7 +76,9 @@ export function configureTexturizedTexture(
   tex.magFilter = textureOptions.magFilter as MagnificationTextureFilter;
   tex.anisotropy = textureOptions.maxAnisotropy;
   tex.generateMipmaps =
-    textureOptions.useMipmaps && MIPMAP_MIN_FILTERS.has(tex.minFilter);
+    textureOptions.useMipmaps &&
+    tex.minFilter !== LinearFilter &&
+    tex.minFilter !== NearestFilter;
   tex.needsUpdate = true;
   return tex;
 }
