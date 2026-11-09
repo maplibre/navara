@@ -97,7 +97,7 @@ Use these to inherit the scene's existing configuration instead of duplicating i
 | `ctx.getRenderTarget()`       | Get the main render target (includes G-buffer)   |
 | `ctx.getGlobeDepthTexture()`  | Get the globe depth texture for post-processing  |
 | `ctx.getGlobeNormalTexture()` | Get the terrain-only normal, sampled in screen space. Declare `globeNormal` in `requiredBuffers`. It is kept at 1x1 otherwise |
-| `ctx.getNormalTexture()`      | Get the scene normal texture from the G-buffer   |
+| `ctx.getNormalTexture()`      | Get the scene normal texture from the G-buffer. Declare `normal` in `requiredBuffers` |
 | `ctx.getEffectIdsTexture()`   | Get the effect IDs texture from the G-buffer     |
 | `ctx.getEmissiveTexture()`    | Get the emissive texture from the G-buffer       |
 | `ctx.getShadowTexture()`      | Get the shadow texture (R=shadow amount, 0=lit..1=fully shadowed) from the G-buffer |
@@ -129,12 +129,12 @@ Each method returns a `{ value }` ref that the view updates every frame. Assign 
 
 Navara renders into a multiple-render-target (MRT) G-buffer. Depth/normal-based effects (SSAO, SSR, outlines, aerial perspective, clouds) and selective effects (Bloom / Outline) read these attachments, so a mesh participates in those effects only if its material writes the G-buffer.
 
-Only color and normal are always present. The rest are allocated on demand and **packed after them with no gaps**, so their locations shift with the configuration. The shader receives each one's `layout(location = …)` as a stamped define.
+Only color is always present. The rest, normal included, are allocated on demand and **packed after it with no gaps**, so their locations shift with the configuration. The shader receives each one's `layout(location = …)` as a stamped define.
 
 | Attachment | Location | Contents                                                     | Allocated                |
 | ---------- | -------- | ------------------------------------------------------------ | ------------------------ |
 | Color      | 0        | `gl_FragColor`                                                | always                   |
-| Normal     | 1        | View-space normal (plus material properties)                  | always                   |
+| Normal     | 1        | View-space normal (plus material properties)                  | `buffers.normal`         |
 | Effect ID  | packed   | Selective-effect bitmask                                      | `buffers.selectiveEffect` |
 | Emissive   | packed   | Selective-effect additive emissive                            | `buffers.emissive`        |
 | Shadow     | packed   | R = shadow amount (0 = lit .. 1 = shadowed), G = albedo flag  | `buffers.shadow`          |
@@ -259,7 +259,7 @@ view.addMesh<GlowSphereDesc>({
 
 To read these buffers from a custom effect, use the [Buffer / Texture Access](#buffer--texture-access) accessors on `ctx`, or reference the MRT pass from another effect via [`find<MRTPassEffectDesc>("mrt")`](#referencing-other-effect-descs).
 
-The effectIds, emissive, shadow and globeNormal buffers are optional: they exist only while an active effect declares them in its `static requiredBuffers` (e.g. `["selectiveEffect", "emissive"]`, `["shadow"]` or `["globeNormal"]`) or a mesh requests them (see [Requesting G-Buffers](#requesting-g-buffers)), and the accessors return `undefined` otherwise.
+The normal, effectIds, emissive, shadow and globeNormal buffers are optional: they exist only while an active effect declares them in its `static requiredBuffers` (e.g. `["normal"]`, `["selectiveEffect", "emissive"]`, `["shadow"]` or `["globeNormal"]`) or a mesh requests them (see [Requesting G-Buffers](#requesting-g-buffers)), and the accessors return `undefined` otherwise.
 
 An effect whose needs depend on its own configuration overrides `getRequiredBuffers()` instead. The override replaces the static entirely, so declare one or the other. It is read before `onCreate()`, so derive the result from the constructor config, and emit `gbufferRequirementsChanged` on `ctx` when an `update()` changes it. The view then re-derives the buffers. When the new attachments would exceed the device's `MAX_DRAW_BUFFERS`, the view logs an error and keeps the previous buffers. `addEffect()` and `addMesh()` throw in that case instead.
 
