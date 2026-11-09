@@ -1,0 +1,55 @@
+name: Showcase submission
+description: Submit a project built with Navara for the showcases page
+title: "[Showcase]: "
+labels: ["showcase"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for sharing your work! Accepted projects are listed on the [Navara showcases page](https://navara.world/showcases/) with a screenshot linking to your project.
+  - type: input
+    id: name
+    attributes:
+      label: Project name
+      description: The name shown as the title.
+    validations:
+      required: true
+  - type: input
+    id: url
+    attributes:
+      label: Project URL
+      description: A public page where the project runs.
+      placeholder: https://
+    validations:
+      required: true
+  - type: textarea
+    id: screenshot
+    attributes:
+      label: Screenshot
+      description: A screenshot of the project, square if you can, with its subject near the center. Any image format is fine.
+    validations:
+      required: true
+  - type: textarea
+    id: attribution
+    attributes:
+      label: Attribution
+      description: The data credits to show with the screenshot, one per line with its link if it has one. Write "None" when the project needs no attribution.
+      placeholder: |
+        © OpenStreetMap contributors https://www.openstreetmap.org/copyright
+    validations:
+      required: true
+  - type: checkboxes
+    id: pull-request
+    attributes:
+      label: Pull Request
+      options:
+        - label: I will open the Pull Request myself, following the [showcases guide](https://navara.world/docs/guides/community/showcases/).
+  - type: checkboxes
+    id: consent
+    attributes:
+      label: Confirmation
+      options:
+        - label: The project itself shows the attribution required by every data source it uses.
+          required: true
+        - label: I am allowed to share this project, and I agree to have it listed on the Navara showcases page.
+          required: true
