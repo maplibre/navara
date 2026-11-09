@@ -119,4 +119,45 @@ describe("Clouds.dispose", () => {
 
     expect(dispose).toHaveBeenCalled();
   });
+
+  it("frees the STBN replaced by the shadow reload", async () => {
+    vi.spyOn(TextureLoader.prototype, "loadAsync").mockImplementation(
+      () => new Promise(() => {}),
+    );
+    vi.spyOn(DataTextureLoader.prototype, "loadAsync").mockImplementation(
+      () => new Promise(() => {}),
+    );
+    const first = new Data3DTexture();
+    const second = new Data3DTexture();
+    vi.spyOn(STBNLoader.prototype, "loadAsync").mockResolvedValue(
+      first as never,
+    );
+    vi.spyOn(STBNLoader.prototype, "load").mockImplementation(
+      (_url, onLoad) => {
+        onLoad?.(second as never);
+        return second as never;
+      },
+    );
+    const clouds = new Clouds(
+      new PerspectiveCamera(),
+      fakeAtmosphere() as never,
+      { qualityPreset: "low" },
+    );
+    await flush();
+    const disposeFirst = vi.spyOn(first, "dispose");
+    const disposeSecond = vi.spyOn(second, "dispose");
+
+    clouds.inner.events.dispatchEvent({
+      type: "change",
+      property: "atmosphereShadow",
+    });
+
+    expect(clouds.inner.stbnTexture).toBe(second);
+    expect(disposeFirst).toHaveBeenCalled();
+    expect(disposeSecond).not.toHaveBeenCalled();
+
+    clouds.dispose();
+
+    expect(disposeSecond).toHaveBeenCalled();
+  });
 });

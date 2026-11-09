@@ -281,10 +281,7 @@ export class Clouds extends Pass<
             if (!this.shadows) break;
             this.atmosphere.shadow.value = this.inner.atmosphereShadow;
             // Denoise shadow artifact.
-            new STBNLoader().load(this.options.stbnUrl, (data) => {
-              if (!this.rawEffect || !this.own(data)) return;
-              this.rawEffect.stbnTexture = data;
-            });
+            new STBNLoader().load(this.options.stbnUrl, this.onSTBNLoad);
             break;
           case "atmosphereShadowLength":
             this.atmosphere.shadowLength.value =
@@ -448,6 +445,15 @@ export class Clouds extends Pass<
 
   onSTBNLoad = (texture: Data3DTexture): void => {
     if (!this.own(texture)) return;
+    // The shadow reload replaces the STBN loaded by `loadAll()`.
+    const previous = this.rawEffect.stbnTexture;
+    if (
+      previous &&
+      previous !== texture &&
+      this.loadedTextures.delete(previous)
+    ) {
+      previous.dispose();
+    }
     this.rawEffect.stbnTexture = texture;
   };
 
