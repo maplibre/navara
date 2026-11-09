@@ -705,7 +705,7 @@ export class TileTextureCompositor {
    * The pass writes:
    *   color  attachment  = alpha-composited diffuse over N slots
    *   attr   attachment  = water + texturized-layer flags + winning slot idx
-   *   normal attachment  = hillshade normal (or neutral)
+   *   normal attachment  = hillshade normal (a = 0 where no hillshade won)
    *
    * The atlas has the normal attachment only while a hillshade layer feeds
    * it (see `TileTextureCache.setNormalAttachment`). Without it the shader's

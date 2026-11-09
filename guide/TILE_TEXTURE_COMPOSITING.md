@@ -406,19 +406,17 @@ per tile by `TileTextureCache`. The single quad draw writes all of them:
 | `attr` | r / g / b / a | `isWater` / `isTexturized` / `0` / `(winningSlot+1)/255` |
 | `normal` | rgb / a | Hillshade normal in `[0,1]` / `1` when present else `0` |
 
-Only the hillshade branch of the main shader reads `normal`, so the atlas has
-that attachment only while a hillshade layer feeds the bake (2 MB at 512²
-instead of 3 MB). Without it, the tile's `normal` output is `null`, which three
-binds as an all-zero texture (`a = 0`, as if no hillshade slot won), and the
-composite shader's `normal` output (location 2) has no draw buffer, so WebGL2
-discards it. When the bake's feature set gains or loses hillshade,
-`runCompositePassIfDirty` first has the cache swap the atlas for one of the
-other shape (a pooled one when available) and then bakes it in full. The
-cache's outputs object for the tile switches to the new textures in place, and
-the main material's atlas uniforms (`atlasUniforms`) read that object on every
-upload, so every mesh holding the handle follows the swap. The atlas pool keeps
-the most recently released rendered atlases of either shape; an atlas that was
-never rendered holds no GPU memory and is disposed instead.
+Only the main shader's hillshade branch reads `normal`, so the atlas has that
+attachment only while a hillshade layer feeds the bake (2 MB at 512² instead of
+3 MB). Without it, the tile's `normal` output is `null`: three binds an
+all-zero texture (`a = 0`, as if no hillshade slot won), and WebGL2 discards the
+composite shader's location 2 output, which has no draw buffer. When the bake
+gains or loses hillshade, `runCompositePassIfDirty` has the cache swap in an
+atlas of the other shape (a pooled one when available) and bakes it in full.
+The tile's outputs object switches to the new textures in place, and
+`atlasUniforms` reads it on every upload, so every mesh holding the handle
+follows the swap. The pool keeps the most recently released rendered atlases of
+either shape; a never-rendered atlas holds no GPU memory and is disposed.
 
 That `attr.a` is how the absolute winning slot survives into the main shader,
 and `attr.g` is how raster and vector pixels stay distinguishable — both used in

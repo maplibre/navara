@@ -12,12 +12,10 @@ import type {
 const DEV =
   typeof import.meta !== "undefined" && !!(import.meta as ImportMeta).env?.DEV;
 
-// Every atlas is the same size and format, but tile churn during pan/zoom
-// used to allocate and dispose a 2–3MB MRT render target per terrain tile
-// swap. Keeping a few released atlases around lets the next acquire reuse
-// them. Kept small on purpose: pooled atlases are GPU memory the per-tile
-// ledger accounting does not see (a tile is charged for its atlas once the
-// atlas is allocated, a pooled spare belongs to no tile).
+// Tile churn during pan/zoom would allocate and dispose a 2–3MB MRT render
+// target per terrain tile swap; a few released atlases let the next acquire
+// reuse one. Kept small on purpose: a pooled spare belongs to no tile, so the
+// per-tile ledger does not see its GPU memory.
 const DEFAULT_MAX_POOLED_ATLASES = 4;
 
 export type TileTextureCacheOptions = {

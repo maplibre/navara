@@ -36,10 +36,9 @@ export type DirtyReason =
  * - attr:  packed per-pixel material attributes (water flag/scale/speed, …)
  * - normal: hillshade normal map in [0,1], `a = 1` where a hillshade slot won
  *
- * Only the hillshade branch of the main TileMesh shader reads `normal`, so
- * the attachment exists only while the tile has a hillshade layer and is
- * null otherwise. One draw call writes all attachments; the main TileMesh
- * shader samples them independently as Textures.
+ * `normal` exists only while the tile has a hillshade layer: only the main
+ * shader's hillshade branch reads it. One draw call writes all attachments;
+ * the main TileMesh shader samples them as Textures.
  */
 export type CompositeAtlas = {
   readonly target: WebGLRenderTarget;
