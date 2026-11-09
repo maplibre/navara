@@ -182,11 +182,16 @@ async function main() {
     ),
   );
   const expectedPoolSize = Math.min(2, navigator.hardwareConcurrency);
+  // With two cores both sizes clamp to 2, so the pool has nothing to warn about.
+  const expectWarning = Math.min(3, navigator.hardwareConcurrency) > 2;
+  const warned = warnings.some((w) =>
+    w.includes("shared worker pool keeps its size"),
+  );
   check(
     "the first view's workerPoolSize sizes the shared pool",
     poolSizes.every((size) => size === expectedPoolSize) &&
-      warnings.some((w) => w.includes("shared worker pool keeps its size")),
-    { poolSizes, expectedPoolSize, warnings },
+      warned === expectWarning,
+    { poolSizes, expectedPoolSize, expectWarning, warnings },
   );
   for (const view of [a, b]) {
     view.addFontFamily(family);
