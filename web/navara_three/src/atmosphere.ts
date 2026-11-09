@@ -100,6 +100,12 @@ const CPU_RELEASED_TEXTURE_NAMES: readonly AtmosphereTextureName[] = [
 ];
 
 /**
+ * Retries of a failed re-fetch after a context restore. The first waits 1 s and
+ * each next one twice as long (31 s in all).
+ */
+const MAX_RELOAD_RETRIES = 5;
+
+/**
  * The textures guaranteed to be present in an {@link Atmosphere.onTexturesReady}
  * callback for a given needs declaration.
  */
@@ -220,10 +226,14 @@ export class Atmosphere extends EventHandler<AtmosphereEvents> {
   private texturePromises = new Map<AtmosphereTextureName, Promise<void>>();
 
   /**
-   * Pending retries of {@link reloadReleasedTexture}.
+   * The running re-fetch of each released texture, with its retry timer
+   * while it waits between attempts.
    * @private
    */
-  private reloadTimers = new Set<ReturnType<typeof setTimeout>>();
+  private reloads = new Map<
+    AtmosphereTextureName,
+    { timer?: ReturnType<typeof setTimeout> }
+  >();
 
   /**
    * Creates a new Atmosphere instance.
@@ -311,44 +321,53 @@ export class Atmosphere extends EventHandler<AtmosphereEvents> {
   /**
    * three.js re-uploads every texture from its CPU data after a WebGL context
    * restore, so the textures whose data was released are fetched again
-   * (usually from the HTTP cache).
+   * (usually from the HTTP cache). A fetch already in flight is kept; one
+   * waiting to retry starts over at once.
    * @private
    */
   private onContextRestored = () => {
     for (const name of CPU_RELEASED_TEXTURE_NAMES) {
+      const reload = this.reloads.get(name);
+      if (reload != null && reload.timer == null) continue;
+      clearTimeout(reload?.timer);
       this.reloadReleasedTexture(name);
     }
   };
 
   /**
-   * Fetches the data of a released texture into the same texture object,
-   * retrying with backoff until it succeeds, the data is back, or the texture
-   * is disposed.
+   * Fetches the data of a released texture into the same texture object, so
+   * consumers keep their references. Retries with backoff up to
+   * {@link MAX_RELOAD_RETRIES} times, until the data is back or the texture is
+   * disposed.
    * @private
    */
   private reloadReleasedTexture(name: AtmosphereTextureName, attempt = 0) {
-    const key = ATMOSPHERE_TEXTURE_KEYS[name];
-    const texture = this.textures[key];
+    const texture = this.textures[ATMOSPHERE_TEXTURE_KEYS[name]];
     if (texture == null || (texture.image as TextureImageData).data != null) {
+      this.reloads.delete(name);
       return;
     }
+    const reload: { timer?: ReturnType<typeof setTimeout> } = {};
+    this.reloads.set(name, reload);
     this.fetchTexture(name)
       .then((reloaded) => {
-        if (this.textures[key] !== texture) return;
+        if (this.reloads.get(name) !== reload) return;
+        this.reloads.delete(name);
         texture.image = reloaded.image;
         texture.needsUpdate = true;
         this.emit("textureLoaded");
       })
       .catch((e: unknown) => {
+        if (this.reloads.get(name) !== reload) return;
         console.error("Failed to reload atmosphere texture:", e);
-        const timer = setTimeout(
-          () => {
-            this.reloadTimers.delete(timer);
-            this.reloadReleasedTexture(name, attempt + 1);
-          },
-          Math.min(1000 * 2 ** attempt, 30_000),
+        if (attempt >= MAX_RELOAD_RETRIES) {
+          this.reloads.delete(name);
+          return;
+        }
+        reload.timer = setTimeout(
+          () => this.reloadReleasedTexture(name, attempt + 1),
+          1000 * 2 ** attempt,
         );
-        this.reloadTimers.add(timer);
       });
   }
 
@@ -393,10 +412,10 @@ export class Atmosphere extends EventHandler<AtmosphereEvents> {
       "webglcontextrestored",
       this.onContextRestored,
     );
-    for (const timer of this.reloadTimers) {
+    for (const { timer } of this.reloads.values()) {
       clearTimeout(timer);
     }
-    this.reloadTimers.clear();
+    this.reloads.clear();
     for (const texture of Object.values(this.textures)) {
       texture?.dispose();
     }
