@@ -9,7 +9,7 @@ sidebar:
 
 `StreetLightsPlugin` は、道路と建物を持つベクトルタイルセットを夜の街に変えます。`addRoads()` は道路の中心線の上に置いたポリラインレイヤーを路面として受け取り、灯りを持たないフィーチャーを非表示にします。`start()` は同じタイルセットのズーム 14 のタイルを `follow()` に渡した位置の周辺にストリーミングし、すべての道路に沿った街灯、建物リーダーが高さを返した屋上の赤い灯、道路の区間を走る車を配置します。
 
-プラグインはこれらのタイルをもう一度取得します。エンジンは描画のためにタイルを復号しますが、フィーチャーのジオメトリを公開しないためです。プラグインはタイルのスキーマを知りません。`roads` と `buildings` オプションでソースレイヤーの名前を指定し、そのタイルセットのプロパティを読む [`RoadReader`](#roadreader) と [`BuildingReader`](#buildingreader) を渡します。下の例は OpenMapTiles スキーマを読みます。
+プラグインはこれらのタイルをもう一度取得します。エンジンは描画のためにタイルを復号しますが、フィーチャーのジオメトリを公開しないためです。`roads` と `buildings` オプションでソースレイヤーの名前を指定し、そのタイルセットのプロパティを読む [`RoadReader`](#roadreader) と [`BuildingReader`](#buildingreader) を渡します。下の例は OpenMapTiles スキーマを読みます。
 
 街灯と屋上灯は `point` レイヤーです。`start()` に渡した Selective Effect（組み込みの [`selectiveBloom`](../../three_default_descs/effect-desc/selective-bloom-effect-desc/) など）がそれらに適用されます。車は [`StreetTrafficMeshDesc`](#streettrafficmeshdesc) が描く加算合成の点で、プラグインが `init()` 時に登録します。どちらもシーンにライトは必要ありません。
 
@@ -36,7 +36,7 @@ const view = new ThreeView<DefaultDescriptions | StreetTrafficDescriptions>({
 });
 
 const tilejson = new TileJsonPlugin();
-// プラグインはタイルのスキーマを知りません。このリーダーが OpenMapTiles を対応付けます。
+// OpenMapTiles スキーマ用のリーダー。
 const streetLights = new StreetLightsPlugin({
   radius: 2,
   roads: {

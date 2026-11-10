@@ -14,10 +14,8 @@ const METERS_PER_DEGREE = 111320;
 // --- Random sequences ------------------------------------------------------
 
 /**
- * mulberry32: a seeded random sequence in [0, 1). The same algorithm as
- * three's `MathUtils.seededRandom`, but with its state in the closure:
- * tiles stream in asynchronously, so drawing from that one shared sequence
- * would let another user of it shift the placement.
+ * mulberry32: a seeded random sequence in [0, 1) whose state stays in the
+ * closure, so tiles streaming in at any time draw independent sequences.
  */
 export const mulberry32 = (seed: number): (() => number) => {
   let state = seed | 0;
@@ -120,9 +118,9 @@ export const lampsAlongLine = (
 };
 
 /**
- * Street lamps along every road and a red beacon on every roof the reader gave a height. `rand`
- * decides the lamp spacing phase, side and color; give a tile the same
- * sequence to get the same lights each time it streams in.
+ * Street lamps along every road and a red beacon on every roof the reader
+ * gave a height. `rand` decides the lamp spacing phase, side and color; give
+ * a tile the same sequence to get the same lights each time it streams in.
  */
 export const tileLights = (
   network: RoadNetwork,

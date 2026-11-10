@@ -44,10 +44,8 @@ const data = (): StreetTrafficData => ({
 });
 
 // ThreeView and ViewContext have private members, so no object literal can
-// satisfy them structurally. The casts follow the repo's pattern for test
-// stand-ins (navara_three core/MeshDesc.test.ts, EffectDesc.test.ts and
-// navara_maplibre_style MapLibreStylePlugin.test.ts); the desc reads only the
-// camera's field of view and the viewport uniform.
+// satisfy them structurally; the desc reads only the camera's field of view
+// and the viewport uniform.
 const view: ThreeView = { camera: { raw: { fov: 60 } } } as ThreeView;
 const viewport: { value: [number, number, number] | null | undefined } = {
   value: [1200, 750, 2],

@@ -23,10 +23,7 @@ vi.mock("./buildingWindows", async () => ({
 
 const view = new ThreeView();
 // ViewContext has private members, so no object literal can satisfy it
-// structurally. The cast is the repo's pattern for a context a test never
-// reads (navara_three core/MeshDesc.test.ts, EffectDesc.test.ts and
-// navara_maplibre_style MapLibreStylePlugin.test.ts); this desc reads none of
-// it until createPass().
+// structurally; this desc reads none of it until createPass().
 const ctx: ViewContext = {} as ViewContext;
 const create = (
   config: ConstructorParameters<typeof BuildingWindowsEffectDesc>[2],

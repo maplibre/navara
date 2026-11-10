@@ -45,7 +45,6 @@ view.addPlugin(tilejson);
 // OpenMapTiles marks the outline of a building drawn in parts; its parts carry the roof.
 const drawnInParts = ({ hide_3d }: Record<string, unknown>) => hide_3d === true;
 
-// The plugin knows no tile schema: these readers map OpenMapTiles onto it.
 const streets = new StreetLightsPlugin({
   radius: STREET_TILE_RADIUS,
   traffic: { speed: 1, size: 2.5 },

@@ -150,8 +150,7 @@ export class BuildingWindowsPass extends PostProcessingPass {
     uniforms.nvrFloorHeight.value = options.floorHeight;
     uniforms.nvrColumnWidth.value = options.columnWidth;
     uniforms.nvrGroundHeight.value = options.groundHeight;
-    // Passthrough while the effect has no slot yet, as the other selective
-    // effects do.
+    // Passthrough while the effect has no slot yet.
     const slot = desc.getEffectSlot();
     uniforms.nvrSlot.value = Math.max(0, slot);
     uniforms.nvrIntensity.value = slot < 0 ? 0 : options.intensity;

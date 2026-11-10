@@ -11,7 +11,7 @@
  * this plugin: the engine decodes them for rendering but exposes no feature
  * geometry.
  *
- * The plugin knows no tile schema: {@link StreetLightsConfig.roads} and
+ * {@link StreetLightsConfig.roads} and
  * {@link StreetLightsConfig.buildings} name the tile layers and give a
  * {@link RoadReader} and a {@link BuildingReader} for the tile set's
  * properties.

@@ -9,7 +9,7 @@ sidebar:
 
 `StreetLightsPlugin` turns a vector tile set of roads and buildings into a city at night. `addRoads()` takes a polyline layer over the road centerlines as the road surfaces and hides every feature without lights. `start()` then streams the zoom 14 tiles of the same tile set in around the position given to `follow()`, and places street lamps along every road, a red beacon on every roof the building reader gives a height, and cars that drive along the road segments.
 
-The plugin fetches those tiles a second time. The engine decodes them for rendering but exposes no feature geometry. The plugin knows no tile schema: the `roads` and `buildings` options name the source layers and give a [`RoadReader`](#roadreader) and a [`BuildingReader`](#buildingreader) for the tile set's properties. The example below reads the OpenMapTiles schema.
+The plugin fetches those tiles a second time. The engine decodes them for rendering but exposes no feature geometry. The `roads` and `buildings` options name the source layers and give a [`RoadReader`](#roadreader) and a [`BuildingReader`](#buildingreader) for the tile set's properties. The example below reads the OpenMapTiles schema.
 
 The lamps and beacons are `point` layers. The selective effects given to `start()` apply to them, such as the built-in [`selectiveBloom`](../../three_default_descs/effect-desc/selective-bloom-effect-desc/). The cars are additive points drawn by [`StreetTrafficMeshDesc`](#streettrafficmeshdesc), which the plugin registers on `init()`. Neither needs a light in the scene.
 
@@ -36,7 +36,7 @@ const view = new ThreeView<DefaultDescriptions | StreetTrafficDescriptions>({
 });
 
 const tilejson = new TileJsonPlugin();
-// The plugin knows no tile schema: these readers map OpenMapTiles onto it.
+// Readers for the OpenMapTiles schema.
 const streetLights = new StreetLightsPlugin({
   radius: 2,
   roads: {
