@@ -55,13 +55,10 @@ Nothing is asserted beyond the page rendering without an error. The pixelmatch
 diff ratio, computed as in maplibre-gl-js, is only a hint: Navara renders a
 globe and does not implement every style property.
 
-The DEM fixtures cover only the zoom MapLibre loads, while Navara can stop a
-level shallower on the small test canvases. The spec serves those missing
-`*.terrain.*`/`*.terrarium.*` tiles stitched from the fixtures below them at
-their own resolution (`lib/demFallback.ts`), as a server with a full pyramid
-would; such cases log `[harness] built N DEM tiles from deeper fixtures`.
-Styles with a `raster-dem` source also run without LOD fog
-(`lib/test-page.ts`), which would otherwise cost them a level of detail.
+The DEM fixtures cover only the zoom MapLibre loads, one level below the map
+zoom for a 256 px source, while Navara picks a level by screen-space error.
+Styles with a `raster-dem` source therefore run with `maxSse: 1` and without
+LOD fog (`lib/test-page.ts`), so Navara loads those same tiles.
 
 ## Unsupported cases
 
