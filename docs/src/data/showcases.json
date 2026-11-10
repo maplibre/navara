@@ -1,5 +1,17 @@
 [
   {
+    "title": "OpenStreetMap Sound Demo Navara",
+    "href": "https://smellman.github.io/osm-sound-demo-navara/",
+    "image": "showcases/osm-sound-demo-navara.avif",
+    "attributions": [
+      { "text": "© OpenMapTiles", "href": "https://www.openmaptiles.org/" },
+      {
+        "text": "© OpenStreetMap contributors",
+        "href": "https://www.openstreetmap.org/copyright"
+      }
+    ]
+  },
+  {
     "title": "Night City",
     "href": "https://navara.world/examples/showcase/night-city",
     "image": "showcases/night-city.avif",
