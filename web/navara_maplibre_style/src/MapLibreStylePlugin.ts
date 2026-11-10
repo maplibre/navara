@@ -29,6 +29,7 @@ import {
 import {
   colorReliefLayerFollowsZoom,
   getSymbolPlacement,
+  hillshadeLayerFollowsZoom,
   symbolLayerFollowsZoom,
   toLayerDescription,
 } from "./adapters/toLayerDescription";
@@ -73,6 +74,12 @@ function serializeMaterials(layerDesc: LayerDescription): string {
       layerDesc.raster?.opacity,
       layerDesc.elevationHeatmap.filter,
     ]);
+  }
+  if (layerDesc.type === "raster" && layerDesc.hillshade) {
+    // An interpolated exaggeration changes continuously with zoom; a 0.05 step keeps
+    // `layer.update()` to visible changes.
+    const exaggeration = layerDesc.hillshade.exaggeration ?? 0;
+    return String(Math.round(exaggeration / 0.05));
   }
   return "";
 }
@@ -851,7 +858,8 @@ export class MapLibreStylePlugin extends Plugin<ThreeView, ViewContext> {
 
     if (
       symbolLayerFollowsZoom(styleLayer) ||
-      colorReliefLayerFollowsZoom(styleLayer)
+      colorReliefLayerFollowsZoom(styleLayer) ||
+      hillshadeLayerFollowsZoom(styleLayer)
     ) {
       this.zoomFollowingLayers.set(layer, {
         styleLayer,

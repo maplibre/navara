@@ -76,6 +76,15 @@ export function symbolLayerFollowsZoom(styleLayer: StyleLayer): boolean {
 }
 
 /**
+ * Whether a hillshade layer's exaggeration depends on zoom, so its
+ * description must be rebuilt as the zoom changes.
+ */
+export function hillshadeLayerFollowsZoom(styleLayer: StyleLayer): boolean {
+  if (styleLayer.type !== "hillshade") return false;
+  return expressionUsesZoom(styleLayer.paint?.["hillshade-exaggeration"]);
+}
+
+/**
  * Whether a color-relief layer's opacity or resampling depends on zoom, so its
  * description must be rebuilt as the zoom changes.
  */
@@ -86,6 +95,37 @@ export function colorReliefLayerFollowsZoom(styleLayer: StyleLayer): boolean {
     expressionUsesZoom(paint["color-relief-opacity"]) ||
     expressionUsesZoom(paint.resampling)
   );
+}
+
+type LayerValueFn = ReturnType<StyleEngine["createValueFn"]>;
+
+/**
+ * Compiled layer-level property functions. Zoom-following layers evaluate the
+ * same property on every zoom change, and compiling an expression is the
+ * costly part. A function depends only on the layer's expression and spec,
+ * so it is kept for the lifetime of the layer object. Not keyed by engine: the
+ * plugin uses a single engine, so a layer is never evaluated by two.
+ */
+const layerValueFns = new WeakMap<StyleLayer, Map<string, LayerValueFn>>();
+
+function layerValueFn(
+  engine: StyleEngine,
+  styleLayer: StyleLayer,
+  kind: "layout" | "paint",
+  key: string,
+  expr: ValueExpression,
+  spec: Parameters<StyleEngine["createValueFn"]>[1],
+): LayerValueFn {
+  let byKey = layerValueFns.get(styleLayer);
+  if (!byKey) layerValueFns.set(styleLayer, (byKey = new Map()));
+
+  const cacheKey = `${kind}:${key}`;
+  let fn = byKey.get(cacheKey);
+  if (!fn) {
+    fn = engine.createValueFn(expr, spec);
+    byKey.set(cacheKey, fn);
+  }
+  return fn;
 }
 
 /**
@@ -112,7 +152,11 @@ function evaluateLayerProperty(
   if (expr === undefined) return undefined;
 
   try {
-    return engine.createValueFn(
+    return layerValueFn(
+      engine,
+      styleLayer,
+      kind,
+      key,
       expr,
       spec,
     )({
@@ -409,13 +453,37 @@ function createRasterLayer(source: Source): LayerDescription {
 }
 
 /**
- * Create layer description for hillshade layer.
+ * Create layer description for hillshade layer. `hillshade-exaggeration` is
+ * passed through as Navara's exaggeration, evaluated at `zoom` (see
+ * {@link hillshadeLayerFollowsZoom}). When the style leaves it unset, Navara's
+ * own default applies rather than the spec default.
  */
-function createHillshadeLayer(source: Source): LayerDescription {
+function createHillshadeLayer(
+  source: Source,
+  styleLayer: StyleLayer,
+  engine?: StyleEngine,
+  zoom = CONSTRUCTION_ZOOM,
+): LayerDescription {
+  const isSet =
+    styleLayer.type === "hillshade" &&
+    styleLayer.paint?.["hillshade-exaggeration"] !== undefined;
+  const exaggeration =
+    engine && isSet
+      ? evaluateLayerProperty(
+          engine,
+          styleLayer,
+          "paint",
+          "hillshade-exaggeration",
+          zoom,
+        )
+      : undefined;
   return {
     type: "raster",
     source,
-    hillshade: {},
+    hillshade:
+      typeof exaggeration === "number" && Number.isFinite(exaggeration)
+        ? { exaggeration }
+        : {},
   };
 }
 
@@ -757,7 +825,7 @@ export function toLayerDescription(
     case "raster":
       return createRasterLayer(source);
     case "hillshade":
-      return createHillshadeLayer(source);
+      return createHillshadeLayer(source, styleLayer, engine, zoom);
     case "color-relief":
       return createColorReliefLayer(source, styleLayer, engine, zoom);
     case "symbol":

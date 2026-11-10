@@ -59,7 +59,8 @@ describe("generateCompositeFragmentShader", () => {
       hasHillshade: true,
     });
     expect(src).toContain("uniform bool uIsHillshades[2];");
-    expect(src).toContain("uniform float uHillshadeExaggeration;");
+    // Exaggeration is applied once, by the TileMesh shader, not here.
+    expect(src).not.toContain("uHillshadeExaggeration");
     expect(src).toContain("hillshadeNormal = n0 * 0.5 + 0.5;");
     expect(src).toContain("hillshadeNormal = n1 * 0.5 + 0.5;");
     // Hillshade slots must contribute no color to the composite.

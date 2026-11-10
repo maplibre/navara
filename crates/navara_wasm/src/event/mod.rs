@@ -12,7 +12,8 @@ use wasm_bindgen::prelude::*;
 use worker::WorkerTaskDelegatedEvent;
 
 use navara_wasm_types::{
-    CameraFlightEndedEvent, CameraFrustum, Globe, LLE, RasterTileInternalMaterial, Transform,
+    CameraFlightEndedEvent, CameraFrustum, ElevationDecoder, Globe, LLE,
+    RasterTileInternalMaterial, Transform,
 };
 
 // Fields are private on purpose: exposing them via `getter_with_clone` would
@@ -328,6 +329,11 @@ pub struct HillshadeBackfilledEvent {
     pub target_entity_gen: Option<u32>, // Target entity gen, None when not applicable
 
     pub edge_direction: u8, // 0=Left, 1=Right, 2=Top, 3=Bottom, 255=N/A
+
+    /// DEM decoder of the hillshade layer's source, set with `original_handle`.
+    #[wasm_bindgen(readonly)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub elevation_decoder: Option<ElevationDecoder>,
 }
 
 impl From<navara_event::Events<'_>> for Events {
@@ -734,6 +740,7 @@ impl<'a>
             target_entity_ind: target_ind,
             target_entity_gen: target_gen,
             edge_direction: ev.comp.edge_direction,
+            elevation_decoder: ev.comp.elevation_decoder.map(Into::into),
         }
     }
 }

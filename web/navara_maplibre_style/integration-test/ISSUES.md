@@ -14,17 +14,6 @@ partly.
 
 ## Rendering
 
-### A style without a visible background layer paints the globe opaque black
-
-MapLibre leaves the canvas transparent when no background layer is drawn;
-Navara fills the globe with opaque black (`BackgroundHandler`'s
-`applyDefaultBackground`, documented there as "MapLibre's fallback").
-
-- Affects nearly every GeoJSON case. It also hides black features on top, for
-  example the 50% black fills in `within/*`.
-- Cases: `empty/empty`, `visibility/background/none`, `fill-color/*`,
-  `geojson/*`, `within/*`.
-
 ### Only the top-most background layer is used
 
 Background layers are not composited. The top-most one alone sets the globe
@@ -85,17 +74,6 @@ The extrusions render once the scene has lights, which the harness adds
   follows the layer order and shows only the upper layer.
 - `fill-extrusion-color/default`, `fill-extrusion-height/*`,
   `fill-extrusion-base/*`: the unset color is drawn white (see "Unset paint colors").
-
-### hillshade relief is barely visible
-
-- With the harness lights the terrain is an almost flat light gray; MapLibre
-  draws strong relief with its own illumination
-  (`hillshade-illumination-direction`, default 335°), independent of scene
-  lights.
-- `hillshade-*-color` paint properties have no effect (supported.json marks
-  the layer ⚠️, "layer only").
-- Cases: `hillshade-*/default`, `hillshade-accent-color/terrarium`,
-  `hillshade-maxzoom/*`, `resampling/hillshade/default`.
 
 ### `interpolate-hcl` (legacy `colorSpace: "hcl"`) yields a different color
 
