@@ -190,13 +190,13 @@ type StreetLightsSource = {
 ```typescript
 type StreetLightsRoads = StreetLightsSource &
   RoadsReading & {
-    polyline?: VectorLayer["polyline"];
+    polyline?: NonNullable<VectorLayer["polyline"]>;
   };
 ```
 
-| Property   | Type                      | Default | Description                                                                                                       |
-| ---------- | ------------------------- | ------- | ----------------------------------------------------------------------------------------------------------------- |
-| `polyline` | `VectorLayer["polyline"]` | `{}`    | The road surface's material, as `polyline` in `view.addLayer()`. The plugin sets each feature's `show` and `width`. |
+| Property   | Type                                   | Default | Description                                                                                                       |
+| ---------- | -------------------------------------- | ------- | ----------------------------------------------------------------------------------------------------------------- |
+| `polyline` | `NonNullable<VectorLayer["polyline"]>` | `{}`    | The road surface's material, as `polyline` in `view.addLayer()`. The plugin sets each feature's `show` and `width`. |
 
 The reader comes from [`RoadsReading`](#roadsreading).
 

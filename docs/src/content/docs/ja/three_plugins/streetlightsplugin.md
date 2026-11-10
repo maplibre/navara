@@ -190,13 +190,13 @@ type StreetLightsSource = {
 ```typescript
 type StreetLightsRoads = StreetLightsSource &
   RoadsReading & {
-    polyline?: VectorLayer["polyline"];
+    polyline?: NonNullable<VectorLayer["polyline"]>;
   };
 ```
 
-| プロパティ | 型                        | デフォルト | 説明                                                                                                        |
-| ---------- | ------------------------- | ---------- | ----------------------------------------------------------------------------------------------------------- |
-| `polyline` | `VectorLayer["polyline"]` | `{}`       | 路面のマテリアル。`view.addLayer()` の `polyline` と同じです。各フィーチャーの `show` と `width` はプラグインが設定します。 |
+| プロパティ | 型                                     | デフォルト | 説明                                                                                                        |
+| ---------- | -------------------------------------- | ---------- | ----------------------------------------------------------------------------------------------------------- |
+| `polyline` | `NonNullable<VectorLayer["polyline"]>` | `{}`       | 路面のマテリアル。`view.addLayer()` の `polyline` と同じです。各フィーチャーの `show` と `width` はプラグインが設定します。 |
 
 リーダーは [`RoadsReading`](#roadsreading) から来ます。
 
