@@ -164,6 +164,7 @@ describe("toLayerDescription", () => {
         source: mockSource,
         polygon: {
           clampToGround: true,
+          geodesic: false,
         },
       });
     });
@@ -212,6 +213,7 @@ describe("toLayerDescription", () => {
         source: mockSource,
         polyline: {
           clampToGround: true,
+          geodesic: false,
         },
       });
     });
