@@ -9,7 +9,7 @@ sidebar:
 
 `StreetLightsPlugin` turns a vector tile set of roads and buildings into a city at night. `addRoads()` takes a polyline layer over the road centerlines as the road surfaces and hides every feature without lights. `start()` then streams the zoom 14 tiles of the same tile set in around the position given to `follow()`, and places street lamps along every road, a red beacon on every roof the building reader gives a height, and cars that drive along the road segments.
 
-The plugin fetches those tiles a second time. The engine decodes them for rendering but exposes no feature geometry. The plugin knows no tile schema: the `roads` and `buildings` options name the tile layers and give a [`RoadReader`](#roadreader) and a [`BuildingReader`](#buildingreader) for the tile set's properties. The example below reads the OpenMapTiles schema.
+The plugin fetches those tiles a second time. The engine decodes them for rendering but exposes no feature geometry. The plugin knows no tile schema: the `roads` and `buildings` options name the source layers and give a [`RoadReader`](#roadreader) and a [`BuildingReader`](#buildingreader) for the tile set's properties. The example below reads the OpenMapTiles schema.
 
 The lamps and beacons are `point` layers. The selective effects given to `start()` apply to them, such as the built-in [`selectiveBloom`](../../three_default_descs/effect-desc/selective-bloom-effect-desc/). The cars are additive points drawn by [`StreetTrafficMeshDesc`](#streettrafficmeshdesc), which the plugin registers on `init()`. Neither needs a light in the scene.
 
@@ -40,17 +40,17 @@ const tilejson = new TileJsonPlugin();
 const streetLights = new StreetLightsPlugin({
   radius: 2,
   roads: {
-    layer: "transportation",
-    properties: ["class", "oneway"],
-    read: ({ class: roadClass, oneway }) =>
+    sourceLayers: ["transportation"],
+    filterFeatureProperties: ["class", "oneway"],
+    evaluateFeature: ({ class: roadClass, oneway }) =>
       isRoadClass(roadClass)
         ? { roadClass, oneway: oneway === 1 || oneway === -1 ? oneway : 0 }
         : undefined,
   },
   buildings: {
-    layer: "building",
+    sourceLayers: ["building"],
     // Beacons from 90 m up; an outline drawn in parts leaves them to its parts.
-    read: ({ render_height: height, hide_3d }) =>
+    evaluateFeature: ({ render_height: height, hide_3d }) =>
       typeof height === "number" && height >= 90 && hide_3d !== true
         ? height
         : undefined,
@@ -104,8 +104,8 @@ Register the plugin with `view.addPlugin()` **before** `view.init()`. On `init()
 | --------------- | ---------------------- | ------- | ----------------------------------------------------------------------------------------------------------------------------- |
 | `radius`        | `number`               | `2`     | Tiles kept loaded around the followed position, as a radius in zoom 14 tiles. `2` is a 5 × 5 block, about 10 km across at Tokyo's latitude. |
 | `traffic`       | `StreetTrafficOptions` | `{}`    | Speed multiplier and light size of the cars. See [`StreetTrafficOptions`](#streettrafficoptions).                            |
-| `roads`         | `StreetLightsRoads`    |         | Which tile layer holds the roads and how to read them. See [`StreetLightsRoads`](#streetlightsroads).                        |
-| `buildings`     | `StreetLightsBuildings` |        | Which tile layer holds the buildings and how to read them. See [`StreetLightsBuildings`](#streetlightsbuildings).            |
+| `roads`         | `StreetLightsRoads`    |         | Which source layers hold the roads and how to read them. See [`StreetLightsRoads`](#streetlightsroads).                        |
+| `buildings`     | `StreetLightsBuildings` |        | Which source layers hold the buildings and how to read them. See [`StreetLightsBuildings`](#streetlightsbuildings).            |
 
 ## Methods
 
@@ -115,7 +115,7 @@ Register the plugin with `view.addPlugin()` **before** `view.init()`. On `init()
 addRoads(layer: Layer): void
 ```
 
-Takes a [vector layer](../../three/layer/vector-layer/) with a `polyline` material over the road centerlines as the road surfaces. Every feature the road reader skips, such as rail and paths, is hidden. The rest get the width of their [`RoadClass`](#roadclass), and follow `setVisible()`. The layer's own material gives the color and the clamping. The layer stays yours to delete. While the plugin holds it, its per-feature `show` and `width` are the plugin's, so another evaluator on the same layer competes with it. Giving the same layer again does nothing. Features the layer already holds are evaluated again on the next frame. The layer must show only the tile layer named by `roads.layer`, so give it `sourceLayers` with that same name: the lamps and cars come from those roads, and other line layers can carry the same properties (OpenMapTiles `transportation_name` does) and would be drawn as roads too. Must be called **after** `view.init()`. Otherwise the call throws.
+Takes a [vector layer](../../three/layer/vector-layer/) with a `polyline` material over the road centerlines as the road surfaces. Every feature the road reader skips, such as rail and paths, is hidden. The rest get the width of their [`RoadClass`](#roadclass), and follow `setVisible()`. The layer's own material gives the color and the clamping. The layer stays yours to delete. While the plugin holds it, its per-feature `show` and `width` are the plugin's, so another evaluator on the same layer competes with it. Giving the same layer again does nothing. Features the layer already holds are evaluated again on the next frame. The layer must show only the source layers named by `roads.sourceLayers`, so give it the same `sourceLayers`: the lamps and cars come from those roads, and other line layers can carry the same properties (OpenMapTiles `transportation_name` does) and would be drawn as roads too. Must be called **after** `view.init()`. Otherwise the call throws.
 
 ### start(options)
 
@@ -184,31 +184,31 @@ The constructor options. See [Constructor](#constructor).
 
 ```typescript
 type StreetLightsRoads = {
-  layer: string;
-  read: RoadReader;
-  properties?: string[];
+  sourceLayers: string[];
+  evaluateFeature: RoadReader;
+  filterFeatureProperties?: string[];
 };
 ```
 
-| Property     | Type         | Default            | Description                                                                                                                      |
-| ------------ | ------------ | ------------------ | -------------------------------------------------------------------------------------------------------------------------------- |
-| `layer`      | `string`     |                    | Tile layer holding the road centerlines.                                                                                         |
-| `read`       | `RoadReader` |                    | Reads one road feature: its [`RoadClass`](#roadclass) and direction. See [`RoadReader`](#roadreader).                            |
-| `properties` | `string[]`   | all                | Properties `read` needs. The reader sees only these, both on the road layer and when the lamps and cars are placed, so list every name it reads. Without a list it sees every property, and the road layer reads them all on each evaluation. |
+| Property                  | Type         | Default | Description                                                                                                       |
+| ------------------------- | ------------ | ------- | ----------------------------------------------------------------------------------------------------------------- |
+| `sourceLayers`            | `string[]`   |         | Source layers holding the road centerlines.                                                                       |
+| `evaluateFeature`         | `RoadReader` |         | Reads one road feature: its [`RoadClass`](#roadclass) and direction. See [`RoadReader`](#roadreader).            |
+| `filterFeatureProperties` | `string[]`   | all     | Properties `evaluateFeature` needs. It sees only these, both on the road layer and when the lamps and cars are placed, so list every name it reads. Without a list it sees every property, and the road layer reads them all on each evaluation. |
 
 ### StreetLightsBuildings
 
 ```typescript
 type StreetLightsBuildings = {
-  layer: string;
-  read: BuildingReader;
+  sourceLayers: string[];
+  evaluateFeature: BuildingReader;
 };
 ```
 
-| Property | Type             | Default      | Description                                                                                  |
-| -------- | ---------------- | ------------ | -------------------------------------------------------------------------------------------- |
-| `layer`  | `string`         |              | Tile layer holding the building footprints.                                                  |
-| `read`   | `BuildingReader` |              | Reads one building feature: its roof height, or `undefined` for no beacon. See [`BuildingReader`](#buildingreader). |
+| Property          | Type             | Default | Description                                                                                  |
+| ----------------- | ---------------- | ------- | -------------------------------------------------------------------------------------------- |
+| `sourceLayers`    | `string[]`       |         | Source layers holding the building footprints.                                               |
+| `evaluateFeature` | `BuildingReader` |         | Reads one building feature: its roof height, or `undefined` for no beacon. See [`BuildingReader`](#buildingreader). |
 
 ### RoadReader
 
@@ -232,7 +232,7 @@ const read: RoadReader = ({ highway }) =>
       ? { roadClass: "minor" }
       : undefined;
 
-// Given to the plugin as `roads: { layer: "roads", properties: ["highway"], read }`.
+// Given to the plugin as `roads: { sourceLayers: ["roads"], filterFeatureProperties: ["highway"], evaluateFeature: read }`.
 ```
 
 ### BuildingReader

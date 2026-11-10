@@ -257,7 +257,10 @@ describe("StreetLightsPlugin.addRoads", () => {
 
     const all = new StreetLightsPlugin({
       ...TEST_SCHEMA,
-      roads: { layer: "roads", read: () => ({ roadClass: "minor" }) },
+      roads: {
+        sourceLayers: ["roads"],
+        evaluateFeature: () => ({ roadClass: "minor" }),
+      },
     });
     await all.init(view, NO_CTX);
     all.addRoads(view.addLayer({ type: "vector", source: "roads" }));
@@ -269,13 +272,13 @@ describe("StreetLightsPlugin.addRoads", () => {
     const { view, layers } = makeFakeView();
     const plugin = new StreetLightsPlugin({
       roads: {
-        layer: "roads",
-        read: (properties) =>
+        sourceLayers: ["roads"],
+        evaluateFeature: (properties) =>
           properties.highway === "main" ? { roadClass: "primary" } : undefined,
       },
       buildings: {
-        layer: "buildings",
-        read: (properties) =>
+        sourceLayers: ["buildings"],
+        evaluateFeature: (properties) =>
           typeof properties.height === "number" ? properties.height : undefined,
       },
     });
@@ -296,8 +299,8 @@ describe("StreetLightsPlugin.addRoads", () => {
       TEMPLATE,
       tileCoordinate(TOKYO.lng, TOKYO.lat),
       expect.objectContaining({
-        roads: expect.objectContaining({ layer: "roads" }),
-        buildings: expect.objectContaining({ layer: "buildings" }),
+        roads: expect.objectContaining({ sourceLayers: ["roads"] }),
+        buildings: expect.objectContaining({ sourceLayers: ["buildings"] }),
       }),
       expect.any(AbortSignal),
     );

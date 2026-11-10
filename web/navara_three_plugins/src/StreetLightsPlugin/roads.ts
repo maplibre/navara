@@ -100,26 +100,26 @@ export type BuildingReader = (
   properties: Record<string, unknown>,
 ) => number | undefined;
 
-/** Which tile layer holds the roads and how to read them. */
+/** Which tile layers hold the roads and how to read them. */
 export type StreetLightsRoads = {
-  /** Tile layer holding the road centerlines. */
-  layer: string;
+  /** Source layers holding the road centerlines. */
+  sourceLayers: string[];
   /** Reads one road feature's properties. */
-  read: RoadReader;
+  evaluateFeature: RoadReader;
   /**
-   * Properties the reader needs. The reader sees only these, both on the
-   * road layer and when the lamps and cars are placed. All properties when
+   * Properties `evaluateFeature` needs. It sees only these, both on the road
+   * layer and when the lamps and cars are placed. All properties when
    * omitted.
    */
-  properties?: string[];
+  filterFeatureProperties?: string[];
 };
 
-/** Which tile layer holds the buildings and how to read them. */
+/** Which tile layers hold the buildings and how to read them. */
 export type StreetLightsBuildings = {
-  /** Tile layer holding the building footprints. */
-  layer: string;
+  /** Source layers holding the building footprints. */
+  sourceLayers: string[];
   /** Reads one building feature's properties. */
-  read: BuildingReader;
+  evaluateFeature: BuildingReader;
 };
 
 export type TileSchema = {
@@ -157,14 +157,14 @@ export const pickProperties = (
 /**
  * Reads one road feature through the schema. The road layer and the lamp and
  * car placement both go through here, so they agree on which features are
- * roads. `properties` must already be limited to `schema.properties`, as the
- * road layer's evaluator gets them.
+ * roads. `properties` must already be limited to
+ * `schema.filterFeatureProperties`, as the road layer's evaluator gets them.
  */
 export const readRoadFeature = (
   schema: StreetLightsRoads,
   properties: Record<string, unknown>,
 ): { style: RoadStyle; oneway: Oneway } | undefined => {
-  const road = schema.read(properties);
+  const road = schema.evaluateFeature(properties);
   if (!road) return undefined;
   return { style: ROADS[road.roadClass], oneway: road.oneway ?? 0 };
 };

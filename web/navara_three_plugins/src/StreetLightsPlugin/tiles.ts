@@ -103,8 +103,8 @@ export const readRoads = (
 ) => {
   for (let i = 0; i < layer.length; i++) {
     const feature = layer.feature(i);
-    const properties = schema.properties
-      ? pickProperties(feature.properties, schema.properties)
+    const properties = schema.filterFeatureProperties
+      ? pickProperties(feature.properties, schema.filterFeatureProperties)
       : feature.properties;
     const road = readRoadFeature(schema, properties);
     if (!road) continue;
@@ -171,11 +171,13 @@ export const loadRoadNetwork = async (
 
   const roads: Road[] = [];
   const roofs: Roof[] = [];
-  const roadLayer = vectorTile.layers[schema.roads.layer];
-  if (roadLayer) readRoads(roadLayer, tile, schema.roads, roads);
-  const buildingLayer = vectorTile.layers[schema.buildings.layer];
-  if (buildingLayer) {
-    readRoofs(buildingLayer, tile, schema.buildings.read, roofs);
+  for (const name of schema.roads.sourceLayers) {
+    const layer = vectorTile.layers[name];
+    if (layer) readRoads(layer, tile, schema.roads, roads);
+  }
+  for (const name of schema.buildings.sourceLayers) {
+    const layer = vectorTile.layers[name];
+    if (layer) readRoofs(layer, tile, schema.buildings.evaluateFeature, roofs);
   }
   return { roads, roofs };
 };

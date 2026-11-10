@@ -6,16 +6,16 @@ import { isRoadClass, type TileSchema } from "./roads";
  */
 export const TEST_SCHEMA: TileSchema = {
   roads: {
-    layer: "transportation",
-    properties: ["class", "oneway"],
-    read: ({ class: roadClass, oneway }) =>
+    sourceLayers: ["transportation"],
+    filterFeatureProperties: ["class", "oneway"],
+    evaluateFeature: ({ class: roadClass, oneway }) =>
       isRoadClass(roadClass)
         ? { roadClass, oneway: oneway === 1 || oneway === -1 ? oneway : 0 }
         : undefined,
   },
   buildings: {
-    layer: "building",
-    read: ({ render_height: height }) =>
+    sourceLayers: ["building"],
+    evaluateFeature: ({ render_height: height }) =>
       typeof height === "number" && height >= 90 ? height : undefined,
   },
 };

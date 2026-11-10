@@ -50,17 +50,17 @@
  * const streetLights = new StreetLightsPlugin({
  *   radius: 2,
  *   roads: {
- *     layer: "transportation",
- *     properties: ["class", "oneway"],
- *     read: ({ class: roadClass, oneway }) =>
+ *     sourceLayers: ["transportation"],
+ *     filterFeatureProperties: ["class", "oneway"],
+ *     evaluateFeature: ({ class: roadClass, oneway }) =>
  *       isRoadClass(roadClass)
  *         ? { roadClass, oneway: oneway === 1 || oneway === -1 ? oneway : 0 }
  *         : undefined,
  *   },
  *   buildings: {
- *     layer: "building",
+ *     sourceLayers: ["building"],
  *     // Roofs from 90 m up; an outline drawn in parts leaves the beacon to them.
- *     read: ({ render_height: height, hide_3d }) =>
+ *     evaluateFeature: ({ render_height: height, hide_3d }) =>
  *       typeof height === "number" && height >= 90 && hide_3d !== true
  *         ? height
  *         : undefined,
@@ -256,7 +256,7 @@ const surfaceEvaluator =
 
         return { show: true, width: road.style.width };
       },
-      { filters: roads.properties },
+      { filters: roads.filterFeatureProperties },
     );
   };
 
@@ -320,9 +320,9 @@ export class StreetLightsPlugin extends Plugin<View, ViewContext> {
    * Takes a polyline layer over the road centerlines as the road surfaces:
    * every feature the road reader skips is hidden, the rest get the width of
    * their style, and `setVisible()` covers the layer. The layer's own
-   * material gives the color and the clamping; it must show the tile layer
-   * `roads.layer` names, so give it `sourceLayers: [roads.layer]`: other
-   * line layers can carry the same properties (OpenMapTiles
+   * material gives the color and the clamping; it must show the source
+   * layers `roads.sourceLayers` names, so give it the same `sourceLayers`:
+   * other line layers can carry the same properties (OpenMapTiles
    * `transportation_name` does) and would be drawn as roads too. The layer
    * stays the caller's to delete. While the
    * plugin holds it, its `show` and `width` are the plugin's; `dispose()`

@@ -162,12 +162,12 @@ describe("readRoads properties", () => {
       ]),
       TILE,
       {
-        layer: "roads",
-        read: (properties) => {
+        sourceLayers: ["roads"],
+        evaluateFeature: (properties) => {
           seen.push(properties);
           return { roadClass: "primary" };
         },
-        properties: ["highway", "oneway"],
+        filterFeatureProperties: ["highway", "oneway"],
       },
       out,
     );
@@ -195,14 +195,14 @@ describe("road classes", () => {
       layerOf([line("main"), line("local"), line("footway")]),
       TILE,
       {
-        layer: "roads",
-        read: ({ kind }) =>
+        sourceLayers: ["roads"],
+        evaluateFeature: ({ kind }) =>
           kind === "main"
             ? { roadClass: "primary", oneway: 1 }
             : kind === "local"
               ? { roadClass: "minor" }
               : undefined,
-        properties: undefined,
+        filterFeatureProperties: undefined,
       },
       out,
     );
@@ -252,7 +252,7 @@ describe("readRoofs", () => {
         },
       ]),
       TILE,
-      TEST_SCHEMA.buildings.read,
+      TEST_SCHEMA.buildings.evaluateFeature,
       out,
     );
     expect(out).toEqual([

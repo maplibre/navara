@@ -50,16 +50,16 @@ const streets = new StreetLightsPlugin({
   radius: STREET_TILE_RADIUS,
   traffic: { speed: 1, size: 2.5 },
   roads: {
-    layer: "transportation",
-    properties: ["class", "oneway"],
-    read: ({ class: roadClass, oneway }) =>
+    sourceLayers: ["transportation"],
+    filterFeatureProperties: ["class", "oneway"],
+    evaluateFeature: ({ class: roadClass, oneway }) =>
       isRoadClass(roadClass)
         ? { roadClass, oneway: oneway === 1 || oneway === -1 ? oneway : 0 }
         : undefined,
   },
   buildings: {
-    layer: "building",
-    read: (properties) => {
+    sourceLayers: ["building"],
+    evaluateFeature: (properties) => {
       const height = properties.render_height;
       return typeof height === "number" &&
         height >= BEACON_HEIGHT &&

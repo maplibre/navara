@@ -9,9 +9,9 @@ import {
 } from "./roads";
 
 const schema: StreetLightsRoads = {
-  layer: "roads",
-  properties: ["kind"],
-  read: ({ kind }) =>
+  sourceLayers: ["roads"],
+  filterFeatureProperties: ["kind"],
+  evaluateFeature: ({ kind }) =>
     kind === "main" ? { roadClass: "primary", oneway: 1 } : undefined,
 };
 
@@ -23,7 +23,7 @@ describe("readRoadFeature", () => {
     });
     expect(
       readRoadFeature(
-        { ...schema, read: () => ({ roadClass: "minor" }) },
+        { ...schema, evaluateFeature: () => ({ roadClass: "minor" }) },
         { kind: "main" },
       ),
     ).toEqual({ style: ROADS.minor, oneway: 0 });
