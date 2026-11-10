@@ -34,7 +34,8 @@ use super::render::RenderedTile;
 // 4. If SSE works and the tile is ready, the tile should be rendered.
 // 5. On the other hand, if SSE works but the tile isn't loaded, the tile should be requested, not rendered.
 // 6. If above steps aren't matched, traverse children.
-// 7. If children couldn't be rendered completely, use this tile instead.
+// 7. If children couldn't be rendered completely, use this tile instead. But if this tile isn't on screen
+//    and tiles under it are, keep those drawn and leave the missing children's area empty until they load.
 // 8. If all children is rendered, use children.
 // 9. If the tile is overscaled, it's leaf is marked just in quadtree, but it isn't actually rendered. It reuses a parent tile.
 
@@ -62,6 +63,8 @@ pub fn traverse_tile(
     is_ancestor_rendered: bool,
     // This is used to keep rendering current children when parent tile isn't ready after you zoomed out.
     meets_sse_ancestors: bool,
+    // False while the memory load gate is closed: a tile that isn't loaded stays so.
+    can_load: bool,
     terrain_layer: &Option<&TerrainLayer>,
     terrain_tile_qt: &TerrainTileQuadtree,
     terrain_exaggeration: &TerrainExaggeration,
@@ -137,16 +140,16 @@ pub fn traverse_tile(
     let is_tile_ready = matches!(ready_state, ReadyState::Success);
     let is_tile_failed = matches!(ready_state, ReadyState::Failed);
 
-    let is_activated = matches!(
-        are_all_renderable_features_active(
-            tc,
-            &handle,
-            rendered_tiles,
-            features,
-            renderable_features
-        ),
-        Some(true)
+    let activation = get_renderable_feature_activation_state(
+        tc,
+        &handle,
+        rendered_tiles,
+        features,
+        renderable_features,
     );
+    let is_activated = activation.is_some_and(|state| state.all_active);
+    // On screen. An empty tile reads as all active, but draws nothing.
+    let is_drawn = activation.is_some_and(|state| state.any_active);
 
     let is_rendered_last_frame = is_activated;
 
@@ -283,6 +286,8 @@ pub fn traverse_tile(
         let subtree_start = activations.mark();
         // Children that can be drawn as they are: selected, with every mesh built.
         let mut ready_children = vec![false; children.len()];
+        // A child is on screen, or keeps the tiles on screen under it.
+        let mut has_drawn_descendant = false;
 
         // Overscaled tile is actually not rendered, since parent tile is reused in the rendering engine side.
         let mut overscaled_children_indices = vec![];
@@ -315,6 +320,7 @@ pub fn traverse_tile(
                     is_rendered_last_frame
                 },
                 meets_sse,
+                can_load,
                 terrain_layer,
                 terrain_tile_qt,
                 terrain_exaggeration,
@@ -325,10 +331,17 @@ pub fn traverse_tile(
             );
             queued_descendants.push(queued_start..activations.mark());
 
-            if matches!(traversal_result, TraversalResult::NotFound) {
+            if matches!(
+                traversal_result,
+                TraversalResult::NotFound | TraversalResult::DescendantsKept
+            ) {
                 are_all_children_rendered = false;
                 are_all_children_mesh_prepared = false;
                 are_all_children_activated = false;
+            }
+
+            if matches!(traversal_result, TraversalResult::DescendantsKept) {
+                has_drawn_descendant = true;
             }
 
             if matches!(
@@ -348,6 +361,7 @@ pub fn traverse_tile(
                 TraversalResult::TileRendered
                     | TraversalResult::ChildrenRendered
                     | TraversalResult::ChildrenMeshPrepared
+                    | TraversalResult::DescendantsKept
                     | TraversalResult::Culled
             ) {
                 any_children_rendered = true;
@@ -366,28 +380,29 @@ pub fn traverse_tile(
                     are_all_children_rendered = false;
                     are_all_children_activated = false;
                 }
-            }
 
-            // If tile's mesh isn't ready, render the parent tile.
-            if (matches!(traversal_result, TraversalResult::TileRendered)
-                && !matches!(
-                    are_all_renderable_features_active(
-                        tc,
-                        child,
-                        rendered_tiles,
-                        features,
-                        renderable_features
-                    ),
-                    Some(true)
-                ))
-            {
-                are_all_children_activated = false;
+                let activation = get_renderable_feature_activation_state(
+                    tc,
+                    child,
+                    rendered_tiles,
+                    features,
+                    renderable_features,
+                );
+                // If tile's mesh isn't ready, render the parent tile.
+                if !activation.is_some_and(|state| state.all_active) {
+                    are_all_children_activated = false;
+                }
+                if activation.is_some_and(|state| state.any_active) {
+                    has_drawn_descendant = true;
+                }
             }
 
             // Skip rendering children in this tile.
             if matches!(
                 traversal_result,
-                TraversalResult::ChildrenRendered | TraversalResult::ChildrenMeshPrepared
+                TraversalResult::ChildrenRendered
+                    | TraversalResult::ChildrenMeshPrepared
+                    | TraversalResult::DescendantsKept
             ) {
                 rendered_children_indices.push(i);
             }
@@ -396,7 +411,10 @@ pub fn traverse_tile(
                 are_all_children_mesh_prepared = false;
             }
 
-            if matches!(traversal_result, TraversalResult::ChildrenMeshPrepared) {
+            if matches!(
+                traversal_result,
+                TraversalResult::ChildrenMeshPrepared | TraversalResult::DescendantsKept
+            ) {
                 prepared_children_indices.push(i);
             }
         }
@@ -408,31 +426,23 @@ pub fn traverse_tile(
             let hide_children = (meets_sse_ancestors && is_ancestor_rendered)
                 || (meets_sse && is_rendered_last_frame);
 
-            let tile = qt.qt.get_mut(handle).unwrap();
-            tile.were_children_rendered = are_all_children_activated && !hide_children;
-
-            // This tile falls back to drawing itself while a child is not ready
-            // (returns below), which is right when it is already on screen. If it
-            // is not but tiles under it are, the fallback would swap them for this
-            // coarser — often empty — tile until the child loads: every tile that
-            // enters the view on a camera move would blink its whole ancestry.
-            // Keep drawing those tiles instead, leave the missing child's area
-            // empty until it loads, and report the subtree as drawn so no
-            // ancestor takes over either. Only one of this tile and the tiles
-            // under it is ever active, so features are never drawn twice.
-            let falls_back = !meets_sse
-                && !meets_sse_ancestors
+            // While a child is missing and this tile isn't on screen, the tiles
+            // on screen under it stay drawn instead of this tile. They wait for
+            // a tile to load, which needs the load gate open.
+            let keeps_drawn_descendants = can_load
+                && !hide_children
                 && !are_all_children_mesh_prepared
-                && !are_all_children_rendered;
-            let keeps_drawn_descendants = falls_back
-                && !is_drawn(tc, &handle, rendered_tiles, features, renderable_features)
-                && (children
-                    .iter()
-                    .any(|c| is_drawn(tc, c, rendered_tiles, features, renderable_features))
-                    || activations
-                        .queued_since(subtree_start)
-                        .iter()
-                        .any(|d| is_drawn(tc, d, rendered_tiles, features, renderable_features)));
+                && !is_drawn
+                && (has_drawn_descendant
+                    || activations.queued_since(subtree_start).iter().any(|d| {
+                        is_tile_drawn(tc, d, rendered_tiles, features, renderable_features)
+                    }));
+
+            let tile = qt.qt.get_mut(handle).unwrap();
+            // The kept tiles are visited on a zoom-out like a complete group,
+            // or the cache would drop them before this tile is ready.
+            tile.were_children_rendered =
+                (are_all_children_activated && !hide_children) || keeps_drawn_descendants;
 
             if !meets_sse && !meets_sse_ancestors {
                 for (i, child) in children.iter().enumerate() {
@@ -477,11 +487,10 @@ pub fn traverse_tile(
                     continue;
                 }
 
-                // While keeping the drawn tiles, a child that is ready, or still
-                // on screen, is drawn as soon as it can be: this tile is not.
+                // While keeping the drawn tiles, each ready child is drawn
+                // without waiting for the others.
                 let draws_child = if keeps_drawn_descendants {
                     ready_children[i]
-                        || is_drawn(tc, child, rendered_tiles, features, renderable_features)
                 } else {
                     are_all_children_mesh_prepared && !hide_children
                 };
@@ -509,8 +518,12 @@ pub fn traverse_tile(
             }
 
             if !meets_sse && !meets_sse_ancestors {
-                if are_all_children_mesh_prepared || keeps_drawn_descendants {
+                if are_all_children_mesh_prepared {
                     return TraversalResult::ChildrenMeshPrepared;
+                }
+
+                if keeps_drawn_descendants {
+                    return TraversalResult::DescendantsKept;
                 }
 
                 if are_all_children_rendered {
@@ -729,23 +742,28 @@ pub(crate) fn write_activation(
     Some(state)
 }
 
-/// Whether the tile is on screen: it has features and some of them are active.
-/// An empty tile reads as all active, but draws nothing.
-fn is_drawn(
+/// Whether the tile is on screen: some of its features are active.
+fn is_tile_drawn(
     tc: &TileCacheManager,
     handle: &TileHandle,
     rendered_tiles: &Query<&RenderedTile>,
     features: &Query<&FeatureId, With<VectorTileFeatureMarker>>,
-    renderable_features: &mut Query<&mut RenderableFeature>,
+    renderable_features: &Query<&mut RenderableFeature>,
 ) -> bool {
-    get_renderable_feature_activation_state(
-        tc,
-        handle,
-        rendered_tiles,
-        features,
-        renderable_features,
-    )
-    .is_some_and(|state| !state.is_empty && state.any_active)
+    tc.rendered_tile_caches
+        .get(handle)
+        .and_then(|e| rendered_tiles.get(*e).ok())
+        .and_then(|tile| tile.feature_ids.as_ref())
+        .is_some_and(|ids| {
+            ids.iter().any(|id| {
+                features
+                    .get(*id)
+                    .ok()
+                    .and_then(|feature| feature.0)
+                    .and_then(|e| renderable_features.get(e).ok())
+                    .is_some_and(|feature| feature.is_active())
+            })
+        })
 }
 
 pub fn are_all_renderable_features_active(
@@ -892,6 +910,9 @@ pub enum TraversalResult {
     TileRendered,
     ChildrenRendered,
     ChildrenMeshPrepared,
+    /// A child is missing, and the tiles on screen under this tile stay drawn
+    /// around its empty area instead of this tile.
+    DescendantsKept,
     Culled,
     NotFound,
     Failed,

@@ -204,6 +204,7 @@ pub fn update_tiles(
                 degrade,
                 false,
                 false,
+                !pressure.load_gate_closed,
                 &terrain_layer,
                 &terrain.1,
                 &terrain.3,
@@ -1330,5 +1331,364 @@ mod memory_budget_tests {
             .unwrap();
         assert!(tc.retained.is_empty());
         assert_eq!(app.world().resource::<MemoryLedger>().evicted_count, 0);
+    }
+}
+
+#[cfg(test)]
+mod keep_drawn_descendants_tests {
+    use super::*;
+    use crate::source::{ReadyState, VectorTileSource};
+    use crate::source_cache::{SourceId, TraversalConfig};
+    use bevy_app::{App, Update};
+    use navara_core::WGS84_A_64;
+    use navara_feature_component::render::PointRenderInformation;
+    use navara_frame::FramePlugin;
+    use navara_math::Vec3;
+    use std::any::Any;
+
+    type Coords = (usize, usize, usize);
+
+    const ROOT: Coords = (0, 0, 0);
+    /// The z1 tile under test (lng 0°..180°, north), its z2 child that is in
+    /// view from lng 0° (lng 0°..90°), and its z2 child that comes over the
+    /// horizon when the camera turns east (lng 90°..180°).
+    const PARENT: Coords = (1, 0, 1);
+    const DRAWN_CHILD: Coords = (2, 1, 2);
+    const NEW_CHILD: Coords = (3, 1, 2);
+
+    /// Every tile is loaded, except the `pending` ones.
+    #[derive(Default)]
+    struct MockSource {
+        pending: FxHashSet<Coords>,
+    }
+
+    impl VectorTileSource for MockSource {
+        fn as_any_mut(&mut self) -> &mut dyn Any {
+            self
+        }
+
+        fn prepare_tile(
+            &mut self,
+            _commands: &mut Commands,
+            _tile: &mut VectorTile,
+            _handle: navara_tile_component::TileHandle,
+            _tc: &mut TileCacheManager,
+            _buf: &mut BufferStore,
+            _data_requesters: &VectorTileDataRequesterQuery,
+            _priority: Priority,
+        ) -> bool {
+            false
+        }
+
+        fn construct_geometry(
+            &mut self,
+            _commands: &mut Commands,
+            _batch_table: &mut BatchTable,
+            _buf: &mut BufferStore,
+            _tile: &VectorTile,
+            _tile_handle: navara_tile_component::TileHandle,
+            _rendered_tile: Entity,
+            _order: &OrderByDistance,
+            _data_requester: Option<&navara_data_requester::DataRequester>,
+        ) -> Option<Vec<Entity>> {
+            None
+        }
+
+        fn ready_state(
+            &self,
+            tile: &VectorTile,
+            _data_requesters: &VectorTileDataRequesterQuery,
+        ) -> ReadyState {
+            let coords = (tile.coords.x, tile.coords.y, tile.coords.z);
+            if self.pending.contains(&coords) {
+                ReadyState::Pending
+            } else {
+                ReadyState::Success
+            }
+        }
+    }
+
+    struct Scene {
+        quadtree: Entity,
+        tile_cache_manager: Entity,
+        source: Entity,
+        camera: Entity,
+        occluder: Entity,
+    }
+
+    /// A source that always subdivides down to z2, seen from twice the Earth
+    /// radius above the equator at lng 0°: the horizon is 60° away.
+    fn setup() -> (App, Scene) {
+        let mut app = App::new();
+        app.add_plugins(FramePlugin);
+        app.insert_resource(TerrainInformationQuadtree::new_with_linear_qt());
+        app.insert_resource(TerrainTileQuadtree::new_with_linear_qt());
+        app.init_resource::<VectorResolveRevision>();
+        app.init_resource::<TerrainExaggeration>();
+        app.init_resource::<BufferStore>();
+        app.init_resource::<Globe>();
+        app.init_resource::<SsePressure>();
+        app.insert_resource(Window {
+            width: 800.,
+            height: 800.,
+            pixel_ratio: 1.,
+        });
+
+        let world = app.world_mut();
+        let quadtree = world.spawn(VectorTileQuadtree::new_with_linear_qt()).id();
+        let tile_cache_manager = world.spawn(TileCacheManager::default()).id();
+        let source = world
+            .spawn((
+                VectorTileSourceResources::new(
+                    SourceId::new(
+                        "test".to_string(),
+                        TraversalConfig {
+                            max_zoom: 2,
+                            max_sse_bits: 0f32.to_bits(),
+                            ..Default::default()
+                        },
+                    ),
+                    quadtree,
+                    tile_cache_manager,
+                    vec![],
+                ),
+                TileSource(Box::new(MockSource::default())),
+            ))
+            .id();
+        world.spawn((
+            Fog {
+                enabled: false,
+                density: 0.,
+                sse_factor: 1.,
+            },
+            DynamicSse::disabled(),
+        ));
+        let transform = Transform::from_translation(Vec3::X);
+        let camera = world
+            .spawn((
+                CameraMarker,
+                transform,
+                CameraFrustum::new(&transform, 0.1, 1e9, 1., 1.),
+            ))
+            .id();
+        let occluder = world
+            .spawn(EllipsoidalOccluder::new(&Vec3::X, WGS84_64))
+            .id();
+
+        let scene = Scene {
+            quadtree,
+            tile_cache_manager,
+            source,
+            camera,
+            occluder,
+        };
+        look_from(&mut app, &scene, 0.);
+        app.add_systems(Update, update_tiles);
+        (app, scene)
+    }
+
+    /// Moves the camera above the equator at `lng` degrees.
+    fn look_from(app: &mut App, scene: &Scene, lng: f64) {
+        let lng = lng.to_radians();
+        let position = Vec3::new(lng.cos(), lng.sin(), 0.) * (WGS84_A_64 * 2.);
+        let transform = Transform::from_translation(position).looking_at(Vec3::ZERO, Vec3::Z);
+        let world = app.world_mut();
+        world.entity_mut(scene.camera).insert((
+            transform,
+            CameraFrustum::new(&transform, 0.1, 1e9, 90f64.to_radians(), 1.),
+        ));
+        world
+            .entity_mut(scene.occluder)
+            .insert(EllipsoidalOccluder::new(&position, WGS84_64));
+    }
+
+    fn set_pending(app: &mut App, scene: &Scene, coords: Coords, pending: bool) {
+        let mut source = app.world_mut().get_mut::<TileSource>(scene.source).unwrap();
+        let mock = source.0.as_any_mut().downcast_mut::<MockSource>().unwrap();
+        if pending {
+            mock.pending.insert(coords);
+        } else {
+            mock.pending.remove(&coords);
+        }
+    }
+
+    fn set_max_sse(app: &mut App, scene: &Scene, max_sse: f64) {
+        let mut source = app
+            .world_mut()
+            .get_mut::<VectorTileSourceResources>(scene.source)
+            .unwrap();
+        source.source_id.traversal_config.max_sse_bits = (max_sse as f32).to_bits();
+    }
+
+    fn traverse(app: &mut App, scene: &Scene) {
+        app.world_mut()
+            .get_mut::<TileCacheManager>(scene.tile_cache_manager)
+            .unwrap()
+            .needs_update = true;
+        app.update();
+    }
+
+    /// Builds the meshes of the selected tiles, as the frontend reports them
+    /// rendered.
+    fn build_meshes(app: &mut App) {
+        let world = app.world_mut();
+        let unbuilt: Vec<Entity> = world
+            .query::<(Entity, &RenderedTile)>()
+            .iter(world)
+            .filter(|(_, tile)| tile.feature_ids.is_none())
+            .map(|(e, _)| e)
+            .collect();
+        for e in unbuilt {
+            let renderable = world
+                .spawn(RenderableFeature::Point {
+                    coordinates: Default::default(),
+                    crs: Default::default(),
+                    active: false,
+                    material: Default::default(),
+                    transform: Default::default(),
+                    feature_id: Entity::PLACEHOLDER,
+                    render_info: PointRenderInformation {
+                        is_rendered: true,
+                        ..Default::default()
+                    },
+                    geometry: Default::default(),
+                    feature_batch_id: 0,
+                    batch_length: 0,
+                })
+                .id();
+            let feature = world
+                .spawn((FeatureId(Some(renderable)), VectorTileFeatureMarker))
+                .id();
+            world.get_mut::<RenderedTile>(e).unwrap().feature_ids = Some(vec![feature]);
+        }
+    }
+
+    /// Traverses and builds until every selected tile is built and drawn.
+    fn settle(app: &mut App, scene: &Scene) {
+        for _ in 0..4 {
+            traverse(app, scene);
+            build_meshes(app);
+        }
+        traverse(app, scene);
+    }
+
+    fn tile<'a>(app: &'a App, scene: &Scene, coords: Coords) -> &'a VectorTile {
+        let qt = app
+            .world()
+            .get::<VectorTileQuadtree>(scene.quadtree)
+            .unwrap();
+        qt.qt.get(qt.qt.leaf(coords).unwrap().handle()).unwrap()
+    }
+
+    fn rendered_tile<'a>(app: &'a App, scene: &Scene, coords: Coords) -> Option<&'a RenderedTile> {
+        let world = app.world();
+        let qt = world.get::<VectorTileQuadtree>(scene.quadtree).unwrap();
+        let handle = qt.qt.leaf(coords)?.handle();
+        let tc = world.get::<TileCacheManager>(scene.tile_cache_manager)?;
+        world.get::<RenderedTile>(*tc.rendered_tile_caches.get(&handle)?)
+    }
+
+    fn is_drawn(app: &App, scene: &Scene, coords: Coords) -> bool {
+        let world = app.world();
+        rendered_tile(app, scene, coords)
+            .and_then(|tile| tile.feature_ids.as_ref())
+            .is_some_and(|ids| {
+                ids.iter().any(|id| {
+                    let renderable = world.get::<FeatureId>(*id).unwrap().0.unwrap();
+                    world
+                        .get::<RenderableFeature>(renderable)
+                        .unwrap()
+                        .is_active()
+                })
+            })
+    }
+
+    /// `DRAWN_CHILD` is on screen, then the camera turns east: `NEW_CHILD`
+    /// comes into view while it is still loading.
+    fn scene_with_a_loading_child() -> (App, Scene) {
+        let (mut app, scene) = setup();
+        settle(&mut app, &scene);
+        set_pending(&mut app, &scene, NEW_CHILD, true);
+        look_from(&mut app, &scene, 45.);
+        settle(&mut app, &scene);
+        (app, scene)
+    }
+
+    #[test]
+    fn it_should_keep_the_drawn_tiles_while_a_child_that_came_into_view_loads() {
+        let (mut app, scene) = scene_with_a_loading_child();
+        assert!(is_drawn(&app, &scene, DRAWN_CHILD));
+        assert!(!is_drawn(&app, &scene, NEW_CHILD));
+        assert!(!is_drawn(&app, &scene, PARENT));
+        assert!(!is_drawn(&app, &scene, ROOT));
+
+        set_pending(&mut app, &scene, NEW_CHILD, false);
+        settle(&mut app, &scene);
+        assert!(is_drawn(&app, &scene, DRAWN_CHILD));
+        assert!(is_drawn(&app, &scene, NEW_CHILD));
+        assert!(!is_drawn(&app, &scene, PARENT));
+    }
+
+    /// A drawn child that leaves the view in the pass where another one comes
+    /// into it is not a tile to keep: the parent takes over in that same pass.
+    #[test]
+    fn it_should_fall_back_when_the_drawn_child_leaves_the_view() {
+        let (mut app, scene) = setup();
+        settle(&mut app, &scene);
+        set_pending(&mut app, &scene, NEW_CHILD, true);
+
+        look_from(&mut app, &scene, 170.);
+        traverse(&mut app, &scene);
+
+        assert!(!is_drawn(&app, &scene, DRAWN_CHILD));
+        assert!(is_drawn(&app, &scene, PARENT));
+    }
+
+    /// The parent is not loaded when a zoom-out selects it: the kept tiles
+    /// stay on screen, and visited so that the cache keeps them, until it is.
+    #[test]
+    fn it_should_keep_the_drawn_tiles_on_a_zoom_out_until_the_parent_is_ready() {
+        let (mut app, scene) = setup();
+        set_pending(&mut app, &scene, PARENT, true);
+        settle(&mut app, &scene);
+        set_pending(&mut app, &scene, NEW_CHILD, true);
+        look_from(&mut app, &scene, 45.);
+        settle(&mut app, &scene);
+
+        let max_sse = (tile(&app, &scene, ROOT).sse + tile(&app, &scene, PARENT).sse) / 2.;
+        set_max_sse(&mut app, &scene, max_sse);
+        traverse(&mut app, &scene);
+
+        assert!(is_drawn(&app, &scene, DRAWN_CHILD));
+        let last_rendered_frame = app
+            .world()
+            .get::<TileCacheManager>(scene.tile_cache_manager)
+            .unwrap()
+            .last_rendered_frame;
+        assert_eq!(
+            tile(&app, &scene, DRAWN_CHILD).visited_at,
+            last_rendered_frame
+        );
+        assert!(!is_drawn(&app, &scene, PARENT));
+
+        set_pending(&mut app, &scene, PARENT, false);
+        settle(&mut app, &scene);
+        assert!(is_drawn(&app, &scene, PARENT));
+        assert!(!is_drawn(&app, &scene, DRAWN_CHILD));
+    }
+
+    /// With the load gate closed the missing child cannot load, so the parent
+    /// covers its area instead of leaving it empty.
+    #[test]
+    fn it_should_fall_back_to_the_parent_while_the_load_gate_is_closed() {
+        let (mut app, scene) = scene_with_a_loading_child();
+
+        app.world_mut()
+            .resource_mut::<SsePressure>()
+            .load_gate_closed = true;
+        traverse(&mut app, &scene);
+
+        assert!(is_drawn(&app, &scene, PARENT));
+        assert!(!is_drawn(&app, &scene, DRAWN_CHILD));
     }
 }
