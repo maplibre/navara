@@ -42,7 +42,7 @@
     "tiny-invariant": "1.3.3"
   },
   "devDependencies": {
-    "@microsoft/api-extractor": "7.60.0",
+    "@microsoft/api-extractor": "7.60.1",
     "@navaramap/engine": "workspace:*",
     "@navaramap/engine-api": "workspace:*",
     "@navaramap/engine-font-worker": "workspace:*",

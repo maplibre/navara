@@ -55,7 +55,7 @@
     "@navaramap/three-csm": "workspace:*",
     "@types/geojson": "7946.0.16",
     "@types/three": "0.186.0",
-    "postprocessing": "6.39.5",
+    "postprocessing": "6.39.6",
     "three": "0.186.1",
     "vite-plugin-glsl": "1.6.2"
   }

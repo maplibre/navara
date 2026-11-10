@@ -13,9 +13,9 @@
   },
   "dependencies": {
     "@astrojs/markdown-remark": "7.3.5",
-    "@astrojs/starlight": "0.42.7",
+    "@astrojs/starlight": "0.42.9",
     "@lucide/astro": "1.63.0",
-    "astro": "7.4.3",
+    "astro": "7.4.5",
     "rehype-mermaid": "3.0.0",
     "sharp": "0.35.5"
   },

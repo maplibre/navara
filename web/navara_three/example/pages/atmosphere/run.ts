@@ -443,8 +443,9 @@ const addCloudsControl = (
   };
   const SHADOW_PARAMS = {
     shadows: DEFAULT_CLOUDS_OPTIONS.shadows,
-    shadowCascadeCount: DEFAULT_CLOUDS_OPTIONS.shadowCascadeCount,
-    shadowMapSize: DEFAULT_CLOUDS_OPTIONS.shadowMapSize.x,
+    // The default "medium" preset's values.
+    shadowCascadeCount: 3,
+    shadowMapSize: 256,
   };
   const HAZE_PARAMS = {
     haze: DEFAULT_CLOUDS_OPTIONS.haze,
