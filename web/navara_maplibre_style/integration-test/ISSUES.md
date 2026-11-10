@@ -81,20 +81,6 @@ The extrusions render once the scene has lights, which the harness adds
   `(245, 7, 53)`.
 - `colorSpace-lab` matches.
 
-### GeoJSON longitudes outside ±180° are dropped
-
-- In `projection/globe/antimeridian-overdraw/wide-band-*`, polygons given with
-  longitudes such as 319° or -191° lose those parts. In `wide-band-pole-view`
-  only slivers of the ring around the pole remain.
-- MapLibre wraps them across the antimeridian.
-- `geojson-crossing-z0`/`-z3`, whose coordinates stay within ±180°, match.
-
-### A polygon covering the pole is not drawn
-
-- `projection/globe/pole-cap`: a GeoJSON polygon spanning the eastern
-  hemisphere up to 90°N, seen pitched from 85°N, is missing entirely.
-- The background reaches the pole, and MapLibre draws the fill there too.
-
 ### Symbol text is never drawn
 
 Verified: the styles load fonts through `glyphs` (PBF glyph ranges), which the

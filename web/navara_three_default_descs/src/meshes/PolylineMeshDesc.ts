@@ -49,7 +49,7 @@ type PolylineMeshEventMap = Object3DEventMap & CustomObject3DEventMap;
  */
 export type PolylineMeshStyle = Omit<
   NonNullable<VectorLayer["polyline"]>,
-  "tiled" | "geometryTypes" | "show" | "lit" | "__internal__"
+  "tiled" | "geodesic" | "geometryTypes" | "show" | "lit" | "__internal__"
 >;
 
 type Description = {

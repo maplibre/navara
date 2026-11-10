@@ -426,7 +426,7 @@ import { Color } from "@navaramap/three";
 }
 ```
 
-[`PolylineMaterial`](../../../three/material/polyline-material/) のレイヤー専用オプション `tiled`、`geometryTypes`、`show`、`lit` は使えません。`show` と `lit` の代わりにメッシュ設定の `visible` と `lit` を使ってください。
+[`PolylineMaterial`](../../../three/material/polyline-material/) のレイヤー専用オプション `tiled`、`geodesic`、`geometryTypes`、`show`、`lit` は使えません。`show` と `lit` の代わりにメッシュ設定の `visible` と `lit` を使ってください。
 
 ## メソッドとアクセサ
 
