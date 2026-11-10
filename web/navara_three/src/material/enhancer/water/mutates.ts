@@ -11,6 +11,7 @@ const stateConditions = (state: WaterSurfaceState): WaveConditions => ({
   strength: state.waveStrength,
   direction: state.waveDirection,
   scale: state.waterScale,
+  flowSpeed: state.flowSpeed,
 });
 
 /**

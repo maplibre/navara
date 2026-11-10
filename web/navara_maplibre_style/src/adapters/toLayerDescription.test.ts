@@ -14,9 +14,45 @@ import type { StyleLayer } from "../engine/types";
 import {
   colorReliefLayerFollowsZoom,
   getSymbolPlacement,
+  hillshadeLayerFollowsZoom,
   symbolLayerFollowsZoom,
   toLayerDescription,
 } from "./toLayerDescription";
+
+describe("hillshadeLayerFollowsZoom", () => {
+  const hillshade = (exaggeration?: unknown) =>
+    ({
+      id: "l",
+      type: "hillshade",
+      source: "s",
+      ...(exaggeration !== undefined && {
+        paint: { "hillshade-exaggeration": exaggeration },
+      }),
+    }) as StyleLayer;
+
+  it("is true when the exaggeration uses zoom", () => {
+    expect(
+      hillshadeLayerFollowsZoom(
+        hillshade(["interpolate", ["linear"], ["zoom"], 4, 0.3, 12, 0.8]),
+      ),
+    ).toBe(true);
+  });
+
+  it("is false for a constant or unset exaggeration", () => {
+    expect(hillshadeLayerFollowsZoom(hillshade(0.8))).toBe(false);
+    expect(hillshadeLayerFollowsZoom(hillshade())).toBe(false);
+  });
+
+  it("is false for other layer types", () => {
+    expect(
+      hillshadeLayerFollowsZoom({
+        id: "l",
+        type: "color-relief",
+        source: "s",
+      } as StyleLayer),
+    ).toBe(false);
+  });
+});
 
 // Mock @navaramap/three to avoid loading navara_worker
 vi.mock("@navaramap/three", () => ({
@@ -246,25 +282,57 @@ describe("toLayerDescription", () => {
       });
     });
 
-    it("should convert hillshade layer (paint properties not included in layer description)", () => {
+    it("should pass the hillshade exaggeration through, evaluated at the given zoom", () => {
       const layer: StyleLayer = {
         id: "test-layer",
         type: "hillshade",
         source: "test",
         paint: {
-          "hillshade-exaggeration": 2.0,
+          "hillshade-exaggeration": [
+            "interpolate",
+            ["linear"],
+            ["zoom"],
+            10,
+            0.4,
+            12,
+            0.8,
+          ],
         },
       };
 
-      const result = toLayerDescription(mockSource, layer);
+      const result = toLayerDescription(
+        mockSource,
+        layer,
+        undefined,
+        new JsStyleEngine(),
+        11,
+      );
 
-      expect(result).not.toBeNull();
-      expect(result?.type).toBe("raster");
       expect(result).toMatchObject({
         type: "raster",
         source: mockSource,
-        hillshade: {}, // Paint properties are handled during evaluation, not in layer description
+        hillshade: { exaggeration: expect.closeTo(0.6) as number },
       });
+    });
+
+    it("should leave the hillshade exaggeration to Navara when the style does not set it", () => {
+      const layer: StyleLayer = {
+        id: "test-layer",
+        type: "hillshade",
+        source: "test",
+      };
+
+      const result = toLayerDescription(
+        mockSource,
+        layer,
+        undefined,
+        new JsStyleEngine(),
+      );
+
+      expect(result).toMatchObject({ hillshade: {} });
+      expect((result as { hillshade: object }).hillshade).not.toHaveProperty(
+        "exaggeration",
+      );
     });
 
     it("should convert color-relief layer with interpolate expression", () => {
@@ -744,6 +812,7 @@ describe("toLayerDescription", () => {
         spreadGlyphs: false,
         declutter: true,
         maxWidth: 10,
+        lineHeight: 1.2,
       });
       expect(text?.geometryTypes).toEqual(["point", "line", "polygon"]);
       expect(billboard).toMatchObject({
@@ -753,6 +822,13 @@ describe("toLayerDescription", () => {
         declutter: true,
       });
       expect(billboard?.geometryTypes).toEqual(["point", "line", "polygon"]);
+    });
+
+    it("passes text-line-height through in ems", () => {
+      expect(
+        buildSymbol({ "text-field": "{name}", "text-line-height": 1.5 }).text
+          ?.lineHeight,
+      ).toBe(1.5);
     });
 
     it("keeps point geometry only when the filter tests the geometry type", () => {
@@ -877,6 +953,24 @@ describe("toLayerDescription", () => {
         ),
       ).toBe(true);
       expect(
+        symbolLayerFollowsZoom(
+          symbolLayer({
+            "text-field": "a",
+            "text-line-height": ["step", ["zoom"], 1.2, 14, 1.5],
+          }),
+        ),
+      ).toBe(true);
+      // Per-feature properties and geometry ones do not need layer.update().
+      expect(
+        symbolLayerFollowsZoom(
+          symbolLayer({
+            "text-field": "a",
+            "text-size": ["interpolate", ["linear"], ["zoom"], 0, 10, 10, 20],
+            "symbol-spacing": ["step", ["zoom"], 100, 14, 300],
+          }),
+        ),
+      ).toBe(false);
+      expect(
         symbolLayerFollowsZoom({
           ...symbolLayer({ "text-field": "a" }),
           paint: {
@@ -891,16 +985,6 @@ describe("toLayerDescription", () => {
             ],
           },
         } as StyleLayer),
-      ).toBe(true);
-      // Per-feature properties and geometry ones do not need layer.update().
-      expect(
-        symbolLayerFollowsZoom(
-          symbolLayer({
-            "text-field": "a",
-            "text-size": ["interpolate", ["linear"], ["zoom"], 0, 10, 10, 20],
-            "symbol-spacing": ["step", ["zoom"], 100, 14, 300],
-          }),
-        ),
       ).toBe(false);
     });
 

@@ -15,8 +15,8 @@ use navara_geometry::{
 use navara_material::{ElevationHeatmapLayerData, RasterTileInternalMaterial};
 use navara_math::{FloatType, Transform};
 use navara_memory::{
-    GPU_GEOMETRY_RESIDENCY_FACTOR, MemoryLedger, ReserveEstimates, ReserveKey, RetainedEntry,
-    TileCost,
+    CostHints, GPU_GEOMETRY_RESIDENCY_FACTOR, MemoryLedger, ReserveEstimates, ReserveKey,
+    RetainedEntry, TileCost,
 };
 
 use navara_mesh::{CachedMeshHandle, Mesh, MeshBundle, ObjectBundle};
@@ -646,6 +646,7 @@ pub fn transfer_mesh(
             wave_exaggeration,
             wave_strength,
             wave_direction,
+            flow_speed,
         ) = terrain_layer.and_then(|l| l.appearance.as_ref()).map_or(
             (
                 false,
@@ -655,6 +656,7 @@ pub fn transfer_mesh(
                 None,
                 1.0,
                 navara_material::DEFAULT_WAVE_STRENGTH,
+                0.0,
                 0.0,
             ),
             |appearance| {
@@ -667,6 +669,7 @@ pub fn transfer_mesh(
                     appearance.wave_exaggeration,
                     appearance.wave_strength,
                     appearance.wave_direction,
+                    appearance.flow_speed,
                 )
             },
         );
@@ -692,6 +695,7 @@ pub fn transfer_mesh(
             wave_exaggeration,
             wave_strength,
             wave_direction,
+            flow_speed,
 
             // Elevation Heatmap fields
             elevation_heatmap_layers,
@@ -1236,10 +1240,13 @@ fn commit_tile_mesh(
         *transform = Transform::from_translation(rtc_translation);
         swap.events.mesh_geometry_replaced.push(mesh_entity);
 
-        let drape = gpu_cost.map_or(swap.ledger.cost_hints.atlas_tile_bytes, |c| c.drape);
+        let drape = gpu_cost.map_or(0, |c| c.drape);
         let (cost, tile_cost) = terrain_mesh_cost(&live_mesh, buf, drape);
         commands.entity(mesh_entity).insert((cost, tile_cost));
-        swap.estimates.record(ReserveKey::Terrain, cost.total());
+        swap.estimates.record(
+            ReserveKey::Terrain,
+            terrain_reserve_sample(&cost, &swap.ledger.cost_hints),
+        );
         return;
     }
 
@@ -1431,6 +1438,7 @@ pub fn update_terrain_layer(
             let wave_exaggeration = u.material.wave_exaggeration;
             let wave_strength = u.material.wave_strength;
             let wave_direction = u.material.wave_direction;
+            let flow_speed = u.material.flow_speed;
             for mut material in &mut tile_materials {
                 if material.cast_shadow != cast_shadow
                     || material.receive_shadow != receive_shadow
@@ -1440,6 +1448,7 @@ pub fn update_terrain_layer(
                     || material.wave_exaggeration != wave_exaggeration
                     || material.wave_strength != wave_strength
                     || material.wave_direction != wave_direction
+                    || material.flow_speed != flow_speed
                 {
                     material.cast_shadow = cast_shadow;
                     material.receive_shadow = receive_shadow;
@@ -1449,6 +1458,7 @@ pub fn update_terrain_layer(
                     material.wave_exaggeration = wave_exaggeration;
                     material.wave_strength = wave_strength;
                     material.wave_direction = wave_direction;
+                    material.flow_speed = flow_speed;
                 }
             }
         }
@@ -2013,20 +2023,10 @@ fn destroy_terrain_tile(
 /// ledger tracks their GPU footprint. The JS-side GPU buffers mirror the
 /// mesh's BufferStore contents, so their byte lengths are the estimate.
 ///
-/// The `drape` contribution is seeded with the composite-atlas cost, which
-/// EVERY terrain tile pays: the atlas is acquired eagerly in the JS `TileMesh`
-/// constructor (per terrain tile, regardless of whether it drapes any vector
-/// layers), so a raster-only terrain scene still holds one atlas per tile. If
-/// this seed were omitted, that ~3MB/tile would be invisible to the budget
-/// (JS only reports the atlas via `report_terrain_drape_gpu_bytes` once the
-/// tile actually drapes something), and a typical raster+terrain mobile scene
-/// would silently exceed the budget.
-///
-/// When the tile later drapes clamp-to-ground vectors, JS reports the full
-/// drape footprint (composite atlas + one render target per live layer) via
-/// [`report_terrain_drape_gpu_bytes`], which REPLACES the `drape` term
-/// wholesale — its value already includes the atlas, so seeding the atlas here
-/// never double-counts. See [`TerrainTileGpuCost`].
+/// The `drape` term starts at 0. The JS `TileMesh` reports it via
+/// [`report_terrain_drape_gpu_bytes`] once its composite atlas or drape render
+/// targets are allocated on the GPU, which happens only when the tile is
+/// rendered. See [`TerrainTileGpuCost`].
 #[allow(clippy::type_complexity)]
 pub fn attach_terrain_mesh_cost(
     mut commands: Commands,
@@ -2036,18 +2036,22 @@ pub fn attach_terrain_mesh_cost(
     meshes: Query<(Entity, &Mesh), (With<TileMeshMarker>, Added<Mesh>)>,
 ) {
     for (entity, mesh) in &meshes {
-        // Seed `drape` with the composite atlas every terrain tile pays (see
-        // the doc comment); `report_terrain_drape_gpu_bytes` overwrites it with
-        // the measured atlas+RT total once the tile drapes, so no double-count.
-        let (cost, tile_cost) = terrain_mesh_cost(mesh, &buf, ledger.cost_hints.atlas_tile_bytes);
+        let (cost, tile_cost) = terrain_mesh_cost(mesh, &buf, 0);
         commands.entity(entity).insert((cost, tile_cost));
-        // Feed the terrain reservation estimator with the landed actual cost
-        // (geometry + atlas) — this is what the dispatch-time `ReservedCost`
-        // was standing in for. Re-meshes (e.g. upsample → real data) record
-        // again, which is fine: the EMA tracks the cost of meshes currently
-        // being produced.
-        estimates.record(ReserveKey::Terrain, cost.total());
+        // Re-meshes (e.g. upsample → real data) record again, which is fine:
+        // the EMA tracks the cost of meshes currently being produced.
+        estimates.record(
+            ReserveKey::Terrain,
+            terrain_reserve_sample(&cost, &ledger.cost_hints),
+        );
     }
+}
+
+/// What a dispatch-time terrain `ReservedCost` stands in for: the landed
+/// geometry plus the composite atlas the tile allocates once it is rendered.
+/// A requested tile is meant to be shown, so the atlas is counted up front.
+fn terrain_reserve_sample(cost: &TerrainTileGpuCost, hints: &CostHints) -> u64 {
+    cost.geometry + hints.atlas_tile_bytes
 }
 
 /// Cost of a terrain tile mesh's geometry as resident on the GPU, paired with
@@ -2724,12 +2728,12 @@ mod memory_budget_tests {
         );
     }
 
-    /// FIX 1: every terrain mesh must be charged the composite-atlas cost the
-    /// JS `TileMesh` acquires eagerly, even before any vector layer drapes.
+    /// The composite atlas is allocated only when the tile is rendered, so the
+    /// mesh is charged its geometry alone until JS reports the drape term.
     #[test]
-    fn attach_terrain_mesh_cost_includes_atlas_baseline() {
+    fn attach_terrain_mesh_cost_excludes_the_unallocated_atlas() {
         let mut app = new_app(Some(u64::MAX));
-        // Non-default atlas hint so the assertion is unambiguous.
+        // A nonzero hint, so charging it would show up in the ledger.
         let atlas = 3 * 1024 * 1024;
         app.world_mut()
             .resource_mut::<MemoryLedger>()
@@ -2783,18 +2787,10 @@ mod memory_budget_tests {
             .world()
             .get::<TerrainTileGpuCost>(mesh_entity)
             .expect("TerrainTileGpuCost attached");
-        // Buffers are all handle 0 with no bytes, so geometry is 0 and the
-        // whole cost is the seeded atlas baseline.
-        assert_eq!(gpu_cost.drape, atlas, "atlas must be seeded into drape");
-        assert_eq!(gpu_cost.total(), atlas);
-        let tile_cost = app.world().get::<TileCost>(mesh_entity).unwrap();
-        assert_eq!(tile_cost.gpu_est, atlas);
-        // The component hook must have folded the atlas into the ledger.
-        assert_eq!(
-            app.world().resource::<MemoryLedger>().gpu_bytes_est,
-            atlas,
-            "atlas must be visible to the budget"
-        );
+        // Buffers are all handle 0 with no bytes, so geometry is 0.
+        assert_eq!(gpu_cost.drape, 0);
+        assert_eq!(app.world().get::<TileCost>(mesh_entity).unwrap().gpu_est, 0);
+        assert_eq!(app.world().resource::<MemoryLedger>().gpu_bytes_est, 0);
     }
 
     #[test]

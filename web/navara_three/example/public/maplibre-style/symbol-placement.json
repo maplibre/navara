@@ -4,7 +4,7 @@
   "metadata": {
     "test": [
       "Red crosses mark each feature's anchor point.",
-      "Rows: text-anchor, icon-anchor, text-offset, icon-offset (+POI), text-justify, text-radial-offset, *-translate, variable anchors.",
+      "Rows: text-anchor, icon-anchor, text-offset, icon-offset (+POI), text-justify, text-radial-offset, *-translate, variable anchors; then (south, the initial view) text-halo-width, text-halo-blur, halo edge cases, text-halo-color, halo vs text-size, zoom-driven halos, text-line-height, line-height x anchors.",
       "Rotate the map to compare translate-anchor map vs viewport.",
       "icon-image is an absolute URL: in maplibre-gl-js load it on 'styleimagemissing' (Navara reads icon-image as a URL)."
     ]
@@ -12,7 +12,7 @@
   "projection": {
     "type": "globe"
   },
-  "center": [-35.0, 11.399999999999999],
+  "center": [-35.0, -2.5],
   "zoom": 5.2,
   "pitch": 0,
   "bearing": 0,
@@ -946,6 +946,616 @@
               "type": "Point",
               "coordinates": [-28.45, 7.15]
             }
+          },
+          {
+            "type": "Feature",
+            "properties": {
+              "test": "halo-width",
+              "hw": 0,
+              "label": "0px"
+            },
+            "geometry": {
+              "type": "Point",
+              "coordinates": [-43.0, 4.4]
+            }
+          },
+          {
+            "type": "Feature",
+            "properties": {
+              "test": "halo-width",
+              "hw": 0.5,
+              "label": "0.5px"
+            },
+            "geometry": {
+              "type": "Point",
+              "coordinates": [-41.0, 4.4]
+            }
+          },
+          {
+            "type": "Feature",
+            "properties": {
+              "test": "halo-width",
+              "hw": 1,
+              "label": "1px"
+            },
+            "geometry": {
+              "type": "Point",
+              "coordinates": [-39.0, 4.4]
+            }
+          },
+          {
+            "type": "Feature",
+            "properties": {
+              "test": "halo-width",
+              "hw": 2,
+              "label": "2px"
+            },
+            "geometry": {
+              "type": "Point",
+              "coordinates": [-37.0, 4.4]
+            }
+          },
+          {
+            "type": "Feature",
+            "properties": {
+              "test": "halo-width",
+              "hw": 3,
+              "label": "3px"
+            },
+            "geometry": {
+              "type": "Point",
+              "coordinates": [-35.0, 4.4]
+            }
+          },
+          {
+            "type": "Feature",
+            "properties": {
+              "test": "halo-width",
+              "hw": 4.5,
+              "label": "4.5px"
+            },
+            "geometry": {
+              "type": "Point",
+              "coordinates": [-33.0, 4.4]
+            }
+          },
+          {
+            "type": "Feature",
+            "properties": {
+              "test": "halo-width",
+              "hw": 6,
+              "label": "6px"
+            },
+            "geometry": {
+              "type": "Point",
+              "coordinates": [-31.0, 4.4]
+            }
+          },
+          {
+            "type": "Feature",
+            "properties": {
+              "test": "halo-width",
+              "hw": 9,
+              "label": "9px"
+            },
+            "geometry": {
+              "type": "Point",
+              "coordinates": [-29.0, 4.4]
+            }
+          },
+          {
+            "type": "Feature",
+            "properties": {
+              "test": "halo-blur",
+              "hb": 0,
+              "label": "0px"
+            },
+            "geometry": {
+              "type": "Point",
+              "coordinates": [-43.0, 2.8]
+            }
+          },
+          {
+            "type": "Feature",
+            "properties": {
+              "test": "halo-blur",
+              "hb": 0.5,
+              "label": "0.5px"
+            },
+            "geometry": {
+              "type": "Point",
+              "coordinates": [-41.0, 2.8]
+            }
+          },
+          {
+            "type": "Feature",
+            "properties": {
+              "test": "halo-blur",
+              "hb": 1,
+              "label": "1px"
+            },
+            "geometry": {
+              "type": "Point",
+              "coordinates": [-39.0, 2.8]
+            }
+          },
+          {
+            "type": "Feature",
+            "properties": {
+              "test": "halo-blur",
+              "hb": 2,
+              "label": "2px"
+            },
+            "geometry": {
+              "type": "Point",
+              "coordinates": [-37.0, 2.8]
+            }
+          },
+          {
+            "type": "Feature",
+            "properties": {
+              "test": "halo-blur",
+              "hb": 3,
+              "label": "3px"
+            },
+            "geometry": {
+              "type": "Point",
+              "coordinates": [-35.0, 2.8]
+            }
+          },
+          {
+            "type": "Feature",
+            "properties": {
+              "test": "halo-blur",
+              "hb": 5,
+              "label": "5px"
+            },
+            "geometry": {
+              "type": "Point",
+              "coordinates": [-33.0, 2.8]
+            }
+          },
+          {
+            "type": "Feature",
+            "properties": {
+              "test": "halo-blur",
+              "hb": 8,
+              "label": "8px"
+            },
+            "geometry": {
+              "type": "Point",
+              "coordinates": [-31.0, 2.8]
+            }
+          },
+          {
+            "type": "Feature",
+            "properties": {
+              "test": "halo-edge",
+              "case": "w0-b3-const",
+              "hw": 0,
+              "label": "w0 b3 const"
+            },
+            "geometry": {
+              "type": "Point",
+              "coordinates": [-43.0, 1.2]
+            }
+          },
+          {
+            "type": "Feature",
+            "properties": {
+              "test": "halo-edge",
+              "case": "w0-b3-data",
+              "hw": 0,
+              "label": "w0 b3 data"
+            },
+            "geometry": {
+              "type": "Point",
+              "coordinates": [-41.0, 1.2]
+            }
+          },
+          {
+            "type": "Feature",
+            "properties": {
+              "test": "halo-edge",
+              "case": "no-color",
+              "hw": 0,
+              "label": "no color"
+            },
+            "geometry": {
+              "type": "Point",
+              "coordinates": [-39.0, 1.2]
+            }
+          },
+          {
+            "type": "Feature",
+            "properties": {
+              "test": "halo-edge",
+              "case": "blur-only",
+              "hw": 0,
+              "label": "b3 no width"
+            },
+            "geometry": {
+              "type": "Point",
+              "coordinates": [-37.0, 1.2]
+            }
+          },
+          {
+            "type": "Feature",
+            "properties": {
+              "test": "halo-edge",
+              "case": "alpha",
+              "hw": 0,
+              "label": "rgba .4"
+            },
+            "geometry": {
+              "type": "Point",
+              "coordinates": [-35.0, 1.2]
+            }
+          },
+          {
+            "type": "Feature",
+            "properties": {
+              "test": "halo-edge",
+              "case": "w9-const",
+              "hw": 0,
+              "label": "w9 const"
+            },
+            "geometry": {
+              "type": "Point",
+              "coordinates": [-33.0, 1.2]
+            }
+          },
+          {
+            "type": "Feature",
+            "properties": {
+              "test": "halo-color",
+              "hc": "#e5312b",
+              "label": "Halo"
+            },
+            "geometry": {
+              "type": "Point",
+              "coordinates": [-43.0, -0.4]
+            }
+          },
+          {
+            "type": "Feature",
+            "properties": {
+              "test": "halo-color",
+              "hc": "#2b8a3e",
+              "label": "Halo"
+            },
+            "geometry": {
+              "type": "Point",
+              "coordinates": [-41.0, -0.4]
+            }
+          },
+          {
+            "type": "Feature",
+            "properties": {
+              "test": "halo-color",
+              "hc": "#1c7ed6",
+              "label": "Halo"
+            },
+            "geometry": {
+              "type": "Point",
+              "coordinates": [-39.0, -0.4]
+            }
+          },
+          {
+            "type": "Feature",
+            "properties": {
+              "test": "halo-color",
+              "hc": "#f59f00",
+              "label": "Halo"
+            },
+            "geometry": {
+              "type": "Point",
+              "coordinates": [-37.0, -0.4]
+            }
+          },
+          {
+            "type": "Feature",
+            "properties": {
+              "test": "halo-color",
+              "hc": "#ae3ec9",
+              "label": "Halo"
+            },
+            "geometry": {
+              "type": "Point",
+              "coordinates": [-35.0, -0.4]
+            }
+          },
+          {
+            "type": "Feature",
+            "properties": {
+              "test": "halo-color",
+              "hc": "rgba(0, 0, 0, 0.35)",
+              "label": "Halo"
+            },
+            "geometry": {
+              "type": "Point",
+              "coordinates": [-33.0, -0.4]
+            }
+          },
+          {
+            "type": "Feature",
+            "properties": {
+              "test": "halo-color",
+              "hc": "hsl(180, 60%, 45%)",
+              "label": "Halo"
+            },
+            "geometry": {
+              "type": "Point",
+              "coordinates": [-31.0, -0.4]
+            }
+          },
+          {
+            "type": "Feature",
+            "properties": {
+              "test": "halo-size",
+              "size": 8,
+              "label": "8"
+            },
+            "geometry": {
+              "type": "Point",
+              "coordinates": [-43.0, -2.0]
+            }
+          },
+          {
+            "type": "Feature",
+            "properties": {
+              "test": "halo-size",
+              "size": 10,
+              "label": "10"
+            },
+            "geometry": {
+              "type": "Point",
+              "coordinates": [-41.0, -2.0]
+            }
+          },
+          {
+            "type": "Feature",
+            "properties": {
+              "test": "halo-size",
+              "size": 14,
+              "label": "14"
+            },
+            "geometry": {
+              "type": "Point",
+              "coordinates": [-39.0, -2.0]
+            }
+          },
+          {
+            "type": "Feature",
+            "properties": {
+              "test": "halo-size",
+              "size": 20,
+              "label": "20"
+            },
+            "geometry": {
+              "type": "Point",
+              "coordinates": [-37.0, -2.0]
+            }
+          },
+          {
+            "type": "Feature",
+            "properties": {
+              "test": "halo-size",
+              "size": 28,
+              "label": "28"
+            },
+            "geometry": {
+              "type": "Point",
+              "coordinates": [-35.0, -2.0]
+            }
+          },
+          {
+            "type": "Feature",
+            "properties": {
+              "test": "halo-size",
+              "size": 36,
+              "label": "36"
+            },
+            "geometry": {
+              "type": "Point",
+              "coordinates": [-33.0, -2.0]
+            }
+          },
+          {
+            "type": "Feature",
+            "properties": {
+              "test": "halo-zoom",
+              "case": "width",
+              "hw": 5,
+              "label": "width z"
+            },
+            "geometry": {
+              "type": "Point",
+              "coordinates": [-43.0, -3.6]
+            }
+          },
+          {
+            "type": "Feature",
+            "properties": {
+              "test": "halo-zoom",
+              "case": "blur",
+              "hw": 5,
+              "label": "blur z"
+            },
+            "geometry": {
+              "type": "Point",
+              "coordinates": [-41.0, -3.6]
+            }
+          },
+          {
+            "type": "Feature",
+            "properties": {
+              "test": "halo-zoom",
+              "case": "color",
+              "hw": 5,
+              "label": "color z"
+            },
+            "geometry": {
+              "type": "Point",
+              "coordinates": [-39.0, -3.6]
+            }
+          },
+          {
+            "type": "Feature",
+            "properties": {
+              "test": "halo-zoom",
+              "case": "width-data",
+              "hw": 5,
+              "label": "width z*data"
+            },
+            "geometry": {
+              "type": "Point",
+              "coordinates": [-37.0, -3.6]
+            }
+          },
+          {
+            "type": "Feature",
+            "properties": {
+              "test": "line-height",
+              "case": "0.8",
+              "label": "line-height\n0.8\nthird line"
+            },
+            "geometry": {
+              "type": "Point",
+              "coordinates": [-43.0, -6.2]
+            }
+          },
+          {
+            "type": "Feature",
+            "properties": {
+              "test": "line-height",
+              "case": "1.0",
+              "label": "line-height\n1.0\nthird line"
+            },
+            "geometry": {
+              "type": "Point",
+              "coordinates": [-40.6, -6.2]
+            }
+          },
+          {
+            "type": "Feature",
+            "properties": {
+              "test": "line-height",
+              "case": "1.2",
+              "label": "line-height\n1.2 (unset)\nthird line"
+            },
+            "geometry": {
+              "type": "Point",
+              "coordinates": [-38.2, -6.2]
+            }
+          },
+          {
+            "type": "Feature",
+            "properties": {
+              "test": "line-height",
+              "case": "1.6",
+              "label": "line-height\n1.6\nthird line"
+            },
+            "geometry": {
+              "type": "Point",
+              "coordinates": [-35.8, -6.2]
+            }
+          },
+          {
+            "type": "Feature",
+            "properties": {
+              "test": "line-height",
+              "case": "2.4",
+              "label": "line-height\n2.4\nthird line"
+            },
+            "geometry": {
+              "type": "Point",
+              "coordinates": [-33.4, -6.2]
+            }
+          },
+          {
+            "type": "Feature",
+            "properties": {
+              "test": "line-height",
+              "case": "z",
+              "label": "line-height\nzoom 4-7: 1-2.5\nthird line"
+            },
+            "geometry": {
+              "type": "Point",
+              "coordinates": [-31.0, -6.2]
+            }
+          },
+          {
+            "type": "Feature",
+            "properties": {
+              "test": "line-height-anchor",
+              "case": "top",
+              "label": "lh 2\ntop\nthird line"
+            },
+            "geometry": {
+              "type": "Point",
+              "coordinates": [-43.0, -9.4]
+            }
+          },
+          {
+            "type": "Feature",
+            "properties": {
+              "test": "line-height-anchor",
+              "case": "bottom",
+              "label": "lh 2\nbottom\nthird line"
+            },
+            "geometry": {
+              "type": "Point",
+              "coordinates": [-40.6, -9.4]
+            }
+          },
+          {
+            "type": "Feature",
+            "properties": {
+              "test": "line-height-anchor",
+              "case": "left",
+              "label": "lh 2\nleft\nthird line"
+            },
+            "geometry": {
+              "type": "Point",
+              "coordinates": [-38.2, -9.4]
+            }
+          },
+          {
+            "type": "Feature",
+            "properties": {
+              "test": "line-height-anchor",
+              "case": "offset",
+              "label": "lh 2\noffset\nthird line"
+            },
+            "geometry": {
+              "type": "Point",
+              "coordinates": [-35.8, -9.4]
+            }
+          },
+          {
+            "type": "Feature",
+            "properties": {
+              "test": "line-height-anchor",
+              "case": "radial",
+              "label": "lh 2\nradial\nthird line"
+            },
+            "geometry": {
+              "type": "Point",
+              "coordinates": [-33.4, -9.4]
+            }
+          },
+          {
+            "type": "Feature",
+            "properties": {
+              "test": "line-height-anchor",
+              "case": "va",
+              "label": "lh 2\nva\nthird line"
+            },
+            "geometry": {
+              "type": "Point",
+              "coordinates": [-31.0, -9.4]
+            }
           }
         ]
       }
@@ -1063,6 +1673,86 @@
             "geometry": {
               "type": "Point",
               "coordinates": [-29.0, 7.6]
+            }
+          },
+          {
+            "type": "Feature",
+            "properties": {
+              "title": "text-halo-width px (data, size 18)"
+            },
+            "geometry": {
+              "type": "Point",
+              "coordinates": [-44.2, 4.4]
+            }
+          },
+          {
+            "type": "Feature",
+            "properties": {
+              "title": "text-halo-blur px (data, width 2)"
+            },
+            "geometry": {
+              "type": "Point",
+              "coordinates": [-44.2, 2.8]
+            }
+          },
+          {
+            "type": "Feature",
+            "properties": {
+              "title": "halo edge cases (one layer each)"
+            },
+            "geometry": {
+              "type": "Point",
+              "coordinates": [-44.2, 1.2]
+            }
+          },
+          {
+            "type": "Feature",
+            "properties": {
+              "title": "text-halo-color (data, width 3)"
+            },
+            "geometry": {
+              "type": "Point",
+              "coordinates": [-44.2, -0.4]
+            }
+          },
+          {
+            "type": "Feature",
+            "properties": {
+              "title": "2px halo vs text-size (data size)"
+            },
+            "geometry": {
+              "type": "Point",
+              "coordinates": [-44.2, -2.0]
+            }
+          },
+          {
+            "type": "Feature",
+            "properties": {
+              "title": "halo by zoom (zoom 4 -> 7!)"
+            },
+            "geometry": {
+              "type": "Point",
+              "coordinates": [-44.2, -3.6]
+            }
+          },
+          {
+            "type": "Feature",
+            "properties": {
+              "title": "text-line-height ems (anchor center)"
+            },
+            "geometry": {
+              "type": "Point",
+              "coordinates": [-44.2, -6.2]
+            }
+          },
+          {
+            "type": "Feature",
+            "properties": {
+              "title": "line-height 2 x anchor / offset"
+            },
+            "geometry": {
+              "type": "Point",
+              "coordinates": [-44.2, -9.4]
             }
           }
         ]
@@ -2415,6 +3105,856 @@
                 ]
               ]
             }
+          },
+          {
+            "type": "Feature",
+            "properties": {},
+            "geometry": {
+              "type": "MultiLineString",
+              "coordinates": [
+                [
+                  [-43.12, 4.4],
+                  [-42.88, 4.4]
+                ],
+                [
+                  [-43.0, 4.28],
+                  [-43.0, 4.5200000000000005]
+                ]
+              ]
+            }
+          },
+          {
+            "type": "Feature",
+            "properties": {},
+            "geometry": {
+              "type": "MultiLineString",
+              "coordinates": [
+                [
+                  [-41.12, 4.4],
+                  [-40.88, 4.4]
+                ],
+                [
+                  [-41.0, 4.28],
+                  [-41.0, 4.5200000000000005]
+                ]
+              ]
+            }
+          },
+          {
+            "type": "Feature",
+            "properties": {},
+            "geometry": {
+              "type": "MultiLineString",
+              "coordinates": [
+                [
+                  [-39.12, 4.4],
+                  [-38.88, 4.4]
+                ],
+                [
+                  [-39.0, 4.28],
+                  [-39.0, 4.5200000000000005]
+                ]
+              ]
+            }
+          },
+          {
+            "type": "Feature",
+            "properties": {},
+            "geometry": {
+              "type": "MultiLineString",
+              "coordinates": [
+                [
+                  [-37.12, 4.4],
+                  [-36.88, 4.4]
+                ],
+                [
+                  [-37.0, 4.28],
+                  [-37.0, 4.5200000000000005]
+                ]
+              ]
+            }
+          },
+          {
+            "type": "Feature",
+            "properties": {},
+            "geometry": {
+              "type": "MultiLineString",
+              "coordinates": [
+                [
+                  [-35.12, 4.4],
+                  [-34.88, 4.4]
+                ],
+                [
+                  [-35.0, 4.28],
+                  [-35.0, 4.5200000000000005]
+                ]
+              ]
+            }
+          },
+          {
+            "type": "Feature",
+            "properties": {},
+            "geometry": {
+              "type": "MultiLineString",
+              "coordinates": [
+                [
+                  [-33.12, 4.4],
+                  [-32.88, 4.4]
+                ],
+                [
+                  [-33.0, 4.28],
+                  [-33.0, 4.5200000000000005]
+                ]
+              ]
+            }
+          },
+          {
+            "type": "Feature",
+            "properties": {},
+            "geometry": {
+              "type": "MultiLineString",
+              "coordinates": [
+                [
+                  [-31.12, 4.4],
+                  [-30.88, 4.4]
+                ],
+                [
+                  [-31.0, 4.28],
+                  [-31.0, 4.5200000000000005]
+                ]
+              ]
+            }
+          },
+          {
+            "type": "Feature",
+            "properties": {},
+            "geometry": {
+              "type": "MultiLineString",
+              "coordinates": [
+                [
+                  [-29.12, 4.4],
+                  [-28.88, 4.4]
+                ],
+                [
+                  [-29.0, 4.28],
+                  [-29.0, 4.5200000000000005]
+                ]
+              ]
+            }
+          },
+          {
+            "type": "Feature",
+            "properties": {},
+            "geometry": {
+              "type": "MultiLineString",
+              "coordinates": [
+                [
+                  [-43.12, 2.8],
+                  [-42.88, 2.8]
+                ],
+                [
+                  [-43.0, 2.6799999999999997],
+                  [-43.0, 2.92]
+                ]
+              ]
+            }
+          },
+          {
+            "type": "Feature",
+            "properties": {},
+            "geometry": {
+              "type": "MultiLineString",
+              "coordinates": [
+                [
+                  [-41.12, 2.8],
+                  [-40.88, 2.8]
+                ],
+                [
+                  [-41.0, 2.6799999999999997],
+                  [-41.0, 2.92]
+                ]
+              ]
+            }
+          },
+          {
+            "type": "Feature",
+            "properties": {},
+            "geometry": {
+              "type": "MultiLineString",
+              "coordinates": [
+                [
+                  [-39.12, 2.8],
+                  [-38.88, 2.8]
+                ],
+                [
+                  [-39.0, 2.6799999999999997],
+                  [-39.0, 2.92]
+                ]
+              ]
+            }
+          },
+          {
+            "type": "Feature",
+            "properties": {},
+            "geometry": {
+              "type": "MultiLineString",
+              "coordinates": [
+                [
+                  [-37.12, 2.8],
+                  [-36.88, 2.8]
+                ],
+                [
+                  [-37.0, 2.6799999999999997],
+                  [-37.0, 2.92]
+                ]
+              ]
+            }
+          },
+          {
+            "type": "Feature",
+            "properties": {},
+            "geometry": {
+              "type": "MultiLineString",
+              "coordinates": [
+                [
+                  [-35.12, 2.8],
+                  [-34.88, 2.8]
+                ],
+                [
+                  [-35.0, 2.6799999999999997],
+                  [-35.0, 2.92]
+                ]
+              ]
+            }
+          },
+          {
+            "type": "Feature",
+            "properties": {},
+            "geometry": {
+              "type": "MultiLineString",
+              "coordinates": [
+                [
+                  [-33.12, 2.8],
+                  [-32.88, 2.8]
+                ],
+                [
+                  [-33.0, 2.6799999999999997],
+                  [-33.0, 2.92]
+                ]
+              ]
+            }
+          },
+          {
+            "type": "Feature",
+            "properties": {},
+            "geometry": {
+              "type": "MultiLineString",
+              "coordinates": [
+                [
+                  [-31.12, 2.8],
+                  [-30.88, 2.8]
+                ],
+                [
+                  [-31.0, 2.6799999999999997],
+                  [-31.0, 2.92]
+                ]
+              ]
+            }
+          },
+          {
+            "type": "Feature",
+            "properties": {},
+            "geometry": {
+              "type": "MultiLineString",
+              "coordinates": [
+                [
+                  [-43.12, 1.2],
+                  [-42.88, 1.2]
+                ],
+                [
+                  [-43.0, 1.08],
+                  [-43.0, 1.3199999999999998]
+                ]
+              ]
+            }
+          },
+          {
+            "type": "Feature",
+            "properties": {},
+            "geometry": {
+              "type": "MultiLineString",
+              "coordinates": [
+                [
+                  [-41.12, 1.2],
+                  [-40.88, 1.2]
+                ],
+                [
+                  [-41.0, 1.08],
+                  [-41.0, 1.3199999999999998]
+                ]
+              ]
+            }
+          },
+          {
+            "type": "Feature",
+            "properties": {},
+            "geometry": {
+              "type": "MultiLineString",
+              "coordinates": [
+                [
+                  [-39.12, 1.2],
+                  [-38.88, 1.2]
+                ],
+                [
+                  [-39.0, 1.08],
+                  [-39.0, 1.3199999999999998]
+                ]
+              ]
+            }
+          },
+          {
+            "type": "Feature",
+            "properties": {},
+            "geometry": {
+              "type": "MultiLineString",
+              "coordinates": [
+                [
+                  [-37.12, 1.2],
+                  [-36.88, 1.2]
+                ],
+                [
+                  [-37.0, 1.08],
+                  [-37.0, 1.3199999999999998]
+                ]
+              ]
+            }
+          },
+          {
+            "type": "Feature",
+            "properties": {},
+            "geometry": {
+              "type": "MultiLineString",
+              "coordinates": [
+                [
+                  [-35.12, 1.2],
+                  [-34.88, 1.2]
+                ],
+                [
+                  [-35.0, 1.08],
+                  [-35.0, 1.3199999999999998]
+                ]
+              ]
+            }
+          },
+          {
+            "type": "Feature",
+            "properties": {},
+            "geometry": {
+              "type": "MultiLineString",
+              "coordinates": [
+                [
+                  [-33.12, 1.2],
+                  [-32.88, 1.2]
+                ],
+                [
+                  [-33.0, 1.08],
+                  [-33.0, 1.3199999999999998]
+                ]
+              ]
+            }
+          },
+          {
+            "type": "Feature",
+            "properties": {},
+            "geometry": {
+              "type": "MultiLineString",
+              "coordinates": [
+                [
+                  [-43.12, -0.4],
+                  [-42.88, -0.4]
+                ],
+                [
+                  [-43.0, -0.52],
+                  [-43.0, -0.28]
+                ]
+              ]
+            }
+          },
+          {
+            "type": "Feature",
+            "properties": {},
+            "geometry": {
+              "type": "MultiLineString",
+              "coordinates": [
+                [
+                  [-41.12, -0.4],
+                  [-40.88, -0.4]
+                ],
+                [
+                  [-41.0, -0.52],
+                  [-41.0, -0.28]
+                ]
+              ]
+            }
+          },
+          {
+            "type": "Feature",
+            "properties": {},
+            "geometry": {
+              "type": "MultiLineString",
+              "coordinates": [
+                [
+                  [-39.12, -0.4],
+                  [-38.88, -0.4]
+                ],
+                [
+                  [-39.0, -0.52],
+                  [-39.0, -0.28]
+                ]
+              ]
+            }
+          },
+          {
+            "type": "Feature",
+            "properties": {},
+            "geometry": {
+              "type": "MultiLineString",
+              "coordinates": [
+                [
+                  [-37.12, -0.4],
+                  [-36.88, -0.4]
+                ],
+                [
+                  [-37.0, -0.52],
+                  [-37.0, -0.28]
+                ]
+              ]
+            }
+          },
+          {
+            "type": "Feature",
+            "properties": {},
+            "geometry": {
+              "type": "MultiLineString",
+              "coordinates": [
+                [
+                  [-35.12, -0.4],
+                  [-34.88, -0.4]
+                ],
+                [
+                  [-35.0, -0.52],
+                  [-35.0, -0.28]
+                ]
+              ]
+            }
+          },
+          {
+            "type": "Feature",
+            "properties": {},
+            "geometry": {
+              "type": "MultiLineString",
+              "coordinates": [
+                [
+                  [-33.12, -0.4],
+                  [-32.88, -0.4]
+                ],
+                [
+                  [-33.0, -0.52],
+                  [-33.0, -0.28]
+                ]
+              ]
+            }
+          },
+          {
+            "type": "Feature",
+            "properties": {},
+            "geometry": {
+              "type": "MultiLineString",
+              "coordinates": [
+                [
+                  [-31.12, -0.4],
+                  [-30.88, -0.4]
+                ],
+                [
+                  [-31.0, -0.52],
+                  [-31.0, -0.28]
+                ]
+              ]
+            }
+          },
+          {
+            "type": "Feature",
+            "properties": {},
+            "geometry": {
+              "type": "MultiLineString",
+              "coordinates": [
+                [
+                  [-43.12, -2.0],
+                  [-42.88, -2.0]
+                ],
+                [
+                  [-43.0, -2.12],
+                  [-43.0, -1.88]
+                ]
+              ]
+            }
+          },
+          {
+            "type": "Feature",
+            "properties": {},
+            "geometry": {
+              "type": "MultiLineString",
+              "coordinates": [
+                [
+                  [-41.12, -2.0],
+                  [-40.88, -2.0]
+                ],
+                [
+                  [-41.0, -2.12],
+                  [-41.0, -1.88]
+                ]
+              ]
+            }
+          },
+          {
+            "type": "Feature",
+            "properties": {},
+            "geometry": {
+              "type": "MultiLineString",
+              "coordinates": [
+                [
+                  [-39.12, -2.0],
+                  [-38.88, -2.0]
+                ],
+                [
+                  [-39.0, -2.12],
+                  [-39.0, -1.88]
+                ]
+              ]
+            }
+          },
+          {
+            "type": "Feature",
+            "properties": {},
+            "geometry": {
+              "type": "MultiLineString",
+              "coordinates": [
+                [
+                  [-37.12, -2.0],
+                  [-36.88, -2.0]
+                ],
+                [
+                  [-37.0, -2.12],
+                  [-37.0, -1.88]
+                ]
+              ]
+            }
+          },
+          {
+            "type": "Feature",
+            "properties": {},
+            "geometry": {
+              "type": "MultiLineString",
+              "coordinates": [
+                [
+                  [-35.12, -2.0],
+                  [-34.88, -2.0]
+                ],
+                [
+                  [-35.0, -2.12],
+                  [-35.0, -1.88]
+                ]
+              ]
+            }
+          },
+          {
+            "type": "Feature",
+            "properties": {},
+            "geometry": {
+              "type": "MultiLineString",
+              "coordinates": [
+                [
+                  [-33.12, -2.0],
+                  [-32.88, -2.0]
+                ],
+                [
+                  [-33.0, -2.12],
+                  [-33.0, -1.88]
+                ]
+              ]
+            }
+          },
+          {
+            "type": "Feature",
+            "properties": {},
+            "geometry": {
+              "type": "MultiLineString",
+              "coordinates": [
+                [
+                  [-43.12, -3.6],
+                  [-42.88, -3.6]
+                ],
+                [
+                  [-43.0, -3.72],
+                  [-43.0, -3.48]
+                ]
+              ]
+            }
+          },
+          {
+            "type": "Feature",
+            "properties": {},
+            "geometry": {
+              "type": "MultiLineString",
+              "coordinates": [
+                [
+                  [-41.12, -3.6],
+                  [-40.88, -3.6]
+                ],
+                [
+                  [-41.0, -3.72],
+                  [-41.0, -3.48]
+                ]
+              ]
+            }
+          },
+          {
+            "type": "Feature",
+            "properties": {},
+            "geometry": {
+              "type": "MultiLineString",
+              "coordinates": [
+                [
+                  [-39.12, -3.6],
+                  [-38.88, -3.6]
+                ],
+                [
+                  [-39.0, -3.72],
+                  [-39.0, -3.48]
+                ]
+              ]
+            }
+          },
+          {
+            "type": "Feature",
+            "properties": {},
+            "geometry": {
+              "type": "MultiLineString",
+              "coordinates": [
+                [
+                  [-37.12, -3.6],
+                  [-36.88, -3.6]
+                ],
+                [
+                  [-37.0, -3.72],
+                  [-37.0, -3.48]
+                ]
+              ]
+            }
+          },
+          {
+            "type": "Feature",
+            "properties": {},
+            "geometry": {
+              "type": "MultiLineString",
+              "coordinates": [
+                [
+                  [-43.12, -6.2],
+                  [-42.88, -6.2]
+                ],
+                [
+                  [-43.0, -6.32],
+                  [-43.0, -6.08]
+                ]
+              ]
+            }
+          },
+          {
+            "type": "Feature",
+            "properties": {},
+            "geometry": {
+              "type": "MultiLineString",
+              "coordinates": [
+                [
+                  [-40.72, -6.2],
+                  [-40.480000000000004, -6.2]
+                ],
+                [
+                  [-40.6, -6.32],
+                  [-40.6, -6.08]
+                ]
+              ]
+            }
+          },
+          {
+            "type": "Feature",
+            "properties": {},
+            "geometry": {
+              "type": "MultiLineString",
+              "coordinates": [
+                [
+                  [-38.32, -6.2],
+                  [-38.080000000000005, -6.2]
+                ],
+                [
+                  [-38.2, -6.32],
+                  [-38.2, -6.08]
+                ]
+              ]
+            }
+          },
+          {
+            "type": "Feature",
+            "properties": {},
+            "geometry": {
+              "type": "MultiLineString",
+              "coordinates": [
+                [
+                  [-35.919999999999995, -6.2],
+                  [-35.68, -6.2]
+                ],
+                [
+                  [-35.8, -6.32],
+                  [-35.8, -6.08]
+                ]
+              ]
+            }
+          },
+          {
+            "type": "Feature",
+            "properties": {},
+            "geometry": {
+              "type": "MultiLineString",
+              "coordinates": [
+                [
+                  [-33.519999999999996, -6.2],
+                  [-33.28, -6.2]
+                ],
+                [
+                  [-33.4, -6.32],
+                  [-33.4, -6.08]
+                ]
+              ]
+            }
+          },
+          {
+            "type": "Feature",
+            "properties": {},
+            "geometry": {
+              "type": "MultiLineString",
+              "coordinates": [
+                [
+                  [-31.12, -6.2],
+                  [-30.88, -6.2]
+                ],
+                [
+                  [-31.0, -6.32],
+                  [-31.0, -6.08]
+                ]
+              ]
+            }
+          },
+          {
+            "type": "Feature",
+            "properties": {},
+            "geometry": {
+              "type": "MultiLineString",
+              "coordinates": [
+                [
+                  [-43.12, -9.4],
+                  [-42.88, -9.4]
+                ],
+                [
+                  [-43.0, -9.52],
+                  [-43.0, -9.280000000000001]
+                ]
+              ]
+            }
+          },
+          {
+            "type": "Feature",
+            "properties": {},
+            "geometry": {
+              "type": "MultiLineString",
+              "coordinates": [
+                [
+                  [-40.72, -9.4],
+                  [-40.480000000000004, -9.4]
+                ],
+                [
+                  [-40.6, -9.52],
+                  [-40.6, -9.280000000000001]
+                ]
+              ]
+            }
+          },
+          {
+            "type": "Feature",
+            "properties": {},
+            "geometry": {
+              "type": "MultiLineString",
+              "coordinates": [
+                [
+                  [-38.32, -9.4],
+                  [-38.080000000000005, -9.4]
+                ],
+                [
+                  [-38.2, -9.52],
+                  [-38.2, -9.280000000000001]
+                ]
+              ]
+            }
+          },
+          {
+            "type": "Feature",
+            "properties": {},
+            "geometry": {
+              "type": "MultiLineString",
+              "coordinates": [
+                [
+                  [-35.919999999999995, -9.4],
+                  [-35.68, -9.4]
+                ],
+                [
+                  [-35.8, -9.52],
+                  [-35.8, -9.280000000000001]
+                ]
+              ]
+            }
+          },
+          {
+            "type": "Feature",
+            "properties": {},
+            "geometry": {
+              "type": "MultiLineString",
+              "coordinates": [
+                [
+                  [-33.519999999999996, -9.4],
+                  [-33.28, -9.4]
+                ],
+                [
+                  [-33.4, -9.52],
+                  [-33.4, -9.280000000000001]
+                ]
+              ]
+            }
+          },
+          {
+            "type": "Feature",
+            "properties": {},
+            "geometry": {
+              "type": "MultiLineString",
+              "coordinates": [
+                [
+                  [-31.12, -9.4],
+                  [-30.88, -9.4]
+                ],
+                [
+                  [-31.0, -9.52],
+                  [-31.0, -9.280000000000001]
+                ]
+              ]
+            }
           }
         ]
       }
@@ -2824,6 +4364,602 @@
         "text-variable-anchor": ["top", "bottom", "left", "right"],
         "text-radial-offset": 0.5,
         "text-allow-overlap": true
+      },
+      "paint": {
+        "text-color": "#1b1f3b",
+        "text-halo-color": "#ffffff",
+        "text-halo-width": 1.5
+      }
+    },
+    {
+      "id": "halo-width",
+      "type": "symbol",
+      "source": "points",
+      "filter": ["==", ["get", "test"], "halo-width"],
+      "layout": {
+        "text-field": ["get", "label"],
+        "text-font": ["Open Sans Semibold"],
+        "text-size": 18,
+        "text-allow-overlap": true,
+        "text-ignore-placement": true
+      },
+      "paint": {
+        "text-color": "#ffffff",
+        "text-halo-color": "#1b1f3b",
+        "text-halo-width": ["get", "hw"]
+      }
+    },
+    {
+      "id": "halo-blur",
+      "type": "symbol",
+      "source": "points",
+      "filter": ["==", ["get", "test"], "halo-blur"],
+      "layout": {
+        "text-field": ["get", "label"],
+        "text-font": ["Open Sans Semibold"],
+        "text-size": 18,
+        "text-allow-overlap": true,
+        "text-ignore-placement": true
+      },
+      "paint": {
+        "text-color": "#ffffff",
+        "text-halo-color": "#1b1f3b",
+        "text-halo-width": 2,
+        "text-halo-blur": ["get", "hb"]
+      }
+    },
+    {
+      "id": "halo-edge-w0-b3-const",
+      "type": "symbol",
+      "source": "points",
+      "filter": [
+        "all",
+        ["==", ["get", "test"], "halo-edge"],
+        ["==", ["get", "case"], "w0-b3-const"]
+      ],
+      "layout": {
+        "text-field": ["get", "label"],
+        "text-font": ["Open Sans Semibold"],
+        "text-size": 16,
+        "text-allow-overlap": true,
+        "text-ignore-placement": true
+      },
+      "paint": {
+        "text-color": "#ffffff",
+        "text-halo-color": "#1b1f3b",
+        "text-halo-width": 0,
+        "text-halo-blur": 3
+      }
+    },
+    {
+      "id": "halo-edge-w0-b3-data",
+      "type": "symbol",
+      "source": "points",
+      "filter": [
+        "all",
+        ["==", ["get", "test"], "halo-edge"],
+        ["==", ["get", "case"], "w0-b3-data"]
+      ],
+      "layout": {
+        "text-field": ["get", "label"],
+        "text-font": ["Open Sans Semibold"],
+        "text-size": 16,
+        "text-allow-overlap": true,
+        "text-ignore-placement": true
+      },
+      "paint": {
+        "text-color": "#ffffff",
+        "text-halo-color": "#1b1f3b",
+        "text-halo-width": ["get", "hw"],
+        "text-halo-blur": 3
+      }
+    },
+    {
+      "id": "halo-edge-no-color",
+      "type": "symbol",
+      "source": "points",
+      "filter": [
+        "all",
+        ["==", ["get", "test"], "halo-edge"],
+        ["==", ["get", "case"], "no-color"]
+      ],
+      "layout": {
+        "text-field": ["get", "label"],
+        "text-font": ["Open Sans Semibold"],
+        "text-size": 16,
+        "text-allow-overlap": true,
+        "text-ignore-placement": true
+      },
+      "paint": {
+        "text-color": "#ffffff",
+        "text-halo-width": 3
+      }
+    },
+    {
+      "id": "halo-edge-blur-only",
+      "type": "symbol",
+      "source": "points",
+      "filter": [
+        "all",
+        ["==", ["get", "test"], "halo-edge"],
+        ["==", ["get", "case"], "blur-only"]
+      ],
+      "layout": {
+        "text-field": ["get", "label"],
+        "text-font": ["Open Sans Semibold"],
+        "text-size": 16,
+        "text-allow-overlap": true,
+        "text-ignore-placement": true
+      },
+      "paint": {
+        "text-color": "#ffffff",
+        "text-halo-color": "#1b1f3b",
+        "text-halo-blur": 3
+      }
+    },
+    {
+      "id": "halo-edge-alpha",
+      "type": "symbol",
+      "source": "points",
+      "filter": [
+        "all",
+        ["==", ["get", "test"], "halo-edge"],
+        ["==", ["get", "case"], "alpha"]
+      ],
+      "layout": {
+        "text-field": ["get", "label"],
+        "text-font": ["Open Sans Semibold"],
+        "text-size": 16,
+        "text-allow-overlap": true,
+        "text-ignore-placement": true
+      },
+      "paint": {
+        "text-color": "#ffffff",
+        "text-halo-color": "rgba(229, 49, 43, 0.4)",
+        "text-halo-width": 4
+      }
+    },
+    {
+      "id": "halo-edge-w9-const",
+      "type": "symbol",
+      "source": "points",
+      "filter": [
+        "all",
+        ["==", ["get", "test"], "halo-edge"],
+        ["==", ["get", "case"], "w9-const"]
+      ],
+      "layout": {
+        "text-field": ["get", "label"],
+        "text-font": ["Open Sans Semibold"],
+        "text-size": 16,
+        "text-allow-overlap": true,
+        "text-ignore-placement": true
+      },
+      "paint": {
+        "text-color": "#ffffff",
+        "text-halo-color": "#1b1f3b",
+        "text-halo-width": 9
+      }
+    },
+    {
+      "id": "halo-color",
+      "type": "symbol",
+      "source": "points",
+      "filter": ["==", ["get", "test"], "halo-color"],
+      "layout": {
+        "text-field": ["get", "label"],
+        "text-font": ["Open Sans Semibold"],
+        "text-size": 18,
+        "text-allow-overlap": true,
+        "text-ignore-placement": true
+      },
+      "paint": {
+        "text-color": "#ffffff",
+        "text-halo-color": ["to-color", ["get", "hc"]],
+        "text-halo-width": 3
+      }
+    },
+    {
+      "id": "halo-size",
+      "type": "symbol",
+      "source": "points",
+      "filter": ["==", ["get", "test"], "halo-size"],
+      "layout": {
+        "text-field": ["get", "label"],
+        "text-font": ["Open Sans Semibold"],
+        "text-size": ["get", "size"],
+        "text-allow-overlap": true,
+        "text-ignore-placement": true
+      },
+      "paint": {
+        "text-color": "#ffffff",
+        "text-halo-color": "#1b1f3b",
+        "text-halo-width": 2
+      }
+    },
+    {
+      "id": "halo-zoom-width",
+      "type": "symbol",
+      "source": "points",
+      "filter": [
+        "all",
+        ["==", ["get", "test"], "halo-zoom"],
+        ["==", ["get", "case"], "width"]
+      ],
+      "layout": {
+        "text-field": ["get", "label"],
+        "text-font": ["Open Sans Semibold"],
+        "text-size": 16,
+        "text-allow-overlap": true,
+        "text-ignore-placement": true
+      },
+      "paint": {
+        "text-color": "#ffffff",
+        "text-halo-color": "#1b1f3b",
+        "text-halo-width": ["interpolate", ["linear"], ["zoom"], 4, 0, 7, 5]
+      }
+    },
+    {
+      "id": "halo-zoom-blur",
+      "type": "symbol",
+      "source": "points",
+      "filter": [
+        "all",
+        ["==", ["get", "test"], "halo-zoom"],
+        ["==", ["get", "case"], "blur"]
+      ],
+      "layout": {
+        "text-field": ["get", "label"],
+        "text-font": ["Open Sans Semibold"],
+        "text-size": 16,
+        "text-allow-overlap": true,
+        "text-ignore-placement": true
+      },
+      "paint": {
+        "text-color": "#ffffff",
+        "text-halo-color": "#1b1f3b",
+        "text-halo-width": 2,
+        "text-halo-blur": ["interpolate", ["linear"], ["zoom"], 4, 0, 7, 4]
+      }
+    },
+    {
+      "id": "halo-zoom-color",
+      "type": "symbol",
+      "source": "points",
+      "filter": [
+        "all",
+        ["==", ["get", "test"], "halo-zoom"],
+        ["==", ["get", "case"], "color"]
+      ],
+      "layout": {
+        "text-field": ["get", "label"],
+        "text-font": ["Open Sans Semibold"],
+        "text-size": 16,
+        "text-allow-overlap": true,
+        "text-ignore-placement": true
+      },
+      "paint": {
+        "text-color": "#ffffff",
+        "text-halo-color": [
+          "interpolate",
+          ["linear"],
+          ["zoom"],
+          4,
+          "#e5312b",
+          7,
+          "#1c7ed6"
+        ],
+        "text-halo-width": 3
+      }
+    },
+    {
+      "id": "halo-zoom-width-data",
+      "type": "symbol",
+      "source": "points",
+      "filter": [
+        "all",
+        ["==", ["get", "test"], "halo-zoom"],
+        ["==", ["get", "case"], "width-data"]
+      ],
+      "layout": {
+        "text-field": ["get", "label"],
+        "text-font": ["Open Sans Semibold"],
+        "text-size": 16,
+        "text-allow-overlap": true,
+        "text-ignore-placement": true
+      },
+      "paint": {
+        "text-color": "#ffffff",
+        "text-halo-color": "#1b1f3b",
+        "text-halo-width": [
+          "interpolate",
+          ["linear"],
+          ["zoom"],
+          4,
+          0,
+          7,
+          ["get", "hw"]
+        ]
+      }
+    },
+    {
+      "id": "line-height-0.8",
+      "type": "symbol",
+      "source": "points",
+      "filter": [
+        "all",
+        ["==", ["get", "test"], "line-height"],
+        ["==", ["get", "case"], "0.8"]
+      ],
+      "layout": {
+        "text-field": ["get", "label"],
+        "text-font": ["Open Sans Semibold"],
+        "text-size": 14,
+        "text-allow-overlap": true,
+        "text-ignore-placement": true,
+        "text-line-height": 0.8
+      },
+      "paint": {
+        "text-color": "#1b1f3b",
+        "text-halo-color": "#ffffff",
+        "text-halo-width": 1.5
+      }
+    },
+    {
+      "id": "line-height-1.0",
+      "type": "symbol",
+      "source": "points",
+      "filter": [
+        "all",
+        ["==", ["get", "test"], "line-height"],
+        ["==", ["get", "case"], "1.0"]
+      ],
+      "layout": {
+        "text-field": ["get", "label"],
+        "text-font": ["Open Sans Semibold"],
+        "text-size": 14,
+        "text-allow-overlap": true,
+        "text-ignore-placement": true,
+        "text-line-height": 1.0
+      },
+      "paint": {
+        "text-color": "#1b1f3b",
+        "text-halo-color": "#ffffff",
+        "text-halo-width": 1.5
+      }
+    },
+    {
+      "id": "line-height-1.2",
+      "type": "symbol",
+      "source": "points",
+      "filter": [
+        "all",
+        ["==", ["get", "test"], "line-height"],
+        ["==", ["get", "case"], "1.2"]
+      ],
+      "layout": {
+        "text-field": ["get", "label"],
+        "text-font": ["Open Sans Semibold"],
+        "text-size": 14,
+        "text-allow-overlap": true,
+        "text-ignore-placement": true
+      },
+      "paint": {
+        "text-color": "#1b1f3b",
+        "text-halo-color": "#ffffff",
+        "text-halo-width": 1.5
+      }
+    },
+    {
+      "id": "line-height-1.6",
+      "type": "symbol",
+      "source": "points",
+      "filter": [
+        "all",
+        ["==", ["get", "test"], "line-height"],
+        ["==", ["get", "case"], "1.6"]
+      ],
+      "layout": {
+        "text-field": ["get", "label"],
+        "text-font": ["Open Sans Semibold"],
+        "text-size": 14,
+        "text-allow-overlap": true,
+        "text-ignore-placement": true,
+        "text-line-height": 1.6
+      },
+      "paint": {
+        "text-color": "#1b1f3b",
+        "text-halo-color": "#ffffff",
+        "text-halo-width": 1.5
+      }
+    },
+    {
+      "id": "line-height-2.4",
+      "type": "symbol",
+      "source": "points",
+      "filter": [
+        "all",
+        ["==", ["get", "test"], "line-height"],
+        ["==", ["get", "case"], "2.4"]
+      ],
+      "layout": {
+        "text-field": ["get", "label"],
+        "text-font": ["Open Sans Semibold"],
+        "text-size": 14,
+        "text-allow-overlap": true,
+        "text-ignore-placement": true,
+        "text-line-height": 2.4
+      },
+      "paint": {
+        "text-color": "#1b1f3b",
+        "text-halo-color": "#ffffff",
+        "text-halo-width": 1.5
+      }
+    },
+    {
+      "id": "line-height-z",
+      "type": "symbol",
+      "source": "points",
+      "filter": [
+        "all",
+        ["==", ["get", "test"], "line-height"],
+        ["==", ["get", "case"], "z"]
+      ],
+      "layout": {
+        "text-field": ["get", "label"],
+        "text-font": ["Open Sans Semibold"],
+        "text-size": 14,
+        "text-allow-overlap": true,
+        "text-ignore-placement": true,
+        "text-line-height": ["interpolate", ["linear"], ["zoom"], 4, 1, 7, 2.5]
+      },
+      "paint": {
+        "text-color": "#1b1f3b",
+        "text-halo-color": "#ffffff",
+        "text-halo-width": 1.5
+      }
+    },
+    {
+      "id": "line-height-anchor-top",
+      "type": "symbol",
+      "source": "points",
+      "filter": [
+        "all",
+        ["==", ["get", "test"], "line-height-anchor"],
+        ["==", ["get", "case"], "top"]
+      ],
+      "layout": {
+        "text-field": ["get", "label"],
+        "text-font": ["Open Sans Semibold"],
+        "text-size": 14,
+        "text-allow-overlap": true,
+        "text-ignore-placement": true,
+        "text-line-height": 2,
+        "text-anchor": "top"
+      },
+      "paint": {
+        "text-color": "#1b1f3b",
+        "text-halo-color": "#ffffff",
+        "text-halo-width": 1.5
+      }
+    },
+    {
+      "id": "line-height-anchor-bottom",
+      "type": "symbol",
+      "source": "points",
+      "filter": [
+        "all",
+        ["==", ["get", "test"], "line-height-anchor"],
+        ["==", ["get", "case"], "bottom"]
+      ],
+      "layout": {
+        "text-field": ["get", "label"],
+        "text-font": ["Open Sans Semibold"],
+        "text-size": 14,
+        "text-allow-overlap": true,
+        "text-ignore-placement": true,
+        "text-line-height": 2,
+        "text-anchor": "bottom"
+      },
+      "paint": {
+        "text-color": "#1b1f3b",
+        "text-halo-color": "#ffffff",
+        "text-halo-width": 1.5
+      }
+    },
+    {
+      "id": "line-height-anchor-left",
+      "type": "symbol",
+      "source": "points",
+      "filter": [
+        "all",
+        ["==", ["get", "test"], "line-height-anchor"],
+        ["==", ["get", "case"], "left"]
+      ],
+      "layout": {
+        "text-field": ["get", "label"],
+        "text-font": ["Open Sans Semibold"],
+        "text-size": 14,
+        "text-allow-overlap": true,
+        "text-ignore-placement": true,
+        "text-line-height": 2,
+        "text-anchor": "left",
+        "text-justify": "left"
+      },
+      "paint": {
+        "text-color": "#1b1f3b",
+        "text-halo-color": "#ffffff",
+        "text-halo-width": 1.5
+      }
+    },
+    {
+      "id": "line-height-anchor-offset",
+      "type": "symbol",
+      "source": "points",
+      "filter": [
+        "all",
+        ["==", ["get", "test"], "line-height-anchor"],
+        ["==", ["get", "case"], "offset"]
+      ],
+      "layout": {
+        "text-field": ["get", "label"],
+        "text-font": ["Open Sans Semibold"],
+        "text-size": 14,
+        "text-allow-overlap": true,
+        "text-ignore-placement": true,
+        "text-line-height": 2,
+        "text-anchor": "top",
+        "text-offset": [0, 1]
+      },
+      "paint": {
+        "text-color": "#1b1f3b",
+        "text-halo-color": "#ffffff",
+        "text-halo-width": 1.5
+      }
+    },
+    {
+      "id": "line-height-anchor-radial",
+      "type": "symbol",
+      "source": "points",
+      "filter": [
+        "all",
+        ["==", ["get", "test"], "line-height-anchor"],
+        ["==", ["get", "case"], "radial"]
+      ],
+      "layout": {
+        "text-field": ["get", "label"],
+        "text-font": ["Open Sans Semibold"],
+        "text-size": 14,
+        "text-allow-overlap": true,
+        "text-ignore-placement": true,
+        "text-line-height": 2,
+        "text-anchor": "bottom",
+        "text-radial-offset": 1
+      },
+      "paint": {
+        "text-color": "#1b1f3b",
+        "text-halo-color": "#ffffff",
+        "text-halo-width": 1.5
+      }
+    },
+    {
+      "id": "line-height-anchor-va",
+      "type": "symbol",
+      "source": "points",
+      "filter": [
+        "all",
+        ["==", ["get", "test"], "line-height-anchor"],
+        ["==", ["get", "case"], "va"]
+      ],
+      "layout": {
+        "text-field": ["get", "label"],
+        "text-font": ["Open Sans Semibold"],
+        "text-size": 14,
+        "text-allow-overlap": true,
+        "text-ignore-placement": true,
+        "text-line-height": 2,
+        "text-variable-anchor": ["top", "bottom"],
+        "text-radial-offset": 0.5
       },
       "paint": {
         "text-color": "#1b1f3b",

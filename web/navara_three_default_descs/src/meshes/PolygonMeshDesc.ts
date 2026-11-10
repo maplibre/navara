@@ -287,6 +287,7 @@ export class PolygonMeshDesc extends MeshDescWithSelectiveEffect<
       waterScale: style.waterScale,
       waveStrength: style.waveStrength,
       waveDirection: style.waveDirection,
+      flowSpeed: style.flowSpeed,
       shininess: style.shininess,
       specularStrength: style.specularStrength,
       specular: style.specular,

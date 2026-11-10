@@ -794,11 +794,15 @@ pub struct TextMaterial {
     // pub corner_radius: f32, // 0 ~ 0.5, the ratio of the corner radius to the height
     // pub padding: Vec2,
     // outline
-    // pub outline_blur: f32,    // outlineBlur Defalut:0
+    /// Width over which the outline's outer edge fades out, centered on that
+    /// edge, in the unit of `outline_width`. Default `0.0`.
+    pub outline_blur: f32,
     pub outline_color: u32, // outlineColor Defalut:black
     // pub outline_offset: Vec2, // outlineOffset Default: (0,0)
     pub outline_opacity: f32, // outlineOpacity Default:1
-    pub outline_width: f32,   // outlineWidth Default:0
+    /// Outline thickness in 1/64 em: pixels of text drawn 64 pixels tall.
+    /// Default `0.0`.
+    pub outline_width: f32,
     pub lang: String,
     /// Enable high-quality glyph rendering. When `true`, text uses an MTSDF
     /// atlas via `fdsm` — preserves sharp corners at large sizes but per-glyph
@@ -817,9 +821,10 @@ pub struct TextMaterial {
     /// characters in `text` always break lines. Em units keep the wrap width
     /// stable whether `size_in_meters` is on or off.
     pub max_width: f32,
-    /// Line height as a multiplier of the font's natural line height
-    /// (ascender − descender + line gap). Default `1.0`.
-    pub line_height: f32,
+    /// Distance between the baselines of a multi-line label, in ems
+    /// (multiples of `size`). `None` (the default) uses the font's natural
+    /// line height (ascender − descender + line gap).
+    pub line_height: Option<f32>,
     /// Horizontal alignment of lines within a multi-line block:
     /// `"left"`, `"center"` (default), `"right"`, or `"auto"`, which aligns
     /// towards the horizontal side of `anchor`.
@@ -901,7 +906,7 @@ impl Default for TextMaterial {
             border_width: 0.05,
             // corner_radius: 0.1,
             // padding: Vec2::new(5.0, 2.0),
-            // outline_blur: 0.0,
+            outline_blur: 0.0,
             outline_color: 0x000000,
             // outline_offset: Vec2::new(0.0, 0.0),
             outline_opacity: 1.0,
@@ -913,7 +918,7 @@ impl Default for TextMaterial {
             transparent: true,
 
             max_width: 0.0,
-            line_height: 1.0,
+            line_height: None,
             text_align: "center".to_string(),
             letter_spacing: 0.0,
 
@@ -1055,6 +1060,9 @@ pub struct PolygonMaterial {
     pub wave_strength: f32,
     /// Where the waves travel, in degrees clockwise from north.
     pub wave_direction: f32,
+    /// Speed in m/s of the current carrying the water's waves
+    /// along `wave_direction`.
+    pub flow_speed: f32,
     pub shininess: f32,
     pub specular_strength: f32,
     pub specular: bool,
@@ -1098,6 +1106,7 @@ impl Default for PolygonMaterial {
             water_scale: WaterScale::Ocean,
             wave_strength: DEFAULT_WAVE_STRENGTH,
             wave_direction: 0.0,
+            flow_speed: 0.0,
             shininess: 100.0,
             specular_strength: 2.0,
             specular: false,
@@ -1153,6 +1162,9 @@ pub struct ModelMaterial {
     pub wave_strength: f32,
     /// Where the waves travel, in degrees clockwise from north.
     pub wave_direction: f32,
+    /// Speed in m/s of the current carrying the water's waves
+    /// along `wave_direction`.
+    pub flow_speed: f32,
     pub shininess: f32,
     pub specular_strength: f32,
     pub specular: bool,
@@ -1203,6 +1215,7 @@ impl Default for ModelMaterial {
             water_scale: WaterScale::Ocean,
             wave_strength: DEFAULT_WAVE_STRENGTH,
             wave_direction: 0.0,
+            flow_speed: 0.0,
             shininess: 100.0,
             specular_strength: 2.0,
             specular: false,
@@ -1310,6 +1323,9 @@ pub struct RasterTileInternalMaterial {
     /// Where the waves on the terrain watermask's water travel, in degrees
     /// clockwise from north.
     pub wave_direction: f32,
+    /// Speed in m/s of the current carrying the waves on the watermask's water
+    /// along `wave_direction`.
+    pub flow_speed: f32,
 
     /// Per-layer elevation heatmap data. `Some` when the layer is an elevation heatmap
     /// with a raster-dem source that has a decoder; `None` for layers without an elevation heatmap.
@@ -1373,6 +1389,9 @@ pub struct TerrainMaterial {
     /// Where the waves on the watermask's water travel, in degrees clockwise
     /// from north.
     pub wave_direction: f32,
+    /// Speed in m/s of the current carrying the waves on the watermask's water
+    /// along `wave_direction`.
+    pub flow_speed: f32,
 }
 
 impl Default for TerrainMaterial {
@@ -1391,6 +1410,7 @@ impl Default for TerrainMaterial {
             wave_exaggeration: 1.0,
             wave_strength: DEFAULT_WAVE_STRENGTH,
             wave_direction: 0.0,
+            flow_speed: 0.0,
         }
     }
 }

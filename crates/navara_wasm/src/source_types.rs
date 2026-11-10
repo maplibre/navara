@@ -1257,6 +1257,7 @@ mod tests {
         let old = terrain_desc(navara_material::TerrainMaterial {
             wave_strength: 12.0,
             wave_direction: 90.0,
+            flow_speed: 3.0,
             wave_exaggeration: 0.5,
             ..Default::default()
         });
@@ -1270,6 +1271,7 @@ mod tests {
         assert_eq!(merged.wave_strength, 12.0);
         assert_eq!(merged.wave_exaggeration, 0.5);
         assert_eq!(merged.wave_direction, 45.0);
+        assert_eq!(merged.flow_speed, 3.0);
     }
 
     #[test]

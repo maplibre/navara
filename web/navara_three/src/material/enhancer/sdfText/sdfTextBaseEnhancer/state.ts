@@ -1,10 +1,6 @@
 import { Color, MathUtils } from "three";
 
-import {
-  sdfRadiusFor,
-  type SdfTextBaseProps,
-  type SdfTextBaseState,
-} from "./types";
+import type { SdfTextBaseProps, SdfTextBaseState } from "./types";
 
 const hexToColor = (hex: number): Color => {
   return new Color().setHex(hex);
@@ -26,9 +22,6 @@ export const DEFAULT_BASE_PROPS: Required<
   translateViewport: false,
   spreadGlyphs: false,
   offsetDepth: true,
-  outlineWidth: 0,
-  outlineColor: 0x000000,
-  outlineOpacity: 1.0,
   showBackground: false,
   backgroundColor: 0xff0000,
   backgroundOutlineColor: 0xff0000,
@@ -57,10 +50,6 @@ export const DEFAULT_BASE_STATE: SdfTextBaseState = {
   translateViewport: DEFAULT_BASE_PROPS.translateViewport,
   spreadGlyphs: DEFAULT_BASE_PROPS.spreadGlyphs,
   offsetDepth: DEFAULT_BASE_PROPS.offsetDepth,
-  outlineWidth:
-    DEFAULT_BASE_PROPS.outlineWidth / sdfRadiusFor(DEFAULT_BASE_PROPS.useMsdf),
-  outlineColor: hexToColor(DEFAULT_BASE_PROPS.outlineColor),
-  outlineOpacity: DEFAULT_BASE_PROPS.outlineOpacity,
   showBackground: DEFAULT_BASE_PROPS.showBackground,
   backgroundColor: hexToColor(DEFAULT_BASE_PROPS.backgroundColor),
   backgroundOutlineColor: hexToColor(DEFAULT_BASE_PROPS.backgroundOutlineColor),
@@ -103,15 +92,6 @@ export const updateState = (
       props.translateViewport ?? currentState.translateViewport,
     spreadGlyphs: props.spreadGlyphs ?? currentState.spreadGlyphs,
     offsetDepth: props.offsetDepth ?? currentState.offsetDepth,
-    outlineWidth:
-      props.outlineWidth !== undefined
-        ? props.outlineWidth / sdfRadiusFor(currentState.useMsdf)
-        : currentState.outlineWidth,
-    outlineColor:
-      props.outlineColor !== undefined
-        ? hexToColor(props.outlineColor)
-        : currentState.outlineColor,
-    outlineOpacity: props.outlineOpacity ?? currentState.outlineOpacity,
     showBackground: props.showBackground ?? currentState.showBackground,
     backgroundColor:
       props.backgroundColor !== undefined

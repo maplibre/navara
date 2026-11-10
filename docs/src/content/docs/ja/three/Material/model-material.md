@@ -616,3 +616,23 @@ import { Color } from "@navaramap/three";
   }
 }
 ```
+
+### flowSpeed
+
+**Type:** `number | undefined`
+
+**Description:** 波を [`waveDirection`](#wavedirection) の向きに運ぶ流れの速さ（m/s）です。波の大きさや傾きは変わりません。水面全体が同じように動きます。`water` が有効なときだけ使われます。
+
+**Default:** `0`
+
+**Example:**
+
+```typescript
+{
+  model: {
+    water: true,
+    waveDirection: 90,
+    flowSpeed: 2
+  }
+}
+```

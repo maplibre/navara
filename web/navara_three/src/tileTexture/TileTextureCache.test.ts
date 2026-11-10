@@ -13,6 +13,7 @@ function makeFakeAtlas(): CompositeAtlas {
     color: tex("color"),
     attr: tex("attr"),
     normal: tex("normal"),
+    allocated: false,
     dispose: vi.fn(),
   };
 }

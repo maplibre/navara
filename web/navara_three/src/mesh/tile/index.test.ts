@@ -1,11 +1,4 @@
-import {
-  Box3,
-  BoxGeometry,
-  BufferGeometry,
-  DataTexture,
-  Mesh,
-  MeshBasicMaterial,
-} from "three";
+import { Box3, BoxGeometry, DataTexture, Mesh, MeshBasicMaterial } from "three";
 import { describe, expect, it, vi } from "vitest";
 
 import { TexturizedSceneByTileCoordinates } from "../../scene";
@@ -15,8 +8,11 @@ import { TileMesh } from ".";
 // The package barrel pulled in by tile.ts initializes a worker pool at module
 // load (os.cpus()), which is unavailable in the test environment. Stub it.
 vi.mock("@navaramap/worker", () => ({
-  initializeWorkerPool: vi.fn(),
-  terminateWorkerPool: vi.fn(),
+  acquireWorkerPool: vi.fn(() => ({
+    manager: { total: 1 },
+    created: true,
+    release: vi.fn(),
+  })),
 }));
 
 function createMockRenderer() {
@@ -47,12 +43,16 @@ function state(layerId: string, tileHandle: bigint) {
   };
 }
 
-function makeTile(atlasSize = 512) {
+function makeTile({
+  atlasSize = 512,
+  atlasAllocated = false,
+}: { atlasSize?: number; atlasAllocated?: boolean } = {}) {
   const texturizedScenes = new TexturizedSceneByTileCoordinates(
     createMockRenderer(),
   );
   const renderVectorScenes = vi.fn();
   const markDirty = vi.fn();
+  let allocated = atlasAllocated;
   const compositor = {
     acquire: vi.fn(),
     release: vi.fn(),
@@ -63,9 +63,14 @@ function makeTile(atlasSize = 512) {
     // desktop and mobile; this mock is parameterized so the sizing math can be
     // exercised at other side lengths too.
     size: atlasSize,
-    // Keep the MRT composite pass out of this test: it runs only when dirty,
-    // and _onBeforeRender returns right after the vector bake when it isn't.
+    // The MRT composite pass runs only when dirty, and _onBeforeRender returns
+    // right after the vector bake when it isn't.
     cache: { isDirty: vi.fn().mockReturnValue(false) },
+    isAtlasAllocated: vi.fn(() => allocated),
+    runCompositePassIfDirty: vi.fn(() => {
+      allocated = true;
+      return true;
+    }),
   };
   const getVectorTileStates = vi.fn().mockReturnValue([]);
   const reportDrapeGpuBytes = vi.fn();
@@ -99,6 +104,7 @@ function makeTile(atlasSize = 512) {
     tile,
     ctx,
     meshAdded,
+    compositor,
     texturizedScenes,
     renderVectorScenes,
     getVectorTileStates,
@@ -261,7 +267,7 @@ describe("TileMesh drape render-target lazy allocation + accounting", () => {
       getVectorTileStates,
       reportDrapeGpuBytes,
       markSourcesChanged,
-    } = makeTile();
+    } = makeTile({ atlasAllocated: true });
 
     texturizedScenes.add(1n, "a", drapedMesh(), 0);
     getVectorTileStates.mockReturnValue([state("a", 1n)]);
@@ -295,7 +301,7 @@ describe("TileMesh drape render-target lazy allocation + accounting", () => {
       getVectorTileStates,
       reportDrapeGpuBytes,
       markSourcesChanged,
-    } = makeTile();
+    } = makeTile({ atlasAllocated: true });
 
     texturizedScenes.add(1n, "a", drapedMesh(), 0);
     texturizedScenes.add(2n, "b", drapedMesh(), 1);
@@ -323,7 +329,7 @@ describe("TileMesh drape render-target lazy allocation + accounting", () => {
       getVectorTileStates,
       reportDrapeGpuBytes,
       markSourcesChanged,
-    } = makeTile();
+    } = makeTile({ atlasAllocated: true });
 
     texturizedScenes.add(1n, "a", drapedMesh(), 0);
     getVectorTileStates.mockReturnValue([state("a", 1n)]);
@@ -331,10 +337,9 @@ describe("TileMesh drape render-target lazy allocation + accounting", () => {
     frame(tile);
     expect(renderTargetCount(tile)).toBe(1);
 
-    // All draped layers vanish → the render targets go, but the composite
-    // atlas is held for the tile's lifetime (acquired in the constructor), so
-    // the report must fall back to the atlas cost — not 0, which would wipe
-    // the baseline Rust seeds at mesh-attach time.
+    // All draped layers vanish → the render targets go, but the allocated
+    // composite atlas is held for the tile's lifetime, so the report falls
+    // back to the atlas cost, not 0.
     getVectorTileStates.mockReturnValue([]);
     markSourcesChanged();
     frame(tile);
@@ -353,7 +358,7 @@ describe("TileMesh drape render-target lazy allocation + accounting", () => {
       getVectorTileStates,
       reportDrapeGpuBytes,
       markSourcesChanged,
-    } = makeTile(256);
+    } = makeTile({ atlasSize: 256, atlasAllocated: true });
 
     texturizedScenes.add(1n, "a", drapedMesh(), 0);
     getVectorTileStates.mockReturnValue([state("a", 1n)]);
@@ -366,7 +371,7 @@ describe("TileMesh drape render-target lazy allocation + accounting", () => {
       ATLAS_BYTES_SMALL + RT_BYTES_SMALL,
     );
 
-    // Last draped layer vanishes → falls back to the atlas seed, not 0.
+    // Last draped layer vanishes → falls back to the atlas cost, not 0.
     getVectorTileStates.mockReturnValue([]);
     markSourcesChanged();
     frame(tile);
@@ -380,7 +385,7 @@ describe("TileMesh drape render-target lazy allocation + accounting", () => {
       getVectorTileStates,
       reportDrapeGpuBytes,
       markSourcesChanged,
-    } = makeTile();
+    } = makeTile({ atlasAllocated: true });
 
     texturizedScenes.add(1n, "a", drapedMesh(), 0);
     getVectorTileStates.mockReturnValue([state("a", 1n)]);
@@ -397,10 +402,49 @@ describe("TileMesh drape render-target lazy allocation + accounting", () => {
     // Render targets are freed, but dispose must NOT report a zero cost: the
     // handle is position-stable and reused by the replacement mesh entity, so a
     // zero report would resolve (Without<Deleted>) to the NEW live entity and
-    // wipe the atlas cost the Rust side just seeded. The despawn of the old
-    // entity subtracts the cost from the ledger instead.
+    // wipe the atlas cost it reported. The despawn of the old entity subtracts
+    // the cost from the ledger instead.
     expect(renderTargetCount(tile)).toBe(0);
     expect(reportDrapeGpuBytes.mock.calls.length).toBe(callsBeforeDispose);
+  });
+});
+
+describe("TileMesh composite atlas accounting", () => {
+  it("charges no atlas before the first composite pass", () => {
+    const {
+      tile,
+      texturizedScenes,
+      getVectorTileStates,
+      reportDrapeGpuBytes,
+      markSourcesChanged,
+    } = makeTile();
+
+    texturizedScenes.add(1n, "a", drapedMesh(), 0);
+    getVectorTileStates.mockReturnValue([state("a", 1n)]);
+    markSourcesChanged();
+    frame(tile);
+
+    expect(reportDrapeGpuBytes).toHaveBeenLastCalledWith(1n, RT_BYTES);
+  });
+
+  it("charges the atlas once the composite pass allocates it", () => {
+    const { tile, compositor, reportDrapeGpuBytes } = makeTile();
+    expect(reportDrapeGpuBytes).not.toHaveBeenCalled();
+
+    compositor.cache.isDirty.mockReturnValue(true);
+    frame(tile);
+
+    expect(compositor.runCompositePassIfDirty).toHaveBeenCalledOnce();
+    expect(reportDrapeGpuBytes).toHaveBeenLastCalledWith(1n, ATLAS_BYTES);
+  });
+
+  it("charges an already-allocated atlas on construction", () => {
+    const { reportDrapeGpuBytes } = makeTile({ atlasAllocated: true });
+
+    expect(reportDrapeGpuBytes).toHaveBeenCalledExactlyOnceWith(
+      1n,
+      ATLAS_BYTES,
+    );
   });
 });
 
@@ -419,12 +463,24 @@ describe("TileMesh handle registration", () => {
   });
 });
 
+describe("TileMesh shadow casting", () => {
+  it("leaves the skirt out of the shadow draw only", () => {
+    const { tile } = makeTile();
+    tile["terrainIndexCount"] = 6;
+
+    tile["_onBeforeShadow"]();
+    expect(tile.geometry.drawRange).toEqual({ start: 0, count: 6 });
+
+    tile["_onAfterShadow"]();
+    expect(tile.geometry.drawRange).toEqual({ start: 0, count: Infinity });
+  });
+});
+
 describe("TileMesh geometry replacement", () => {
   /** Replace the geometry with one that does or does not carry a watermask. */
   function replaceWith(tile: TileMesh, watermask: boolean) {
     const internals = tile as unknown as {
       installGeometry: () => unknown;
-      attachShadowMesh: () => void;
     };
     vi.spyOn(internals, "installGeometry").mockImplementation(() => {
       tile.userData.watermask = watermask
@@ -435,13 +491,8 @@ describe("TileMesh geometry replacement", () => {
           }
         : undefined;
       tile.userData.hasNormalAttribute = false;
-      return {
-        geometry: new BufferGeometry(),
-        terrainGeometry: new BufferGeometry(),
-        boundingBox: new Box3(),
-      };
+      return new Box3();
     });
-    vi.spyOn(internals, "attachShadowMesh").mockImplementation(() => {});
     tile.replaceGeometry(
       {} as unknown as Parameters<TileMesh["replaceGeometry"]>[0],
     );

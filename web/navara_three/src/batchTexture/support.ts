@@ -47,5 +47,5 @@ export const SPRITE_BATCH_SUPPORT: BatchTextureSupport = {
 
 export const TEXT_BATCH_SUPPORT: BatchTextureSupport = {
   scalars: ["height", "size", "rotation", "orientation"],
-  vec3s: ["color", "emissive"],
+  vec3s: ["color", "emissive", "outlineColor"],
 };

@@ -32,12 +32,15 @@ export type WaveConditions = {
   /** Where the waves travel, in degrees clockwise from north. */
   direction: number;
   scale: WaterScale;
+  /** Speed in m/s of the current carrying the waves along `direction`. */
+  flowSpeed: number;
 };
 
 export const DEFAULT_WAVE_CONDITIONS: Readonly<WaveConditions> = {
   strength: 5,
   direction: 0,
   scale: "ocean",
+  flowSpeed: 0,
 };
 
 export const WATER_CASCADE_COUNT = 3;
@@ -245,11 +248,18 @@ class WaveSet {
   private readonly _directions: [number, number][] = [];
   private readonly _tileLengths: number[] = [];
   private readonly _speeds: number[] = [];
+  /** The current in east/north m/s. */
+  private readonly _flow: [number, number];
   /** `[u, v]` pairs per lane. */
   private readonly _phases = new Float64Array((WATER_TAP_COUNT + 1) * 2);
 
   constructor(conditions: WaveConditions) {
     const direction = (conditions.direction * Math.PI) / 180;
+    const [flowEast, flowNorth] = azimuthToEastNorth(direction);
+    this._flow = [
+      flowEast * conditions.flowSpeed,
+      flowNorth * conditions.flowSpeed,
+    ];
     const { cascades, fineMeanSquareSlope } = windToCascades(
       conditions.strength,
       WATER_SCALE_FETCHES[conditions.scale],
@@ -275,11 +285,15 @@ class WaveSet {
   }
 
   advance(east: number, north: number, seconds: number) {
+    // The current moves the whole pattern, as the camera's opposite does.
+    const carriedEast = east - this._flow[0] * seconds;
+    const carriedNorth = north - this._flow[1] * seconds;
     for (let i = 0; i < this._directions.length; i++) {
       const [dx, dy] = this._directions[i];
       const length = this._tileLengths[i];
-      const along = east * dx + north * dy - this._speeds[i] * seconds;
-      const across = -east * dy + north * dx;
+      const along =
+        carriedEast * dx + carriedNorth * dy - this._speeds[i] * seconds;
+      const across = -carriedEast * dy + carriedNorth * dx;
       this._phases[i * 2] = wrap(this._phases[i * 2] + along / length);
       this._phases[i * 2 + 1] = wrap(this._phases[i * 2 + 1] + across / length);
     }
@@ -368,8 +382,13 @@ export class WaterWavesRef {
   }
 }
 
-function conditionsKey({ strength, direction, scale }: WaveConditions): string {
-  return `${strength}|${direction}|${scale}`;
+function conditionsKey({
+  strength,
+  direction,
+  scale,
+  flowSpeed,
+}: WaveConditions): string {
+  return `${strength}|${direction}|${scale}|${flowSpeed}`;
 }
 
 /**

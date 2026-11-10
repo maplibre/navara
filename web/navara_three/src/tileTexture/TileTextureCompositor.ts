@@ -92,6 +92,7 @@ export const defaultAtlasFactory =
       color,
       attr,
       normal,
+      allocated: false,
       dispose: () => target.dispose(),
     };
   };
@@ -310,6 +311,11 @@ export class TileTextureCompositor {
 
   markDirty(handle: TileHandle, reason: DirtyReason): void {
     this.cache.markDirty(handle, reason);
+  }
+
+  /** Whether the handle's atlas holds GPU memory (see `CompositeAtlas.allocated`). */
+  isAtlasAllocated(handle: TileHandle): boolean {
+    return this.cache.getEntry(handle)?.atlas.allocated ?? false;
   }
 
   // ---------------------------------------------------------------------
@@ -676,6 +682,8 @@ export class TileTextureCompositor {
     if (!this.cache.isDirty(handle)) return false;
     const entry = this.cache.getEntry(handle);
     if (!entry) return false;
+    // Both branches below render into the atlas.
+    entry.atlas.allocated = true;
 
     const prevTarget = this.renderer.getRenderTarget();
     const prevClear = this.renderer.getClearColor(PREV_CLEAR_COLOR);

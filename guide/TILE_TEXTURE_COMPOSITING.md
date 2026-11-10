@@ -536,7 +536,7 @@ can shift by under a mask texel there.
 
 - A raster winner (or no winner, open ocean) is water whenever `attr.r` says so
   and takes the watermask's waves (the terrain layer's `waveExaggeration`,
-  `waveStrength` and `waveDirection`).
+  `waveStrength`, `waveDirection` and `flowSpeed`).
 - A vector winner is water only through the water flag (y) of its per-slot
   `uWaterParams` and takes its `waveExaggeration` (x), so a non-water vector
   layer drawn over the sea stays dry. It reads the waves of its own slot

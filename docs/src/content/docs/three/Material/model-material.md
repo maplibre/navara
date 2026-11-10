@@ -616,3 +616,23 @@ import { Color } from "@navaramap/three";
   }
 }
 ```
+
+### flowSpeed
+
+**Type:** `number | undefined`
+
+**Description:** The speed in m/s of a current that carries the waves along [`waveDirection`](#wavedirection), without changing their size or slope. The whole surface moves as one. Only used when `water` is enabled.
+
+**Default:** `0`
+
+**Example:**
+
+```typescript
+{
+  model: {
+    water: true,
+    waveDirection: 90,
+    flowSpeed: 2
+  }
+}
+```

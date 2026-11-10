@@ -1,3 +1,4 @@
+import type { ElevationDecoder } from "@navaramap/engine";
 import type { Texture } from "three";
 import {
   ClampToEdgeWrapping,
@@ -89,8 +90,13 @@ export class HillshadeContext {
   getHillshadeConfig(
     tileHandler: TileHandler,
     tileHandle: bigint,
+    sourceDecoder?: ElevationDecoder,
   ): HillshadeConfig {
-    const decoder = tileHandler.getTileElevationDecoder(tileHandle);
+    // The hillshade layer's own source decoder, sent with the DEM. The tile's
+    // terrain decoder is only a fallback: the terrain may use another source,
+    // or have no DEM at all.
+    const decoder =
+      sourceDecoder ?? tileHandler.getTileElevationDecoder(tileHandle);
 
     if (decoder) {
       return {

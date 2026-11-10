@@ -765,6 +765,80 @@ describe("text-letter-spacing", () => {
   });
 });
 
+describe("text-halo-*", () => {
+  const symbol = (paint: Record<string, unknown>): StyleLayer =>
+    ({ id: "test", type: "symbol", source: "test", paint }) as StyleLayer;
+  /** `paint` holds constants, so it is also the layer's style paint unless
+   *  `stylePaint` gives the expressions it evaluated from. */
+  const text = (
+    paint: Record<string, unknown>,
+    size = 16,
+    stylePaint: Record<string, unknown> = paint,
+  ) =>
+    toEvaluatedValue(
+      symbol(stylePaint),
+      paint,
+      { "text-field": "Label", "text-size": size },
+      "text",
+    );
+
+  it("leaves the outline alone when the layer sets no halo", () => {
+    const result = text({});
+    expect(result.outlineWidth).toBeUndefined();
+    expect(result.outlineOpacity).toBeUndefined();
+  });
+
+  it("converts pixels of the label's text size to 1/64 em", () => {
+    const result = text(
+      { "text-halo-color": "#ff0000", "text-halo-width": 2 },
+      16,
+    );
+    expect(result.outlineColor).toMatchObject({ r: 1, g: 0, b: 0 });
+    expect(result.outlineOpacity).toBe(1);
+    expect(result.outlineWidth).toBeCloseTo(8);
+    expect(text({ "text-halo-width": 2 }, 32).outlineWidth).toBeCloseTo(4);
+  });
+
+  it("spreads the blur over MapLibre's whole fade", () => {
+    expect(
+      text({ "text-halo-width": 1, "text-halo-blur": 1 }, 16).outlineBlur,
+    ).toBeCloseTo((1 / 16) * 64 * 2.38);
+  });
+
+  it("drops the blur when the width is 0 for every feature", () => {
+    expect(text({ "text-halo-blur": 1 }).outlineBlur).toBe(0);
+    expect(
+      text({ "text-halo-width": 0, "text-halo-blur": 1 }).outlineBlur,
+    ).toBe(0);
+  });
+
+  it("keeps the blur when a data-driven width is 0", () => {
+    const paint = { "text-halo-width": 0, "text-halo-blur": 1 };
+    expect(
+      text(paint, 16, { ...paint, "text-halo-width": ["get", "halo"] })
+        .outlineBlur,
+    ).toBeCloseTo((1 / 16) * 64 * 2.38);
+  });
+
+  it("takes opacity from the color's alpha, transparent when unset", () => {
+    expect(
+      text({ "text-halo-color": "rgba(0, 0, 0, 0.5)", "text-halo-width": 1 })
+        .outlineOpacity,
+    ).toBeCloseTo(0.5);
+    expect(text({ "text-halo-width": 1 }).outlineOpacity).toBe(0);
+  });
+
+  it("is not applied to icons", () => {
+    const result = toEvaluatedValue(
+      symbol({}),
+      { "text-halo-width": 2 },
+      { "icon-image": "/icons/marker.svg" },
+      "billboard",
+    );
+    expect(result.outlineWidth).toBeUndefined();
+  });
+});
+
 describe("text-rotate and icon-rotate", () => {
   const engine = new JsStyleEngine();
   const symbol = (layout: StyleLayer["layout"]): StyleLayer =>

@@ -56,7 +56,8 @@ const run = async () => {
     size: 15,
     // Wrap width in ems (multiples of size); 0 disables wrapping
     maxWidth: 0,
-    lineHeight: 1.0,
+    // Baseline-to-baseline distance in ems
+    lineHeight: 1.2,
     // Extra space between characters in ems; ignored for Arabic-script names
     letterSpacing: 0,
     textAlign: "center" as "left" | "center" | "right",

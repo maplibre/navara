@@ -67,6 +67,7 @@ export const run = async (view: ThreeView<CustomDescriptions>) => {
     waveExaggeration?: number;
     waveStrength?: number;
     waveDirection?: number;
+    flowSpeed?: number;
   }) => {
     terrainLayer.update({ terrain: waves });
   };
@@ -318,6 +319,7 @@ const addWaterControls = (
     waveExaggeration?: number;
     waveStrength?: number;
     waveDirection?: number;
+    flowSpeed?: number;
   }) => void,
 ) => {
   // Vector-tile and GeoJSON sources for the two water data variants.
@@ -354,6 +356,7 @@ const addWaterControls = (
     waterScale: "ocean",
     waveStrength: 5,
     waveDirection: 0,
+    flowSpeed: 0,
   };
   const geoJsonPolygon = {
     color: new Color().setStyle("#001e0f"),
@@ -366,6 +369,7 @@ const addWaterControls = (
     waterScale: "ocean",
     waveStrength: 5,
     waveDirection: 0,
+    flowSpeed: 0,
   };
   const layerDesc = (dataType: string): LayerDescription =>
     dataType === "mvt"
@@ -389,6 +393,7 @@ const addWaterControls = (
     waterScale: "ocean",
     waveStrength: 5,
     waveDirection: 0,
+    flowSpeed: 0,
     skyEnvMap: true,
     useWaterMaskColor: true,
     waterMaskColor: DEEP_SEA_STYLE,
@@ -468,6 +473,15 @@ const addWaterControls = (
       onChange: (v) => {
         updatePolygons({ waveDirection: v.value });
         setWaterMaskWaves({ waveDirection: v.value });
+      },
+    },
+    {
+      // The current carrying the waves along waveDirection, in m/s.
+      name: "flowSpeed",
+      params: { min: 0, max: 10, step: 0.1 },
+      onChange: (v) => {
+        updatePolygons({ flowSpeed: v.value });
+        setWaterMaskWaves({ flowSpeed: v.value });
       },
     },
     {

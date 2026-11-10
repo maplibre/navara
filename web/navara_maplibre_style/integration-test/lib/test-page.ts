@@ -90,6 +90,16 @@ async function run(input: object | string) {
     defaultAttribution: false,
     picking: false,
     idleThreshold: 300,
+    // The DEM fixtures ship only the level MapLibre loads, one below the map
+    // zoom for a 256 px source. Navara picks a level by screen-space error and
+    // would stop one or two levels above it: the default maxSse of 2 is just
+    // met a level early, and LOD fog relaxes SSE by ~2 px more.
+    ...(Object.values(style.sources ?? {}).some(
+      (s) => s.type === "raster-dem",
+    ) && {
+      maxSse: 1,
+      lodFog: { enabled: false },
+    }),
   });
   view.on("postRender", () => {
     state.lastRender = performance.now();

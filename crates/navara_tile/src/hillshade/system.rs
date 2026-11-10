@@ -20,6 +20,13 @@ use navara_tile_component::{TerrainTileQuadtree, TileTextureFragmentMarker};
 #[derive(Debug, Clone, Copy, Component)]
 pub struct HillshadeTextureMarker;
 
+/// The DEM decoder of the hillshade layer's source, captured when the
+/// hillshade DataRequester is spawned. The normal map must be decoded with it,
+/// not with the terrain's decoder: the hillshade source can differ from the
+/// terrain source, or there may be no DEM terrain at all.
+#[derive(Debug, Clone, Copy, Component)]
+pub struct HillshadeElevationDecoder(pub navara_core::ElevationDecoder);
+
 /// Marker component indicating that HillshadeBackfillEvents have been extracted
 /// Used to delay cleanup until after read_events() has accessed the data
 #[derive(Debug, Clone, Copy, Component)]
@@ -161,7 +168,12 @@ pub fn backfill_hillshade_on_loaded(
     qt: Res<TerrainTileQuadtree>,
     mut events: ResMut<EventStore>,
     query: Query<
-        (Entity, &DataRequester, &TileTextureFragmentMarker),
+        (
+            Entity,
+            &DataRequester,
+            &TileTextureFragmentMarker,
+            Option<&HillshadeElevationDecoder>,
+        ),
         (
             Changed<DataRequester>,
             With<HillshadeTextureMarker>,
@@ -184,11 +196,11 @@ pub fn backfill_hillshade_on_loaded(
     // Collect all successfully loaded hillshade entities in this frame for deduplication
     let newly_loaded_entities: std::collections::HashSet<Entity> = query
         .iter()
-        .filter(|(_, data_req, _)| data_req.is_succeeded())
-        .map(|(entity, _, _)| entity)
+        .filter(|(_, data_req, _, _)| data_req.is_succeeded())
+        .map(|(entity, _, _, _)| entity)
         .collect();
 
-    for (entity, data_req, marker) in query.iter() {
+    for (entity, data_req, marker, decoder) in query.iter() {
         // Only process successfully loaded hillshade DataRequesters
         if !data_req.is_succeeded() {
             continue;
@@ -207,6 +219,7 @@ pub fn backfill_hillshade_on_loaded(
                 original_handle: Some(data_req.handle),
                 target_entity: None,
                 edge_direction: 255,
+                elevation_decoder: decoder.map(|d| d.0),
             });
 
             extract_edges_on_first_load(&buf, data_req)
@@ -261,6 +274,7 @@ pub fn backfill_hillshade_on_loaded(
                 original_handle: None,
                 target_entity: Some(target_entity),
                 edge_direction: edge_dir,
+                elevation_decoder: None,
             });
         }
 
@@ -807,6 +821,7 @@ mod tests {
                         original_handle: Some(42),
                         target_entity: None,
                         edge_direction: 255,
+                        elevation_decoder: None,
                     },
                     HillshadeBackfillEventData {
                         tile_handle: 0,
@@ -814,6 +829,7 @@ mod tests {
                         original_handle: None,
                         target_entity: None,
                         edge_direction: 0,
+                        elevation_decoder: None,
                     },
                     HillshadeBackfillEventData {
                         tile_handle: 0,
@@ -821,6 +837,7 @@ mod tests {
                         original_handle: None,
                         target_entity: None,
                         edge_direction: 1,
+                        elevation_decoder: None,
                     },
                 ],
             })
@@ -925,6 +942,7 @@ mod tests {
             original_handle: None,
             target_entity: Some(target),
             edge_direction: 0,
+            elevation_decoder: None,
         };
         let initial = HillshadeBackfillEventData {
             tile_handle: 0,
@@ -932,6 +950,7 @@ mod tests {
             original_handle: Some(7),
             target_entity: None,
             edge_direction: 255,
+            elevation_decoder: None,
         };
         // `live` loaded this frame and sent an edge to each neighbor.
         app.world_mut()
