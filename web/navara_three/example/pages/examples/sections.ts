@@ -21,6 +21,7 @@ export const SECTION_KEYS = [
   "styling",
   "interaction",
   "lighting-effect",
+  "showcase",
 ] as const;
 
 export type SectionKey = (typeof SECTION_KEYS)[number];
@@ -85,6 +86,7 @@ export const SECTION_LABELS: Record<SectionKey, Record<Lang, string>> = {
     en: "Lighting & Effects",
     ja: "ライティング・エフェクト",
   },
+  showcase: { en: "Showcase", ja: "ショーケース" },
 };
 
 export type ExampleMeta = {
