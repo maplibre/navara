@@ -2,13 +2,15 @@ import type { Geometry, Position } from "geojson";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { ROADS } from "./roads";
-import { TEST_SCHEMA } from "./test-utils";
+import { TEST_BUILDINGS, TEST_ROADS, TEST_TEMPLATE } from "./test-utils";
 import {
   chebyshev,
   createTileStreamer,
   loadRoadNetwork,
   readRoads,
   readRoofs,
+  readTileRoads,
+  readTileRoofs,
   tileCenter,
   tileCoordinate,
   tileKey,
@@ -111,7 +113,7 @@ describe("readRoads", () => {
         },
       ]),
       TILE,
-      TEST_SCHEMA.roads,
+      TEST_ROADS,
       out,
     );
     expect(out).toEqual([
@@ -162,7 +164,6 @@ describe("readRoads properties", () => {
       ]),
       TILE,
       {
-        sourceLayers: ["roads"],
         evaluateFeature: (properties) => {
           seen.push(properties);
           return { roadClass: "primary" };
@@ -195,7 +196,6 @@ describe("road classes", () => {
       layerOf([line("main"), line("local"), line("footway")]),
       TILE,
       {
-        sourceLayers: ["roads"],
         evaluateFeature: ({ kind }) =>
           kind === "main"
             ? { roadClass: "primary", oneway: 1 }
@@ -252,7 +252,7 @@ describe("readRoofs", () => {
         },
       ]),
       TILE,
-      TEST_SCHEMA.buildings.evaluateFeature,
+      TEST_BUILDINGS.evaluateFeature,
       out,
     );
     expect(out).toEqual([
@@ -263,21 +263,100 @@ describe("readRoofs", () => {
   });
 });
 
+const line = (properties: Record<string, unknown>) => ({
+  properties,
+  geometry: {
+    type: "LineString" as const,
+    coordinates: [
+      [0, 0],
+      [1, 1],
+    ],
+  },
+});
+const square = (properties: Record<string, unknown>) => ({
+  properties,
+  geometry: {
+    type: "Polygon" as const,
+    coordinates: [
+      [
+        [0, 0],
+        [2, 0],
+        [2, 2],
+        [0, 2],
+        [0, 0],
+      ],
+    ],
+  },
+});
+
+describe("readTileRoads and readTileRoofs", () => {
+  it("read every listed source layer the tile has, in order", () => {
+    const layers = {
+      major: layerOf([line({ class: "primary" })]),
+      minor: layerOf([line({ class: "minor" }), line({ class: "rail" })]),
+      building: layerOf([square({ render_height: 120 })]),
+    };
+    const roads = readTileRoads(layers, TILE, {
+      ...TEST_ROADS,
+      template: TEST_TEMPLATE,
+      sourceLayers: ["major", "missing", "minor"],
+    });
+    expect(roads.map(({ style }) => style)).toEqual([
+      ROADS.primary,
+      ROADS.minor,
+    ]);
+
+    const roofs = readTileRoofs(layers, TILE, {
+      ...TEST_BUILDINGS,
+      template: TEST_TEMPLATE,
+      sourceLayers: ["building", "missing"],
+    });
+    expect(roofs).toEqual([{ lng: 1, lat: 1, height: 120 }]);
+  });
+});
+
 describe("loadRoadNetwork", () => {
-  it("rejects a tile the server does not serve", async () => {
+  const reading = (buildingTemplate = TEST_TEMPLATE) => ({
+    roads: { ...TEST_ROADS, template: TEST_TEMPLATE },
+    buildings: { ...TEST_BUILDINGS, template: buildingTemplate },
+  });
+
+  it("reads a tile the server does not have as empty", async () => {
     const fetchMock = vi.fn(async () => ({ ok: false, status: 404 }));
     vi.stubGlobal("fetch", fetchMock);
     const { signal } = new AbortController();
 
     await expect(
-      loadRoadNetwork(
-        "https://t/{z}/{x}/{y}.pbf",
-        { x: 1, y: 2 },
-        TEST_SCHEMA,
-        signal,
-      ),
-    ).rejects.toThrow("failed (404)");
+      loadRoadNetwork(reading(), { x: 1, y: 2 }, signal),
+    ).resolves.toEqual({ roads: [], roofs: [] });
     expect(fetchMock).toHaveBeenCalledWith("https://t/14/1/2.pbf", { signal });
+  });
+
+  it("rejects a tile the server fails to serve", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({ ok: false, status: 500 })),
+    );
+    const { signal } = new AbortController();
+
+    await expect(loadRoadNetwork(reading(), TILE, signal)).rejects.toThrow(
+      "failed (500)",
+    );
+  });
+
+  it("fetches a tile once per template", async () => {
+    const fetchMock = vi.fn(async () => ({ ok: false, status: 404 }));
+    vi.stubGlobal("fetch", fetchMock);
+    const { signal } = new AbortController();
+
+    await loadRoadNetwork(reading(), TILE, signal);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    await loadRoadNetwork(reading("https://b/{z}/{x}/{y}.pbf"), TILE, signal);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(fetchMock).toHaveBeenLastCalledWith("https://b/14/0/0.pbf", {
+      signal,
+    });
   });
 });
 

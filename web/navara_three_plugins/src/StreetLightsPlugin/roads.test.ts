@@ -5,11 +5,10 @@ import {
   isRoadClass,
   pickProperties,
   readRoadFeature,
-  type StreetLightsRoads,
+  type RoadsReading,
 } from "./roads";
 
-const schema: StreetLightsRoads = {
-  sourceLayers: ["roads"],
+const schema: RoadsReading = {
   filterFeatureProperties: ["kind"],
   evaluateFeature: ({ kind }) =>
     kind === "main" ? { roadClass: "primary", oneway: 1 } : undefined,

@@ -45,29 +45,7 @@ view.addPlugin(tilejson);
 // OpenMapTiles marks the outline of a building drawn in parts; its parts carry the roof.
 const drawnInParts = ({ hide_3d }: Record<string, unknown>) => hide_3d === true;
 
-const streets = new StreetLightsPlugin({
-  radius: STREET_TILE_RADIUS,
-  traffic: { speed: 1, size: 2.5 },
-  roads: {
-    sourceLayers: ["transportation"],
-    filterFeatureProperties: ["class", "oneway"],
-    evaluateFeature: ({ class: roadClass, oneway }) =>
-      isRoadClass(roadClass)
-        ? { roadClass, oneway: oneway === 1 || oneway === -1 ? oneway : 0 }
-        : undefined,
-  },
-  buildings: {
-    sourceLayers: ["building"],
-    evaluateFeature: (properties) => {
-      const height = properties.render_height;
-      return typeof height === "number" &&
-        height >= BEACON_HEIGHT &&
-        !drawnInParts(properties)
-        ? height
-        : undefined;
-    },
-  },
-});
+const streets = new StreetLightsPlugin({ tileJsonPlugin: tilejson });
 view.addPlugin(streets);
 
 await view.init();
@@ -103,10 +81,6 @@ const osm = view.addSource({
 view.addLayer({ type: "raster", source: osm });
 view.attribution?.add([TILE_DATASETS.openstreetmap]);
 
-let tileTemplate = "";
-tilejson.on("loaded", ({ tilejson: document }) => {
-  tileTemplate = document.tiles[0];
-});
 const openfreemap = await tilejson.addSource({
   type: "vector-tile",
   url: OPEN_FREE_MAP_TILEJSON,
@@ -142,15 +116,36 @@ const extrude = ({ evaluator }: { evaluator: FeatureEvaluator }) =>
 buildings.on("featureCreated", extrude);
 buildings.on("featureUpdated", extrude);
 
-// Dark road surfaces; the plugin hides every class that carries no lights.
-const roads = view.addLayer({
-  type: "vector",
-  source: openfreemap,
-  sourceLayers: ["transportation"],
-  polyline: { color: new Color().setStyle("#15171c"), clampToGround: true },
+await streets.start({
+  radius: STREET_TILE_RADIUS,
+  traffic: { speed: 1, size: 2.5 },
+  roads: {
+    sourceType: "tilejson",
+    sourceUrl: OPEN_FREE_MAP_TILEJSON,
+    sourceLayers: ["transportation"],
+    // Dark road surfaces; the plugin hides every class that carries no lights.
+    polyline: { color: new Color().setStyle("#15171c"), clampToGround: true },
+    filterFeatureProperties: ["class", "oneway"],
+    evaluateFeature: ({ class: roadClass, oneway }) =>
+      isRoadClass(roadClass)
+        ? { roadClass, oneway: oneway === 1 || oneway === -1 ? oneway : 0 }
+        : undefined,
+  },
+  buildings: {
+    sourceType: "tilejson",
+    sourceUrl: OPEN_FREE_MAP_TILEJSON,
+    sourceLayers: ["building"],
+    evaluateFeature: (properties) => {
+      const height = properties.render_height;
+      return typeof height === "number" &&
+        height >= BEACON_HEIGHT &&
+        !drawnInParts(properties)
+        ? height
+        : undefined;
+    },
+  },
+  effectIds: [bloom.id],
 });
-streets.addRoads(roads);
-streets.start({ tileTemplate, effectIds: [bloom.id] });
 
 // Lights come on through civil twilight: sun from 3° above to 6° below.
 const LIGHTS_ON_BELOW = Math.sin((-6 * Math.PI) / 180);

@@ -7,9 +7,9 @@ sidebar:
 
 ## Overview
 
-`StreetLightsPlugin` turns a vector tile set of roads and buildings into a city at night. `addRoads()` takes a polyline layer over the road centerlines as the road surfaces and hides every feature without lights. `start()` then streams the zoom 14 tiles of the same tile set in around the position given to `follow()`, and places street lamps along every road, a red beacon on every roof the building reader gives a height, and cars that drive along the road segments.
+`StreetLightsPlugin` turns roads and buildings into a city at night. `start()` takes the roads and the buildings, each with its tile source, draws the road surfaces and hides every feature without lights. `follow()` then streams the zoom 14 tiles in around a position, and places street lamps along every road, a red beacon on every roof the building reader gives a height, and cars that drive along the road segments.
 
-The plugin fetches those tiles a second time. The engine decodes them for rendering but exposes no feature geometry. The `roads` and `buildings` options name the source layers and give a [`RoadReader`](#roadreader) and a [`BuildingReader`](#buildingreader) for the tile set's properties. The example below reads the OpenMapTiles schema.
+The roads and buildings each name their source: a TileJSON document, as in `TileJsonPlugin.addSource()`, or a `{z}/{x}/{y}` vector tile URL, as in `view.addSource()`. They give a [`RoadReader`](#roadreader) and a [`BuildingReader`](#buildingreader) for their features' properties. The example below reads the OpenMapTiles schema. The plugin fetches the zoom 14 tiles itself, so a tile set the road surface draws from is requested twice.
 
 The lamps and beacons are `point` layers. The selective effects given to `start()` apply to them, such as the built-in [`selectiveBloom`](../../three_default_descs/effect-desc/selective-bloom-effect-desc/). The cars are additive points drawn by [`StreetTrafficMeshDesc`](#streettrafficmeshdesc), which the plugin registers on `init()`. Neither needs a light in the scene.
 
@@ -24,7 +24,6 @@ import {
 } from "@navaramap/three-default-plugin";
 import {
   StreetLightsPlugin,
-  TileJsonPlugin,
   isRoadClass,
   type StreetTrafficDescriptions,
 } from "@navaramap/three-plugins";
@@ -35,12 +34,21 @@ const view = new ThreeView<DefaultDescriptions | StreetTrafficDescriptions>({
   animation: true,
 });
 
-const tilejson = new TileJsonPlugin();
+const streetLights = new StreetLightsPlugin();
+
+view.addPlugin(new DefaultPlugin());
+view.addPlugin(streetLights);
+await view.init();
+
+const bloom = view.addEffect<SelectiveBloomEffectDesc>({ selectiveBloom: {} });
+
 // Readers for the OpenMapTiles schema.
-const streetLights = new StreetLightsPlugin({
-  radius: 2,
+await streetLights.start({
   roads: {
+    sourceType: "tilejson",
+    sourceUrl: "https://tiles.openfreemap.org/planet",
     sourceLayers: ["transportation"],
+    polyline: { color: new Color().setStyle("#15171c"), clampToGround: true },
     filterFeatureProperties: ["class", "oneway"],
     evaluateFeature: ({ class: roadClass, oneway }) =>
       isRoadClass(roadClass)
@@ -48,42 +56,17 @@ const streetLights = new StreetLightsPlugin({
         : undefined,
   },
   buildings: {
+    sourceType: "tilejson",
+    sourceUrl: "https://tiles.openfreemap.org/planet",
     sourceLayers: ["building"],
-    // Beacons from 90 m up; an outline drawn in parts leaves them to its parts.
+    // Roofs from 90 m up; an outline drawn in parts leaves the beacon to them.
     evaluateFeature: ({ render_height: height, hide_3d }) =>
       typeof height === "number" && height >= 90 && hide_3d !== true
         ? height
         : undefined,
   },
+  effectIds: [bloom.id],
 });
-
-view.addPlugin(new DefaultPlugin());
-view.addPlugin(tilejson);
-view.addPlugin(streetLights);
-await view.init();
-
-const bloom = view.addEffect<SelectiveBloomEffectDesc>({ selectiveBloom: {} });
-
-// The tile set. Its TileJSON document also names the tile URL template the
-// plugin streams the roads from.
-let tileTemplate = "";
-tilejson.on("loaded", ({ tilejson: document }) => {
-  tileTemplate = document.tiles[0];
-});
-const streets = await tilejson.addSource({
-  type: "vector-tile",
-  url: "https://tiles.openfreemap.org/planet",
-});
-
-// Dark road surfaces; the plugin hides every class that carries no lights.
-const roads = view.addLayer({
-  type: "vector",
-  source: streets,
-  sourceLayers: ["transportation"],
-  polyline: { color: new Color().setStyle("#15171c"), clampToGround: true },
-});
-streetLights.addRoads(roads);
-streetLights.start({ tileTemplate, effectIds: [bloom.id] });
 
 // Keep the tiles around the camera loaded as it moves.
 view.on("postUpdate", () => {
@@ -95,35 +78,24 @@ view.on("postUpdate", () => {
 ## Constructor
 
 ```typescript
-new StreetLightsPlugin(config: StreetLightsConfig);
+new StreetLightsPlugin(config?: StreetLightsConfig);
 ```
 
 Register the plugin with `view.addPlugin()` **before** `view.init()`. On `init()` it registers `StreetTrafficMeshDesc` under the key `streetTraffic`.
 
-| Property        | Type                   | Default | Description                                                                                                                   |
-| --------------- | ---------------------- | ------- | ----------------------------------------------------------------------------------------------------------------------------- |
-| `radius`        | `number`               | `2`     | Tiles kept loaded around the followed position, as a radius in zoom 14 tiles. `2` is a 5 × 5 block, about 10 km across at Tokyo's latitude. |
-| `traffic`       | `StreetTrafficOptions` | `{}`    | Speed multiplier and light size of the cars. See [`StreetTrafficOptions`](#streettrafficoptions).                            |
-| `roads`         | `StreetLightsRoads`    |         | Which source layers hold the roads and how to read them. See [`StreetLightsRoads`](#streetlightsroads).                        |
-| `buildings`     | `StreetLightsBuildings` |        | Which source layers hold the buildings and how to read them. See [`StreetLightsBuildings`](#streetlightsbuildings).            |
+| Property         | Type             | Default | Description                                                                                                 |
+| ---------------- | ---------------- | ------- | ----------------------------------------------------------------------------------------------------------- |
+| `tileJsonPlugin` | `TileJsonPlugin` | created | Resolves `tilejson` sources. Created when omitted and disposed with this plugin. One passed in stays yours.   |
 
 ## Methods
-
-### addRoads(layer)
-
-```typescript
-addRoads(layer: Layer): void
-```
-
-Takes a [vector layer](../../three/layer/vector-layer/) with a `polyline` material over the road centerlines as the road surfaces. Every feature the road reader skips, such as rail and paths, is hidden. The rest get the width of their [`RoadClass`](#roadclass), and follow `setVisible()`. The layer's own material gives the color and the clamping. The layer stays yours to delete. While the plugin holds it, its per-feature `show` and `width` are the plugin's, so another evaluator on the same layer competes with it. Giving the same layer again does nothing. Features the layer already holds are evaluated again on the next frame. The layer must show only the source layers named by `roads.sourceLayers`, so give it the same `sourceLayers`: the lamps and cars come from those roads, and other line layers can carry the same properties (OpenMapTiles `transportation_name` does) and would be drawn as roads too. Must be called **after** `view.init()`. Otherwise the call throws.
 
 ### start(options)
 
 ```typescript
-start(options: StreetLightsStartOptions): void
+start(options: StreetLightsStartOptions): Promise<void>
 ```
 
-Starts streaming lamps, beacons and traffic from the tiles of `options.tileTemplate`. `follow()` then decides which tiles are loaded. `options.effectIds` are the selective effects the lamps and beacons take part in. Calling `start()` again drops the tiles of the previous start. Must be called **after** `view.init()`. Otherwise the call throws.
+Opens the sources of the roads and buildings, draws the road surfaces, and starts streaming lamps, beacons and traffic. `follow()` then decides which tiles are loaded. On the road surface, every feature the road reader skips, such as rail and paths, is hidden. The rest get the width of their [`RoadClass`](#roadclass). Roads and buildings with the same `sourceType` and `sourceUrl` share one source. Buildings get a source of their own only for a TileJSON document, which also carries their credit. A `vector-tile` URL is read directly, since the plugin draws no building layer. Calling `start()` again drops everything the previous start added once the new sources are open. A call overtaken by a later `start()` or by `dispose()` opens nothing. Must be called **after** `view.init()`. Otherwise the returned promise rejects.
 
 ### follow(lng, lat)
 
@@ -131,7 +103,7 @@ Starts streaming lamps, beacons and traffic from the tiles of `options.tileTempl
 follow(lng: number, lat: number): void
 ```
 
-Keeps the tiles within `radius` of the tile containing the position loaded, nearest first, and drops the tiles that fell out of range. Nothing happens while the position stays inside the same tile, so it is cheap to call on every `postUpdate`. Must be called **after** `start()`. Otherwise the call throws.
+Keeps the tiles within `radius` of the tile containing the position loaded, nearest first, and drops the tiles that fell out of range. Nothing happens while the position stays inside the same tile, so it is cheap to call on every `postUpdate`. A tile the server answers with 404 holds no lights. Must be called **after** the promise returned by `start()` has resolved. Otherwise the call throws.
 
 ### setVisible(visible, part?)
 
@@ -163,7 +135,7 @@ Applies new traffic options to the loaded tiles and to the tiles still to come.
 dispose(): void
 ```
 
-Drops every layer, source and mesh the plugin added, stops the tiles still loading, and detaches from the road layers given to `addRoads()`. Those layers stay yours. The `show` and `width` the plugin already set stay on their features, since Navara cannot clear evaluated values, so delete the layer or evaluate it again yourself. The plugin cannot be used again afterwards.
+Drops every source, layer and mesh the plugin added, including the road surfaces, and stops the tiles still loading. A `TileJsonPlugin` the plugin created is disposed too. The plugin cannot be used again afterwards.
 
 ## Types
 
@@ -171,20 +143,67 @@ Drops every layer, source and mesh the plugin added, stops the tiles still loadi
 
 ```typescript
 type StreetLightsConfig = {
-  radius?: number;
-  traffic?: StreetTrafficOptions;
-  roads: StreetLightsRoads;
-  buildings: StreetLightsBuildings;
+  tileJsonPlugin?: TileJsonPlugin;
 };
 ```
 
 The constructor options. See [Constructor](#constructor).
 
+### StreetLightsStartOptions
+
+```typescript
+type StreetLightsStartOptions = {
+  roads: StreetLightsRoads;
+  buildings: StreetLightsBuildings;
+  radius?: number;
+  traffic?: StreetTrafficOptions;
+  effectIds?: string[];
+};
+```
+
+| Property    | Type                    | Default | Description                                                                                                                   |
+| ----------- | ----------------------- | ------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| `roads`     | `StreetLightsRoads`     |         | The roads: their source, look and reader. See [`StreetLightsRoads`](#streetlightsroads).                                    |
+| `buildings` | `StreetLightsBuildings` |         | The buildings: their source and reader. See [`StreetLightsBuildings`](#streetlightsbuildings).                               |
+| `radius`    | `number`                | `2`     | Tiles kept loaded around the followed position, as a radius in zoom 14 tiles. `2` is a 5 × 5 block, about 10 km across at Tokyo's latitude. |
+| `traffic`   | `StreetTrafficOptions`  | `{}`    | Speed multiplier and light size of the cars. Replaces what an earlier `update()` applied. See [`StreetTrafficOptions`](#streettrafficoptions). |
+| `effectIds` | `string[]`              | `[]`    | Selective effects the lamps and beacons take part in, such as a bloom.                                                        |
+
+### StreetLightsSource
+
+```typescript
+type StreetLightsSource = {
+  sourceType: "tilejson" | "vector-tile";
+  sourceUrl: string;
+  sourceLayers: string[];
+};
+```
+
+| Property       | Type                           | Default | Description                                                                                                                   |
+| -------------- | ------------------------------ | ------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| `sourceType`   | `"tilejson" \| "vector-tile"` |         | `tilejson` is a TileJSON document, as in `TileJsonPlugin.addSource()`, read for the first tile URL it lists. `vector-tile` is a tile URL, as in `view.addSource()`. |
+| `sourceUrl`    | `string`                       |         | The TileJSON document, or a `{z}/{x}/{y}` vector tile URL.                                                                   |
+| `sourceLayers` | `string[]`                     |         | Source layers holding the features, as in `view.addLayer()`.                                                                 |
+
 ### StreetLightsRoads
 
 ```typescript
-type StreetLightsRoads = {
-  sourceLayers: string[];
+type StreetLightsRoads = StreetLightsSource &
+  RoadsReading & {
+    polyline?: VectorLayer["polyline"];
+  };
+```
+
+| Property   | Type                      | Default | Description                                                                                                       |
+| ---------- | ------------------------- | ------- | ----------------------------------------------------------------------------------------------------------------- |
+| `polyline` | `VectorLayer["polyline"]` | `{}`    | The road surface's material, as `polyline` in `view.addLayer()`. The plugin sets each feature's `show` and `width`. |
+
+The reader comes from [`RoadsReading`](#roadsreading).
+
+### RoadsReading
+
+```typescript
+type RoadsReading = {
   evaluateFeature: RoadReader;
   filterFeatureProperties?: string[];
 };
@@ -192,23 +211,18 @@ type StreetLightsRoads = {
 
 | Property                  | Type         | Default | Description                                                                                                       |
 | ------------------------- | ------------ | ------- | ----------------------------------------------------------------------------------------------------------------- |
-| `sourceLayers`            | `string[]`   |         | Source layers holding the road centerlines.                                                                       |
 | `evaluateFeature`         | `RoadReader` |         | Reads one road feature: its [`RoadClass`](#roadclass) and direction. See [`RoadReader`](#roadreader).            |
-| `filterFeatureProperties` | `string[]`   | all     | Properties `evaluateFeature` needs. It sees only these, both on the road layer and when the lamps and cars are placed, so list every name it reads. Without a list it sees every property, and the road layer reads them all on each evaluation. |
+| `filterFeatureProperties` | `string[]`   | all     | Properties `evaluateFeature` needs. It sees only these, both on the road surface and when the lamps and cars are placed, so list every name it reads. Without a list it sees every property, and the road surface reads them all on each evaluation. |
 
 ### StreetLightsBuildings
 
 ```typescript
-type StreetLightsBuildings = {
-  sourceLayers: string[];
+type StreetLightsBuildings = StreetLightsSource & {
   evaluateFeature: BuildingReader;
 };
 ```
 
-| Property          | Type             | Default | Description                                                                                  |
-| ----------------- | ---------------- | ------- | -------------------------------------------------------------------------------------------- |
-| `sourceLayers`    | `string[]`       |         | Source layers holding the building footprints.                                               |
-| `evaluateFeature` | `BuildingReader` |         | Reads one building feature: its roof height, or `undefined` for no beacon. See [`BuildingReader`](#buildingreader). |
+`evaluateFeature` reads one building feature: its roof height, or `undefined` for no beacon. See [`BuildingReader`](#buildingreader).
 
 ### RoadReader
 
@@ -232,7 +246,7 @@ const read: RoadReader = ({ highway }) =>
       ? { roadClass: "minor" }
       : undefined;
 
-// Given to the plugin as `roads: { sourceLayers: ["roads"], filterFeatureProperties: ["highway"], evaluateFeature: read }`.
+// Given to `start()` as `roads: { ..., filterFeatureProperties: ["highway"], evaluateFeature: read }`.
 ```
 
 ### BuildingReader
@@ -265,20 +279,6 @@ isRoadClass(value: unknown): value is RoadClass
 ```
 
 Whether a tile value names a [`RoadClass`](#roadclass), for a reader that passes a property through, as the OpenMapTiles `class` in the example above. Own keys only: a value named like an `Object.prototype` member is not a road.
-
-### StreetLightsStartOptions
-
-```typescript
-type StreetLightsStartOptions = {
-  tileTemplate: string;
-  effectIds?: string[];
-};
-```
-
-| Property       | Type       | Default | Description                                                                                     |
-| -------------- | ---------- | ------- | ----------------------------------------------------------------------------------------------- |
-| `tileTemplate` | `string`   |         | A `{z}/{x}/{y}` tile URL of the tile set the road layer shows, as listed in its TileJSON document. |
-| `effectIds`    | `string[]` | `[]`    | Selective effects the lamps and beacons take part in, such as a bloom.                           |
 
 ### StreetLightsPart
 
@@ -328,14 +328,14 @@ The mesh Descriptor behind the cars, registered under the key `streetTraffic`. O
 
 - **Evaluated values win over the material.** The plugin sets the visibility of every road, lamp and beacon per feature, so `layer.update({ point: { show } })` on its layers has no effect. Use `setVisible()` and `setLightsOn()` instead.
 - **Only the lamps and beacons bloom.** They write the emissive color that `selectiveBloom` reads. The cars are additive points drawn after the G-buffer and do not take part in the effect.
-- **The tiles count against the same credit as the source.** The plugin fetches the tiles from the template of the tile set the source shows, so the attribution the source carries covers them.
+- **Credits come from the sources.** A `tilejson` source shows the attribution its document declares, for the roads and the buildings alike. For a `vector-tile` source, add the data's credit to `view.attribution` yourself.
 - **Render every frame.** The cars move with the view's clock, so construct the view with `animation: true`.
 - **Zoom 14 only.** The plugin reads the zoom 14 tiles whatever the camera's zoom, so `radius` is in those tiles, about 2 km across at Tokyo's latitude.
 
 ## Related Resources
 
 - [About](../about/): Overview of three_plugins
-- [TileJsonPlugin](../tilejsonplugin/): Reading the tile URL template from a TileJSON document
+- [TileJsonPlugin](../tilejsonplugin/): The resolver behind `tilejson` sources
 - [Vector Layer](../../three/layer/vector-layer/): The layer type behind the roads, lamps and beacons
 - [SelectiveBloomEffectDesc](../../three_default_descs/effect-desc/selective-bloom-effect-desc/): The bloom the lamps and beacons take part in
 - [Night City](https://navara.world/examples/showcase/night-city): A showcase built on this plugin

@@ -18,9 +18,8 @@ import {
   readRoadFeature,
   type BuildingReader,
   type Oneway,
-  type StreetLightsRoads,
   type RoadStyle,
-  type TileSchema,
+  type RoadsReading,
 } from "./roads";
 
 // --- Reading the tiles -----------------------------------------------------
@@ -98,15 +97,15 @@ const outerRings = (geometry: Polygon | MultiPolygon): Position[][] =>
 export const readRoads = (
   layer: TileLayer,
   tile: TileCoordinate,
-  schema: StreetLightsRoads,
+  reading: RoadsReading,
   out: Road[],
 ) => {
   for (let i = 0; i < layer.length; i++) {
     const feature = layer.feature(i);
-    const properties = schema.filterFeatureProperties
-      ? pickProperties(feature.properties, schema.filterFeatureProperties)
+    const properties = reading.filterFeatureProperties
+      ? pickProperties(feature.properties, reading.filterFeatureProperties)
       : feature.properties;
-    const road = readRoadFeature(schema, properties);
+    const road = readRoadFeature(reading, properties);
     if (!road) continue;
 
     const geometry = feature.toGeoJSON(tile.x, tile.y, ZOOM).geometry;
@@ -149,36 +148,96 @@ export const readRoofs = (
   }
 };
 
-/**
- * Reads the roads and beacon roofs of one zoom-14 tile. `template` is a
- * `{z}/{x}/{y}` tile URL, as listed in a TileJSON document. The engine
- * decodes these same tiles for rendering but exposes no feature geometry,
- * hence the second fetch.
- */
-export const loadRoadNetwork = async (
+/** The decoded layers of one tile, by source layer name. */
+export type TileLayers = Record<string, TileLayer | undefined>;
+
+/** Roads read from `{z}/{x}/{y}` vector tiles. */
+export type TileRoads = RoadsReading & {
+  template: string;
+  sourceLayers: string[];
+};
+
+/** Roofs read from `{z}/{x}/{y}` vector tiles. */
+export type TileRoofs = {
+  template: string;
+  sourceLayers: string[];
+  evaluateFeature: BuildingReader;
+};
+
+export type NetworkReading = { roads: TileRoads; buildings: TileRoofs };
+
+const fetchTile = async (
   template: string,
   tile: TileCoordinate,
-  schema: TileSchema,
   signal: AbortSignal,
-): Promise<RoadNetwork> => {
+): Promise<TileLayers> => {
   const url = template
     .replace("{z}", String(ZOOM))
     .replace("{x}", String(tile.x))
     .replace("{y}", String(tile.y));
   const res = await fetch(url, { signal });
+  // A tile the server does not have holds nothing.
+  if (res.status === 404) return {};
   if (!res.ok) throw new Error(`Tile ${url} failed (${res.status})`);
-  const vectorTile = new VectorTile(new PbfReader(await res.arrayBuffer()));
+  return new VectorTile(new PbfReader(await res.arrayBuffer())).layers;
+};
 
-  const roads: Road[] = [];
-  const roofs: Roof[] = [];
-  for (const name of schema.roads.sourceLayers) {
-    const layer = vectorTile.layers[name];
-    if (layer) readRoads(layer, tile, schema.roads, roads);
+/** The roads of one tile, from every listed source layer the tile has. */
+export const readTileRoads = (
+  layers: TileLayers,
+  tile: TileCoordinate,
+  roads: TileRoads,
+): Road[] => {
+  const out: Road[] = [];
+  for (const name of roads.sourceLayers) {
+    const layer = layers[name];
+    if (layer) readRoads(layer, tile, roads, out);
   }
-  for (const name of schema.buildings.sourceLayers) {
-    const layer = vectorTile.layers[name];
-    if (layer) readRoofs(layer, tile, schema.buildings.evaluateFeature, roofs);
+  return out;
+};
+
+/** The beacon roofs of one tile, from every listed source layer the tile has. */
+export const readTileRoofs = (
+  layers: TileLayers,
+  tile: TileCoordinate,
+  buildings: TileRoofs,
+): Roof[] => {
+  const out: Roof[] = [];
+  for (const name of buildings.sourceLayers) {
+    const layer = layers[name];
+    if (layer) readRoofs(layer, tile, buildings.evaluateFeature, out);
   }
+  return out;
+};
+
+/**
+ * Reads the roads and beacon roofs of one zoom-14 tile. Each `template` is a
+ * `{z}/{x}/{y}` tile URL, as listed in a TileJSON document; roads and
+ * buildings on the same template share one fetch. A tile a server does not
+ * have (404) reads as empty.
+ */
+export const loadRoadNetwork = async (
+  reading: NetworkReading,
+  tile: TileCoordinate,
+  signal: AbortSignal,
+): Promise<RoadNetwork> => {
+  const fetched = new Map<string, Promise<TileLayers>>();
+  const layersOf = (template: string) => {
+    let pending = fetched.get(template);
+    if (!pending) {
+      pending = fetchTile(template, tile, signal);
+      fetched.set(template, pending);
+    }
+    return pending;
+  };
+  const [roads, roofs] = await Promise.all([
+    layersOf(reading.roads.template).then((layers) =>
+      readTileRoads(layers, tile, reading.roads),
+    ),
+    layersOf(reading.buildings.template).then((layers) =>
+      readTileRoofs(layers, tile, reading.buildings),
+    ),
+  ]);
   return { roads, roofs };
 };
 

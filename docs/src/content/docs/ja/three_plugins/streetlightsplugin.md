@@ -7,9 +7,9 @@ sidebar:
 
 ## 概要
 
-`StreetLightsPlugin` は、道路と建物を持つベクトルタイルセットを夜の街に変えます。`addRoads()` は道路の中心線の上に置いたポリラインレイヤーを路面として受け取り、灯りを持たないフィーチャーを非表示にします。`start()` は同じタイルセットのズーム 14 のタイルを `follow()` に渡した位置の周辺にストリーミングし、すべての道路に沿った街灯、建物リーダーが高さを返した屋上の赤い灯、道路の区間を走る車を配置します。
+`StreetLightsPlugin` は、道路と建物を夜の街に変えます。`start()` は道路と建物をそれぞれのタイルソースとともに受け取り、路面を描いて、灯りを持たないフィーチャーを非表示にします。続いて `follow()` に渡した位置の周辺にズーム 14 のタイルをストリーミングし、すべての道路に沿った街灯、建物リーダーが高さを返した屋上の赤い灯、道路の区間を走る車を配置します。
 
-プラグインはこれらのタイルをもう一度取得します。エンジンは描画のためにタイルを復号しますが、フィーチャーのジオメトリを公開しないためです。`roads` と `buildings` オプションでソースレイヤーの名前を指定し、そのタイルセットのプロパティを読む [`RoadReader`](#roadreader) と [`BuildingReader`](#buildingreader) を渡します。下の例は OpenMapTiles スキーマを読みます。
+道路と建物は、それぞれのソースを指定します。`TileJsonPlugin.addSource()` と同じ TileJSON ドキュメントか、`view.addSource()` と同じ `{z}/{x}/{y}` のベクトルタイル URL です。フィーチャーのプロパティを読む [`RoadReader`](#roadreader) と [`BuildingReader`](#buildingreader) も渡します。下の例は OpenMapTiles スキーマを読みます。プラグインはズーム 14 のタイルを自分で取得するため、路面が描くタイルセットは 2 回要求されます。
 
 街灯と屋上灯は `point` レイヤーです。`start()` に渡した Selective Effect（組み込みの [`selectiveBloom`](../../three_default_descs/effect-desc/selective-bloom-effect-desc/) など）がそれらに適用されます。車は [`StreetTrafficMeshDesc`](#streettrafficmeshdesc) が描く加算合成の点で、プラグインが `init()` 時に登録します。どちらもシーンにライトは必要ありません。
 
@@ -24,7 +24,6 @@ import {
 } from "@navaramap/three-default-plugin";
 import {
   StreetLightsPlugin,
-  TileJsonPlugin,
   isRoadClass,
   type StreetTrafficDescriptions,
 } from "@navaramap/three-plugins";
@@ -35,12 +34,21 @@ const view = new ThreeView<DefaultDescriptions | StreetTrafficDescriptions>({
   animation: true,
 });
 
-const tilejson = new TileJsonPlugin();
+const streetLights = new StreetLightsPlugin();
+
+view.addPlugin(new DefaultPlugin());
+view.addPlugin(streetLights);
+await view.init();
+
+const bloom = view.addEffect<SelectiveBloomEffectDesc>({ selectiveBloom: {} });
+
 // OpenMapTiles スキーマ用のリーダー。
-const streetLights = new StreetLightsPlugin({
-  radius: 2,
+await streetLights.start({
   roads: {
+    sourceType: "tilejson",
+    sourceUrl: "https://tiles.openfreemap.org/planet",
     sourceLayers: ["transportation"],
+    polyline: { color: new Color().setStyle("#15171c"), clampToGround: true },
     filterFeatureProperties: ["class", "oneway"],
     evaluateFeature: ({ class: roadClass, oneway }) =>
       isRoadClass(roadClass)
@@ -48,42 +56,17 @@ const streetLights = new StreetLightsPlugin({
         : undefined,
   },
   buildings: {
+    sourceType: "tilejson",
+    sourceUrl: "https://tiles.openfreemap.org/planet",
     sourceLayers: ["building"],
-    // 90 m 以上に灯りを置きます。部品に分かれた外形は、灯りを部品に任せます。
+    // 90 m 以上の屋上に灯りを置きます。部品に分かれた外形は、灯りを部品に任せます。
     evaluateFeature: ({ render_height: height, hide_3d }) =>
       typeof height === "number" && height >= 90 && hide_3d !== true
         ? height
         : undefined,
   },
+  effectIds: [bloom.id],
 });
-
-view.addPlugin(new DefaultPlugin());
-view.addPlugin(tilejson);
-view.addPlugin(streetLights);
-await view.init();
-
-const bloom = view.addEffect<SelectiveBloomEffectDesc>({ selectiveBloom: {} });
-
-// タイルセット。その TileJSON ドキュメントは、プラグインが道路を
-// ストリーミングするタイル URL テンプレートも示します。
-let tileTemplate = "";
-tilejson.on("loaded", ({ tilejson: document }) => {
-  tileTemplate = document.tiles[0];
-});
-const streets = await tilejson.addSource({
-  type: "vector-tile",
-  url: "https://tiles.openfreemap.org/planet",
-});
-
-// 暗い路面。灯りを持たないクラスはプラグインが非表示にします。
-const roads = view.addLayer({
-  type: "vector",
-  source: streets,
-  sourceLayers: ["transportation"],
-  polyline: { color: new Color().setStyle("#15171c"), clampToGround: true },
-});
-streetLights.addRoads(roads);
-streetLights.start({ tileTemplate, effectIds: [bloom.id] });
 
 // カメラの移動に合わせて、周辺のタイルを読み込んだ状態に保ちます。
 view.on("postUpdate", () => {
@@ -95,35 +78,24 @@ view.on("postUpdate", () => {
 ## コンストラクタ
 
 ```typescript
-new StreetLightsPlugin(config: StreetLightsConfig);
+new StreetLightsPlugin(config?: StreetLightsConfig);
 ```
 
 `view.init()` の**前に** `view.addPlugin()` でプラグインを登録してください。`init()` 時にキー `streetTraffic` で `StreetTrafficMeshDesc` を登録します。
 
-| プロパティ | 型                     | デフォルト | 説明                                                                                                                |
-| ---------- | ---------------------- | ---------- | ------------------------------------------------------------------------------------------------------------------- |
-| `radius`   | `number`               | `2`        | 追従位置の周辺で読み込んだ状態に保つタイル数を、ズーム 14 のタイル単位の半径で指定します。`2` は 5 × 5 ブロックで、東京の緯度では差し渡し約 10 km です。 |
-| `traffic`  | `StreetTrafficOptions` | `{}`       | 車の速度倍率と灯りの大きさ。[`StreetTrafficOptions`](#streettrafficoptions) を参照してください。                   |
-| `roads`    | `StreetLightsRoads`    |            | 道路を持つソースレイヤーとその読み方。[`StreetLightsRoads`](#streetlightsroads) を参照してください。                |
-| `buildings` | `StreetLightsBuildings` |          | 建物を持つソースレイヤーとその読み方。[`StreetLightsBuildings`](#streetlightsbuildings) を参照してください。        |
+| プロパティ       | 型               | デフォルト | 説明                                                                                                                   |
+| ---------------- | ---------------- | ---------- | ---------------------------------------------------------------------------------------------------------------------- |
+| `tileJsonPlugin` | `TileJsonPlugin` | 内部で生成 | `tilejson` ソースを解決します。省略すると内部で生成し、このプラグインと一緒に破棄します。渡したものは呼び出し側のものとして残ります。 |
 
 ## メソッド
-
-### addRoads(layer)
-
-```typescript
-addRoads(layer: Layer): void
-```
-
-道路の中心線の上に `polyline` マテリアルで置いた [ベクトルレイヤー](../../three/layer/vector-layer/) を路面として受け取ります。道路リーダーが読み飛ばすフィーチャー（鉄道や歩道など）は非表示になり、残りは [`RoadClass`](#roadclass) の幅になって、`setVisible()` に従います。色とクランプはレイヤー自身のマテリアルで決まります。レイヤーを削除するのは呼び出し側です。プラグインが持っている間、フィーチャーごとの `show` と `width` はプラグインのものなので、同じレイヤーに別の評価器を付けると競合します。同じレイヤーを再度渡しても何もしません。レイヤーが既に持っているフィーチャーは次のフレームで評価し直されます。レイヤーは `roads.sourceLayers` で指定したソースレイヤーだけを表示する必要があるので、同じ `sourceLayers` を指定してください。街灯と車はその道路から作られ、他の線のレイヤーも同じプロパティを持つことがある（OpenMapTiles の `transportation_name` など）ため、指定しないとそれらも道路として描かれます。`view.init()` の**後に**呼び出す必要があります。それ以外の場合はエラーをスローします。
 
 ### start(options)
 
 ```typescript
-start(options: StreetLightsStartOptions): void
+start(options: StreetLightsStartOptions): Promise<void>
 ```
 
-`options.tileTemplate` のタイルから街灯・屋上灯・車のストリーミングを開始します。どのタイルを読み込むかは `follow()` が決めます。`options.effectIds` は街灯と屋上灯が参加する Selective Effect です。`start()` を再度呼び出すと、前回の開始分のタイルを破棄します。`view.init()` の**後に**呼び出す必要があります。それ以外の場合はエラーをスローします。
+道路と建物のソースを開き、路面を描いて、街灯・屋上灯・車のストリーミングを開始します。どのタイルを読み込むかは `follow()` が決めます。路面では、道路リーダーが読み飛ばすフィーチャー（鉄道や歩道など）は非表示になり、残りは [`RoadClass`](#roadclass) の幅になります。`sourceType` と `sourceUrl` が同じ道路と建物は、1 つのソースを共有します。建物に専用のソースを作るのは TileJSON ドキュメントの場合だけで、出典もそこから表示されます。`vector-tile` の URL は直接読みます。プラグインは建物のレイヤーを描かないためです。`start()` を再度呼び出すと、新しいソースが開いた時点で、前回の開始で追加したものをすべて破棄します。後の `start()` や `dispose()` に追い越された呼び出しは、何も開かずに戻ります。`view.init()` の**後に**呼び出す必要があります。それ以外の場合は、返り値の Promise が reject されます。
 
 ### follow(lng, lat)
 
@@ -131,7 +103,7 @@ start(options: StreetLightsStartOptions): void
 follow(lng: number, lat: number): void
 ```
 
-位置を含むタイルから `radius` 以内のタイルを近い順に読み込んだ状態に保ち、範囲外になったタイルを破棄します。位置が同じタイル内にとどまる間は何もしないため、毎 `postUpdate` で呼び出しても軽量です。`start()` の**後に**呼び出す必要があります。それ以外の場合はエラーをスローします。
+位置を含むタイルから `radius` 以内のタイルを近い順に読み込んだ状態に保ち、範囲外になったタイルを破棄します。位置が同じタイル内にとどまる間は何もしないため、毎 `postUpdate` で呼び出しても軽量です。サーバーが 404 を返すタイルには灯りを置きません。`start()` が返す Promise が解決した**後に**呼び出す必要があります。それ以外の場合はエラーをスローします。
 
 ### setVisible(visible, part?)
 
@@ -163,7 +135,7 @@ update(updates: StreetLightsUpdate): void
 dispose(): void
 ```
 
-プラグインが追加したすべてのレイヤー・ソース・メッシュを破棄し、読み込み中のタイルを停止し、`addRoads()` に渡した道路レイヤーから切り離します。それらのレイヤーは呼び出し側のものとして残ります。Navara は評価済みの値を消せないため、プラグインが設定した `show` と `width` はフィーチャーに残ります。レイヤーを削除するか、自分で評価し直してください。その後プラグインは再利用できません。
+プラグインが追加したすべてのソース・レイヤー・メッシュを路面も含めて破棄し、読み込み中のタイルを停止します。プラグインが生成した `TileJsonPlugin` も破棄します。その後プラグインは再利用できません。
 
 ## 型
 
@@ -171,20 +143,67 @@ dispose(): void
 
 ```typescript
 type StreetLightsConfig = {
-  radius?: number;
-  traffic?: StreetTrafficOptions;
-  roads: StreetLightsRoads;
-  buildings: StreetLightsBuildings;
+  tileJsonPlugin?: TileJsonPlugin;
 };
 ```
 
 コンストラクタのオプションです。[コンストラクタ](#コンストラクタ) を参照してください。
 
+### StreetLightsStartOptions
+
+```typescript
+type StreetLightsStartOptions = {
+  roads: StreetLightsRoads;
+  buildings: StreetLightsBuildings;
+  radius?: number;
+  traffic?: StreetTrafficOptions;
+  effectIds?: string[];
+};
+```
+
+| プロパティ  | 型                      | デフォルト | 説明                                                                                                                |
+| ----------- | ----------------------- | ---------- | ------------------------------------------------------------------------------------------------------------------- |
+| `roads`     | `StreetLightsRoads`     |            | 道路のソース、見た目、リーダー。[`StreetLightsRoads`](#streetlightsroads) を参照してください。                      |
+| `buildings` | `StreetLightsBuildings` |            | 建物のソースとリーダー。[`StreetLightsBuildings`](#streetlightsbuildings) を参照してください。                      |
+| `radius`    | `number`                | `2`        | 追従位置の周辺で読み込んだ状態に保つタイル数を、ズーム 14 のタイル単位の半径で指定します。`2` は 5 × 5 ブロックで、東京の緯度では差し渡し約 10 km です。 |
+| `traffic`   | `StreetTrafficOptions`  | `{}`       | 車の速度倍率と灯りの大きさ。以前の `update()` で適用した値を置き換えます。[`StreetTrafficOptions`](#streettrafficoptions) を参照してください。 |
+| `effectIds` | `string[]`              | `[]`       | 街灯と屋上灯が参加する Selective Effect（Bloom など）。                                                             |
+
+### StreetLightsSource
+
+```typescript
+type StreetLightsSource = {
+  sourceType: "tilejson" | "vector-tile";
+  sourceUrl: string;
+  sourceLayers: string[];
+};
+```
+
+| プロパティ     | 型                             | デフォルト | 説明                                                                                                                           |
+| -------------- | ------------------------------ | ---------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| `sourceType`   | `"tilejson" \| "vector-tile"` |            | `tilejson` は `TileJsonPlugin.addSource()` と同じ TileJSON ドキュメントで、列挙された最初のタイル URL を読みます。`vector-tile` は `view.addSource()` と同じタイル URL です。 |
+| `sourceUrl`    | `string`                       |            | TileJSON ドキュメント、または `{z}/{x}/{y}` のベクトルタイル URL。                                                             |
+| `sourceLayers` | `string[]`                     |            | フィーチャーを持つソースレイヤー。`view.addLayer()` と同じです。                                                               |
+
 ### StreetLightsRoads
 
 ```typescript
-type StreetLightsRoads = {
-  sourceLayers: string[];
+type StreetLightsRoads = StreetLightsSource &
+  RoadsReading & {
+    polyline?: VectorLayer["polyline"];
+  };
+```
+
+| プロパティ | 型                        | デフォルト | 説明                                                                                                        |
+| ---------- | ------------------------- | ---------- | ----------------------------------------------------------------------------------------------------------- |
+| `polyline` | `VectorLayer["polyline"]` | `{}`       | 路面のマテリアル。`view.addLayer()` の `polyline` と同じです。各フィーチャーの `show` と `width` はプラグインが設定します。 |
+
+リーダーは [`RoadsReading`](#roadsreading) から来ます。
+
+### RoadsReading
+
+```typescript
+type RoadsReading = {
   evaluateFeature: RoadReader;
   filterFeatureProperties?: string[];
 };
@@ -192,23 +211,18 @@ type StreetLightsRoads = {
 
 | プロパティ                | 型           | デフォルト | 説明                                                                                                        |
 | ------------------------- | ------------ | ---------- | ----------------------------------------------------------------------------------------------------------- |
-| `sourceLayers`            | `string[]`   |            | 道路の中心線を持つソースレイヤー。                                                                          |
 | `evaluateFeature`         | `RoadReader` |            | 道路フィーチャーを 1 つ読み取り、[`RoadClass`](#roadclass) と向きを返します。[`RoadReader`](#roadreader) を参照してください。 |
-| `filterFeatureProperties` | `string[]`   | すべて     | `evaluateFeature` が必要とするプロパティ。道路レイヤーでも街灯・車の配置でもこれらだけが渡されるので、読む名前をすべて指定してください。省略するとすべてのプロパティが渡され、道路レイヤーは評価のたびに全プロパティを読みます。 |
+| `filterFeatureProperties` | `string[]`   | すべて     | `evaluateFeature` が必要とするプロパティ。路面でも街灯・車の配置でもこれらだけが渡されるので、読む名前をすべて指定してください。省略するとすべてのプロパティが渡され、路面は評価のたびに全プロパティを読みます。 |
 
 ### StreetLightsBuildings
 
 ```typescript
-type StreetLightsBuildings = {
-  sourceLayers: string[];
+type StreetLightsBuildings = StreetLightsSource & {
   evaluateFeature: BuildingReader;
 };
 ```
 
-| プロパティ        | 型               | デフォルト | 説明                                                                                         |
-| ----------------- | ---------------- | ---------- | -------------------------------------------------------------------------------------------- |
-| `sourceLayers`    | `string[]`       |            | 建物のフットプリントを持つソースレイヤー。                                                   |
-| `evaluateFeature` | `BuildingReader` |            | 建物フィーチャーを 1 つ読み取り、屋上の高さを返します。灯りを置かない建物では `undefined` を返します。[`BuildingReader`](#buildingreader) を参照してください。 |
+`evaluateFeature` は建物フィーチャーを 1 つ読み取り、屋上の高さを返します。灯りを置かない建物では `undefined` を返します。[`BuildingReader`](#buildingreader) を参照してください。
 
 ### RoadReader
 
@@ -232,7 +246,7 @@ const read: RoadReader = ({ highway }) =>
       ? { roadClass: "minor" }
       : undefined;
 
-// プラグインには `roads: { sourceLayers: ["roads"], filterFeatureProperties: ["highway"], evaluateFeature: read }` として渡します。
+// `start()` には `roads: { ..., filterFeatureProperties: ["highway"], evaluateFeature: read }` として渡します。
 ```
 
 ### BuildingReader
@@ -265,20 +279,6 @@ isRoadClass(value: unknown): value is RoadClass
 ```
 
 タイルの値が [`RoadClass`](#roadclass) のいずれかの名前かどうかを判定します。上の OpenMapTiles の `class` のように、プロパティをそのまま通すリーダー向けです。自身のキーだけを見るので、`Object.prototype` のメンバーと同じ名前の値は道路になりません。
-
-### StreetLightsStartOptions
-
-```typescript
-type StreetLightsStartOptions = {
-  tileTemplate: string;
-  effectIds?: string[];
-};
-```
-
-| プロパティ     | 型         | デフォルト | 説明                                                                                                   |
-| -------------- | ---------- | ---------- | ------------------------------------------------------------------------------------------------------ |
-| `tileTemplate` | `string`   |            | 路面レイヤーが表示しているタイルセットの `{z}/{x}/{y}` タイル URL。TileJSON ドキュメントに記載されているものです。 |
-| `effectIds`    | `string[]` | `[]`       | 街灯と屋上灯が参加する Selective Effect（Bloom など）。                                                 |
 
 ### StreetLightsPart
 
@@ -328,14 +328,14 @@ type StreetTrafficDescriptions = { mesh: StreetTrafficMeshConfig };
 
 - **評価された値はマテリアルより優先されます。** プラグインはすべての道路・街灯・屋上灯の表示をフィーチャーごとに設定するため、そのレイヤーへの `layer.update({ point: { show } })` は効きません。代わりに `setVisible()` と `setLightsOn()` を使ってください。
 - **Bloom に参加するのは街灯と屋上灯だけです。** これらは `selectiveBloom` が読む emissive 色を書き込みます。車は G-buffer の後に描かれる加算合成の点で、エフェクトには参加しません。
-- **タイルの出典はソースと同じです。** プラグインはソースが表示しているタイルセットのテンプレートからタイルを取得するため、ソースが持つアトリビューションがそのまま適用されます。
+- **出典はソースから表示されます。** `tilejson` ソースは、道路でも建物でも、ドキュメントが宣言するアトリビューションを表示します。`vector-tile` ソースでは、データの出典を自分で `view.attribution` に追加してください。
 - **毎フレーム描画してください。** 車はビューの時計で動くため、`animation: true` でビューを構築してください。
 - **ズーム 14 のみです。** プラグインはカメラのズームに関係なくズーム 14 のタイルを読むため、`radius` はそのタイル単位です。東京の緯度では 1 タイルが差し渡し約 2 km です。
 
 ## 関連リソース
 
 - [About](../about/): three_plugins の概要
-- [TileJsonPlugin](../tilejsonplugin/): TileJSON ドキュメントからタイル URL テンプレートを読む
+- [TileJsonPlugin](../tilejsonplugin/): `tilejson` ソースを解決するプラグイン
 - [Vector Layer](../../three/layer/vector-layer/): 路面・街灯・屋上灯の背後にあるレイヤー種別
 - [SelectiveBloomEffectDesc](../../three_default_descs/effect-desc/selective-bloom-effect-desc/): 街灯と屋上灯が参加する Bloom
 - [Night City](https://navara.world/examples/showcase/night-city): このプラグインで構築したショーケース

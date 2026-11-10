@@ -48,11 +48,13 @@ export {
   type StreetLightsRoads,
   type StreetLightsBuildings,
   type StreetLightsStartOptions,
+  type StreetLightsSource,
   type StreetLightsPart,
   type StreetLightsUpdate,
   type Oneway,
   type RoadClass,
   type RoadReader,
+  type RoadsReading,
   type BuildingReader,
 } from "./StreetLightsPlugin";
 

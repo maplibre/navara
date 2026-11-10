@@ -1,9 +1,10 @@
 /**
  * Road classes and their styles, the readers that turn tile feature
- * properties into a road class and a roof height, and the schema types that
- * say where to find them. The road layer and the lamp and car placement both
- * read roads through here.
+ * properties into a road class and a roof height, and the options that say
+ * where the features come from. The road surface and the lamp and car
+ * placement both read roads through here.
  */
+import type { VectorLayer } from "@navaramap/three";
 
 // --- Road styles -----------------------------------------------------------
 
@@ -100,31 +101,41 @@ export type BuildingReader = (
   properties: Record<string, unknown>,
 ) => number | undefined;
 
-/** Which tile layers hold the roads and how to read them. */
-export type StreetLightsRoads = {
-  /** Source layers holding the road centerlines. */
+/**
+ * Where the features come from: a TileJSON document, as in
+ * `TileJsonPlugin.addSource()`, or a `{z}/{x}/{y}` vector tile URL, as in
+ * `view.addSource()`, read from the named source layers.
+ */
+export type StreetLightsSource = {
+  sourceType: "tilejson" | "vector-tile";
+  sourceUrl: string;
+  /** Source layers holding the features. */
   sourceLayers: string[];
+};
+
+/** How the road features are read. */
+export type RoadsReading = {
   /** Reads one road feature's properties. */
   evaluateFeature: RoadReader;
   /**
    * Properties `evaluateFeature` needs. It sees only these, both on the road
-   * layer and when the lamps and cars are placed. All properties when
+   * surface and when the lamps and cars are placed. All properties when
    * omitted.
    */
   filterFeatureProperties?: string[];
 };
 
-/** Which tile layers hold the buildings and how to read them. */
-export type StreetLightsBuildings = {
-  /** Source layers holding the building footprints. */
-  sourceLayers: string[];
+/** The roads: where they are, how they look and how to read them. */
+export type StreetLightsRoads = StreetLightsSource &
+  RoadsReading & {
+    /** The road surface's material, as `polyline` in `view.addLayer()`. */
+    polyline?: NonNullable<VectorLayer["polyline"]>;
+  };
+
+/** The buildings: where they are and how to read them. */
+export type StreetLightsBuildings = StreetLightsSource & {
   /** Reads one building feature's properties. */
   evaluateFeature: BuildingReader;
-};
-
-export type TileSchema = {
-  roads: StreetLightsRoads;
-  buildings: StreetLightsBuildings;
 };
 
 // --- Reading one road ------------------------------------------------------
@@ -155,16 +166,16 @@ export const pickProperties = (
 };
 
 /**
- * Reads one road feature through the schema. The road layer and the lamp and
- * car placement both go through here, so they agree on which features are
- * roads. `properties` must already be limited to
- * `schema.filterFeatureProperties`, as the road layer's evaluator gets them.
+ * Reads one road feature. The road surface and the lamp and car placement
+ * both go through here, so they agree on which features are roads.
+ * `properties` must already be limited to `filterFeatureProperties`, as the
+ * road surface's evaluator gets them.
  */
 export const readRoadFeature = (
-  schema: StreetLightsRoads,
+  reading: RoadsReading,
   properties: Record<string, unknown>,
 ): { style: RoadStyle; oneway: Oneway } | undefined => {
-  const road = schema.evaluateFeature(properties);
+  const road = reading.evaluateFeature(properties);
   if (!road) return undefined;
   return { style: ROADS[road.roadClass], oneway: road.oneway ?? 0 };
 };
