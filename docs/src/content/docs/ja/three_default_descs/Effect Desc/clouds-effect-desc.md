@@ -115,11 +115,11 @@ sidebar:
 
 ### shadowCascadeCount
 
-**Type:** `number | undefined`
+**Type:** `number | null | undefined`
 
-**Description:** シャドウマップのカスケード数を指定します。
+**Description:** シャドウマップのカスケード数を指定します。省略した場合は`qualityPreset`の値を使います。後から`qualityPreset`を変更すると、同じ`update()`で指定しない限りプリセットの値に置き換わります。
 
-**Default:** `3`
+**Default:** `null`（`low`プリセットでは`2`、それ以外は`3`）
 
 **Example:**
 
@@ -477,11 +477,11 @@ import { Vector2 } from "three";
 
 ### shadowMapSize
 
-**Type:** `Vector2 | undefined`
+**Type:** `Vector2 | null | undefined`
 
-**Description:** シャドウマップのサイズを`Vector2`で指定します。
+**Description:** シャドウマップのサイズを`Vector2`で指定します。省略した場合は`qualityPreset`の値を使います。後から`qualityPreset`を変更すると、同じ`update()`で指定しない限りプリセットの値に置き換わります。
 
-**Default:** `Vector2(512, 512)`
+**Default:** `null`（`low`と`medium`プリセットでは`Vector2(256, 256)`、`high`では`Vector2(512, 512)`、`ultra`では`Vector2(1024, 1024)`）
 
 **Example:**
 
