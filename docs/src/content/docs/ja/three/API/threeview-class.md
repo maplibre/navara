@@ -459,7 +459,7 @@ const view = new ThreeView({
 
 **Type:** `number | undefined`
 
-**Description:** タイルのデコードとメッシュ構築を行うバックグラウンドワーカーの数。各ワーカーは JavaScript エンジンのインスタンスと WebAssembly ヒープを個別に持つため、プールを小さくするとメモリ使用量が減りますが、カメラを素早く動かした後のタイル読み込みは遅くなります。値は `1` から `navigator.hardwareConcurrency` の範囲に制限され、`mobileOptimization` 有効時にも適用されます。ブラウザが `navigator.deviceMemory` を報告しない場合、`memoryBudget.maxWorkerHeapBytes` のデフォルトはワーカーごとの固定値のため、プールを大きくするとピークメモリが増えます。ページ上のすべてのビューは 1 つのプールを共有するため、サイズを決めるのは最初に `init()` を呼んだビューだけです（[複数ビュー](#複数ビュー)を参照）。
+**Description:** タイルのデコードとメッシュ構築を行うバックグラウンドワーカーの数。各ワーカーは JavaScript エンジンのインスタンスと WebAssembly ヒープを個別に持つため、プールを小さくするとメモリ使用量が減りますが、カメラを素早く動かした後のタイル読み込みは遅くなります。値は小数点以下を切り捨てたうえで `1` から `navigator.hardwareConcurrency` の範囲に制限され（値が変わった場合はコンソールに警告が出ます）、`mobileOptimization` 有効時にも適用されます。モバイル端末、またはブラウザが `navigator.deviceMemory` を報告しない場合、`memoryBudget.maxWorkerHeapBytes` のデフォルトはワーカーごとの固定値のため、プールを大きくするとピークメモリが増えます。このオプションは `init()` でのみ読み取られます。ページ上のすべてのビューは 1 つのプールを共有するため、サイズを決めるのは最初に `init()` を呼んだビューだけです（[複数ビュー](#複数ビュー)を参照）。
 
 **Default:** `navigator.hardwareConcurrency`（`mobileOptimization` 有効時は最大 `2`）
 

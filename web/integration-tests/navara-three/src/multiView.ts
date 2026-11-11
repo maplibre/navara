@@ -201,8 +201,8 @@ async function main() {
   const streaming = liveWorkers();
   check(
     "views share one tile-worker pool",
-    streaming.tile > 0 && streaming.tile <= navigator.hardwareConcurrency,
-    { ...streaming, hardwareConcurrency: navigator.hardwareConcurrency },
+    streaming.tile > 0 && streaming.tile <= expectedPoolSize,
+    { ...streaming, expectedPoolSize },
   );
 
   // 2. Disposing one view keeps the pool for the other.
@@ -257,18 +257,30 @@ async function main() {
     afterWarming,
   );
 
-  // 6. A view initialized after every view was disposed starts a new pool and
-  //    reuses the already instantiated WASM modules.
-  const c = createView(left);
+  // 6. A view initialized after every view was disposed starts a new pool,
+  //    sized by its own workerPoolSize, and reuses the already instantiated
+  //    WASM modules.
+  const c = createView(left, 3);
   await c.init();
+  const reinitPoolSize = (await c.workerMemoryStats())?.tileWorkers?.perSlot
+    .length;
+  const expectedReinitPoolSize = Math.min(3, navigator.hardwareConcurrency);
   c.addFontFamily(family);
   addContent(c);
   await sleep(8_000);
   const reinit = liveWorkers();
   check(
     "a view after all were disposed starts a new pool",
-    reinit.tile > 0 && probe.wasm["engine"] === 1,
-    { ...reinit, wasm: { ...probe.wasm } },
+    reinit.tile > 0 &&
+      reinit.tile <= expectedReinitPoolSize &&
+      reinitPoolSize === expectedReinitPoolSize &&
+      probe.wasm["engine"] === 1,
+    {
+      ...reinit,
+      reinitPoolSize,
+      expectedReinitPoolSize,
+      wasm: { ...probe.wasm },
+    },
   );
 
   check("no uncaught errors", probe.errors.length === 0, probe.errors);

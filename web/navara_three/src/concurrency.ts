@@ -10,14 +10,24 @@ export const createDefaultConcurrencyManager = (
   mobileOptimized: boolean,
   workerPoolSize?: number,
 ) => {
-  const hardwareConcurrency = Math.max(navigator.hardwareConcurrency, 1);
-  const poolSize =
-    workerPoolSize ??
-    (mobileOptimized
-      ? Math.min(hardwareConcurrency, MOBILE_MAX_WORKERS)
-      : hardwareConcurrency);
+  // `||` also covers browsers that leave it undefined.
+  const hardwareConcurrency = navigator.hardwareConcurrency || 1;
+  if (workerPoolSize === undefined) {
+    return createConcurrencyManager(
+      mobileOptimized
+        ? Math.min(hardwareConcurrency, MOBILE_MAX_WORKERS)
+        : hardwareConcurrency,
+    );
+  }
   // NaN fails the comparison and resolves to 1.
-  const totalConcurrency =
-    poolSize >= 1 ? Math.min(Math.floor(poolSize), hardwareConcurrency) : 1;
-  return createConcurrencyManager(totalConcurrency);
+  const poolSize =
+    workerPoolSize >= 1
+      ? Math.min(Math.floor(workerPoolSize), hardwareConcurrency)
+      : 1;
+  if (poolSize !== workerPoolSize) {
+    console.warn(
+      `workerPoolSize ${workerPoolSize} is clamped to ${poolSize} (an integer from 1 to navigator.hardwareConcurrency, which is ${hardwareConcurrency}).`,
+    );
+  }
+  return createConcurrencyManager(poolSize);
 };
