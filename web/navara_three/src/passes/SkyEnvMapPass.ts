@@ -30,7 +30,7 @@ export class SkyEnvMapPass extends RenderPass {
   private _camera: PerspectiveCamera;
   private cubeCamera: CubeCamera;
   public cubeRenderTarget: WebGLCubeRenderTarget;
-  /** Next face to refresh, or `undefined` when the whole cube is due. */
+  /** Next face to refresh, or `undefined` when no face holds the sky yet. */
   private nextFace: number | undefined;
   /** Camera position of the last full cube update. */
   private readonly fullUpdatePosition = new Vector3();
@@ -75,14 +75,6 @@ export class SkyEnvMapPass extends RenderPass {
     this.renderFace(renderer, this.nextFace);
     this.nextFace = (this.nextFace + 1) % 6;
   }
-
-  /**
-   * Renders the whole cube on the next frame, for a sky change that brings
-   * only a frame or two (an atmosphere texture arriving).
-   */
-  invalidate = () => {
-    this.nextFace = undefined;
-  };
 
   private travelledTooFar(position: Vector3): boolean {
     const height = scaleToGeodeticSurface(position)?.distanceTo(position) ?? 0;

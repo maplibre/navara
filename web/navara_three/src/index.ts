@@ -1198,11 +1198,7 @@ export default class ThreeView<
         NUM_CASCADED_SHADOW_MAPS,
     };
 
-    this._atmosphere = new Atmosphere(
-      this._renderer,
-      options.atmosphere,
-      this._camera,
-    );
+    this._atmosphere = new Atmosphere(options.atmosphere, this._camera);
     this._atmosphere.on("needsUpdate", this.forceUpdate);
     // Textures load lazily, kicked off by the first consumer registering via
     // onTexturesReady(); re-render whenever they arrive.

@@ -21,13 +21,7 @@ import {
   EXR3DTextureLoader,
   EXRTextureLoader,
 } from "@takram/three-geospatial";
-import {
-  LinearFilter,
-  Matrix4,
-  Vector3,
-  type Texture,
-  type WebGLRenderer,
-} from "three";
+import { LinearFilter, Matrix4, Vector3, type Texture } from "three";
 
 import { type ThreeViewCamera } from "./camera";
 import { ATMOSPHERE_TEXTURE_URLS, STBN_URL } from "./constants";
@@ -100,15 +94,6 @@ const CPU_RELEASED_TEXTURE_NAMES: readonly AtmosphereTextureName[] = [
 ];
 
 /**
- * Retries of a failed re-fetch after a context restore. The first waits 1 s and
- * each next one twice as long (31 s in all).
- */
-const MAX_RELOAD_RETRIES = 5;
-
-/** A re-fetch of a released texture; `timer` is set while it waits to retry. */
-type Reload = { attempt: number; timer?: ReturnType<typeof setTimeout> };
-
-/**
  * The textures guaranteed to be present in an {@link Atmosphere.onTexturesReady}
  * callback for a given needs declaration.
  */
@@ -156,11 +141,6 @@ export const DEFAULT_ATMOSPHERE_OPTIONS: Required<
  */
 export class Atmosphere extends EventHandler<AtmosphereEvents> {
   /**
-   * @private
-   */
-  private renderer: WebGLRenderer;
-
-  /**
    * Current sun direction in ECEF coordinates.
    */
   sunDirection = new Vector3();
@@ -198,8 +178,8 @@ export class Atmosphere extends EventHandler<AtmosphereEvents> {
    * loaded lazily when a consumer declares a need for it via
    * {@link onTexturesReady}, so the object may hold any subset at a time.
    * The two 3D textures (`scatteringTexture`, `higherOrderScatteringTexture`)
-   * drop their CPU data once uploaded to this atmosphere's renderer: they
-   * cannot be read on the CPU or used with another renderer.
+   * drop their CPU data once uploaded to the GPU: they cannot be read on the
+   * CPU, used with another renderer, or restored after a WebGL context loss.
    */
   textures: Partial<PrecomputedTextures> = {};
 
@@ -232,30 +212,13 @@ export class Atmosphere extends EventHandler<AtmosphereEvents> {
   private texturePromises = new Map<AtmosphereTextureName, Promise<void>>();
 
   /**
-   * The re-fetch in progress for each released texture.
-   * @private
-   */
-  private reloads = new Map<AtmosphereTextureName, Reload>();
-
-  /**
    * Creates a new Atmosphere instance.
-   * @param renderer - The WebGL renderer whose context restores re-fetch the
-   * released textures.
    * @param options - Configuration options for the atmosphere.
    * @param camera - Camera reference used by {@link setDateAt}.
    */
-  constructor(
-    renderer: WebGLRenderer,
-    options: AtmosphereOptions = {},
-    camera?: ThreeViewCamera,
-  ) {
+  constructor(options: AtmosphereOptions = {}, camera?: ThreeViewCamera) {
     super();
 
-    this.renderer = renderer;
-    renderer.domElement.addEventListener(
-      "webglcontextrestored",
-      this.onContextRestored,
-    );
     this.options = { ...DEFAULT_ATMOSPHERE_OPTIONS, ...options };
     this._camera = camera;
 
@@ -296,16 +259,18 @@ export class Atmosphere extends EventHandler<AtmosphereEvents> {
     if (promise == null) {
       promise = this.fetchTexture(name)
         .then((texture) => {
+          // Disposed while loading.
+          if (this.texturePromises.get(name) !== promise) {
+            texture.dispose();
+            return;
+          }
           texture.minFilter = LinearFilter;
           texture.magFilter = LinearFilter;
           if (CPU_RELEASED_TEXTURE_NAMES.includes(name)) {
             // Only the 2D textures are sampled on the CPU (sun light color,
-            // sky light probe); onContextRestored re-fetches the 3D ones.
-            // dataReady = false lets three allocate the texture after a
-            // context restore without uploading the missing data.
+            // sky light probe).
             texture.onUpdate = () => {
               (texture.image as TextureImageData).data = null;
-              texture.source.dataReady = false;
             };
           }
           Object.assign(this.textures, {
@@ -322,70 +287,6 @@ export class Atmosphere extends EventHandler<AtmosphereEvents> {
       this.texturePromises.set(name, promise);
     }
     return promise;
-  }
-
-  /**
-   * three.js re-uploads textures from their CPU data after a context restore,
-   * so the released ones are fetched again (usually from the HTTP cache). A
-   * fetch in flight is kept and a pending retry starts over, both with the
-   * full retry budget.
-   * @private
-   */
-  private onContextRestored = () => {
-    for (const name of CPU_RELEASED_TEXTURE_NAMES) {
-      const reload = this.reloads.get(name);
-      if (reload == null) {
-        this.reloadReleasedTexture(name, { attempt: 0 });
-        continue;
-      }
-      reload.attempt = 0;
-      if (reload.timer != null) {
-        clearTimeout(reload.timer);
-        this.reloadReleasedTexture(name, reload);
-      }
-    }
-  };
-
-  /**
-   * Fetches a released texture's data into the same texture object, so
-   * consumers keep their references. Retries up to {@link MAX_RELOAD_RETRIES}
-   * times and stops once the data is back or the atmosphere is disposed.
-   * @private
-   */
-  private reloadReleasedTexture(name: AtmosphereTextureName, reload: Reload) {
-    const texture = this.textures[ATMOSPHERE_TEXTURE_KEYS[name]];
-    if (texture == null || (texture.image as TextureImageData).data != null) {
-      this.reloads.delete(name);
-      return;
-    }
-    reload.timer = undefined;
-    this.reloads.set(name, reload);
-    // Two handlers rather than .catch, so an error thrown by a textureLoaded
-    // listener is not taken for a failed fetch.
-    this.fetchTexture(name).then(
-      (reloaded) => {
-        if (this.reloads.get(name) !== reload) return;
-        this.reloads.delete(name);
-        texture.image = reloaded.image;
-        texture.source.dataReady = true;
-        texture.needsUpdate = true;
-        this.emit("textureLoaded");
-      },
-      (e: unknown) => {
-        if (this.reloads.get(name) !== reload) return;
-        console.error("Failed to reload atmosphere texture:", e);
-        if (reload.attempt >= MAX_RELOAD_RETRIES) {
-          this.reloads.delete(name);
-          return;
-        }
-        const delay = 1000 * 2 ** reload.attempt;
-        reload.attempt += 1;
-        reload.timer = setTimeout(
-          () => this.reloadReleasedTexture(name, reload),
-          delay,
-        );
-      },
-    );
   }
 
   /**
@@ -425,14 +326,6 @@ export class Atmosphere extends EventHandler<AtmosphereEvents> {
    * @private
    */
   _dispose() {
-    this.renderer.domElement.removeEventListener(
-      "webglcontextrestored",
-      this.onContextRestored,
-    );
-    for (const { timer } of this.reloads.values()) {
-      clearTimeout(timer);
-    }
-    this.reloads.clear();
     for (const texture of Object.values(this.textures)) {
       texture?.dispose();
     }

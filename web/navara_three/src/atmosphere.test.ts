@@ -1,10 +1,4 @@
-import {
-  DataTexture,
-  HalfFloatType,
-  RGBAFormat,
-  type Texture,
-  type WebGLRenderer,
-} from "three";
+import { DataTexture, HalfFloatType, RGBAFormat, type Texture } from "three";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { Atmosphere, type AtmosphereOptions } from "./atmosphere";
@@ -57,14 +51,8 @@ const requestedFiles = () =>
     return url.slice(url.lastIndexOf("/") + 1).replace(/\?.*$/, "");
   });
 
-const createAtmosphere = (
-  options?: Partial<AtmosphereOptions>,
-  canvas = new EventTarget(),
-) =>
-  new Atmosphere({ domElement: canvas } as unknown as WebGLRenderer, {
-    date: new Date(0),
-    ...options,
-  });
+const createAtmosphere = (options?: Partial<AtmosphereOptions>) =>
+  new Atmosphere({ date: new Date(0), ...options });
 
 const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
 
@@ -147,6 +135,32 @@ describe("Atmosphere.initTextures", () => {
     );
   });
 
+  it("drops a texture that arrives after dispose", async () => {
+    const pending: ((texture: Texture) => void)[] = [];
+    loadAsyncMock.mockImplementation(
+      () => new Promise((resolve) => pending.push(resolve)),
+    );
+    const atmosphere = createAtmosphere();
+    const onLoaded = vi.fn();
+    atmosphere.on("textureLoaded", onLoaded);
+    const loading = atmosphere.initTextures();
+
+    atmosphere._dispose();
+    const textures = pending.map((resolve) => {
+      const texture = fakeTexture();
+      const dispose = vi.spyOn(texture, "dispose");
+      resolve(texture);
+      return dispose;
+    });
+    await loading;
+
+    expect(atmosphere.textures).toEqual({});
+    expect(onLoaded).not.toHaveBeenCalled();
+    for (const dispose of textures) {
+      expect(dispose).toHaveBeenCalled();
+    }
+  });
+
   it("loads from atmosphereAssetsUrl when provided, normalizing slashes", async () => {
     autoResolveLoads();
     const atmosphere = createAtmosphere({
@@ -205,257 +219,6 @@ describe("Atmosphere texture data", () => {
     expect(dataOf(textures.higherOrderScatteringTexture)).toBeNull();
     expect(dataOf(textures.transmittanceTexture)).toBeInstanceOf(Uint16Array);
     expect(dataOf(textures.irradianceTexture)).toBeInstanceOf(Uint16Array);
-    // Without data, three must not upload after a context restore.
-    expect(textures.scatteringTexture?.source.dataReady).toBe(false);
-    expect(textures.transmittanceTexture?.source.dataReady).toBe(true);
-  });
-
-  it("re-fetches the released textures after a context restore", async () => {
-    autoResolveLoads();
-    const canvas = new EventTarget();
-    const atmosphere = createAtmosphere({}, canvas);
-    await atmosphere.initTextures();
-    uploadAll(atmosphere);
-    const scattering = atmosphere.textures.scatteringTexture;
-    const version = scattering?.version ?? 0;
-    const onLoaded = vi.fn();
-    atmosphere.on("textureLoaded", onLoaded);
-    loadAsyncMock.mockClear();
-
-    canvas.dispatchEvent(new Event("webglcontextrestored"));
-    await flush();
-
-    expect(requestedFiles().sort()).toEqual([
-      "higher_order_scattering.exr",
-      "scattering.exr",
-    ]);
-    expect(atmosphere.textures.scatteringTexture).toBe(scattering);
-    expect(dataOf(scattering)).toBeInstanceOf(Uint16Array);
-    expect(scattering?.version).toBeGreaterThan(version);
-    expect(scattering?.source.dataReady).toBe(true);
-    expect(
-      dataOf(atmosphere.textures.higherOrderScatteringTexture),
-    ).toBeInstanceOf(Uint16Array);
-    expect(onLoaded).toHaveBeenCalledTimes(2);
-
-    scattering?.onUpdate?.(scattering);
-    expect(dataOf(scattering)).toBeNull();
-    expect(scattering?.source.dataReady).toBe(false);
-  });
-
-  it("does not re-fetch textures that still hold their data", async () => {
-    autoResolveLoads();
-    const canvas = new EventTarget();
-    const atmosphere = createAtmosphere({}, canvas);
-    await atmosphere.initTextures();
-    loadAsyncMock.mockClear();
-
-    canvas.dispatchEvent(new Event("webglcontextrestored"));
-    await flush();
-
-    expect(loadAsyncMock).not.toHaveBeenCalled();
-  });
-
-  /** Loads and uploads all textures, then makes every load fail. */
-  const goOffline = async (canvas: EventTarget) => {
-    autoResolveLoads();
-    const atmosphere = createAtmosphere({}, canvas);
-    await atmosphere.initTextures();
-    uploadAll(atmosphere);
-    loadAsyncMock.mockReset();
-    loadAsyncMock.mockImplementation(() =>
-      Promise.reject(new Error("offline")),
-    );
-    return atmosphere;
-  };
-
-  const withFakeTimers = async (test: () => Promise<void>) => {
-    const error = vi.spyOn(console, "error").mockImplementation(() => {});
-    vi.useFakeTimers();
-    try {
-      await test();
-    } finally {
-      vi.useRealTimers();
-      error.mockRestore();
-    }
-  };
-
-  const restore = async (canvas: EventTarget) => {
-    canvas.dispatchEvent(new Event("webglcontextrestored"));
-    await vi.advanceTimersByTimeAsync(0);
-  };
-
-  it("recovers on the first retry after a failed re-fetch", async () => {
-    const canvas = new EventTarget();
-    const atmosphere = await goOffline(canvas);
-    const { scatteringTexture, higherOrderScatteringTexture } =
-      atmosphere.textures;
-
-    await withFakeTimers(async () => {
-      await restore(canvas);
-      expect(dataOf(scatteringTexture)).toBeNull();
-
-      autoResolveLoads();
-      await vi.advanceTimersByTimeAsync(1000);
-
-      expect(dataOf(scatteringTexture)).toBeInstanceOf(Uint16Array);
-      expect(dataOf(higherOrderScatteringTexture)).toBeInstanceOf(Uint16Array);
-      expect(loadAsyncMock).toHaveBeenCalledTimes(4);
-    });
-  });
-
-  it("doubles the retry delay and gives up after five retries", async () => {
-    const canvas = new EventTarget();
-    await goOffline(canvas);
-
-    await withFakeTimers(async () => {
-      const fetchTimes: number[] = [];
-      loadAsyncMock.mockImplementation(() => {
-        fetchTimes.push(Date.now());
-        return Promise.reject(new Error("offline"));
-      });
-      const start = Date.now();
-      await restore(canvas);
-      await vi.advanceTimersByTimeAsync(60_000);
-
-      const scatteringTimes = fetchTimes
-        .filter((_, i) => i % 2 === 0)
-        .map((time) => time - start);
-      expect(scatteringTimes).toEqual([0, 1000, 3000, 7000, 15000, 31000]);
-      expect(fetchTimes).toHaveLength(12);
-      expect(vi.getTimerCount()).toBe(0);
-    });
-  });
-
-  it("gives a fetch in flight the full retry budget on a new restore", async () => {
-    const canvas = new EventTarget();
-    await goOffline(canvas);
-    const pending: ((e: Error) => void)[] = [];
-    loadAsyncMock.mockImplementation(
-      () => new Promise((_, reject) => pending.push(reject)),
-    );
-    const failPending = async () => {
-      for (const reject of pending.splice(0)) reject(new Error("offline"));
-      await vi.advanceTimersByTimeAsync(0);
-    };
-
-    await withFakeTimers(async () => {
-      await restore(canvas);
-      for (let retry = 0; retry < 5; retry++) {
-        await failPending();
-        await vi.advanceTimersByTimeAsync(60_000);
-      }
-      // The last allowed attempt is in flight when the context is restored.
-      await restore(canvas);
-      await failPending();
-
-      expect(vi.getTimerCount()).toBe(2);
-      await vi.advanceTimersByTimeAsync(1000);
-      expect(pending).toHaveLength(2);
-    });
-  });
-
-  it("keeps one re-fetch per texture across repeated restores", async () => {
-    const canvas = new EventTarget();
-    await goOffline(canvas);
-
-    await withFakeTimers(async () => {
-      await restore(canvas);
-      await vi.advanceTimersByTimeAsync(500);
-      await restore(canvas);
-
-      expect(loadAsyncMock).toHaveBeenCalledTimes(4);
-      expect(vi.getTimerCount()).toBe(2);
-
-      // The second restore started over: its first retry is 1 s later.
-      await vi.advanceTimersByTimeAsync(1000);
-      expect(loadAsyncMock).toHaveBeenCalledTimes(6);
-    });
-  });
-
-  it("does not start a second fetch while one is in flight", async () => {
-    const canvas = new EventTarget();
-    const atmosphere = await goOffline(canvas);
-    const pending: ((texture: Texture) => void)[] = [];
-    loadAsyncMock.mockImplementation(
-      () => new Promise((resolve) => pending.push(resolve)),
-    );
-
-    canvas.dispatchEvent(new Event("webglcontextrestored"));
-    canvas.dispatchEvent(new Event("webglcontextrestored"));
-    for (const resolve of pending) resolve(fakeTexture());
-    await flush();
-
-    expect(loadAsyncMock).toHaveBeenCalledTimes(2);
-    expect(dataOf(atmosphere.textures.scatteringTexture)).toBeInstanceOf(
-      Uint16Array,
-    );
-  });
-
-  it("does not take a textureLoaded listener error for a failed re-fetch", async () => {
-    const canvas = new EventTarget();
-    const atmosphere = await goOffline(canvas);
-    autoResolveLoads();
-    const failure = new Error("listener");
-    atmosphere.on("textureLoaded", () => {
-      throw failure;
-    });
-    const unhandled: unknown[] = [];
-    const onUnhandled = (e: unknown) => unhandled.push(e);
-    // A listener of its own also tells vitest the rejection is expected.
-    process.on("unhandledRejection", onUnhandled);
-    try {
-      await withFakeTimers(async () => {
-        await restore(canvas);
-        await vi.advanceTimersByTimeAsync(60_000);
-
-        expect(loadAsyncMock).toHaveBeenCalledTimes(2);
-        expect(console.error).not.toHaveBeenCalled();
-      });
-      await flush();
-      expect(unhandled).toEqual([failure, failure]);
-    } finally {
-      process.off("unhandledRejection", onUnhandled);
-    }
-  });
-
-  it("stops listening and retrying once disposed", async () => {
-    const canvas = new EventTarget();
-    const add = vi.spyOn(canvas, "addEventListener");
-    const remove = vi.spyOn(canvas, "removeEventListener");
-    const atmosphere = await goOffline(canvas);
-
-    await withFakeTimers(async () => {
-      await restore(canvas);
-      expect(vi.getTimerCount()).toBe(2);
-
-      atmosphere._dispose();
-
-      expect(vi.getTimerCount()).toBe(0);
-      expect(remove).toHaveBeenCalledWith(
-        "webglcontextrestored",
-        add.mock.calls[0][1],
-      );
-    });
-  });
-
-  it("does not retry a fetch that fails after dispose", async () => {
-    const canvas = new EventTarget();
-    const atmosphere = await goOffline(canvas);
-    const pending: ((e: Error) => void)[] = [];
-    loadAsyncMock.mockImplementation(
-      () => new Promise((_, reject) => pending.push(reject)),
-    );
-
-    await withFakeTimers(async () => {
-      await restore(canvas);
-      atmosphere._dispose();
-      for (const reject of pending) reject(new Error("offline"));
-      await vi.advanceTimersByTimeAsync(0);
-
-      expect(vi.getTimerCount()).toBe(0);
-      expect(console.error).not.toHaveBeenCalled();
-    });
   });
 });
 
