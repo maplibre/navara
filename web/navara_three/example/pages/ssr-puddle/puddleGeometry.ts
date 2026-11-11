@@ -4,6 +4,7 @@ import {
   geodeticToVector3,
   type EffectConfig,
   type EffectUpdate,
+  type GBufferName,
   type MRTPassEffectDesc,
   type ViewContext,
 } from "@navaramap/three";
@@ -127,7 +128,7 @@ const vertexShader = /* glsl */ `
 `;
 
 type PuddleGeometryPassOptions = {
-  normalBuffer: Texture;
+  normalBuffer: Texture | null;
   depthBuffer: Texture;
   depthPacking: number;
   puddleCount: number;
@@ -281,6 +282,7 @@ export class PuddleGeometryEffectDesc extends EffectDesc<
   static key = "puddleGeometry";
   // Runs right after the G-buffer is produced, before SSR consumes our output.
   static insertAfter = ["mrt"];
+  static requiredBuffers: readonly GBufferName[] = ["normal"];
 
   private config: PuddleGeometryConfig;
 
@@ -296,13 +298,13 @@ export class PuddleGeometryEffectDesc extends EffectDesc<
 
   createPass() {
     const mrtPass = this.find<MRTPassEffectDesc>("mrt");
-    if (!mrtPass?.normalBuffer || !mrtPass.depthBuffer) {
+    if (!mrtPass?.depthBuffer) {
       throw new Error("MRT pass not ready");
     }
 
     const config = this.config.puddleGeometry;
     return new PuddleGeometryPass(this.view.camera.raw, {
-      normalBuffer: mrtPass.normalBuffer,
+      normalBuffer: this.ctx.getNormalTexture() ?? null,
       depthBuffer: mrtPass.depthBuffer,
       depthPacking: mrtPass.depthBufferPacking ?? 0,
       puddleCount: (config?.centers ?? DEFAULT_CENTERS).length,
@@ -336,6 +338,10 @@ export class PuddleGeometryEffectDesc extends EffectDesc<
   // Per-frame hook: keep the puddles glued to the terrain surface as tiles load.
   update(): void {
     if (!this._instance) return;
+
+    // Re-fetched every frame: a G-buffer rebuild swaps the texture object.
+    this._instance.material.uniforms.normalBuffer.value =
+      this.ctx.getNormalTexture() ?? null;
 
     const centers = this.config.puddleGeometry?.centers ?? DEFAULT_CENTERS;
     for (let i = 0; i < centers.length; i++) {

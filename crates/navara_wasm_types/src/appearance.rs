@@ -1330,6 +1330,19 @@ pub struct PolylineMaterial {
     #[wasm_bindgen(js_name = tiled)]
     #[serde(rename = "tiled")]
     pub tiled: Option<bool>,
+    /// Whether edges of the tiled path (`clamp_to_ground` or `tiled`) follow
+    /// the geodesic. Defaults to `true`, which also connects consecutive
+    /// vertices more than 180° apart in longitude the short way, across the
+    /// antimeridian; a closed ring that would then no longer close, such as
+    /// one around a pole, is kept as given. When `false`, edges are straight
+    /// lines in Web Mercator and longitudes are used as given (e.g. 190° is
+    /// east of 180°), as in MapLibre. Ignored outside the tiled path.
+    ///
+    /// Applies to the whole layer: its tiled appearances share one geometry,
+    /// which follows the geodesic unless every one of them sets `false`.
+    /// Read when the layer's tiles are first built; later changes have no
+    /// effect.
+    pub geodesic: Option<bool>,
     pub height: Option<f32>,
     /// Source geometry types this appearance consumes: `"line"`, `"polygon"`.
     /// Defaults to `["line"]`; adding `"polygon"` also renders polygon boundary
@@ -1388,6 +1401,7 @@ impl PolylineMaterial {
             color,
             clamp_to_ground,
             tiled,
+            geodesic: None,
             height,
             width,
             max_width,
@@ -1422,6 +1436,7 @@ impl PolylineMaterial {
             cap: parse_line_cap(&self.cap).unwrap_or(other.cap),
             clamp_to_ground: self.clamp_to_ground.unwrap_or(other.clamp_to_ground),
             tiled: self.tiled.unwrap_or(other.tiled),
+            geodesic: self.geodesic.unwrap_or(other.geodesic),
             height: self.height.unwrap_or(other.height),
             geometry_types: parse_geometry_types(&self.geometry_types)
                 .unwrap_or_else(|| other.geometry_types.clone()),
@@ -1455,6 +1470,7 @@ impl From<PolylineMaterial> for navara_material::PolylineMaterial {
             dash_array: val.dash_array.or(default.dash_array),
             clamp_to_ground: val.clamp_to_ground.unwrap_or(default.clamp_to_ground),
             tiled: val.tiled.unwrap_or(default.tiled),
+            geodesic: val.geodesic.unwrap_or(default.geodesic),
             height: val.height.unwrap_or(default.height),
             geometry_types: parse_geometry_types(&val.geometry_types)
                 .unwrap_or(default.geometry_types),
@@ -1482,6 +1498,7 @@ impl<'a> From<&'a navara_material::PolylineMaterial> for PolylineMaterial {
             cap: Some(value.cap.as_str().to_string()),
             clamp_to_ground: Some(value.clamp_to_ground),
             tiled: Some(value.tiled),
+            geodesic: Some(value.geodesic),
             height: Some(value.height),
             geometry_types: Some(geometry_type_names(&value.geometry_types)),
             __internal__: value.internal.as_ref().map(|v| v.into()),
@@ -1509,6 +1526,7 @@ impl From<navara_material::PolylineMaterial> for PolylineMaterial {
             dash_array: value.dash_array,
             clamp_to_ground: Some(value.clamp_to_ground),
             tiled: Some(value.tiled),
+            geodesic: Some(value.geodesic),
             height: Some(value.height),
             geometry_types: Some(geometry_type_names(&value.geometry_types)),
             __internal__: value.internal.map(|v| v.into()),
@@ -1580,6 +1598,19 @@ pub struct PolygonMaterial {
     #[wasm_bindgen(js_name = tiled)]
     #[serde(rename = "tiled")]
     pub tiled: Option<bool>,
+    /// Whether edges of the tiled path (`clamp_to_ground` or `tiled`) follow
+    /// the geodesic. Defaults to `true`, which also connects consecutive
+    /// vertices more than 180° apart in longitude the short way, across the
+    /// antimeridian; a closed ring that would then no longer close, such as
+    /// one around a pole, is kept as given. When `false`, edges are straight
+    /// lines in Web Mercator and longitudes are used as given (e.g. 190° is
+    /// east of 180°), as in MapLibre. Ignored outside the tiled path.
+    ///
+    /// Applies to the whole layer: its tiled appearances share one geometry,
+    /// which follows the geodesic unless every one of them sets `false`.
+    /// Read when the layer's tiles are first built; later changes have no
+    /// effect.
+    pub geodesic: Option<bool>,
     pub height: Option<f32>,
     #[wasm_bindgen(js_name = extrudedHeight)]
     #[serde(rename = "extrudedHeight")]
@@ -1707,6 +1738,7 @@ impl PolygonMaterial {
             color,
             clamp_to_ground,
             tiled,
+            geodesic: None,
             height,
             extruded_height,
             wireframe,
@@ -1757,6 +1789,7 @@ impl PolygonMaterial {
             color: self.color.unwrap_or(other.color),
             clamp_to_ground: self.clamp_to_ground.unwrap_or(other.clamp_to_ground),
             tiled: self.tiled.unwrap_or(other.tiled),
+            geodesic: self.geodesic.unwrap_or(other.geodesic),
             height: self.height.unwrap_or(other.height),
             extruded_height: self.extruded_height.or(other.extruded_height),
             wireframe: self.wireframe.unwrap_or(other.wireframe),
@@ -1811,6 +1844,7 @@ impl From<PolygonMaterial> for navara_material::PolygonMaterial {
             color: val.color.unwrap_or(default.color),
             clamp_to_ground: val.clamp_to_ground.unwrap_or(default.clamp_to_ground),
             tiled: val.tiled.unwrap_or(default.tiled),
+            geodesic: val.geodesic.unwrap_or(default.geodesic),
             height: val.height.unwrap_or(default.height),
             extruded_height: val.extruded_height,
             wireframe: val.wireframe.unwrap_or(default.wireframe),
@@ -1861,6 +1895,7 @@ impl<'a> From<&'a navara_material::PolygonMaterial> for PolygonMaterial {
             color: Some(value.color),
             clamp_to_ground: Some(value.clamp_to_ground),
             tiled: Some(value.tiled),
+            geodesic: Some(value.geodesic),
             height: Some(value.height),
             extruded_height: value.extruded_height,
             wireframe: Some(value.wireframe),
@@ -1905,6 +1940,7 @@ impl From<navara_material::PolygonMaterial> for PolygonMaterial {
             color: Some(value.color),
             clamp_to_ground: Some(value.clamp_to_ground),
             tiled: Some(value.tiled),
+            geodesic: Some(value.geodesic),
             height: Some(value.height),
             extruded_height: value.extruded_height,
             wireframe: Some(value.wireframe),
@@ -2883,8 +2919,9 @@ pub struct HillshadeMaterial {
 #[cfg(test)]
 mod test {
     use super::{
-        TextMaterial, VariableAnchor, parse_anchor, parse_facing, parse_geometry_types,
-        parse_padding, parse_translate_anchor, parse_variable_anchors,
+        PolygonMaterial, PolylineMaterial, TextMaterial, VariableAnchor, parse_anchor,
+        parse_facing, parse_geometry_types, parse_padding, parse_translate_anchor,
+        parse_variable_anchors,
     };
     use navara_material::{Anchor, Facing, SourceGeometryType};
 
@@ -3030,5 +3067,42 @@ mod test {
         let js = TextMaterial::from(&material);
         assert_eq!(js.text_facing, None);
         assert_eq!(js.rotate_with_camera, None);
+    }
+
+    #[test]
+    fn geodesic_survives_conversion_and_merge() {
+        let off = navara_material::PolygonMaterial {
+            geodesic: false,
+            ..Default::default()
+        };
+        let js = PolygonMaterial::from(&off);
+        assert_eq!(js.geodesic, Some(false));
+        assert!(!navara_material::PolygonMaterial::from(js.clone()).geodesic);
+        assert!(
+            !js.merge(&navara_material::PolygonMaterial::default())
+                .geodesic
+        );
+
+        let mut unset = PolygonMaterial::from(&navara_material::PolygonMaterial::default());
+        unset.geodesic = None;
+        assert!(!unset.merge(&off).geodesic);
+        assert!(navara_material::PolygonMaterial::from(unset).geodesic);
+
+        let off = navara_material::PolylineMaterial {
+            geodesic: false,
+            ..Default::default()
+        };
+        let js = PolylineMaterial::from(&off);
+        assert_eq!(js.geodesic, Some(false));
+        assert!(!navara_material::PolylineMaterial::from(js.clone()).geodesic);
+        assert!(
+            !js.merge(&navara_material::PolylineMaterial::default())
+                .geodesic
+        );
+
+        let mut unset = PolylineMaterial::from(&navara_material::PolylineMaterial::default());
+        unset.geodesic = None;
+        assert!(!unset.merge(&off).geodesic);
+        assert!(navara_material::PolylineMaterial::from(unset).geodesic);
     }
 }

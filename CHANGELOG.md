@@ -1,3 +1,14 @@
+## v0.3.1 - 2026-11-10
+
+### 🐛 Bug Fixes
+
+- Duplicate mvt points ([#920](https://github.com/maplibre/navara/pull/920))
+
+### 🧹 Miscellaneous
+
+- Add link to Navara website in logo section ([#919](https://github.com/maplibre/navara/pull/919))
+- Showcases form ([#921](https://github.com/maplibre/navara/pull/921))
+
 ## v0.3.0 - 2026-11-09
 
 ### 🚀 Features

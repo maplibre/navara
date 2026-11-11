@@ -40,6 +40,25 @@ describe("RustStyleEngine", () => {
       expect(filter({ properties: { type: "park" } })).toBe(true);
       expect(filter({ properties: { type: "water" } })).toBe(false);
     });
+
+    it("should compile a filter mixing legacy and expression syntax", () => {
+      // validateAndMigrateStyle only warns about this (render test
+      // filter/mixed-legacy-expression), so the engine must still accept it.
+      // The legacy clause ["==", "position", "left"] compares two literals, so
+      // only the expression clause can match.
+      const filter = engine.createFilter(
+        [
+          "any",
+          ["==", ["get", "position"], "left"],
+          ["==", "position", "left"],
+        ],
+        "circle",
+        "Point",
+      );
+
+      expect(filter({ properties: { position: "left" } })).toBe(true);
+      expect(filter({ properties: { position: "right" } })).toBe(false);
+    });
   });
 
   describe("createValueFn", () => {

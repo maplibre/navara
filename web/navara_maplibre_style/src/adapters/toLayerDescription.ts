@@ -365,6 +365,9 @@ function createFillLayer(
     ...getSourceLayersField(styleLayer),
     polygon: {
       clampToGround: true,
+      // MapLibre draws edges straight in Web Mercator and keeps longitudes
+      // past ±180° as given.
+      geodesic: false,
     },
   };
 }
@@ -400,6 +403,8 @@ function createLineLayer(
     ...getSourceLayersField(styleLayer),
     polyline: {
       clampToGround: true,
+      // See createFillLayer.
+      geodesic: false,
       // Support deriving polylines from both line and polygon geometries
       // This allows line layers to render polygon boundaries (e.g., country borders)
       geometryTypes: ["line", "polygon"],

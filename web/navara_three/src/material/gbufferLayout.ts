@@ -115,6 +115,41 @@ export function unionGBufferRequirements(
 }
 
 /**
+ * MRT draw buffers a configuration takes: color, which always exists, plus
+ * each enabled attachment. Depth and `globeNormal` take no slot.
+ */
+export function countGBufferAttachments(
+  buffers: ResolvedGBufferOptions,
+): number {
+  return 1 + GBUFFER_ATTACHMENT_NAMES.filter((name) => buffers[name]).length;
+}
+
+/**
+ * The attachment count that adding a descriptor needing `required` leads to
+ * when it exceeds `maxDrawBuffers`, else `undefined`. Counted from every
+ * current requirement rather than the allocated buffers: after a rejected
+ * growth they differ, and the next re-derivation would drop `required` too.
+ * Buffers that are already allocated always fit.
+ */
+export function exceededGBufferCapacity(
+  requirements: Iterable<readonly GBufferName[]>,
+  required: readonly GBufferName[],
+  allocated: ResolvedGBufferOptions,
+  maxDrawBuffers: number,
+): number | undefined {
+  const needed = unionGBufferRequirements([required]);
+  // `globeNormal` included: allocated `normal` alone does not copy it.
+  const names = Object.keys(needed) as GBufferName[];
+  if (names.every((name) => !needed[name] || allocated[name])) {
+    return undefined;
+  }
+  const count = countGBufferAttachments(
+    unionGBufferRequirements([...requirements, required]),
+  );
+  return count > maxDrawBuffers ? count : undefined;
+}
+
+/**
  * Attachment indices for one view. A disabled buffer is absent rather than a
  * placeholder, so these shift — never hardcode them.
  */

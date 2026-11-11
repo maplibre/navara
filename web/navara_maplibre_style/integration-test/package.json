@@ -27,7 +27,7 @@
     "three": "0.187.0"
   },
   "devDependencies": {
-    "@maplibre/maplibre-gl-style-spec": "26.5.1",
+    "@maplibre/maplibre-gl-style-spec": "26.6.0",
     "@playwright/test": "1.64.1",
     "@types/node": "26.6.6",
     "@types/three": "0.187.0",

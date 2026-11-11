@@ -81,20 +81,6 @@ The extrusions render once the scene has lights, which the harness adds
   `(245, 7, 53)`.
 - `colorSpace-lab` matches.
 
-### GeoJSON longitudes outside ±180° are dropped
-
-- In `projection/globe/antimeridian-overdraw/wide-band-*`, polygons given with
-  longitudes such as 319° or -191° lose those parts. In `wide-band-pole-view`
-  only slivers of the ring around the pole remain.
-- MapLibre wraps them across the antimeridian.
-- `geojson-crossing-z0`/`-z3`, whose coordinates stay within ±180°, match.
-
-### A polygon covering the pole is not drawn
-
-- `projection/globe/pole-cap`: a GeoJSON polygon spanning the eastern
-  hemisphere up to 90°N, seen pitched from 85°N, is missing entirely.
-- The background reaches the pole, and MapLibre draws the fill there too.
-
 ### Symbol text is never drawn
 
 Verified: the styles load fonts through `glyphs` (PBF glyph ranges), which the
@@ -120,26 +106,6 @@ only means both images are mostly background.
   `Expression evaluation error: … CouldNotParse { ty: "color" … }`.
 - MapLibre uses the property default instead.
 - Cases: `global-state/default`, `regressions/mapbox-gl-js#4124`, `#4150`.
-
-### Valid styles are rejected during validation
-
-Both styles are valid for MapLibre, but `MapLibreStylePlugin` throws from
-`init` and nothing is rendered. Verified: both causes are in
-`RustStyleEngine.parseStyle` (`src/engine/RustStyleEngine.ts`).
-
-- **Warnings are treated as errors.** `filter/mixed-legacy-expression` mixes
-  legacy and expression filter syntax. The style spec (already in 26.2.1)
-  reports this with `severity: "warning"`, and maplibre-gl-js stopped failing
-  the load on warnings in
-  [#7941](https://github.com/maplibre/maplibre-gl-js/pull/7941). `parseStyle`
-  throws on any validation result, including warnings.
-- **Validation runs after `migrate()`.** `regressions/mapbox-gl-js#4146` uses a
-  legacy `interval` function with one stop. The original style validates
-  cleanly, but `migrate()` (also in style-spec 26.4.4) turns it into
-  `["step", input, "blue", 0, 0]`, which then fails validation (`Expected color
-but found number`). maplibre-gl-js never migrates at render time.
-- Likely fix: validate the original style, then migrate, and throw only on
-  `severity` other than `"warning"`. Report the `migrate()` output upstream.
 
 ## Packaging and docs
 

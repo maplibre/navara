@@ -113,7 +113,7 @@ See [Atmosphere class](../../../three/api/atmosphere/) for details on the atmosp
 }
 ```
 
-### shadowCascadeCount
+### shadowCascadeCount :since[0.3.2]
 
 **Type:** `number | null | undefined`
 
@@ -475,7 +475,7 @@ import { Vector2 } from "three";
 }
 ```
 
-### shadowMapSize
+### shadowMapSize :since[0.3.2]
 
 **Type:** `Vector2 | null | undefined`
 

@@ -9,6 +9,7 @@ import { beforeAll, describe, it, expect, vi } from "vitest";
 import { JsStyleEngine } from "../engine/JsStyleEngine";
 import { RustStyleEngine } from "../engine/RustStyleEngine";
 import type { StyleEngine } from "../engine/StyleEngine";
+import { validateAndMigrateStyle } from "../engine/styleEngineUtils";
 import type { StyleLayer } from "../engine/types";
 
 import {
@@ -164,6 +165,7 @@ describe("toLayerDescription", () => {
         source: mockSource,
         polygon: {
           clampToGround: true,
+          geodesic: false,
         },
       });
     });
@@ -212,6 +214,7 @@ describe("toLayerDescription", () => {
         source: mockSource,
         polyline: {
           clampToGround: true,
+          geodesic: false,
         },
       });
     });
@@ -480,10 +483,10 @@ describe("toLayerDescription", () => {
         expect(describeAt(step, 15)?.elevationHeatmap.filter).toBe("nearest");
       });
 
-      it("evaluates a legacy zoom function for resampling after parseStyle", async () => {
+      it("evaluates a legacy zoom function for resampling after validateAndMigrateStyle", () => {
         // The plugin always parses the style first; migrate() turns legacy
         // functions into expressions.
-        const parsed = await engine.parseStyle({
+        const parsed = validateAndMigrateStyle({
           version: 8,
           sources: {
             "test-dem": {

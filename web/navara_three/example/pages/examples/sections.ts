@@ -21,6 +21,7 @@ export const SECTION_KEYS = [
   "styling",
   "interaction",
   "lighting-effect",
+  "showcase",
 ] as const;
 
 export type SectionKey = (typeof SECTION_KEYS)[number];
@@ -85,6 +86,7 @@ export const SECTION_LABELS: Record<SectionKey, Record<Lang, string>> = {
     en: "Lighting & Effects",
     ja: "ライティング・エフェクト",
   },
+  showcase: { en: "Showcase", ja: "ショーケース" },
 };
 
 export type ExampleMeta = {
@@ -109,6 +111,12 @@ export type ExampleMeta = {
    * or an absolute URL.
    */
   docs?: string;
+  /**
+   * For an example showing features not in the latest release
+   * (`site/released-version.json`): that release + 0.0.1, e.g. "0.3.2".
+   * Marks the example "Nightly" until a release reaches it.
+   */
+  since?: string;
 };
 
 /** A gallery entry: the example's meta enriched with its resolved path. */
