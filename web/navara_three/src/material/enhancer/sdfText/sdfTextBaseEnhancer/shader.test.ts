@@ -1,4 +1,4 @@
-import { SDF_PX_SIZE, atlasRangePx } from "@navaramap/font";
+import { SDF_PX_SIZE, atlasPaddingPx, atlasRangePx } from "@navaramap/font";
 import sdfTextFragmentShader from "@shaders/glsl/sdfText.frag.glsl";
 import sdfTextVertexShader from "@shaders/glsl/sdfText.vert.glsl";
 import { describe, expect, it } from "vitest";
@@ -61,10 +61,12 @@ describe("sdfTextBaseEnhancer shader", () => {
       expect(transform({ useMsdf: false }).defines).toMatchObject({
         NVR_SDF_PX_SIZE: SDF_PX_SIZE,
         NVR_SDF_PX_RANGE: atlasRangePx(false),
+        NVR_SDF_PX_PADDING: atlasPaddingPx(false),
       });
       expect(transform({ useMsdf: true }).defines).toMatchObject({
         NVR_SDF_PX_SIZE: SDF_PX_SIZE,
         NVR_SDF_PX_RANGE: atlasRangePx(true),
+        NVR_SDF_PX_PADDING: atlasPaddingPx(true),
       });
     });
 
@@ -88,14 +90,15 @@ describe("sdfTextBaseEnhancer shader", () => {
       });
     });
 
-    it("uses UV-derived coverage and clamps supersamples to the padded glyph boundary", () => {
+    it("uses UV-derived coverage and extrapolates past the clamped glyph rect", () => {
       expect(sdfTextFragmentShader).toContain("nvr_screenPxRange()");
       expect(sdfTextFragmentShader).toContain("nvr_edgeCoverage(");
+      // Clamping to the outer texel centres would repeat their value as a
+      // plateau that outlines the quad; the field must keep falling past it.
       expect(sdfTextFragmentShader).toContain(
-        "clamp(atlasUv, vAtlasUvMin, vAtlasUvMax)",
+        "clamp(atlasUv, vAtlasUvMin + halfTexel, vAtlasUvMax - halfTexel)",
       );
-      expect(sdfTextFragmentShader).not.toContain("vAtlasUvMin + halfTexel");
-      expect(sdfTextFragmentShader).not.toContain("vAtlasUvMax - halfTexel");
+      expect(sdfTextFragmentShader).toContain("vec2(sdf, sdf) - beyond");
       expect(sdfTextVertexShader).toContain(
         "vAtlasUvMin = glyphUvRect.xy / atlasSize",
       );
@@ -113,7 +116,7 @@ describe("sdfTextBaseEnhancer shader", () => {
         "float alpha = fillAlpha + behindFill",
       );
       expect(sdfTextFragmentShader).not.toContain(
-        "mix(uOutlineColor, vColor, fillAlpha)",
+        "mix(vOutlineColor, vColor, fillAlpha)",
       );
       expect(sdfTextFragmentShader).toMatch(
         /alpha \*= opacity;\s*if \(alpha <= 0\.0\) discard;/,
@@ -192,8 +195,8 @@ describe("sdfTextBaseEnhancer shader", () => {
   });
 
   it("should assign batch-wide uniforms to shader.uniforms", () => {
-    const shader = transform({ outlineOpacity: 0.25 });
-    expect(shader.uniforms.uOutlineOpacity?.value).toBe(0.25);
+    const shader = transform({ lineOffset: 4 });
+    expect(shader.uniforms.uLineOffset?.value).toBe(4);
     expect(shader.uniforms.nvr_uPickable).toBeDefined();
   });
 });

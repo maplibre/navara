@@ -128,6 +128,16 @@ type Placement = { anchor: Anchor; offsetEm: readonly [number, number] };
 /** A feature's packed orientation, as `unpackOrientation` returns it. */
 type Orientation = ReturnType<typeof unpackOrientation>;
 
+/** A label's outline: hex color, opacity, and width and blur in 1/64 em. */
+export type TextOutline = {
+  color: number;
+  opacity: number;
+  width: number;
+  blur: number;
+};
+
+const OUTLINE_KEYS = ["color", "opacity", "width", "blur"] as const;
+
 /**
  * One label in the batch.
  *
@@ -189,6 +199,8 @@ type LabelRecord = {
   addHeight: number;
   colorHex: number;
   opacity: number;
+  /** Per label: MapLibre's `text-halo-*` are data-driven. */
+  outline: TextOutline;
   /** Part of the block placed at the anchor point, and the shift after it
    *  (x right, y down, ems). Per label: MapLibre's `text-anchor` and
    *  `text-offset` are data-driven. */
@@ -342,11 +354,12 @@ export class BatchedSdfTextMesh
 
   /** Layout inputs baked into glyph quads; a change forces a re-layout. */
   private _maxWidth: number;
-  private _lineHeight: number;
-  /** The material's `offset` and `variableAnchors`, read once: wasm getters
-   *  clone. */
+  private _lineHeight: number | undefined;
+  /** The material's `offset`, `variableAnchors` and outline, read once: wasm
+   *  getters clone. */
   private _materialOffset: [number, number];
   private _materialVariableAnchors: readonly Placement[];
+  private _materialOutline: Readonly<TextOutline>;
   private _spreadGlyphs: boolean;
 
   /** Inside {@link deferLayout}: labels waiting for their re-layout. */
@@ -407,9 +420,10 @@ export class BatchedSdfTextMesh
     this._spacingPx = material.spacing ?? 250;
 
     this._maxWidth = material.maxWidth ?? 0;
-    this._lineHeight = material.lineHeight ?? 1.0;
+    this._lineHeight = material.lineHeight;
     this._materialOffset = vec2Tuple(material.offset);
     this._materialVariableAnchors = toPlacements(material.variableAnchors);
+    this._materialOutline = materialOutline(material);
     this._spreadGlyphs = material.spreadGlyphs ?? false;
     const declutter = resolveDeclutterSettings(material);
     this._declutter = declutter.participates;
@@ -496,9 +510,6 @@ export class BatchedSdfTextMesh
         ...resolveTranslate(material),
         sizeInMeters: material.sizeInMeters ?? true,
         offsetDepth: material.offsetDepth ?? true,
-        outlineWidth: material.outlineWidth ?? 0,
-        outlineColor: material.outlineColor ?? 0x000000,
-        outlineOpacity: clamp01(material.outlineOpacity ?? 1.0),
         showBackground: material.backgroundColor !== undefined,
         backgroundColor: material.backgroundColor,
         backgroundOutlineColor: material.borderColor ?? 0x000000,
@@ -971,6 +982,7 @@ export class BatchedSdfTextMesh
       addHeight: material.height ?? 0.0,
       colorHex: material.color ?? 0xffffff,
       opacity: clamp01(material.opacity ?? 1.0),
+      outline: { ...this._materialOutline },
       placeAnchor: materialAnchor(material),
       offsetEm: [...this._materialOffset],
       variableAnchors: this._materialVariableAnchors,
@@ -1002,6 +1014,7 @@ export class BatchedSdfTextMesh
     this._writeAnchor(record);
     this._writePath(record);
     this._writeStyle(record);
+    this._writeOutline(record);
     this._writeFontSize(record);
     this._writeAddHeight(record);
     this._writeBox(record);
@@ -1114,6 +1127,27 @@ export class BatchedSdfTextMesh
       _tmpColor.toArray(_tmpColorArray),
     );
     this._updateBatchAttribute(record.batchIndex, "opacity", record.opacity);
+  }
+
+  /** A batch nobody outlines allocates no slots. */
+  private _writeOutline(record: LabelRecord): void {
+    const { color, opacity, width, blur } = record.outline;
+    if (
+      width === 0 &&
+      blur === 0 &&
+      !hasBatchScalarSlot(this.material as ShaderMaterial, "outlineWidth")
+    ) {
+      return;
+    }
+    _tmpColor.setHex(color);
+    this._updateBatchAttribute(record.batchIndex, "outline", [
+      _tmpColor.r,
+      _tmpColor.g,
+      _tmpColor.b,
+      opacity,
+      width,
+      blur,
+    ]);
   }
 
   private _writeBox(record: LabelRecord): void {
@@ -1883,7 +1917,7 @@ export class BatchedSdfTextMesh
     // Layout properties are baked into the glyph instances, so a change forces
     // a re-layout even when the text itself is unchanged.
     const nextMaxWidth = material.maxWidth ?? 0;
-    const nextLineHeight = material.lineHeight ?? 1.0;
+    const nextLineHeight = material.lineHeight;
     const nextSpreadGlyphs = material.spreadGlyphs ?? false;
     const layoutChanged =
       nextMaxWidth !== this._maxWidth ||
@@ -1927,9 +1961,6 @@ export class BatchedSdfTextMesh
         ...resolveTranslate(material),
         sizeInMeters: material.sizeInMeters ?? true,
         offsetDepth: material.offsetDepth ?? true,
-        outlineWidth: material.outlineWidth ?? 0,
-        outlineColor: material.outlineColor ?? 0x000000,
-        outlineOpacity: clamp01(material.outlineOpacity ?? 1.0),
         showBackground: material.backgroundColor !== undefined,
         backgroundColor: material.backgroundColor,
         backgroundOutlineColor: material.borderColor ?? 0x000000,
@@ -1962,6 +1993,11 @@ export class BatchedSdfTextMesh
       colorHex !== (prevMaterial.color ?? 0xffffff) ||
       opacity !== clamp01(prevMaterial.opacity ?? 1.0);
     const fontSizeChanged = fontSize !== (prevMaterial.size ?? 16.0);
+    const outline = materialOutline(material);
+    const outlineChanges = OUTLINE_KEYS.filter(
+      (key) => outline[key] !== this._materialOutline[key],
+    );
+    this._materialOutline = outline;
     const letterSpacing = material.letterSpacing ?? 0;
     const letterSpacingChanged =
       letterSpacing !== (prevMaterial.letterSpacing ?? 0);
@@ -2047,6 +2083,10 @@ export class BatchedSdfTextMesh
       if (fontSizeChanged) {
         record.fontSize = fontSize;
         this._writeFontSize(record);
+      }
+      if (outlineChanges.length > 0) {
+        for (const key of outlineChanges) record.outline[key] = outline[key];
+        this._writeOutline(record);
       }
       if (letterSpacingChanged) record.letterSpacing = letterSpacing;
       if (addHeightChanged) {
@@ -2474,6 +2514,24 @@ export class BatchedSdfTextMesh
     }
   }
 
+  /** Outline for one feature, overriding the material's fields it sets.
+   *  `record.outline` mirrors what is written, so an unchanged outline (an
+   *  evaluator re-run on zoom) skips the texel writes. */
+  setFeatureOutlineByBatchIndex(
+    batchIndex: number,
+    outline: Partial<TextOutline>,
+  ) {
+    const patch = sanitizeOutline(outline);
+    const keys = OUTLINE_KEYS.filter((key) => patch[key] !== undefined);
+    for (const instanceIndex of this._instancesOfBatchIndex(batchIndex)) {
+      const record = this._ensureLabel(instanceIndex);
+      if (!record) continue;
+      if (keys.every((key) => record.outline[key] === patch[key])) continue;
+      Object.assign(record.outline, patch);
+      this._writeOutline(record);
+    }
+  }
+
   /** Per-feature emissive (fill only; drives selective bloom). Style-only:
    *  no label has to exist — the write lands in the batch data texture. */
   setFeatureEmissiveByBatchIndex(batchIndex: number, emissive: Color) {
@@ -2619,4 +2677,34 @@ function setPlacements(record: LabelRecord, placements: readonly Placement[]) {
 
 function clamp01(value: number): number {
   return Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : 1.0;
+}
+
+function materialOutline(material: NavaraTextMaterial): TextOutline {
+  return {
+    color: 0x000000,
+    opacity: 1,
+    width: 0,
+    blur: 0,
+    ...sanitizeOutline({
+      color: material.outlineColor,
+      opacity: material.outlineOpacity,
+      width: material.outlineWidth,
+      blur: material.outlineBlur,
+    }),
+  };
+}
+
+/** The fields of `outline` that hold usable values: opacity clamped to
+ *  [0, 1], width and blur to non-negative. */
+function sanitizeOutline(outline: Partial<TextOutline>): Partial<TextOutline> {
+  const patch: Partial<TextOutline> = {};
+  if (outline.color !== undefined) patch.color = outline.color;
+  if (outline.opacity !== undefined) patch.opacity = clamp01(outline.opacity);
+  for (const key of ["width", "blur"] as const) {
+    const value = outline[key];
+    if (value !== undefined && Number.isFinite(value)) {
+      patch[key] = Math.max(0, value);
+    }
+  }
+  return patch;
 }

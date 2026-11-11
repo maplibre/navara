@@ -90,6 +90,20 @@ view.setCamera({
 });
 ```
 
+## Multiple Views
+
+A page can run several `ThreeView` instances at once, for example to compare two maps side by side. Give each view its own canvas. The views can be initialized concurrently, and disposing one does not interrupt the others.
+
+```tsx
+const left = new ThreeView({ canvas: leftCanvas });
+const right = new ThreeView({ canvas: rightCanvas });
+await Promise.all([left.init(), right.init()]);
+```
+
+All views on a page share one pool of background workers, so their tile processing competes for the same CPU cores instead of multiplying them. The first view to call `init()` creates the pool, and its `mobileOptimization` and `memoryBudget.maxWorkerHeapBytes` decide the pool size and worker heap budget. The same options passed to a later view do not change the pool while it exists, and a console warning reports when they differ. The pool is shut down when the last view is disposed, and the next view to initialize creates a new one.
+
+Everything else belongs to each view: the WebGL context, the tile cache (`cacheBytes`), the remaining `memoryBudget` limits, and the font worker. Memory use therefore grows with the number of views, and data shown in two views is downloaded and decoded once per view. When showing several views on a memory-constrained device, lower `cacheBytes` on each of them.
+
 ## Properties
 
 ### container
@@ -477,38 +491,6 @@ const view = new ThreeView({
 :::tip[Related Documentation]
 The SSE multiplier range can also be changed at runtime via [`setSseMultiplierRange()`](../threeview-functions#setssemultiplierrange).
 :::
-
-### waterTexture
-
-**Type:** `{ enabled: boolean; url?: string } | undefined`
-
-**Description:** Configuration for shared water textures. When enabled, a single water normal texture is shared across all meshes that use water effects. This is more efficient than each mesh loading its own texture individually.
-
-**Default:** Disabled when omitted (the shared water texture is loaded only when `{ enabled: true }` is passed).
-
-```typescript
-type WaterTextureOptions = {
-  enabled: boolean; // Whether to enable water texture sharing
-  url?: string; // URL for custom water normal texture (uses built-in texture when omitted)
-};
-```
-
-**Example:**
-
-```typescript
-// Use built-in texture
-const view = new ThreeView({
-  waterTexture: { enabled: true },
-});
-
-// Use a custom texture
-const viewWithCustomWater = new ThreeView({
-  waterTexture: {
-    enabled: true,
-    url: "https://example.com/water-normal.png",
-  },
-});
-```
 
 ### GlobeOptions
 

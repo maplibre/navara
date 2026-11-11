@@ -159,7 +159,9 @@ New attributes reuse one of these patterns rather than inventing new ones:
   `emissiveIntensity` (scalar) fold to `nvr_vEmissive = rgb × intensity` in
   the vertex stage; the pair backfills `(black, 1)` — dark, with intensity
   kept a usable identity multiplier. A sprite's `offset` is two scalars,
-  `offsetX` + `offsetY`, written together as one public attribute.
+  `offsetX` + `offsetY`, written together as one public attribute. Text's
+  `outline` is likewise one attribute: a vec3 color plus opacity, width and
+  blur scalars, backfilled `(black, 1, 0, 0)`, which draws no outline.
 - **Sentinels**: A reserved out-of-range value can mean "fall back to the
   material default" when 0 is a legal styled value (e.g. `lineWidth < 0`,
   `size < 0`).

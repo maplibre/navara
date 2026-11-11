@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Navara Three.js Multi-View Integration Test</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+      }
+      #panes {
+        display: flex;
+        width: 100%;
+        height: 100%;
+        gap: 4px;
+        background: #222;
+      }
+      #panes > div {
+        position: relative;
+        flex: 1;
+      }
+      #report {
+        position: fixed;
+        right: 8px;
+        bottom: 8px;
+        z-index: 10;
+        max-height: 70%;
+        overflow: auto;
+        padding: 8px 12px;
+        border-radius: 6px;
+        background: rgba(0, 0, 0, 0.8);
+        color: #fff;
+        font: 12px monospace;
+        white-space: pre;
+      }
+    </style>
+    <script>
+      // Counts main-thread WASM instantiations and live workers. Installed
+      // before any module runs so the first view's init is observed too.
+      window.__probe = {
+        wasm: {},
+        workers: { live: new Map(), created: 0, terminated: 0 },
+        errors: [],
+      };
+      addEventListener("error", (e) => __probe.errors.push(String(e.message)));
+      addEventListener("unhandledrejection", (e) =>
+        __probe.errors.push(String(e.reason?.message ?? e.reason)),
+      );
+      const countWasm = (url) => {
+        const name = /navara_wasm_api_bg/.test(url)
+          ? "engine-api"
+          : /navara_wasm_bg/.test(url)
+            ? "engine"
+            : "other";
+        __probe.wasm[name] = (__probe.wasm[name] ?? 0) + 1;
+      };
+      const instantiateStreaming = WebAssembly.instantiateStreaming;
+      WebAssembly.instantiateStreaming = async (source, imports) => {
+        const response = await source;
+        countWasm(response.url);
+        return instantiateStreaming.call(WebAssembly, response, imports);
+      };
+      const NativeWorker = window.Worker;
+      let workerId = 0;
+      window.Worker = class extends NativeWorker {
+        constructor(url, options) {
+          super(url, options);
+          this.__probeId = ++workerId;
+          const kind = String(url).includes("fontWorker") ? "font" : "tile";
+          __probe.workers.live.set(this.__probeId, kind);
+          __probe.workers.created++;
+        }
+        terminate() {
+          if (__probe.workers.live.delete(this.__probeId)) {
+            __probe.workers.terminated++;
+          }
+          return super.terminate();
+        }
+      };
+    </script>
+  </head>
+  <body>
+    <div id="panes">
+      <div id="left"></div>
+      <div id="right"></div>
+    </div>
+    <div id="report">running…</div>
+    <script type="module" src="/src/multiView.ts"></script>
+  </body>
+</html>

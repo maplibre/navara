@@ -18,6 +18,7 @@ navara_threeでは、以下のEffectDescタイプが利用可能です:
 | Descriptorタイプ | 説明 |
 |------------|------|
 | [AerialPerspectiveEffectDesc](../aerial-perspective-effect-desc) | 大気による光の散乱と透過を表現するエフェクト |
+| [BuildingWindowsEffectDesc](../building-windows-effect-desc) | 建物の壁面に灯りのともった窓を描くエフェクト |
 | [CloudsEffectDesc](../clouds-effect-desc) | リアルタイムボリュメトリック雲をレンダリングするエフェクト |
 | [ColorGradingLUTEffectDesc](../color-grading-lut-effect-desc) | LUTを使用したカラーグレーディングを適用するエフェクト |
 | [DepthOfFieldEffectDesc](../depth-of-field-effect-desc) | カメラの焦点面に基づいてボケ効果を適用するエフェクト |

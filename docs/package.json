@@ -8,13 +8,14 @@
     "start": "astro dev",
     "build": "astro build",
     "preview": "astro preview",
-    "astro": "astro"
+    "astro": "astro",
+    "showcases:check": "node scripts/check-showcases.mjs"
   },
   "dependencies": {
-    "@astrojs/markdown-remark": "7.3.4",
-    "@astrojs/starlight": "0.42.6",
-    "@lucide/astro": "1.61.0",
-    "astro": "7.4.2",
+    "@astrojs/markdown-remark": "7.3.5",
+    "@astrojs/starlight": "0.42.9",
+    "@lucide/astro": "1.68.0",
+    "astro": "7.4.5",
     "rehype-mermaid": "3.0.0",
     "sharp": "0.35.5"
   },

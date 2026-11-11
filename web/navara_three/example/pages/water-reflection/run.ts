@@ -1,5 +1,5 @@
 import ThreeView, { Color, type LayerDescription } from "@navaramap/three";
-import { SSREffectDesc } from "@navaramap/three-default-descs";
+import { SSREffectDesc, SkyMeshDesc } from "@navaramap/three-default-descs";
 import {
   DefaultPlugin,
   type DefaultDescriptions,
@@ -51,11 +51,30 @@ export const run = async (view: ThreeView<CustomDescriptions>) => {
     requestVertexNormals: true,
     requestWaterMask: true,
   });
-  view.addLayer({
+  // The watermask's water takes `waterMaskColor` as its body color; without
+  // it, the imagery under the sea shows through.
+  const terrainLayer = view.addLayer({
     type: "terrain",
     source: terrain,
-    terrain: { receiveShadow: true, castShadow: true },
+    terrain: {
+      receiveShadow: true,
+      castShadow: true,
+      waterMaskColor: new Color().setStyle(DEEP_SEA_STYLE),
+    },
   });
+  // The watermask's sea has its own waves, set on the terrain layer.
+  const setWaterMaskWaves = (waves: {
+    waveExaggeration?: number;
+    waveStrength?: number;
+    waveDirection?: number;
+    flowSpeed?: number;
+  }) => {
+    terrainLayer.update({ terrain: waves });
+  };
+  // `undefined` returns the water to the imagery's color.
+  const setWaterMaskColor = (color: Color | undefined) => {
+    terrainLayer.update({ terrain: { waterMaskColor: color } });
+  };
 
   for (const dataset of [
     TILES_3D_DATASETS.plateauChiyoda,
@@ -103,7 +122,7 @@ export const run = async (view: ThreeView<CustomDescriptions>) => {
   addSSRControls(view, pane);
 
   // Water polygon controls
-  addWaterControls(view, pane);
+  addWaterControls(view, pane, setWaterMaskColor, setWaterMaskWaves);
 
   attribution?.add([
     TERRAIN_DATASETS.reearthQuantizedMesh,
@@ -289,7 +308,20 @@ const addSSRControls = (view: ThreeView<CustomDescriptions>, pane: Pane) => {
   );
 };
 
-const addWaterControls = (view: ThreeView<CustomDescriptions>, pane: Pane) => {
+/** Body color of deep open-ocean water. */
+const DEEP_SEA_STYLE = "#0d1c2c";
+
+const addWaterControls = (
+  view: ThreeView<CustomDescriptions>,
+  pane: Pane,
+  setWaterMaskColor: (color: Color | undefined) => void,
+  setWaterMaskWaves: (waves: {
+    waveExaggeration?: number;
+    waveStrength?: number;
+    waveDirection?: number;
+    flowSpeed?: number;
+  }) => void,
+) => {
   // Vector-tile and GeoJSON sources for the two water data variants.
   const waterTileSource = view.addSource({
     type: "vector-tile",
@@ -316,66 +348,68 @@ const addWaterControls = (view: ThreeView<CustomDescriptions>, pane: Pane) => {
     },
   });
 
-  // Store the layer description object
-  const mvtDesc: LayerDescription = {
-    type: "vector",
-    source: waterTileSource.id,
-    sourceLayers: ["waterarea"],
-    polygon: {
-      color: new Color().setStyle("#001e0f"),
-      reflectivity: 0.02,
-      clampToGround: true,
-      wireframe: false,
-      water: true,
-      shininess: 100,
-      specularStrength: 2,
-      applyWaterNormal: false,
-      specular: false,
-      ior: 1.33333,
-      transparent: false,
-      opacity: 1.0,
-    },
+  const mvtPolygon = {
+    color: new Color().setStyle("#001e0f"),
+    clampToGround: true,
+    water: true,
+    waveExaggeration: 1,
+    waterScale: "ocean",
+    waveStrength: 5,
+    waveDirection: 0,
+    flowSpeed: 0,
   };
-  const geoJsonDesc: LayerDescription = {
-    type: "vector",
-    source: waterGeojsonSource.id,
-    polygon: {
-      color: new Color().setStyle("#001e0f"),
-      height: 70,
-      extrudedHeight: 1,
-      clampToGround: false,
-      wireframe: false,
-      reflectivity: 0.02,
-      roughness: 0.2,
-      receiveShadow: false,
-      water: true,
-      shininess: 100,
-      specularStrength: 2,
-      applyWaterNormal: false,
-      specular: true,
-      ior: 1.33333,
-      transparent: false,
-      opacity: 1.0,
-    },
+  const geoJsonPolygon = {
+    color: new Color().setStyle("#001e0f"),
+    height: 70,
+    extrudedHeight: 1,
+    clampToGround: false,
+    receiveShadow: false,
+    water: true,
+    waveExaggeration: 1,
+    waterScale: "ocean",
+    waveStrength: 5,
+    waveDirection: 0,
+    flowSpeed: 0,
   };
-
-  let waterLayer = view.addLayer(geoJsonDesc);
+  const layerDesc = (dataType: string): LayerDescription =>
+    dataType === "mvt"
+      ? {
+          type: "vector",
+          source: waterTileSource.id,
+          sourceLayers: ["waterarea"],
+          polygon: mvtPolygon,
+        }
+      : {
+          type: "vector",
+          source: waterGeojsonSource.id,
+          polygon: geoJsonPolygon,
+        };
 
   const waterParams = {
     dataType: "geojson",
-    show: mvtDesc.polygon?.show ?? true,
-    reflectivity: mvtDesc.polygon?.reflectivity ?? 0,
-    roughness: mvtDesc.polygon?.roughness ?? 0,
-    water: mvtDesc.polygon?.water ?? true,
-    waterScaleNormal: mvtDesc.polygon?.waterScaleNormal ?? 0.1,
-    waterSpeed: mvtDesc.polygon?.waterSpeed ?? 0.0003,
-    shininess: mvtDesc.polygon?.shininess ?? 100,
-    specularStrength: mvtDesc.polygon?.specularStrength ?? 2,
-    applyWaterNormal: mvtDesc.polygon?.applyWaterNormal ?? false,
-    specular: mvtDesc.polygon?.specular ?? false,
-    ior: mvtDesc.polygon?.ior ?? 1.33333,
-    transparent: mvtDesc.polygon?.transparent ?? false,
-    opacity: mvtDesc.polygon?.opacity ?? 1.0,
+    show: true,
+    water: true,
+    waveExaggeration: 1,
+    waterScale: "ocean",
+    waveStrength: 5,
+    waveDirection: 0,
+    flowSpeed: 0,
+    skyEnvMap: true,
+    useWaterMaskColor: true,
+    waterMaskColor: DEEP_SEA_STYLE,
+  };
+  let waterLayer = view.addLayer(layerDesc(waterParams.dataType));
+  // Water reflects this sky; without it, it falls back to the light probe.
+  const addSkyEnvMap = () =>
+    view.addMesh<SkyMeshDesc>({ sky: { envMap: true } });
+  let skyEnvMap = addSkyEnvMap();
+
+  const updatePolygons = (
+    update: Partial<typeof mvtPolygon & { show: boolean }>,
+  ) => {
+    Object.assign(mvtPolygon, update);
+    Object.assign(geoJsonPolygon, update);
+    waterLayer.update(layerDesc(waterParams.dataType));
   };
 
   const fields: FolderFields<typeof waterParams> = [
@@ -390,182 +424,94 @@ const addWaterControls = (view: ThreeView<CustomDescriptions>, pane: Pane) => {
       onChange: (v) => {
         waterParams.dataType = v.value;
         waterLayer.delete();
-        switch (v.value) {
-          case "mvt": {
-            waterLayer = view.addLayer(mvtDesc);
-            break;
-          }
-          case "geojson": {
-            waterLayer = view.addLayer(geoJsonDesc);
-            break;
-          }
+        waterLayer = view.addLayer(layerDesc(v.value));
+      },
+    },
+    {
+      // Hide the water polygon to see the terrain watermask's sea, which
+      // shades as water too.
+      name: "show",
+      onChange: (v) => updatePolygons({ show: v.value }),
+    },
+    {
+      name: "water",
+      onChange: (v) => updatePolygons({ water: v.value }),
+    },
+    {
+      name: "waveExaggeration",
+      params: { min: 0, max: 2, step: 0.01 },
+      onChange: (v) => {
+        updatePolygons({ waveExaggeration: v.value });
+        setWaterMaskWaves({ waveExaggeration: v.value });
+      },
+    },
+    {
+      // The extent of the water body, which caps its wave size.
+      name: "waterScale",
+      params: {
+        options: ["ocean", "large", "medium", "small"].map((value) => ({
+          text: value,
+          value,
+        })),
+      },
+      onChange: (v) => updatePolygons({ waterScale: v.value }),
+    },
+    {
+      // Sets the waves' size, slope and speed. Applied to the polygon layer
+      // and to the watermask's sea.
+      name: "waveStrength",
+      params: { min: 0, max: 20, step: 0.1 },
+      onChange: (v) => {
+        updatePolygons({ waveStrength: v.value });
+        setWaterMaskWaves({ waveStrength: v.value });
+      },
+    },
+    {
+      // Where the waves travel, clockwise from north.
+      name: "waveDirection",
+      params: { min: 0, max: 360, step: 1 },
+      onChange: (v) => {
+        updatePolygons({ waveDirection: v.value });
+        setWaterMaskWaves({ waveDirection: v.value });
+      },
+    },
+    {
+      // The current carrying the waves along waveDirection, in m/s.
+      name: "flowSpeed",
+      params: { min: 0, max: 10, step: 0.1 },
+      onChange: (v) => {
+        updatePolygons({ flowSpeed: v.value });
+        setWaterMaskWaves({ flowSpeed: v.value });
+      },
+    },
+    {
+      // Off renders no env map, so the water reflects the light probe's
+      // low-frequency sky.
+      name: "skyEnvMap",
+      onChange: (v) => {
+        if (v.value) {
+          skyEnvMap = addSkyEnvMap();
+        } else {
+          skyEnvMap.delete();
         }
       },
     },
     {
-      // Hide the water polygon to observe the terrain watermask's ocean
-      // reflection without the polygon covering the bay.
-      name: "show",
-      onChange: (v) => {
-        if (!mvtDesc.polygon || !geoJsonDesc.polygon) return;
-        waterParams.show = v.value;
-        mvtDesc.polygon.show = v.value;
-        geoJsonDesc.polygon.show = v.value;
-        waterLayer.update(
-          waterParams.dataType === "mvt" ? mvtDesc : geoJsonDesc,
-        );
-      },
+      // Off shows the imagery under the watermask's sea as its body color.
+      name: "useWaterMaskColor",
+      onChange: (v) =>
+        setWaterMaskColor(
+          v.value
+            ? new Color().setStyle(waterParams.waterMaskColor)
+            : undefined,
+        ),
     },
     {
-      name: "reflectivity",
-      params: { min: 0, max: 1, step: 0.01 },
+      name: "waterMaskColor",
       onChange: (v) => {
-        if (!mvtDesc.polygon || !geoJsonDesc.polygon) return;
-        waterParams.reflectivity = v.value;
-        mvtDesc.polygon.reflectivity = v.value;
-        geoJsonDesc.polygon.reflectivity = v.value;
-        waterLayer.update(
-          waterParams.dataType === "mvt" ? mvtDesc : geoJsonDesc,
-        );
-      },
-    },
-    {
-      name: "roughness",
-      params: { min: 0, max: 1, step: 0.01 },
-      onChange: (v) => {
-        if (!mvtDesc.polygon || !geoJsonDesc.polygon) return;
-        waterParams.roughness = v.value;
-        mvtDesc.polygon.roughness = v.value;
-        geoJsonDesc.polygon.roughness = v.value;
-        waterLayer.update(
-          waterParams.dataType === "mvt" ? mvtDesc : geoJsonDesc,
-        );
-      },
-    },
-    {
-      name: "water",
-      onChange: (v) => {
-        if (!mvtDesc.polygon || !geoJsonDesc.polygon) return;
-        waterParams.water = v.value;
-        mvtDesc.polygon.water = v.value;
-        geoJsonDesc.polygon.water = v.value;
-        waterLayer.update(
-          waterParams.dataType === "mvt" ? mvtDesc : geoJsonDesc,
-        );
-      },
-    },
-    {
-      name: "waterScaleNormal",
-      params: { min: 0.01, max: 1.0, step: 0.01 },
-      onChange: (v) => {
-        if (!mvtDesc.polygon || !geoJsonDesc.polygon) return;
-        waterParams.waterScaleNormal = v.value;
-        mvtDesc.polygon.waterScaleNormal = v.value;
-        geoJsonDesc.polygon.waterScaleNormal = v.value;
-        waterLayer.update(
-          waterParams.dataType === "mvt" ? mvtDesc : geoJsonDesc,
-        );
-      },
-    },
-    {
-      name: "waterSpeed",
-      params: { min: 0.0, max: 0.01, step: 0.0001 },
-      onChange: (v) => {
-        if (!mvtDesc.polygon || !geoJsonDesc.polygon) return;
-        waterParams.waterSpeed = v.value;
-        mvtDesc.polygon.waterSpeed = v.value;
-        geoJsonDesc.polygon.waterSpeed = v.value;
-        waterLayer.update(
-          waterParams.dataType === "mvt" ? mvtDesc : geoJsonDesc,
-        );
-      },
-    },
-    {
-      name: "shininess",
-      params: { min: 0, max: 200, step: 1 },
-      onChange: (v) => {
-        if (!mvtDesc.polygon || !geoJsonDesc.polygon) return;
-        waterParams.shininess = v.value;
-        mvtDesc.polygon.shininess = v.value;
-        geoJsonDesc.polygon.shininess = v.value;
-        waterLayer.update(
-          waterParams.dataType === "mvt" ? mvtDesc : geoJsonDesc,
-        );
-      },
-    },
-    {
-      name: "specularStrength",
-      params: { min: 0, max: 10, step: 0.1 },
-      onChange: (v) => {
-        if (!mvtDesc.polygon || !geoJsonDesc.polygon) return;
-        waterParams.specularStrength = v.value;
-        mvtDesc.polygon.specularStrength = v.value;
-        geoJsonDesc.polygon.specularStrength = v.value;
-        waterLayer.update(
-          waterParams.dataType === "mvt" ? mvtDesc : geoJsonDesc,
-        );
-      },
-    },
-    {
-      name: "applyWaterNormal",
-      onChange: (v) => {
-        if (!mvtDesc.polygon || !geoJsonDesc.polygon) return;
-        waterParams.applyWaterNormal = v.value;
-        mvtDesc.polygon.applyWaterNormal = v.value;
-        geoJsonDesc.polygon.applyWaterNormal = v.value;
-        waterLayer.update(
-          waterParams.dataType === "mvt" ? mvtDesc : geoJsonDesc,
-        );
-      },
-    },
-    {
-      name: "specular",
-      onChange: (v) => {
-        if (!mvtDesc.polygon || !geoJsonDesc.polygon) return;
-        waterParams.specular = v.value;
-        mvtDesc.polygon.specular = v.value;
-        geoJsonDesc.polygon.specular = v.value;
-        waterLayer.update(
-          waterParams.dataType === "mvt" ? mvtDesc : geoJsonDesc,
-        );
-      },
-    },
-    {
-      name: "ior",
-      params: { min: 1.0, max: 2.5, step: 0.01 },
-      onChange: (v) => {
-        if (!mvtDesc.polygon || !geoJsonDesc.polygon) return;
-        waterParams.ior = v.value;
-        mvtDesc.polygon.ior = v.value;
-        geoJsonDesc.polygon.ior = v.value;
-        waterLayer.update(
-          waterParams.dataType === "mvt" ? mvtDesc : geoJsonDesc,
-        );
-      },
-    },
-    {
-      name: "transparent",
-      onChange: (v) => {
-        if (!mvtDesc.polygon || !geoJsonDesc.polygon) return;
-        waterParams.transparent = v.value;
-        mvtDesc.polygon.transparent = v.value;
-        geoJsonDesc.polygon.transparent = v.value;
-        waterLayer.update(
-          waterParams.dataType === "mvt" ? mvtDesc : geoJsonDesc,
-        );
-      },
-    },
-    {
-      name: "opacity",
-      params: { min: 0, max: 1, step: 0.01 },
-      onChange: (v) => {
-        if (!mvtDesc.polygon || !geoJsonDesc.polygon) return;
-        waterParams.opacity = v.value;
-        mvtDesc.polygon.opacity = v.value;
-        geoJsonDesc.polygon.opacity = v.value;
-        waterLayer.update(
-          waterParams.dataType === "mvt" ? mvtDesc : geoJsonDesc,
-        );
+        if (waterParams.useWaterMaskColor) {
+          setWaterMaskColor(new Color().setStyle(v.value));
+        }
       },
     },
   ];

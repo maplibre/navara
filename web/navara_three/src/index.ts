@@ -36,16 +36,17 @@ import {
   type GeographicExtent,
 } from "@navaramap/three-api";
 import {
+  acquireWorkerPool,
   canWorkerPoolAcceptTasks,
-  initializeWorkerPool,
   workerPoolLoad,
   workerPoolReservedSlots,
   reserveWorkerCore,
   probeWorkerPoolHeap,
-  terminateWorkerPool,
   warmUpWorkerPool,
   workerPoolHeapStats,
+  workerPoolHolders,
   type WorkerPoolHeapStats,
+  type WorkerPoolLease,
 } from "@navaramap/worker";
 import {
   Scene,
@@ -54,7 +55,6 @@ import {
   Texture,
   Vector2,
   LinearFilter,
-  RepeatWrapping,
   Group,
   PCFShadowMap,
 } from "three";
@@ -66,7 +66,6 @@ import { ThreeViewCamera } from "./camera";
 import { Color } from "./Color";
 import { ColorMapAtlas } from "./colorMapAtlas";
 import { createDefaultConcurrencyManager } from "./concurrency";
-import { WATER_NORMAL_URL } from "./constants/assets";
 import {
   LightDesc,
   EffectDesc,
@@ -97,6 +96,7 @@ import {
   getDevicePixelRatio,
   isMobileDevice,
   type DynamicSseSettings,
+  type MemoryBudgets,
   type LodFogSettings,
 } from "./device";
 import {
@@ -113,7 +113,6 @@ import {
   type TileHandler,
   type WorkerTaskHandler,
 } from "./event";
-import { TEXTURE_LOADER } from "./event/loaders";
 import { createTileHandler } from "./event/tileHandler";
 import { InMemoryBufferStore } from "./inMemoryBufferStore";
 import { registerInputEvents } from "./input";
@@ -149,6 +148,7 @@ import { TexturizedSceneByTileCoordinates, type Scenes } from "./scene";
 import { ShadowMapViewers } from "./ShadowMapViewers";
 import { Source } from "./source";
 import { RendererStats } from "./stats";
+import { queueTask } from "./tasks/queueTask";
 import { IDENTITY_TERRAIN_EXAGGERATION } from "./terrain/exaggeration";
 import {
   sampleTerrainMostDetailed,
@@ -174,6 +174,7 @@ import {
 } from "./type";
 import type { CommonUniforms } from "./uniforms";
 import { isWorker, convertScreenPos, type TextureSlot } from "./utils";
+import { WaterState } from "./water/waterState";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 /** @ts-ignore ignore: https://v3.vitejs.dev/guide/features.html#import-with-query-suffixes  */
 import WorkerURL from "./worker?url&worker";
@@ -267,6 +268,12 @@ export * from "@navaramap/three-api";
 export * from "./Color";
 export { type BlendMode, blendFunction, createReplacer } from "./utils";
 export { Atmosphere, type AtmosphereOptions } from "./atmosphere";
+export type {
+  WaterState,
+  WaterUniforms,
+  WaterWaves,
+  WaterWavesRef,
+} from "./water/waterState";
 export type { Quality } from "./quality";
 export type { CustomObject3DEventMap } from "./object3DEvent";
 export type {
@@ -290,10 +297,12 @@ export {
   getDefaultDynamicSse,
   getDefaultLodFog,
   getDefaultMemoryBudgets,
+  getDefaultSunShadow,
   MB,
   type DynamicSseSettings,
   type LodFogSettings,
   type MemoryBudgets,
+  type SunShadowDefaults,
 } from "./device";
 
 /**
@@ -426,16 +435,6 @@ export type Options = {
      * killed. Defaults per device — see `getDefaultSseMultiplierRange`.
      */
     sseMultiplierMax?: number;
-  };
-  /**
-   * Enables shared water texture. When enabled, a single water normal texture
-   * is loaded once and shared across all meshes that have water effects enabled.
-   */
-  waterTexture?: {
-    /** Whether to enable the shared water texture. */
-    enabled: boolean;
-    /** Custom water normal texture URL. Uses built-in texture if not specified. */
-    url?: string;
   };
   /**
    * Attribution (credit) UI, on by default (accessed via
@@ -589,6 +588,7 @@ export default class ThreeView<
   /** Last frame the in-flight job count changed. */
   private _jobsProgressedAt = 0;
   private _workerPoolSize = 0;
+  private _releaseWorkerPool: (() => void) | undefined;
   /** The delegated-task cap last sent to the engine. */
   private _maxWorkerTasks = 0;
   /** Whether the engine's worker-task intake is paused because every pool
@@ -1175,7 +1175,10 @@ export default class ThreeView<
       fov: { value: (this._camera.raw.fov * Math.PI) / 180 },
       screenHeightPx: { value: height },
       time: { value: 0 },
-      waterTexture: { value: null },
+      water: new WaterState(
+        this._renderer.capabilities.getMaxAnisotropy(),
+        () => queueTask("generateWaveTexture"),
+      ),
       terrainExaggeration: { value: IDENTITY_TERRAIN_EXAGGERATION },
       // Set from the engine's first `terrain_exaggeration_updated` event.
       horizonMinHeight: { value: 0 },
@@ -1194,23 +1197,6 @@ export default class ThreeView<
         Math.max(this._renderer.capabilities.maxTextures, 8) -
         NUM_CASCADED_SHADOW_MAPS,
     };
-
-    // Load shared water texture if enabled
-    if (options.waterTexture?.enabled) {
-      const waterUrl = options.waterTexture.url ?? WATER_NORMAL_URL;
-      this._uniforms.waterTexture.value = TEXTURE_LOADER.load(
-        waterUrl,
-        (texture) => {
-          texture.wrapS = RepeatWrapping;
-          texture.wrapT = RepeatWrapping;
-        },
-      );
-      // Track additional texture usage
-      this._defaultTextureOptions.additionalTexturesInUse = {
-        ...this._defaultTextureOptions.additionalTexturesInUse,
-        waterTexture: true,
-      };
-    }
 
     this._atmosphere = new Atmosphere(
       this._renderer,
@@ -1489,12 +1475,13 @@ export default class ThreeView<
    * Must be called before using the view.
    */
   async init() {
-    if (this._core || this._initialized) return;
+    if (this._core || this._initialized || this._disposed) return;
 
     this._initialized = true;
 
     const mobileOptimized = this.isMobileOptimized();
-    const concurrencyManager = createDefaultConcurrencyManager(mobileOptimized);
+    const defaultConcurrencyManager =
+      createDefaultConcurrencyManager(mobileOptimized);
     if (mobileOptimized) {
       this._hillshadeContext.normalMapScale = 0.5;
     }
@@ -1503,21 +1490,43 @@ export default class ThreeView<
     // tile-worker pool, and the font worker derive their budgets together.
     const budgets = getDefaultMemoryBudgets({
       isMobile: mobileOptimized,
-      poolSize: concurrencyManager.total,
+      poolSize: defaultConcurrencyManager.total,
     });
 
-    initializeWorkerPool(WorkerURL, concurrencyManager, {
+    // Every view on the page shares one pool; the first view's settings
+    // create it.
+    const workerPool = acquireWorkerPool(WorkerURL, defaultConcurrencyManager, {
       // A worker over this WASM heap budget is recycled; tighter on mobile,
       // where the process is killed at much lower memory pressure.
       maxWorkerHeapBytes:
         this._options.memoryBudget?.maxWorkerHeapBytes ??
         budgets.maxWorkerHeapBytes,
     });
+    this._releaseWorkerPool = workerPool.release;
+
+    try {
+      await this._initWithWorkerPool(workerPool, mobileOptimized, budgets);
+    } catch (e) {
+      workerPool.release();
+      // Nothing was built yet, so a later init() can retry.
+      if (!this._core && !this._disposed) this._initialized = false;
+      throw e;
+    }
+  }
+
+  private async _initWithWorkerPool(
+    workerPool: WorkerPoolLease,
+    mobileOptimized: boolean,
+    budgets: MemoryBudgets,
+  ) {
+    const concurrencyManager = workerPool.manager;
 
     // Fetch WASM resources. Atmosphere textures are not fetched here: they
     // load lazily once a consumer (sky, sun light, aerial perspective, ...)
     // registers via atmosphere.onTexturesReady().
-    await Promise.all([initCore(), initNavaraApi()]);
+    await Promise.all([initEngine(), initNavaraApi()]);
+    // dispose() during the await already released the pool.
+    if (this._disposed) return;
 
     this._core = new Core(newId());
     this._core.start();
@@ -1699,12 +1708,16 @@ export default class ThreeView<
 
     // Warm up workers. Non-blocking: warms one worker, the rest follow
     // in the background off the HTTP cache; tasks dispatched to a still-cold
-    // worker just await WASM inside the task.
-    warmUpWorkerPool().catch((e) =>
-      console.error("Failed to warm up the worker pool:", e),
-    );
+    // worker just await WASM inside the task. Only the view that created the
+    // shared pool warms it.
+    if (workerPool.created) {
+      warmUpWorkerPool().catch((e) =>
+        console.error("Failed to warm up the worker pool:", e),
+      );
+    }
 
     await Promise.all(this.plugins.map((p) => p.init(this, this.viewContext)));
+    if (this._disposed) return;
 
     this._startMainLoop();
 
@@ -1792,6 +1805,11 @@ export default class ThreeView<
   dispose() {
     this._disposed = true;
     this._initialized = false;
+    // Released first so a throw below, or an init() still in flight, cannot
+    // keep the shared worker pool alive. The last view to release it
+    // terminates it.
+    this._releaseWorkerPool?.();
+    this._releaseWorkerPool = undefined;
     // Settle pending flyTo promises so callers never hang on a disposed view.
     for (const resolve of this._pendingFlights.values()) {
       resolve(false);
@@ -1827,6 +1845,7 @@ export default class ThreeView<
     }
 
     this._fontManager.dispose();
+    this._uniforms.water.dispose();
     this._atmosphere._dispose();
 
     this.skyEnvMap?.delete();
@@ -1867,7 +1886,8 @@ export default class ThreeView<
     // Release per-tile composite atlases, cached shader materials, placeholder
     // textures, and the fullscreen quad geometry owned by the compositor.
     this._tileTextureCompositor.dispose();
-    this.viewContext._dispose();
+    // Unset while init() is still awaiting the WASM modules.
+    this.viewContext?._dispose();
 
     // Clean up WASM core
     this._core?.free();
@@ -1889,9 +1909,6 @@ export default class ThreeView<
     // Remove auto-created DOM container so a new ThreeView can append its own
     this._ownedRootElement?.remove();
     this._ownedRootElement = undefined;
-
-    // Reset worker pool so a new ThreeView can reinitialize it
-    terminateWorkerPool();
   }
 
   /**
@@ -1991,6 +2008,7 @@ export default class ThreeView<
       this.skyEnvMap.ref.raw?.getEnvMapTexture() ?? null;
     this._uniforms.inverseProjectionMatrix.value =
       this._camera.raw.projectionMatrixInverse;
+    this._uniforms.water.setSkyEnvMap(this._uniforms.tSkyEnvMap.value ?? null);
 
     // Vertical fov in radians (raw.fov is kept in sync with the engine).
     this._uniforms.fov.value = fovY;
@@ -2072,6 +2090,9 @@ export default class ThreeView<
    *   descriptor and plugin tasks, tasks cancelled while running), which take
    *   from the same cap, so a burst of them does not queue the next terrain
    *   mesh behind it. Each in-flight delegated job holds one pool task.
+   *   Other views on the shared pool count as external load too, but only
+   *   up to the cap minus this view's even share, so one view cannot take
+   *   every slot while another has tasks waiting.
    * - Whether to pause intake (and model feature adds and image fetches,
    *   which also run on the pool) while every pool worker is over its heap
    *   budget, so the draining workers reach a task boundary and recycle
@@ -2087,10 +2108,15 @@ export default class ThreeView<
       this._core?.setMaxWorkerTasks(maxTasks);
     }
 
-    const external = Math.max(
+    let external = Math.max(
       0,
       workerPoolLoad() - (this._workerTaskJobs?.inFlight() ?? 0),
     );
+    const holders = workerPoolHolders();
+    if (holders > 1) {
+      const fairShare = Math.floor(maxTasks / holders);
+      external = Math.min(external, maxTasks - fairShare);
+    }
     if (external !== this._workerExternalLoad) {
       this._workerExternalLoad = external;
       this._core?.setWorkerExternalLoad(external);
@@ -2173,6 +2199,11 @@ export default class ThreeView<
     this._rasterRevision = this._core?.rasterRevision() ?? this._rasterRevision;
 
     this._uniforms.time.value = updatedAt;
+    this._uniforms.water.update(
+      this._camera.raw.position,
+      this._camera.raw.matrixWorldInverse,
+      updatedAt,
+    );
 
     this._atmosphere._update(this._uniforms.terrainExaggeration.value);
 
@@ -3449,4 +3480,19 @@ export default class ThreeView<
 
 function newId() {
   return Math.random().toString(36).slice(2);
+}
+
+let engineReady: Promise<unknown> | undefined;
+
+/**
+ * wasm-bindgen's init only short-circuits once a call has finished, so views
+ * initializing concurrently must share one promise or the later instantiation
+ * replaces the module the earlier view's `Core` lives in.
+ */
+function initEngine() {
+  engineReady ??= initCore().catch((e: unknown) => {
+    engineReady = undefined;
+    throw e;
+  });
+  return engineReady;
 }

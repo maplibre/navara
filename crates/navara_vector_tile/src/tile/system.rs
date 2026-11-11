@@ -33,8 +33,8 @@ use crate::{
 
 use super::render::{OwningVectorTile, RenderedTile, VectorTileGpuCost};
 use super::traverse::{
-    TraversalResult, activate_all_renderable_features, activate_if_changed,
-    are_all_renderable_features_active, spawn_tile_entity, traverse_tile,
+    PendingActivations, TraversalResult, activate_if_changed, are_all_renderable_features_active,
+    spawn_tile_entity, traverse_tile, write_activation,
 };
 
 /// Generic tile update system that delegates to `TileSource::prepare_tile`.
@@ -181,6 +181,7 @@ pub fn update_tiles(
 
             qt.qt.get_mut(zero_tile_handle).unwrap().is_rendered = false;
 
+            let mut activations = PendingActivations::default();
             match traverse_tile(
                 &mut commands,
                 &source.source_id,
@@ -197,6 +198,7 @@ pub fn update_tiles(
                 &rendered_tiles,
                 &features,
                 &mut renderable_features,
+                &mut activations,
                 &fog,
                 dynamic_sse,
                 degrade,
@@ -218,14 +220,16 @@ pub fn update_tiles(
                         &frame,
                         zero_tile_handle,
                     );
-                    activate_all_renderable_features(
-                        &tc,
-                        &zero_tile_handle,
-                        &rendered_tiles,
-                        &features,
-                        &mut renderable_features,
-                        true,
-                    );
+                    for handle in activations.activate(zero_tile_handle, 0..activations.mark()) {
+                        write_activation(
+                            &mut tc,
+                            &handle,
+                            &rendered_tiles,
+                            &features,
+                            &mut renderable_features,
+                            false,
+                        );
+                    }
 
                     qt.qt.get_mut(zero_tile_handle).unwrap().is_rendered = is_rendered;
                 }
@@ -242,8 +246,8 @@ pub fn update_tiles(
                     );
                 }
                 TraversalResult::ChildrenMeshPrepared => {
-                    activate_all_renderable_features(
-                        &tc,
+                    write_activation(
+                        &mut tc,
                         &zero_tile_handle,
                         &rendered_tiles,
                         &features,
@@ -253,6 +257,12 @@ pub fn update_tiles(
                 }
                 _ => {}
             };
+            activations.apply(
+                &mut tc,
+                &rendered_tiles,
+                &features,
+                &mut renderable_features,
+            );
 
             if std::mem::take(&mut tc.drape_sources_changed) {
                 terrain.2.bump();
@@ -386,9 +396,8 @@ pub fn transfer_mesh(
 /// Neither the composite atlas nor the drape render targets are charged here:
 /// both are owned per *terrain* tile (not per vector tile) and scale with
 /// terrain subdivision past the vector `maxZoom`, which per-vector-tile
-/// accounting cannot see. The atlas is charged on the terrain tile in
-/// `attach_terrain_mesh_cost`; the drape render targets are reported from JS
-/// against `TerrainTileGpuCost.drape` (see `report_terrain_drape_gpu_bytes`).
+/// accounting cannot see. Both are reported from JS against
+/// `TerrainTileGpuCost.drape` (see `report_terrain_drape_gpu_bytes`).
 ///
 /// Billboard image atlases are also not charged here — they are allocated
 /// lazily on the JS side (images load after the tile finalizes) and are folded

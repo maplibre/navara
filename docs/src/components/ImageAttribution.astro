@@ -187,6 +187,24 @@ const credits = items.map((it) => (typeof it === "string" ? { text: it } : it));
   .nv-attrib-bl .nv-attrib-list::before {
     bottom: -10px;
   }
+  /* Set by the script when the tooltip does not fit on its corner's side of
+     the icon and the other side has more room. */
+  .nv-attrib.nv-attrib-below .nv-attrib-list {
+    top: calc(100% + 6px);
+    bottom: auto;
+  }
+  .nv-attrib.nv-attrib-below .nv-attrib-list::before {
+    top: -10px;
+    bottom: auto;
+  }
+  .nv-attrib.nv-attrib-above .nv-attrib-list {
+    top: auto;
+    bottom: calc(100% + 6px);
+  }
+  .nv-attrib.nv-attrib-above .nv-attrib-list::before {
+    top: auto;
+    bottom: -10px;
+  }
   /* Each credit links to its source's terms/attribution page — kept white,
      distinguished by the underline (no colour change on hover). */
   .nv-attrib-list a {
@@ -236,14 +254,33 @@ const credits = items.map((it) => (typeof it === "string" ? { text: it } : it));
   // the overflow, so it spreads into whatever space is actually there. It is a
   // nudge, not a flip: flipping to the opposite side would abandon the space on
   // the crowded side and can overflow the other edge on a narrow screen.
+  // Vertically it does flip: a tall tooltip that overflows the viewport edge on
+  // its corner's side opens on the other side of the icon when that side has
+  // more room. A page with a fixed header sets `--nv-attrib-top-inset` to its
+  // height, so the tooltip also clears the header.
   const PAD = 8;
-  const fit = (attr: Element) => {
+  const fit = (attr: HTMLElement) => {
     const list = attr.querySelector<HTMLElement>(".nv-attrib-list");
     if (!list) return;
-    // Reset to the CSS default alignment, then re-measure.
+    // Reset to the CSS default placement, then re-measure.
+    attr.classList.remove("nv-attrib-below", "nv-attrib-above");
     list.style.left = "";
     list.style.right = "";
-    const r = list.getBoundingClientRect();
+    const topInset = parseFloat(getComputedStyle(attr).getPropertyValue("--nv-attrib-top-inset")) || 0;
+    const minY = topInset + PAD;
+    const maxY = window.innerHeight - PAD;
+    const icon = attr.getBoundingClientRect();
+    const roomAbove = icon.top - minY;
+    const roomBelow = maxY - icon.bottom;
+    const opensUp = !attr.classList.contains("nv-attrib-tr") && !attr.classList.contains("nv-attrib-tl");
+    let r = list.getBoundingClientRect();
+    if (opensUp && r.top < minY && roomBelow > roomAbove) {
+      attr.classList.add("nv-attrib-below");
+      r = list.getBoundingClientRect();
+    } else if (!opensUp && r.bottom > maxY && roomAbove > roomBelow) {
+      attr.classList.add("nv-attrib-above");
+      r = list.getBoundingClientRect();
+    }
     // Positive dx slides the tooltip right. Clearing the left edge wins when
     // the tooltip is too wide for the viewport: text is read from the left.
     let dx = 0;

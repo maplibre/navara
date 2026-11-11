@@ -8,7 +8,7 @@ use navara_data_requester::{DataManager, DataRequester, DataRequesterExtension};
 use navara_layer::TilesLayer;
 use navara_tile_component::{TerrainTile, TileHandle, TileTextureFragmentMarker};
 
-use crate::hillshade::HillshadeTextureMarker;
+use crate::hillshade::{HillshadeElevationDecoder, HillshadeTextureMarker};
 
 /// Request hillshade textures for a terrain tile, one `DataRequester` per in-zoom hillshade layer.
 /// `sorted_tiles` is the layer list sorted by `Order`, collected once per system
@@ -145,6 +145,12 @@ pub(crate) fn request_hillshade_data_requester(
             priority,
         ));
 
+        // Decode this layer's DEM with its own source's decoder (the terrain
+        // may use another source, or none).
+        if let navara_source::Source::RasterDem(dem) = source {
+            entity_commands.insert(HillshadeElevationDecoder(dem.elevation_decoder));
+        }
+
         // If another consumer already enqueued a fetch AND we're still pending,
         // insert Requested marker so this consumer waits for the shared fetch.
         if should_wait_for_fetch {
@@ -226,6 +232,19 @@ mod tests {
     where
         F: FnOnce(&mut TerrainTile) + Send + Sync + 'static,
     {
+        run_request_app(layers, tile_z, prepare).1
+    }
+
+    /// [`run_request`], also returning the app so tests can inspect the
+    /// spawned requester entities.
+    fn run_request_app<F>(
+        layers: Vec<((TilesLayer, navara_source::Source), Order)>,
+        tile_z: usize,
+        prepare: F,
+    ) -> (App, CapturedSlots)
+    where
+        F: FnOnce(&mut TerrainTile) + Send + Sync + 'static,
+    {
         let mut app = App::new();
         app.init_resource::<BufferStore>();
         app.init_resource::<CapturedSlots>();
@@ -277,7 +296,40 @@ mod tests {
             },
         );
         app.update();
-        app.world().resource::<CapturedSlots>().clone()
+        let captured = app.world().resource::<CapturedSlots>().clone();
+        (app, captured)
+    }
+
+    /// The hillshade requester carries its own source's DEM decoder, so the
+    /// normal map decodes with it rather than the terrain's.
+    #[test]
+    fn hillshade_requester_carries_its_source_decoder() {
+        let layer = TilesLayer {
+            layer_id: "dem".to_string(),
+            source_id: Some("dem".to_string()),
+            appearance: Some(Appearance::TerrainTile(RasterMaterial::default())),
+            elevation_heatmap_config: None,
+            hillshade_config: Some(HillshadeConfig { exaggeration: 1.0 }),
+        };
+        let source = navara_source::Source::RasterDem(navara_source::RasterDemSource {
+            source_id: "dem".to_string(),
+            url: "https://example.com/{z}/{x}/{y}.png".to_string(),
+            tms: false,
+            elevation_decoder: navara_core::MAPBOX_ELEVATION_DECODER,
+            tile_size: 256,
+            min_zoom: 0,
+            max_zoom: 20,
+            overscaled_max_zoom: 24,
+        });
+
+        let (app, captured) = run_request_app(vec![((layer, source), Order(0))], 5, |_| {});
+
+        let entity = captured.hill_ids[0].expect("hillshade requested");
+        let decoder = app
+            .world()
+            .get::<HillshadeElevationDecoder>(entity)
+            .expect("decoder attached");
+        assert_eq!(decoder.0, navara_core::MAPBOX_ELEVATION_DECODER);
     }
 
     /// The terrain-side helper only requests hillshade layers; regular (texture)

@@ -131,6 +131,56 @@ terrainLayer.update({
 });
 ```
 
+### waterMaskColor
+
+**Type:** `Color | undefined`
+
+**Description:** ソースの watermask が示す水域の水の色です。`quantized-mesh` ソースの `requestWaterMask` が必要です。水面は空や太陽の映り込みの下にこの色を見せます。指定しない場合は水面の下の画像や地球の色を使います。航空写真では沖合の海が明るい一様な青になることが多く、`#0d1c2c` のような暗い色にすると深い外洋に近くなります。`undefined` を渡すと水面の下の画像や地球の色を使います。
+
+```typescript
+terrainLayer.update({
+  terrain: { waterMaskColor: new Color().setStyle("#0d1c2c") },
+});
+```
+
+### waveExaggeration
+
+**Type:** `number | undefined`
+
+**Description:** ソースの watermask が示す水域について、波の大きさと速さを保ったまま傾きを拡大縮小します。`0` では静かな鏡のような水面になります。`quantized-mesh` ソースの `requestWaterMask` が必要です。
+
+**Default:** `1`
+
+### waveStrength
+
+**Type:** `number | undefined`
+
+**Description:** ソースの watermask が示す水域の波の大きさ、急さ、速さを決めます。`quantized-mesh` ソースの `requestWaterMask` が必要です。`1` 程度で穏やかなさざ波、`5` で標準、`20` で荒天になります。
+
+**Default:** `5`
+
+### waveDirection
+
+**Type:** `number | undefined`
+
+**Description:** watermask の水域の波が進む方向で、北から時計回りの角度（度）です。
+
+**Default:** `0`
+
+### flowSpeed
+
+**Type:** `number | undefined`
+
+**Description:** watermask の水域の波を `waveDirection` の向きに運ぶ流れの速さ（m/s）です。波の大きさや傾きは変わりません。
+
+**Default:** `0`
+
+```typescript
+terrainLayer.update({
+  terrain: { waveStrength: 12, waveDirection: 225, flowSpeed: 2 },
+});
+```
+
 ## 他のレイヤーとの組み合わせ
 
 terrain レイヤーは 3D の地表のみを提供します。[`raster`](../../../three/layer/raster-layer/) レイヤーでその上に画像や陰影起伏をドレープします。

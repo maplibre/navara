@@ -1,5 +1,5 @@
 import type ThreeView from "@navaramap/three";
-import { Color } from "@navaramap/three";
+import { Color, getDefaultSunShadow } from "@navaramap/three";
 import {
   LightDesc,
   type LightConfig,
@@ -39,6 +39,7 @@ export class SunLightDesc extends LightDesc<
     const color = options.color ? options.color.raw : undefined;
 
     const sunLight = new SunLight(this.view.camera.raw, {
+      ...getDefaultSunShadow({ isMobile: this.view.isMobileOptimized() }),
       ...options,
       ...(color ? { color } : {}),
     } as SunLightOptions);

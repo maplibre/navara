@@ -225,7 +225,7 @@ const snow = view.addMesh<SnowMeshDesc>({
 
 ## 水面を追加する（地形のウォーターマスク）
 
-Cesium quantized-mesh タイルは、メッシュと一緒に**ウォーターマスク**を持つことができます。ソースに `requestWaterMask: true` を指定すると、マスクされたピクセルが水面としてシェーディングされます。太陽のグレアを受け、環境マップや [SSR](#ssrスクリーンスペース反射との組み合わせ) の反射も乗る、反射率が高くラフネスの低い面になります。追加のソースやレイヤーは不要です。
+Cesium quantized-mesh タイルは、メッシュと一緒に**ウォーターマスク**を持つことができます。ソースに `requestWaterMask: true` を指定すると、マスクされたピクセルが水面としてシェーディングされます。マスクされたピクセルには `water` マテリアルと同じ波が、地形レイヤーの `waveStrength` と `waveDirection` に従って付き、空、太陽、[SSR](#ssrスクリーンスペース反射との組み合わせ) の反射が乗ります。追加のソースやレイヤーは不要です。
 
 ```typescript
 const terrainSource = view.addSource({
@@ -418,5 +418,5 @@ view.setCamera({ lng: 139.88, lat: 35.42, height: 2800, heading: 250, pitch: -16
 - **3D Tiles のモデル**: `roughness`/`metalness` を調整し、`castShadow`/`receiveShadow` を適切に有効化してください
 - **時間帯の調整**: `new Date("2026-01-01T08:00:00+09:00")` のように、タイムゾーンオフセット付きの ISO 文字列で時刻を設定してください
 - **天候の切り替え**: 雨と雪は `.visible` プロパティで切り替えられます
-- **水面の調整**: `waterSpeed` や `waterScaleNormal` で波の動きを調整できます
+- **水面の調整**: `waveStrength`、`waveDirection`、`flowSpeed` でレイヤーごとの波を設定し、`waveExaggeration` で波の高さを調整できます
 :::

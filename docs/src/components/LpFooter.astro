@@ -1,9 +1,10 @@
 ---
-// The site footer shared by the landing page and the brand assets page: the
-// link row (labels from src/data/lp-locales/<locale>.json, targets from
-// src/data/lp.json) and the license credit. Transparent by design — the LP
-// lays it over the closing globe still, the brand assets page paints it as a
-// primary band — and positioned by the page that places it.
+// The site footer shared by the landing page, the brand assets page and the
+// showcases page: the link row (labels from src/data/lp-locales/<locale>.json,
+// targets from src/data/lp.json) and the license credit. Transparent by
+// design — the LP lays it over the closing globe still, the brand assets and
+// showcases pages paint it as a primary band — and positioned by the page that
+// places it.
 import lp from "../data/lp.json";
 import { docsHref, getLpLocale, siteHref } from "./lp-shared";
 
@@ -22,6 +23,7 @@ const { links } = lp;
 <footer class="lp-footer" data-reveal-group={reveal ? "" : undefined}>
   <div class="lp-footer-links">
     <a href={docsHref(locale, links.docs)}>{t.footer.docs}</a>
+    <a href={siteHref(locale, links.showcases)}>{t.footer.showcases}</a>
     <a href={links.github}>{t.footer.github}</a>
     <a href={links.discord}>{t.footer.discord}</a>
     <a href={siteHref(locale, links.brandAssets)}>{t.footer.brandAssets}</a>
@@ -46,7 +48,7 @@ const { links } = lp;
     color: var(--on-dark);
   }
   .lp .lp-footer-links a:hover {
-    color: var(--acc);
+    color: var(--acc-brand);
   }
   .lp-footer-credit {
     margin-top: 28px;

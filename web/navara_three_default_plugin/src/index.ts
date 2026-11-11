@@ -56,6 +56,7 @@ import {
   InstancedGltfModelMeshDesc,
   type InstancedGltfModelMeshConfig,
   AerialPerspectiveEffectDesc,
+  BuildingWindowsEffectDesc,
   CloudsEffectDesc,
   ColorGradingLUTEffectDesc,
   DepthOfFieldEffectDesc,
@@ -70,6 +71,7 @@ import {
   SSREffectDesc,
   ToneMappingEffectDesc,
   type AerialPerspectiveConfig,
+  type BuildingWindowsConfig,
   type CloudsConfig,
   type ColorGradingLUTConfig,
   type DepthOfFieldConfig,
@@ -136,6 +138,7 @@ export class DefaultPlugin extends Plugin<
 
     // Register effects
     view.registerEffect("aerialPerspective", AerialPerspectiveEffectDesc);
+    view.registerEffect("buildingWindows", BuildingWindowsEffectDesc);
     view.registerEffect("rainDrop", RainDropEffectDesc);
     view.registerEffect("selectiveBloom", SelectiveBloomEffectDesc);
     view.registerEffect("selectiveOutline", SelectiveOutlineEffectDesc);
@@ -259,6 +262,7 @@ export type DefaultLightDescription =
 
 export type DefaultEffectDescription =
   | AerialPerspectiveConfig
+  | BuildingWindowsConfig
   | CloudsConfig
   | ColorGradingLUTConfig
   | DepthOfFieldConfig

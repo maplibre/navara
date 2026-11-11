@@ -23,12 +23,16 @@ const BUTTON_CSS = `
   top: 16px;
   left: 16px;
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
+  /* Wrap onto more rows on a narrow screen instead of running off it. */
+  max-width: calc(100vw - 32px);
   font-family: system-ui, sans-serif;
 }
 .${BUTTON_BAR_CLASS}--right {
   left: auto;
   right: 16px;
+  justify-content: flex-end;
 }
 .${BUTTON_CLASS} {
   padding: 8px 14px;

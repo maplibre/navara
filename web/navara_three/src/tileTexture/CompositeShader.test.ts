@@ -59,7 +59,8 @@ describe("generateCompositeFragmentShader", () => {
       hasHillshade: true,
     });
     expect(src).toContain("uniform bool uIsHillshades[2];");
-    expect(src).toContain("uniform float uHillshadeExaggeration;");
+    // Exaggeration is applied once, by the TileMesh shader, not here.
+    expect(src).not.toContain("uHillshadeExaggeration");
     expect(src).toContain("hillshadeNormal = n0 * 0.5 + 0.5;");
     expect(src).toContain("hillshadeNormal = n1 * 0.5 + 0.5;");
     // Hillshade slots must contribute no color to the composite.
@@ -127,7 +128,7 @@ describe("generateCompositeFragmentShader", () => {
     // Watermask priority: max() with step() over the slot-loop result so the
     // watermask flips isWater on even when no slot's uWaters[k] was true.
     expect(src).toMatch(
-      /isWater = max\(isWater, step\(0\.5, texture\(uWatermask, vUv\)\.r\)\);/,
+      /isWater = max\(isWater, step\(0\.5, nvrWatermaskBSpline\(vUv\)\)\);/,
     );
   });
 

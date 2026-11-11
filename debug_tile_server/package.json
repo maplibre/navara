@@ -1,15 +1,16 @@
 {
   "scripts": {
-    "dev": "tsx watch src/index.ts"
+    "dev": "tsx watch src/index.ts",
+    "device-log": "tsx src/deviceLog.ts"
   },
   "private": true,
   "dependencies": {
-    "@hono/node-server": "2.1.5",
+    "@hono/node-server": "2.1.6",
     "canvas": "3.2.3",
-    "hono": "4.13.13"
+    "hono": "4.13.16"
   },
   "devDependencies": {
-    "@types/node": "26.6.5",
+    "@types/node": "26.6.6",
     "tsx": "4.23.15"
   }
 }

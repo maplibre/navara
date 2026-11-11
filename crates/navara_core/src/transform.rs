@@ -91,7 +91,7 @@ fn local_frame_to_fixed_frame(
         third_vec = third.position();
     } else if origin.x.equal_epsilon(EPSILON14) && origin.y.equal_epsilon(EPSILON14) {
         // If x and y are zero, assume origin is at a pole, which is a special case.
-        let sign = origin.z.sin();
+        let sign = origin.z.signum();
 
         first_vec = first.position();
         if !matches!(first, LocalFrame::East | LocalFrame::West) {
@@ -161,7 +161,7 @@ mod test {
     const EPSILON5_VEC4: Vec4 = Vec4::new(EPSILON5, EPSILON5, EPSILON5, EPSILON5);
 
     use crate::{
-        UNIT_SPHERE_64,
+        UNIT_SPHERE_64, WGS84_64,
         transform::{
             north_east_down_to_fixed_frame, north_up_east_to_fixed_frame,
             north_west_up_to_fixed_frame,
@@ -193,15 +193,25 @@ mod test {
         assert_eq!(result.x_axis, Vec4::Y); // east
         assert_abs_diff_eq!(
             AbsDiffEqVec4(result.y_axis),
-            AbsDiffEqVec4(Vec4::new(-0.841471, 0.0, 0.0, 0.0)),
+            AbsDiffEqVec4(Vec4::new(-1.0, 0.0, 0.0, 0.0)),
             epsilon = EPSILON5_VEC4
         ); // north
         assert_abs_diff_eq!(
             AbsDiffEqVec4(result.z_axis),
-            AbsDiffEqVec4(Vec4::new(0.0, 0.0, 0.841471, 0.0)),
+            AbsDiffEqVec4(Vec4::new(0.0, 0.0, 1.0, 0.0)),
             epsilon = EPSILON5_VEC4
         ); // up
         assert_eq!(result.w_axis, expected_translation); // translation
+    }
+
+    #[test]
+    fn it_keeps_unit_axes_with_up_outward_at_the_wgs84_north_pole() {
+        let origin = Vec3::new(0.0, 0.0, 6356752.314245);
+
+        let result = east_north_up_to_fixed_frame(origin, WGS84_64);
+        assert_eq!(result.x_axis, Vec4::Y); // east
+        assert_eq!(result.y_axis, Vec4::NEG_X); // north
+        assert_eq!(result.z_axis, Vec4::Z); // up
     }
 
     #[test]
@@ -213,12 +223,12 @@ mod test {
         assert_eq!(result.x_axis, Vec4::Y); // east
         assert_abs_diff_eq!(
             AbsDiffEqVec4(result.y_axis),
-            AbsDiffEqVec4(Vec4::new(0.841471, 0., 0., 0.)),
+            AbsDiffEqVec4(Vec4::new(1.0, 0., 0., 0.)),
             epsilon = EPSILON5_VEC4
         ); // north
         assert_abs_diff_eq!(
             AbsDiffEqVec4(result.z_axis),
-            AbsDiffEqVec4(Vec4::new(0.0, 0.0, -0.841471, 0.0)),
+            AbsDiffEqVec4(Vec4::new(0.0, 0.0, -1.0, 0.0)),
             epsilon = EPSILON5_VEC4
         ); // up
         assert_eq!(result.w_axis, expected_translation); // translation
@@ -258,13 +268,13 @@ mod test {
         let result = north_east_down_to_fixed_frame(origin, UNIT_SPHERE_64);
         assert_abs_diff_eq!(
             AbsDiffEqVec4(result.x_axis),
-            AbsDiffEqVec4(Vec4::new(-0.841471, 0.0, 0.0, 0.0)),
+            AbsDiffEqVec4(Vec4::new(-1.0, 0.0, 0.0, 0.0)),
             epsilon = EPSILON5_VEC4
         ); // east
         assert_eq!(result.y_axis, Vec4::Y); // north
         assert_abs_diff_eq!(
             AbsDiffEqVec4(result.z_axis),
-            AbsDiffEqVec4(Vec4::new(0.0, 0.0, -0.841471, 0.0)),
+            AbsDiffEqVec4(Vec4::new(0.0, 0.0, -1.0, 0.0)),
             epsilon = EPSILON5_VEC4
         ); // up
         assert_eq!(result.w_axis, expected_translation); // translation
@@ -278,13 +288,13 @@ mod test {
         let result = north_east_down_to_fixed_frame(origin, UNIT_SPHERE_64);
         assert_abs_diff_eq!(
             AbsDiffEqVec4(result.x_axis),
-            AbsDiffEqVec4(Vec4::new(0.841471, 0., 0., 0.)),
+            AbsDiffEqVec4(Vec4::new(1.0, 0., 0., 0.)),
             epsilon = EPSILON5_VEC4
         ); // east
         assert_eq!(result.y_axis, Vec4::Y); // north
         assert_abs_diff_eq!(
             AbsDiffEqVec4(result.z_axis),
-            AbsDiffEqVec4(Vec4::new(0.0, 0.0, 0.841471, 0.0)),
+            AbsDiffEqVec4(Vec4::new(0.0, 0.0, 1.0, 0.0)),
             epsilon = EPSILON5_VEC4
         ); // up
         assert_eq!(result.w_axis, expected_translation); // translation
@@ -324,12 +334,12 @@ mod test {
         let result = north_up_east_to_fixed_frame(origin, UNIT_SPHERE_64);
         assert_abs_diff_eq!(
             AbsDiffEqVec4(result.x_axis),
-            AbsDiffEqVec4(Vec4::new(-0.841471, 0.0, 0.0, 0.0)),
+            AbsDiffEqVec4(Vec4::new(-1.0, 0.0, 0.0, 0.0)),
             epsilon = EPSILON5_VEC4
         ); // east
         assert_abs_diff_eq!(
             AbsDiffEqVec4(result.y_axis),
-            AbsDiffEqVec4(Vec4::new(0.0, 0.0, 0.841471, 0.0)),
+            AbsDiffEqVec4(Vec4::new(0.0, 0.0, 1.0, 0.0)),
             epsilon = EPSILON5_VEC4
         ); // north
         assert_eq!(result.z_axis, Vec4::Y); // up
@@ -344,12 +354,12 @@ mod test {
         let result = north_up_east_to_fixed_frame(origin, UNIT_SPHERE_64);
         assert_abs_diff_eq!(
             AbsDiffEqVec4(result.x_axis),
-            AbsDiffEqVec4(Vec4::new(0.841471, 0., 0., 0.)),
+            AbsDiffEqVec4(Vec4::new(1.0, 0., 0., 0.)),
             epsilon = EPSILON5_VEC4
         ); // east
         assert_abs_diff_eq!(
             AbsDiffEqVec4(result.y_axis),
-            AbsDiffEqVec4(Vec4::new(0.0, 0.0, -0.841471, 0.0)),
+            AbsDiffEqVec4(Vec4::new(0.0, 0.0, -1.0, 0.0)),
             epsilon = EPSILON5_VEC4
         ); // north
         assert_eq!(result.z_axis, Vec4::Y); // up
@@ -390,13 +400,13 @@ mod test {
         let result = north_west_up_to_fixed_frame(origin, UNIT_SPHERE_64);
         assert_abs_diff_eq!(
             AbsDiffEqVec4(result.x_axis),
-            AbsDiffEqVec4(Vec4::new(-0.841471, 0.0, 0.0, 0.0)),
+            AbsDiffEqVec4(Vec4::new(-1.0, 0.0, 0.0, 0.0)),
             epsilon = EPSILON5_VEC4
         ); // east
         assert_eq!(result.y_axis, Vec4::NEG_Y); // north
         assert_abs_diff_eq!(
             AbsDiffEqVec4(result.z_axis),
-            AbsDiffEqVec4(Vec4::new(0.0, 0.0, 0.841471, 0.0)),
+            AbsDiffEqVec4(Vec4::new(0.0, 0.0, 1.0, 0.0)),
             epsilon = EPSILON5_VEC4
         ); // up
         assert_eq!(result.w_axis, expected_translation); // translation
@@ -410,13 +420,13 @@ mod test {
         let result = north_west_up_to_fixed_frame(origin, UNIT_SPHERE_64);
         assert_abs_diff_eq!(
             AbsDiffEqVec4(result.x_axis),
-            AbsDiffEqVec4(Vec4::new(0.841471, 0., 0., 0.)),
+            AbsDiffEqVec4(Vec4::new(1.0, 0., 0., 0.)),
             epsilon = EPSILON5_VEC4
         ); // east
         assert_eq!(result.y_axis, Vec4::NEG_Y); // north
         assert_abs_diff_eq!(
             AbsDiffEqVec4(result.z_axis),
-            AbsDiffEqVec4(Vec4::new(0.0, 0.0, -0.841471, 0.0)),
+            AbsDiffEqVec4(Vec4::new(0.0, 0.0, -1.0, 0.0)),
             epsilon = EPSILON5_VEC4
         ); // up
         assert_eq!(result.w_axis, expected_translation); // translation

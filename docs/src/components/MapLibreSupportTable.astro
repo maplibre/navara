@@ -340,23 +340,45 @@ switch (category) {
     break;
   }
   case "source": {
-    // Source types
+    // Source types as headers, each followed by its properties
     const sourceTypes = (maplibreReference?.source || []).flatMap((sourceKey: string) =>
       Object.keys(maplibreReference[sourceKey]?.type?.values || {})
     );
-    rows = sourceTypes.map((name: string) => {
+    const statusOf = (item: any): string =>
+      item ? (typeof item === "string" ? item : item.status) : "❌";
+
+    for (const name of sourceTypes) {
       const supported = supportedItems[name];
-      const status = supported
-        ? typeof supported === "string"
-          ? supported
-          : (supported as any).status
-        : "❌";
-      return {
+      const typeUrl = `${MAPLIBRE_SPEC_BASE}/${categoryPath}/#${realAnchors.get(name) || name}`;
+      rows.push({
         name,
-        url: `${MAPLIBRE_SPEC_BASE}/${categoryPath}/#${realAnchors.get(name) || name}`,
-        status,
-      };
-    });
+        url: typeUrl,
+        status: statusOf(supported),
+        isHeader: true,
+      });
+
+      // The spec lists a source type's properties under `source_<type>`
+      const specKey = `source_${name.replace(/-/g, "_")}`;
+      const props = Object.keys(maplibreReference?.[specKey] || {}).filter(
+        key => !key.startsWith('*') && key !== 'type'
+      );
+      for (const propName of props) {
+        let status: string;
+        if (propName === "encoding" && supported?.encoding) {
+          // Supported encodings are listed as children of the source type
+          const unsupported = Object.entries(supported.encoding)
+            .filter(([, value]) => statusOf(value).startsWith("❌"))
+            .map(([encoding]) => encoding);
+          status = unsupported.length
+            ? `⚠️ Not supported: ${unsupported.join(", ")}`
+            : "✅";
+        } else {
+          status = statusOf(supported?.properties?.[propName]);
+        }
+        // The spec page has one section per source type; link to it
+        rows.push({ name: `  ${propName}`, url: typeUrl, status });
+      }
+    }
     break;
   }
   case "expression": {

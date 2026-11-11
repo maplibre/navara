@@ -51,10 +51,9 @@ const ZOOM_FOLLOWING_SYMBOL_PROPERTIES = {
     "icon-padding",
     "text-optional",
     "icon-optional",
+    "text-line-height",
   ],
   paint: [
-    "text-halo-color",
-    "text-halo-width",
     "text-translate",
     "text-translate-anchor",
     "icon-translate",
@@ -77,6 +76,15 @@ export function symbolLayerFollowsZoom(styleLayer: StyleLayer): boolean {
 }
 
 /**
+ * Whether a hillshade layer's exaggeration depends on zoom, so its
+ * description must be rebuilt as the zoom changes.
+ */
+export function hillshadeLayerFollowsZoom(styleLayer: StyleLayer): boolean {
+  if (styleLayer.type !== "hillshade") return false;
+  return expressionUsesZoom(styleLayer.paint?.["hillshade-exaggeration"]);
+}
+
+/**
  * Whether a color-relief layer's opacity or resampling depends on zoom, so its
  * description must be rebuilt as the zoom changes.
  */
@@ -87,6 +95,37 @@ export function colorReliefLayerFollowsZoom(styleLayer: StyleLayer): boolean {
     expressionUsesZoom(paint["color-relief-opacity"]) ||
     expressionUsesZoom(paint.resampling)
   );
+}
+
+type LayerValueFn = ReturnType<StyleEngine["createValueFn"]>;
+
+/**
+ * Compiled layer-level property functions. Zoom-following layers evaluate the
+ * same property on every zoom change, and compiling an expression is the
+ * costly part. A function depends only on the layer's expression and spec,
+ * so it is kept for the lifetime of the layer object. Not keyed by engine: the
+ * plugin uses a single engine, so a layer is never evaluated by two.
+ */
+const layerValueFns = new WeakMap<StyleLayer, Map<string, LayerValueFn>>();
+
+function layerValueFn(
+  engine: StyleEngine,
+  styleLayer: StyleLayer,
+  kind: "layout" | "paint",
+  key: string,
+  expr: ValueExpression,
+  spec: Parameters<StyleEngine["createValueFn"]>[1],
+): LayerValueFn {
+  let byKey = layerValueFns.get(styleLayer);
+  if (!byKey) layerValueFns.set(styleLayer, (byKey = new Map()));
+
+  const cacheKey = `${kind}:${key}`;
+  let fn = byKey.get(cacheKey);
+  if (!fn) {
+    fn = engine.createValueFn(expr, spec);
+    byKey.set(cacheKey, fn);
+  }
+  return fn;
 }
 
 /**
@@ -113,7 +152,11 @@ function evaluateLayerProperty(
   if (expr === undefined) return undefined;
 
   try {
-    return engine.createValueFn(
+    return layerValueFn(
+      engine,
+      styleLayer,
+      kind,
+      key,
       expr,
       spec,
     )({
@@ -156,16 +199,26 @@ export function getSymbolPlacement(
 /**
  * Source geometry a symbol layer consumes. Along-line placement takes lines
  * only. Point placement labels every geometry, as MapLibre does: a line once
- * at its first vertex, a polygon at its pole of inaccessibility. The plugin
- * evaluates a symbol layer's filter as a single geometry type, though, so a
- * filter that tests it (`$type`, `["geometry-type"]`) would pass lines and
- * polygons as points; such layers keep the native point geometry only.
+ * at its first vertex, a polygon at its pole of inaccessibility.
  */
 function getSymbolGeometryTypes(
   styleLayer: StyleLayer,
   placement: SymbolPlacement,
 ): SourceGeometryType[] | undefined {
   if (placement !== "point") return ["line"];
+  return getAllGeometryTypesUnlessFiltered(styleLayer);
+}
+
+/**
+ * Every source geometry type, for a point-like layer (circle, point-placed
+ * symbol) that MapLibre draws on lines and polygons too. The plugin evaluates
+ * such a layer's filter as a single geometry type (`"Point"`), though, so a
+ * filter that tests it (`$type`, `["geometry-type"]`) would pass lines and
+ * polygons as points; such layers keep the native point geometry only.
+ */
+function getAllGeometryTypesUnlessFiltered(
+  styleLayer: StyleLayer,
+): SourceGeometryType[] | undefined {
   const filter = "filter" in styleLayer ? styleLayer.filter : undefined;
   return expressionUsesGeometryType(filter)
     ? undefined
@@ -312,6 +365,9 @@ function createFillLayer(
     ...getSourceLayersField(styleLayer),
     polygon: {
       clampToGround: true,
+      // MapLibre draws edges straight in Web Mercator and keeps longitudes
+      // past ±180° as given.
+      geodesic: false,
     },
   };
 }
@@ -347,6 +403,8 @@ function createLineLayer(
     ...getSourceLayersField(styleLayer),
     polyline: {
       clampToGround: true,
+      // See createFillLayer.
+      geodesic: false,
       // Support deriving polylines from both line and polygon geometries
       // This allows line layers to render polygon boundaries (e.g., country borders)
       geometryTypes: ["line", "polygon"],
@@ -361,13 +419,30 @@ function createCircleLayer(
   source: Source,
   styleLayer: StyleLayer,
 ): LayerDescription {
+  const geometryTypes = getAllGeometryTypesUnlessFiltered(styleLayer);
+  const circleSpec = PAINT_SPECS_BY_TYPE.circle;
+  // Unset paint properties are not evaluated per feature, so the material
+  // carries the spec defaults; otherwise an unset `circle-color` would be the
+  // point material's own default, white.
+  const defaultColor = toNavaraColor(circleSpec["circle-color"].default);
   return {
     type: "vector",
     source,
     ...getSourceLayersField(styleLayer),
     point: {
       clampToGround: true,
-      anchor: "bottom",
+      ...(defaultColor && { color: defaultColor.color }),
+      // `circle-radius` is in screen pixels, and circles are centered on
+      // their point, as in MapLibre. `size` is the full width, so twice the
+      // radius.
+      size: 2 * circleSpec["circle-radius"].default,
+      sizeInMeters: false,
+      anchor: "center",
+      // MapLibre never collides circles: overlapping ones are all drawn.
+      declutter: false,
+      // MapLibre draws a circle at every vertex of lines and polygon rings,
+      // which is the default `placement: "point"`.
+      ...(geometryTypes && { geometryTypes }),
     },
   };
 }
@@ -383,13 +458,37 @@ function createRasterLayer(source: Source): LayerDescription {
 }
 
 /**
- * Create layer description for hillshade layer.
+ * Create layer description for hillshade layer. `hillshade-exaggeration` is
+ * passed through as Navara's exaggeration, evaluated at `zoom` (see
+ * {@link hillshadeLayerFollowsZoom}). When the style leaves it unset, Navara's
+ * own default applies rather than the spec default.
  */
-function createHillshadeLayer(source: Source): LayerDescription {
+function createHillshadeLayer(
+  source: Source,
+  styleLayer: StyleLayer,
+  engine?: StyleEngine,
+  zoom = CONSTRUCTION_ZOOM,
+): LayerDescription {
+  const isSet =
+    styleLayer.type === "hillshade" &&
+    styleLayer.paint?.["hillshade-exaggeration"] !== undefined;
+  const exaggeration =
+    engine && isSet
+      ? evaluateLayerProperty(
+          engine,
+          styleLayer,
+          "paint",
+          "hillshade-exaggeration",
+          zoom,
+        )
+      : undefined;
   return {
     type: "raster",
     source,
-    hillshade: {},
+    hillshade:
+      typeof exaggeration === "number" && Number.isFinite(exaggeration)
+        ? { exaggeration }
+        : {},
   };
 }
 
@@ -649,11 +748,6 @@ function createSymbolLayer(
       declutter: true, // Enable declutter to hide duplicate/overlapping labels
     };
 
-    // Apply text-halo properties (outlineColor/outlineWidth/outlineOpacity)
-    // TODO: Text halo is currently a layer-level property, evaluated at the layer's zoom with
-    // properties=undefined. This means text-halo expressions cannot use feature properties.
-    // To fix this, Navara's EvaluatedValue should support outlineColor/outlineWidth fields so
-    // they can be evaluated per-feature.
     if (engine && orientation && styleLayer.type === "symbol") {
       Object.assign(layerDesc.text, {
         placement,
@@ -676,68 +770,19 @@ function createSymbolLayer(
               ),
               10,
             ),
-        ...(geometryTypes && { geometryTypes }),
-        ...(alongLine && { spacing: orientation.spacing }),
-      } satisfies Partial<TextDescription>);
-
-      // Track color alpha separately to combine with explicit opacity at the end
-      let haloColorAlpha = 1.0;
-
-      if (styleLayer.paint?.["text-halo-color"] !== undefined) {
-        // Convert to Navara Color and extract alpha (don't set opacity yet)
-        const colorResult = toNavaraColor(
+        lineHeight: finiteOr(
           evaluateLayerProperty(
             engine,
             styleLayer,
-            "paint",
-            "text-halo-color",
+            "layout",
+            "text-line-height",
             zoom,
           ),
-        );
-        if (colorResult) {
-          layerDesc.text.outlineColor = colorResult.color;
-          haloColorAlpha = colorResult.alpha;
-        }
-      }
-
-      if (styleLayer.paint?.["text-halo-width"] !== undefined) {
-        const widthValue = evaluateLayerProperty(
-          engine,
-          styleLayer,
-          "paint",
-          "text-halo-width",
-          zoom,
-        );
-        if (typeof widthValue === "number" && Number.isFinite(widthValue)) {
-          // MapLibre text-halo-width is in screen pixels
-          // Navara outlineWidth is in texels at 64px/em reference density
-          // For now, use the value directly (may need adjustment based on text-size)
-          layerDesc.text.outlineWidth = widthValue;
-        }
-      }
-
-      // Combine color alpha with explicit opacity (if text-halo-opacity is evaluated in future)
-      // Only set opacity if a halo color was configured (avoid forcing default when no halo)
-      if (layerDesc.text.outlineColor !== undefined) {
-        const explicitOpacity = layerDesc.text.outlineOpacity;
-        // Only set opacity if there's an explicit value or the color has alpha < 1
-        // This preserves undefined behavior when haloColorAlpha === 1.0 (engine default)
-        if (explicitOpacity !== undefined || haloColorAlpha !== 1.0) {
-          const finalOpacity =
-            explicitOpacity !== undefined
-              ? haloColorAlpha * explicitOpacity
-              : haloColorAlpha;
-          // Validate finalOpacity is finite, fall back to 1.0 if NaN/Infinity
-          const validOpacity = Number.isFinite(finalOpacity)
-            ? finalOpacity
-            : 1.0;
-          // Clamp to [0, 1] to handle invalid input or multiplication overflow
-          layerDesc.text.outlineOpacity = Math.max(
-            0,
-            Math.min(1, validOpacity),
-          );
-        }
-      }
+          1.2,
+        ),
+        ...(geometryTypes && { geometryTypes }),
+        ...(alongLine && { spacing: orientation.spacing }),
+      } satisfies Partial<TextDescription>);
     }
   }
 
@@ -750,7 +795,8 @@ function createSymbolLayer(
  * @param source - Navara source object
  * @param styleLayer - MapLibre layer specification
  * @param fontFamily - Optional font family name for text rendering (ignores style's text-font)
- * @param engine - Optional style engine for evaluating expressions (e.g., text-halo properties)
+ * @param engine - Optional style engine for evaluating layer-level symbol
+ *   properties
  * @param zoom - Zoom to evaluate the layer-level symbol properties that can
  *   follow it at (see {@link symbolLayerFollowsZoom}); defaults to
  *   {@link CONSTRUCTION_ZOOM}
@@ -784,7 +830,7 @@ export function toLayerDescription(
     case "raster":
       return createRasterLayer(source);
     case "hillshade":
-      return createHillshadeLayer(source);
+      return createHillshadeLayer(source, styleLayer, engine, zoom);
     case "color-relief":
       return createColorReliefLayer(source, styleLayer, engine, zoom);
     case "symbol":

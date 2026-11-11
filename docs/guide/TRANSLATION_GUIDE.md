@@ -88,7 +88,7 @@ Translate all documentation under src/content/docs/ (excluding /ja/) into [langu
 - Import paths and package names
 - URLs and links
 - File paths
-- Component names and JSX/MDX tags (e.g., `<LinkCard>`, `<SimpleShowcase />`)
+- Component names and JSX/MDX tags (e.g., `<LinkCard>`, `<Tabs>`)
 - Intentional content in code examples (e.g., `"hello 京都"` as data)
 
 ### Frontmatter example
@@ -171,15 +171,11 @@ Add an entry for the new locale. See existing entries for the full list of folde
 }
 ```
 
-### Step 3: Add showcase translations in `src/data/showcase.json`
-
-Add the new locale key to each item's `translations` object.
-
-### Step 4: Create the locale directory and translate content
+### Step 3: Create the locale directory and translate content
 
 Mirror the root directory structure under the new locale directory. Every `.md` / `.mdx` file in the root should have a corresponding translated file.
 
-### Step 5: Verify
+### Step 4: Verify
 
 ```bash
 pnpm build

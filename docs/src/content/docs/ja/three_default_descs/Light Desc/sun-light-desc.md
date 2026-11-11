@@ -144,7 +144,7 @@ import { Color } from "@navaramap/three";
 
 **Description:** シャドウカスケードの数を指定します。カスケード数が多いほど影の品質分布が向上しますが、GPU リソースを多く消費します。
 
-**Default:** `4`
+**Default:** `4`（`mobileOptimization` が有効なときは `2`）
 
 **Example:**
 
@@ -162,7 +162,7 @@ import { Color } from "@navaramap/three";
 
 **Description:** シャドウマップの解像度（カスケードごと）を指定します。値が大きいほど影の品質が向上しますが、GPU メモリを多く消費します。
 
-**Default:** `2048`
+**Default:** `2048`（`mobileOptimization` が有効なときは `1024`）
 
 **Example:**
 
@@ -180,7 +180,7 @@ import { Color } from "@navaramap/three";
 
 **Description:** カメラからの最大距離で、この距離を超えると影は描画されません。単位はメートルです。
 
-**Default:** `50000`
+**Default:** `50000`（`mobileOptimization` が有効なときは `10000`）
 
 **Example:**
 
@@ -256,7 +256,7 @@ import { Color } from "@navaramap/three";
 
 **Description:** シャドウカスケード間のスムーズな遷移を有効にして、目に見える継ぎ目を減らします。
 
-**Default:** `true`
+**Default:** `true`（`mobileOptimization` が有効なときは `false`）
 
 **Example:**
 

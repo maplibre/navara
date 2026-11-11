@@ -38,7 +38,7 @@
     "@navaramap/three": "workspace:*",
     "@types/react": "19.3.0",
     "@types/react-dom": "19.3.0",
-    "@types/three": "0.186.0",
-    "three": "0.186.1"
+    "@types/three": "0.187.0",
+    "three": "0.187.0"
   }
 }

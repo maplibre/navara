@@ -27,7 +27,8 @@ export type DirtyReason =
   | "texture-binding"
   | "vector-revision"
   | "raster-revision"
-  | "hillshade";
+  | "hillshade"
+  | "watermask";
 
 /**
  * A composite atlas is a single MRT render target (count=3) with three named
@@ -44,6 +45,9 @@ export type CompositeAtlas = {
   readonly color: Texture;
   readonly attr: Texture;
   readonly normal: Texture;
+  /** three allocates the target on its first render, so an atlas that was
+   * never baked holds no GPU memory. Survives pooling. */
+  allocated: boolean;
   dispose: () => void;
 };
 
@@ -198,8 +202,6 @@ export type CompositeLayer =
  * versa). Consumed by the layer enhancers that own slot-independent uniforms.
  */
 export type CompositeGlobals = {
-  /** Hillshade normal exaggeration (shared across hillshade layers). */
-  hillshadeExaggeration: number;
   /** Quantized-mesh watermask (1×1 uniform or 256×256), or null. */
   watermask: Texture | null;
   /** Elevation heatmap colormap ramp, or null. */

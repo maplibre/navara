@@ -24,7 +24,6 @@ uniform vec2 uReprojectTerrainLat[4];
 //   .z  = clamp-to-top-edge flag, .w = clamp-to-bottom-edge flag (polar cap).
 uniform vec4 uReprojectMerc[4];
 uniform bool uIsHillshades[4];
-uniform float uHillshadeExaggeration;
 // Packed elevation heatmap params: (isElevationHeatmap, usesBilinear, colorMapRow, logBoundary)
 uniform vec4 uElevationHeatmapParams[4];
 // Per-layer (minHeight, maxHeight, stopCount, hasColorStops): the normalization range and the color ramp shape
@@ -33,7 +32,32 @@ uniform vec4 uElevationRGBScalersAndBoundaries[4];  // (r, g, b, boundary)
 uniform vec4 uElevationDecoderOffsets[4];  // (minOffset, maxOffset, epsilon, offset)
 uniform bool uWaters[4];
 
+
 uniform sampler2D uWatermask;
+
+// Cubic B-spline interpolation from four bilinear fetches; needs a
+// LinearFilter texture. A one-texel-wide line keeps 2/3 at its center and
+// survives the 0.5 threshold; an isolated texel drops to 4/9 and goes away.
+// ref: Sigg & Hadwiger, "Fast Third-Order Texture Filtering", GPU Gems 2 ch. 20
+float nvrWatermaskBSpline(const in vec2 uv) {
+  vec2 size = vec2(textureSize(uWatermask, 0));
+  vec2 coord = uv * size - 0.5;
+  vec2 index = floor(coord);
+  vec2 f = coord - index;
+  vec2 f2 = f * f;
+  vec2 f3 = f2 * f;
+  vec2 w0 = (1.0 - 3.0 * f + 3.0 * f2 - f3) / 6.0;
+  vec2 w1 = (4.0 - 6.0 * f2 + 3.0 * f3) / 6.0;
+  vec2 w2 = (1.0 + 3.0 * f + 3.0 * f2 - 3.0 * f3) / 6.0;
+  vec2 w3 = f3 / 6.0;
+  vec2 g0 = w0 + w1;
+  vec2 g1 = w2 + w3;
+  // Each fetch lands between two texels so the bilinear filter weighs them.
+  vec2 uv0 = (index - 0.5 + w1 / g0) / size;
+  vec2 uv1 = (index + 1.5 + w3 / g1) / size;
+  return g0.y * (g0.x * texture(uWatermask, uv0).r + g1.x * texture(uWatermask, vec2(uv1.x, uv0.y)).r)
+    + g1.y * (g0.x * texture(uWatermask, vec2(uv0.x, uv1.y)).r + g1.x * texture(uWatermask, uv1).r);
+}
 
 
 #if USE_ELEVATION_HEATMAP
@@ -671,8 +695,6 @@ void main() {
       vec2 hillshadeUv0 = clamp(vUv * uLayerUvScale[0] + uLayerUvOffset[0], vec2(0.0), vec2(1.0));
       vec3 n0 = texture2D(uTextures[0], hillshadeUv0).rgb * 2.0 - 1.0;
       n0 = normalize(n0);
-      n0.xy *= uHillshadeExaggeration;
-      n0 = normalize(n0);
       hillshadeNormal = n0 * 0.5 + 0.5; // store in [0,1]
       hasHillshadeNormal = true;
     }
@@ -683,8 +705,6 @@ void main() {
     if (normalMapSize1.x > 1 && normalMapSize1.y > 1) {
       vec2 hillshadeUv1 = clamp(vUv * uLayerUvScale[1] + uLayerUvOffset[1], vec2(0.0), vec2(1.0));
       vec3 n1 = texture2D(uTextures[1], hillshadeUv1).rgb * 2.0 - 1.0;
-      n1 = normalize(n1);
-      n1.xy *= uHillshadeExaggeration;
       n1 = normalize(n1);
       hillshadeNormal = n1 * 0.5 + 0.5; // store in [0,1]
       hasHillshadeNormal = true;
@@ -697,8 +717,6 @@ void main() {
       vec2 hillshadeUv2 = clamp(vUv * uLayerUvScale[2] + uLayerUvOffset[2], vec2(0.0), vec2(1.0));
       vec3 n2 = texture2D(uTextures[2], hillshadeUv2).rgb * 2.0 - 1.0;
       n2 = normalize(n2);
-      n2.xy *= uHillshadeExaggeration;
-      n2 = normalize(n2);
       hillshadeNormal = n2 * 0.5 + 0.5; // store in [0,1]
       hasHillshadeNormal = true;
     }
@@ -710,8 +728,6 @@ void main() {
       vec2 hillshadeUv3 = clamp(vUv * uLayerUvScale[3] + uLayerUvOffset[3], vec2(0.0), vec2(1.0));
       vec3 n3 = texture2D(uTextures[3], hillshadeUv3).rgb * 2.0 - 1.0;
       n3 = normalize(n3);
-      n3.xy *= uHillshadeExaggeration;
-      n3 = normalize(n3);
       hillshadeNormal = n3 * 0.5 + 0.5; // store in [0,1]
       hasHillshadeNormal = true;
     }
@@ -720,7 +736,7 @@ void main() {
   // Quantized-mesh watermask: 0 = land, 255 = water (per spec). Takes priority
   // over per-slot uWaters — even if no winning slot flagged water, watermask
   // can still mark this pixel as water. Threshold at 0.5 (byte > 127).
-  isWater = max(isWater, step(0.5, texture(uWatermask, vUv).r));
+  isWater = max(isWater, step(0.5, nvrWatermaskBSpline(vUv)));
 
   colorBuffer = compositedColor;
 
@@ -1249,7 +1265,6 @@ uniform vec2 uReprojectTerrainLat[2];
 //   .z  = clamp-to-top-edge flag, .w = clamp-to-bottom-edge flag (polar cap).
 uniform vec4 uReprojectMerc[2];
 uniform bool uIsHillshades[2];
-uniform float uHillshadeExaggeration;
 
 
 
@@ -1403,8 +1418,6 @@ void main() {
       vec2 hillshadeUv0 = clamp(vUv * uLayerUvScale[0] + uLayerUvOffset[0], vec2(0.0), vec2(1.0));
       vec3 n0 = texture2D(uTextures[0], hillshadeUv0).rgb * 2.0 - 1.0;
       n0 = normalize(n0);
-      n0.xy *= uHillshadeExaggeration;
-      n0 = normalize(n0);
       hillshadeNormal = n0 * 0.5 + 0.5; // store in [0,1]
       hasHillshadeNormal = true;
     }
@@ -1415,8 +1428,6 @@ void main() {
     if (normalMapSize1.x > 1 && normalMapSize1.y > 1) {
       vec2 hillshadeUv1 = clamp(vUv * uLayerUvScale[1] + uLayerUvOffset[1], vec2(0.0), vec2(1.0));
       vec3 n1 = texture2D(uTextures[1], hillshadeUv1).rgb * 2.0 - 1.0;
-      n1 = normalize(n1);
-      n1.xy *= uHillshadeExaggeration;
       n1 = normalize(n1);
       hillshadeNormal = n1 * 0.5 + 0.5; // store in [0,1]
       hasHillshadeNormal = true;
@@ -2604,7 +2615,32 @@ uniform vec2 uReprojectTerrainLat[2];
 uniform vec4 uReprojectMerc[2];
 
 
+
 uniform sampler2D uWatermask;
+
+// Cubic B-spline interpolation from four bilinear fetches; needs a
+// LinearFilter texture. A one-texel-wide line keeps 2/3 at its center and
+// survives the 0.5 threshold; an isolated texel drops to 4/9 and goes away.
+// ref: Sigg & Hadwiger, "Fast Third-Order Texture Filtering", GPU Gems 2 ch. 20
+float nvrWatermaskBSpline(const in vec2 uv) {
+  vec2 size = vec2(textureSize(uWatermask, 0));
+  vec2 coord = uv * size - 0.5;
+  vec2 index = floor(coord);
+  vec2 f = coord - index;
+  vec2 f2 = f * f;
+  vec2 f3 = f2 * f;
+  vec2 w0 = (1.0 - 3.0 * f + 3.0 * f2 - f3) / 6.0;
+  vec2 w1 = (4.0 - 6.0 * f2 + 3.0 * f3) / 6.0;
+  vec2 w2 = (1.0 + 3.0 * f + 3.0 * f2 - 3.0 * f3) / 6.0;
+  vec2 w3 = f3 / 6.0;
+  vec2 g0 = w0 + w1;
+  vec2 g1 = w2 + w3;
+  // Each fetch lands between two texels so the bilinear filter weighs them.
+  vec2 uv0 = (index - 0.5 + w1 / g0) / size;
+  vec2 uv1 = (index + 1.5 + w3 / g1) / size;
+  return g0.y * (g0.x * texture(uWatermask, uv0).r + g1.x * texture(uWatermask, vec2(uv1.x, uv0.y)).r)
+    + g1.y * (g0.x * texture(uWatermask, vec2(uv0.x, uv1.y)).r + g1.x * texture(uWatermask, uv1).r);
+}
 
 
 
@@ -2747,7 +2783,7 @@ void main() {
   // Quantized-mesh watermask: 0 = land, 255 = water (per spec). Takes priority
   // over per-slot uWaters — even if no winning slot flagged water, watermask
   // can still mark this pixel as water. Threshold at 0.5 (byte > 127).
-  isWater = max(isWater, step(0.5, texture(uWatermask, vUv).r));
+  isWater = max(isWater, step(0.5, nvrWatermaskBSpline(vUv)));
 
   colorBuffer = compositedColor;
 
@@ -2776,7 +2812,32 @@ varying vec2 vUv;
 
 
 
+
 uniform sampler2D uWatermask;
+
+// Cubic B-spline interpolation from four bilinear fetches; needs a
+// LinearFilter texture. A one-texel-wide line keeps 2/3 at its center and
+// survives the 0.5 threshold; an isolated texel drops to 4/9 and goes away.
+// ref: Sigg & Hadwiger, "Fast Third-Order Texture Filtering", GPU Gems 2 ch. 20
+float nvrWatermaskBSpline(const in vec2 uv) {
+  vec2 size = vec2(textureSize(uWatermask, 0));
+  vec2 coord = uv * size - 0.5;
+  vec2 index = floor(coord);
+  vec2 f = coord - index;
+  vec2 f2 = f * f;
+  vec2 f3 = f2 * f;
+  vec2 w0 = (1.0 - 3.0 * f + 3.0 * f2 - f3) / 6.0;
+  vec2 w1 = (4.0 - 6.0 * f2 + 3.0 * f3) / 6.0;
+  vec2 w2 = (1.0 + 3.0 * f + 3.0 * f2 - 3.0 * f3) / 6.0;
+  vec2 w3 = f3 / 6.0;
+  vec2 g0 = w0 + w1;
+  vec2 g1 = w2 + w3;
+  // Each fetch lands between two texels so the bilinear filter weighs them.
+  vec2 uv0 = (index - 0.5 + w1 / g0) / size;
+  vec2 uv1 = (index + 1.5 + w3 / g1) / size;
+  return g0.y * (g0.x * texture(uWatermask, uv0).r + g1.x * texture(uWatermask, vec2(uv1.x, uv0.y)).r)
+    + g1.y * (g0.x * texture(uWatermask, vec2(uv0.x, uv1.y)).r + g1.x * texture(uWatermask, uv1).r);
+}
 
 
 
@@ -2806,7 +2867,7 @@ void main() {
   // Quantized-mesh watermask: 0 = land, 255 = water (per spec). Takes priority
   // over per-slot uWaters — even if no winning slot flagged water, watermask
   // can still mark this pixel as water. Threshold at 0.5 (byte > 127).
-  isWater = max(isWater, step(0.5, texture(uWatermask, vUv).r));
+  isWater = max(isWater, step(0.5, nvrWatermaskBSpline(vUv)));
 
   colorBuffer = compositedColor;
 

@@ -1,6 +1,10 @@
-import WaterParsFragment from "@shaders/glsl/chunks/water_pars_fragment.glsl?raw";
 import type { WebGLProgramParametersWithUniforms } from "three";
 
+import {
+  WATER_REFS_UNIFORMS,
+  applyWaterDefine,
+  insertWaterChunk,
+} from "../../water";
 import {
   POLYGON_BASE_SHADER_MARKERS,
   createPolygonBaseShaderReplacer,
@@ -19,60 +23,29 @@ export const transformWaterShader = (
 ): void => {
   const { useWater } = state;
 
-  // Derive shader defines from semantic state flags
   shader.defines ??= {};
-  if (useWater) {
-    shader.defines.WATER = 1;
-    shader.defines.USE_UV = 1;
-  } else {
-    delete shader.defines.WATER;
-  }
+  applyWaterDefine(shader.defines, useWater);
 
   // Assign water uniform refs to shader.uniforms via mutates
   mutates.updateUniforms(shader.uniforms, state);
 
-  // Insert WaterParsFragment before the computeSpecular function (non-marker-based)
-  const computeSpecularMarker = "vec3 computeSpecular(";
-  const specularIdx = shader.fragmentShader.indexOf(computeSpecularMarker);
-  if (specularIdx !== -1) {
-    const beforeSpecular = shader.fragmentShader.substring(0, specularIdx);
-    const afterSpecular = shader.fragmentShader.substring(specularIdx);
-    shader.fragmentShader =
-      beforeSpecular + WaterParsFragment + "\n\n" + afterSpecular;
+  if (useWater) {
+    shader.fragmentShader = insertWaterChunk(shader.fragmentShader);
   }
 
-  shader.fragmentShader = createPolygonBaseShaderReplacer(shader.fragmentShader)
-    // Add water uniform declarations after base's UNIFORM_END
+  const replacer = createPolygonBaseShaderReplacer(shader.fragmentShader)
     .insertAfter(
       POLYGON_BASE_SHADER_MARKERS.fragment.UNIFORM_END,
-      `uniform sampler2D uWaterNormalMap;
-uniform float uWaterScaleNormal;
-uniform float uWaterSpeed;
-uniform float uShininess;
-uniform float uSpecularStrength;
-uniform float uApplyWaterNormal;
-uniform bool uSpecular;
-uniform float uIor;
-uniform float uTime;`,
+      WATER_REFS_UNIFORMS,
     )
-    // Insert specular computation after base's NORMAL_END
     .insertAfter(
       POLYGON_BASE_SHADER_MARKERS.fragment.NORMAL_END,
       useWater
         ? `
+// uIsTexturized is a uniform, so the derivatives stay in uniform control flow.
+NvrWaterSurface nvr_waterSurface;
 if(!uIsTexturized) {
-  specular = computeWaterSpecular(
-    uWaterNormalMap,
-    (vPosition.xy + vPosition.zy + vPosition.xz) / 3.0 * uWaterScaleNormal,
-    uTime * uWaterSpeed,
-    vViewPosition,
-    normalMatrix,
-    origNormal,
-    uShininess,
-    uSpecularStrength,
-    diffuseColor.rgb,
-    normal
-  );
+  nvr_waterSurface = nvrWaterSurface(nvrWaterCoord(vViewPosition), origNormal, uWaveExaggeration, 0);
 }`
         : `
 if(uSpecular && !uIsTexturized) {
@@ -84,13 +57,28 @@ if(uSpecular && !uIsTexturized) {
     uIor
   );
 }`,
+    );
+  if (!useWater) {
+    shader.fragmentShader = replacer.source;
+    return;
+  }
+  shader.fragmentShader = replacer
+    .replaceBlock(
+      {
+        start: POLYGON_BASE_SHADER_MARKERS.fragment.OUTGOING_LIGHT_START,
+        end: POLYGON_BASE_SHADER_MARKERS.fragment.OUTGOING_LIGHT_END,
+      },
+      `if(!uIsTexturized) {
+    outgoingLight = nvrWaterShade(nvr_waterSurface, vViewPosition, origNormal, outgoingLight);
+  }`,
     )
-    // Replace final normal block with water version
     .replaceBlock(
       {
         start: POLYGON_BASE_SHADER_MARKERS.fragment.FINAL_NORMAL_START,
         end: POLYGON_BASE_SHADER_MARKERS.fragment.FINAL_NORMAL_END,
       },
-      `vec3 finalNormal = mix(origNormal, normalize(origNormal * 0.7 + normal), uApplyWaterNormal);`,
+      `vec3 finalNormal = uIsTexturized ? origNormal : nvr_waterSurface.gbufferNormal;
+float finalReflectivity = uIsTexturized ? reflectivity : NVR_WATER_F0;
+float finalRoughness = uIsTexturized ? roughnessFactor : nvr_waterSurface.gbufferRoughness;`,
     ).source;
 };

@@ -3,6 +3,13 @@ import type { WebGLProgramParametersWithUniforms } from "three";
 import invariant from "tiny-invariant";
 
 import type { MaterialEnhancer } from "../../MaterialEnhancer";
+import {
+  applyWaterMaterialConfig,
+  createWaterMutates,
+  DEFAULT_WATER_PROPS,
+  DEFAULT_WATER_STATE,
+  updateWaterState,
+} from "../../water";
 import type {
   PolygonBaseMutates,
   PolygonBaseProps,
@@ -14,14 +21,7 @@ import {
   AVAILABLE_SHADERS,
   type SupportedMaterial as WaterSupportedMaterial,
 } from "./material";
-import { applyWaterMaterialConfig } from "./material";
-import { createWaterMutates } from "./mutates";
 import { transformWaterShader } from "./shader";
-import {
-  DEFAULT_WATER_PROPS,
-  DEFAULT_WATER_STATE,
-  updateWaterState,
-} from "./state";
 import type {
   PolygonWaterCombinedMutates,
   PolygonWaterCombinedStates,
@@ -84,17 +84,14 @@ export function createPolygonWaterEnhancer(
       // Create mutates (refs are created inside with default values)
       mutates = createWaterMutates();
       mutates.update(state);
-      // Handle external ref (timeUniform identity doesn't change after mount)
-      if (waterProps.timeUniform) {
-        mutates.setTimeUniform(waterProps.timeUniform);
+      if (waterProps.getWaterState) {
+        mutates.setWaterState(waterProps.getWaterState);
       }
 
       // Apply material configuration (side effect)
-      const { isTexturized } = baseEnhancer.states();
       applyWaterMaterialConfig(
         material as WaterSupportedMaterial,
         state,
-        isTexturized,
         false,
       );
     },
@@ -112,14 +109,12 @@ export function createPolygonWaterEnhancer(
         const prevUseWater = state.useWater;
         state = updateWaterState(props.water, state);
         mutates.update(state);
-        // Handle external ref (timeUniform identity doesn't change, only set once)
-        if (props.water.timeUniform) {
-          mutates.setTimeUniform(props.water.timeUniform);
+        if (props.water.getWaterState) {
+          mutates.setWaterState(props.water.getWaterState);
         }
 
         // Apply material configuration (side effect)
-        const { isTexturized } = baseEnhancer.states();
-        applyWaterMaterialConfig(material, state, isTexturized, prevUseWater);
+        applyWaterMaterialConfig(material, state, prevUseWater);
       }
     },
 

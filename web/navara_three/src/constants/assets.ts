@@ -61,11 +61,6 @@ export const STBN_URL = new URL(
   import.meta.url,
 ).toString();
 
-export const WATER_NORMAL_URL = new URL(
-  "../../assets/water/waternormals.jpg?no-inline",
-  import.meta.url,
-).toString();
-
 /**
  * Filenames requested by `PrecomputedTexturesLoader` mapped to their
  * statically-resolved URLs. Used to remap directory-relative requests when

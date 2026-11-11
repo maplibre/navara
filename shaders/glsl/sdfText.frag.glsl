@@ -43,6 +43,11 @@ flat varying int vIsColor;
 flat varying vec3 vColor;
 // Style opacity already scaled by the declutter fade.
 flat varying float vOpacity;
+// Per-feature outline: color, then (opacity, width, blur, reach), width and
+// blur as fractions of the distance-field range, reach the same for the
+// distance from the glyph outline to its quad's edge.
+flat varying vec3 vOutlineColor;
+flat varying vec4 vOutline;
 flat varying float vBatchID;
 
 // Uniforms — batch-wide only.
@@ -50,9 +55,6 @@ uniform sampler2D uAtlas;
 uniform sampler2D uColorAtlas;
 uniform vec2 uSdfAtlasSize;
 uniform float uSdfThreshold;
-uniform vec3 uOutlineColor;
-uniform float uOutlineWidth;
-uniform float uOutlineOpacity;
 uniform bool uOffsetDepth;
 uniform float uFarPlane;
 uniform vec3 uBackgroundColor;
@@ -81,13 +83,15 @@ float nvr_screenPxRange() {
 // corners when large enough, then falls back to alpha's topology-safe true SDF
 // as the glyph becomes too small for independent color edges to survive.
 vec2 nvr_sampleDistances(vec2 atlasUv, float msdfDetail) {
-    // The worker packs one zero-valued texel around every SDF glyph and the
-    // glyph bounds identify the inner edge of that padding ring. Clamp to the
-    // boundary itself: bilinear filtering then mixes with the transparent
-    // padding texel while still being unable to reach a neighbouring glyph.
-    // Moving the clamp half a texel inward would instead repeat the outermost
-    // distance texel, making the rectangular glyph quad faintly visible.
-    vec2 clampedUv = clamp(atlasUv, vAtlasUvMin, vAtlasUvMax);
+    // Clamp to the outermost texel centers, so bilinear filtering never
+    // reaches past the glyph's rect, and continue the field beyond them by
+    // the distance from the clamped point: an upper bound on the true
+    // distance, so a quad grown past the rect (see the vertex shader) draws a
+    // halo that never overshoots.
+    vec2 halfTexel = 0.5 / uSdfAtlasSize;
+    vec2 clampedUv = clamp(atlasUv, vAtlasUvMin + halfTexel, vAtlasUvMax - halfTexel);
+    float beyond =
+        length((atlasUv - clampedUv) * uSdfAtlasSize) / float(NVR_SDF_PX_RANGE);
 
     #ifdef USE_MSDF
         vec4 sampleValue = texture2D(uAtlas, clampedUv);
@@ -96,10 +100,10 @@ vec2 nvr_sampleDistances(vec2 atlasUv, float msdfDetail) {
             sampleValue.g,
             sampleValue.b
         );
-        return vec2(mix(sampleValue.a, msdf, msdfDetail), sampleValue.a);
+        return vec2(mix(sampleValue.a, msdf, msdfDetail), sampleValue.a) - beyond;
     #else
         float sdf = texture2D(uAtlas, clampedUv).r;
-        return vec2(sdf, sdf);
+        return vec2(sdf, sdf) - beyond;
     #endif
 }
 
@@ -112,6 +116,20 @@ float nvr_edgeCoverage(
 ) {
     return clamp(
         screenPxRange * (distanceValue - edge) + 0.5,
+        0.0,
+        1.0
+    );
+}
+
+// nvr_edgeCoverage widened by `blur` distance units, centered on the edge.
+float nvr_blurredEdgeCoverage(
+    float distanceValue,
+    float edge,
+    float screenPxRange,
+    float blur
+) {
+    return clamp(
+        (distanceValue - edge) / (1.0 / screenPxRange + blur) + 0.5,
         0.0,
         1.0
     );
@@ -190,7 +208,17 @@ void main() {
         float msdfDetail = 0.0;
     #endif
 
-    float outlineWidth = clamp(uOutlineWidth, 0.0, 0.4);
+    // How far an outline and its fade may reach, less the AA half-width: to
+    // the quad's edge, past which it would draw the quad's rectangle, and to
+    // where the field saturates (value 0, uSdfThreshold below the edge),
+    // past which a saturated texel would read as nearer than it is. The
+    // vertex shader sizes the quad for the outline, so the first only binds
+    // where its screen-pixel estimate falls short (a steeply tilted label).
+    float outlineReach = max(
+        min(vOutline.w, uSdfThreshold) - 0.5 / screenPxRange,
+        0.0
+    );
+    float outlineWidth = clamp(vOutline.y, 0.0, outlineReach);
     // Correct area coverage can make a subpixel stem mathematically accurate
     // but perceptually too light. Expand only the fill by at most 0.15 screen
     // pixels per side, fading the adjustment out by normal text sizes.
@@ -206,16 +234,22 @@ void main() {
     float fillEdge =
         uSdfThreshold - (stemDarkeningPx / screenPxRange);
     float outerEdge = uSdfThreshold - outlineWidth;
+    float outlineBlur = clamp(
+        vOutline.z,
+        0.0,
+        2.0 * (outlineReach - outlineWidth)
+    );
     vec2 centerDistances = nvr_sampleDistances(vAtlasUv, msdfDetail);
     float fillAlpha = nvr_edgeCoverage(
         centerDistances.x,
         fillEdge,
         screenPxRange
     );
-    float outlineAlpha = nvr_edgeCoverage(
+    float outlineAlpha = nvr_blurredEdgeCoverage(
         centerDistances.y,
         outerEdge,
-        screenPxRange
+        screenPxRange,
+        outlineBlur
     );
 
     // A center sample cannot integrate several thin strokes/counters inside
@@ -255,10 +289,10 @@ void main() {
             nvr_edgeCoverage(sample3.x, fillEdge, screenPxRange)
         ) * 0.25;
         float supersampledOutline = (
-            nvr_edgeCoverage(sample0.y, outerEdge, screenPxRange) +
-            nvr_edgeCoverage(sample1.y, outerEdge, screenPxRange) +
-            nvr_edgeCoverage(sample2.y, outerEdge, screenPxRange) +
-            nvr_edgeCoverage(sample3.y, outerEdge, screenPxRange)
+            nvr_blurredEdgeCoverage(sample0.y, outerEdge, screenPxRange, outlineBlur) +
+            nvr_blurredEdgeCoverage(sample1.y, outerEdge, screenPxRange, outlineBlur) +
+            nvr_blurredEdgeCoverage(sample2.y, outerEdge, screenPxRange, outlineBlur) +
+            nvr_blurredEdgeCoverage(sample3.y, outerEdge, screenPxRange, outlineBlur)
         ) * 0.25;
 
         fillAlpha = mix(fillAlpha, supersampledFill, supersampleBlend);
@@ -269,19 +303,19 @@ void main() {
         );
     }
 
-    if (outlineWidth > 0.0) {
+    if (outlineWidth > 0.0 || outlineBlur > 0.0) {
         if (outlineAlpha <= 0.0) discard;
 
         // Composite the fill over the outline. Weighting the outline color by
         // its actual alpha is essential for small, partially covered strokes:
         // a plain color mix washes them toward a translucent outline's color.
-        float outlineLayer = outlineAlpha * uOutlineOpacity;
+        float outlineLayer = outlineAlpha * vOutline.x;
         float behindFill = outlineLayer * (1.0 - fillAlpha);
         float alpha = fillAlpha + behindFill;
         vec3 color = alpha > 0.0
             ? (
                 vColor * fillAlpha +
-                uOutlineColor * behindFill
+                vOutlineColor * behindFill
             ) / alpha
             : vColor;
         alpha *= opacity;

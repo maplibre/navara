@@ -319,9 +319,9 @@ import { Color } from "@navaramap/three";
 
 ### Other Material Options
 
-The appearance options of [`PolygonMaterial`](../../../three/material/polygon-material/) apply as documented there: `wireframe`, `emissiveColor`, `emissiveIntensity`, `reflectivity`, `roughness`, `water`, `waterScaleNormal`, `waterSpeed`, `applyWaterNormal`, `specular`, `shininess`, `specularStrength` and `ior`.
+The appearance options of [`PolygonMaterial`](../../../three/material/polygon-material/) apply as documented there: `wireframe`, `emissiveColor`, `emissiveIntensity`, `reflectivity`, `roughness`, `water`, `waveExaggeration`, `waterScale`, `waveStrength`, `waveDirection`, `flowSpeed`, `specular`, `shininess`, `specularStrength` and `ior`.
 
-The layer-only options `tiled`, `show`, `surfaceShow`, `outline`, `outlineShow`, `outlineColor`, `outlineWidth` and `lit` are not available. Use the mesh config's `visible` and `lit` instead of `show` and `lit`, and draw an outline as a [`PolylineMeshDesc`](../polyline-mesh-desc) over the same ring.
+The layer-only options `tiled`, `geodesic`, `show`, `surfaceShow`, `outline`, `outlineShow`, `outlineColor`, `outlineWidth` and `lit` are not available. Use the mesh config's `visible` and `lit` instead of `show` and `lit`, and draw an outline as a [`PolylineMeshDesc`](../polyline-mesh-desc) over the same ring.
 
 ## Methods and Accessors
 

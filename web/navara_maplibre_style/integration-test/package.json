@@ -23,14 +23,14 @@
     "@navaramap/maplibre-style": "workspace:*",
     "@navaramap/three": "workspace:*",
     "@navaramap/three-default-plugin": "workspace:*",
-    "postprocessing": "6.39.5",
-    "three": "0.186.1"
+    "postprocessing": "6.39.6",
+    "three": "0.187.0"
   },
   "devDependencies": {
     "@maplibre/maplibre-gl-style-spec": "26.6.0",
     "@playwright/test": "1.64.1",
-    "@types/node": "26.6.5",
-    "@types/three": "0.186.0",
+    "@types/node": "26.6.6",
+    "@types/three": "0.187.0",
     "pixelmatch": "8.0.0",
     "sharp": "0.35.5",
     "tsx": "4.23.15"

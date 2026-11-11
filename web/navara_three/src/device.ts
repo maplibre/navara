@@ -172,8 +172,8 @@ export function getCompositeAtlasSize(isMobile: boolean): number {
 /**
  * GPU cost hints for the memory ledger, matching the actual allocation sizes.
  * The composite atlas is 512² on both desktop and mobile (see
- * `getCompositeAtlasSize`), so with three MRT attachments each tile costs
- * ~3MB — the ledger must match reality or the map settles far too coarse.
+ * `getCompositeAtlasSize`), so with three MRT attachments each rendered tile
+ * costs ~3MB. The ledger must match reality or the map settles far too coarse.
  */
 export function getDefaultMemoryCostHints(
   inputs?: MemoryCostHintsInputs,
@@ -397,6 +397,32 @@ export const DYNAMIC_SSE_DEFAULT: DynamicSseSettings = {
 /** Default dynamic-SSE settings (device-independent for now). */
 export function getDefaultDynamicSse(): DynamicSseSettings {
   return DYNAMIC_SSE_DEFAULT;
+}
+
+/** Sun shadow settings that depend on the device. */
+export type SunShadowDefaults = {
+  shadowCascadeCount?: number;
+  shadowMapSize?: number;
+  shadowFade?: boolean;
+  shadowFar?: number;
+};
+
+/** Every caster draws once per cascade, and fading samples two cascades. */
+const SUN_SHADOW_MOBILE: SunShadowDefaults = {
+  shadowCascadeCount: 2,
+  shadowMapSize: 1024,
+  shadowFade: false,
+  shadowFar: 1e4,
+};
+
+/**
+ * Default sun shadow settings for the current device. Empty on desktop, where
+ * the light's own defaults apply.
+ */
+export function getDefaultSunShadow(
+  inputs?: Pick<DefaultCacheBytesInputs, "isMobile">,
+): SunShadowDefaults {
+  return (inputs?.isMobile ?? isMobileDevice()) ? SUN_SHADOW_MOBILE : {};
 }
 
 /**

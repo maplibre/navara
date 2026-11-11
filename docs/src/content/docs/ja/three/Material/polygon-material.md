@@ -9,24 +9,6 @@ sidebar:
 
 ## Properties
 
-### applyWaterNormal
-
-**Type:** `boolean | undefined`
-
-**Description:** 水の法線マップを適用するかどうかを指定します。
-
-**Default:** `undefined`
-
-**Example:**
-
-```typescript
-{
-  polygon: {
-    applyWaterNormal: false
-  }
-}
-```
-
 ### castShadow
 
 **Type:** `boolean | undefined`
@@ -177,6 +159,27 @@ import { Color } from "@navaramap/three";
 }
 ```
 
+### geodesic
+
+**Type:** `boolean | undefined`
+
+**Description:** GeoJSON ソースのうちタイル分割された描画パス（`clampToGround` または `tiled`）で描かれる辺を測地線に沿わせるかどうかを指定します。`true` の場合、経度が 180° より離れた連続する 2 頂点も、日付変更線をまたぐ近い側の経路で結ばれます。ただし、そうすると閉じなくなるリング（極を囲むリングなど）は指定されたとおりに扱われます。`false` の場合、辺は Web メルカトル上の直線になり、経度は指定されたとおりに扱われます。つまり MapLibre と同じく、経度 190° は 180° の東にあります。タイル分割されない描画パスの辺と、vector tile ソースの辺には影響しません。
+
+このオプションはレイヤー全体に適用されます。タイル分割された `polygon` と `polyline` は 1 つのジオメトリを共有し、両方が `geodesic: false` を指定しない限り、そのジオメトリは測地線に沿います。値はレイヤーのタイルを最初に構築するときに読み取られるため、既存のレイヤーで変更しても効果はありません。
+
+**Default:** `true`
+
+**Example:**
+
+```typescript
+{
+  polygon: {
+    clampToGround: true,
+    geodesic: false
+  }
+}
+```
+
 ### height
 
 **Type:** `number | undefined`
@@ -199,7 +202,7 @@ import { Color } from "@navaramap/three";
 
 **Type:** `number | undefined`
 
-**Description:** 屈折率（Index of Refraction）を指定します。物質を透過する光の屈折に影響します。
+**Description:** `specular` ハイライトの Fresnel 項に使う屈折率を指定します。水面には効きません。
 
 **Default:** `undefined`
 
@@ -363,7 +366,7 @@ import { Color } from "@navaramap/three";
 
 **Type:** `number | undefined`
 
-**Description:** SSR と aerial perspective の `specular` が読む垂直入射時の反射率（F0）を指定します。例えば水は `0.02` です。`0.01` 未満では両方とも無効になります。環境マップが設定されている場合はその重みにもなります。
+**Description:** SSR と aerial perspective の `specular` が読む垂直入射時の反射率（F0）を指定します。水面はこの値によらず `0.02` を使います。`0.01` 未満では両方とも無効になります。環境マップが設定されている場合はその重みにもなります。
 
 **Default:** `undefined`
 
@@ -418,7 +421,7 @@ import { Color } from "@navaramap/three";
 
 **Type:** `number | undefined`
 
-**Description:** マテリアルの光沢度を指定します。
+**Description:** `specular` ハイライトの光沢度を指定します。水面には効きません。
 
 **Default:** `undefined`
 
@@ -454,7 +457,7 @@ import { Color } from "@navaramap/three";
 
 **Type:** `boolean | undefined`
 
-**Description:** スペキュラー効果を有効にするかどうかを指定します。有効にすると `shininess` と `specularStrength` の値が使用されます。
+**Description:** スペキュラー効果を有効にするかどうかを指定します。有効にすると `shininess` と `specularStrength` の値が使用されます。水面には効きません。
 
 **Default:** `undefined`
 
@@ -472,7 +475,7 @@ import { Color } from "@navaramap/three";
 
 **Type:** `number | undefined`
 
-**Description:** スペキュラーハイライトの強度を指定します。
+**Description:** `specular` ハイライトの強度を指定します。水面には効きません。
 
 **Default:** `undefined`
 
@@ -544,7 +547,7 @@ import { Color } from "@navaramap/three";
 
 **Type:** `boolean | undefined`
 
-**Description:** ポリゴンに水面マテリアルを適用するかどうかを指定します。メッシュの読み込みが遅くなる可能性があります。
+**Description:** ポリゴンを水面として描画するかどうかを指定します。波は [`waveStrength`](#wavestrength) と [`waveDirection`](#wavedirection) に従います。波の大きさはメートル単位で一定で、近くでは波として見え、約 2 km より遠くでは太陽のきらめきの下で一様にざらついた平面に見えます。水面は空を Fresnel 項で反射し、太陽を独自のハイライトで反射するため、`reflectivity`、`roughness`、`shininess`、`specularStrength`、`specular`、`ior` は効きません。波はフレームが描画されている間だけ動きます（例えば `ThreeView.animation` を有効にしたとき）。
 
 **Default:** `undefined`
 
@@ -558,38 +561,98 @@ import { Color } from "@navaramap/three";
 }
 ```
 
-### waterScaleNormal
+### waveExaggeration
 
 **Type:** `number | undefined`
 
-**Description:** 水面法線のスケールを指定します。この値を小さくすると水面が粗くなります。
+**Description:** 波の大きさと速さを保ったまま、傾きを拡大縮小します。`0` では静かな鏡のような水面になります。`water` が有効なときだけ使われます。
 
-**Default:** `undefined`
+**Default:** `1`
 
 **Example:**
 
 ```typescript
 {
   polygon: {
-    waterScaleNormal: 2.0
+    water: true,
+    waveExaggeration: 0.5
   }
 }
 ```
 
-### waterSpeed
+### waterScale
 
-**Type:** `number | undefined`
+**Type:** `"ocean" | "large" | "medium" | "small" | undefined`
 
-**Description:** 水の波の速度を指定します。
+**Description:** 水域の広さです。波は開けた水面が長いほど大きく育つため、同じ `waveStrength` でも狭い水域ほど波が短く細かくなります。`"ocean"` は `waveStrength` が許す大きさまで波を育てます。`"large"` は湾や大きな湖のような約 20 km、`"medium"` は湖や大河のような約 2 km、`"small"` は川や池のような約 200 m の水面を想定します。波の傾きは広さによらず `waveStrength` で決まります。`water` が有効なときだけ使われます。
 
-**Default:** `undefined`
+**Default:** `"ocean"`
 
 **Example:**
 
 ```typescript
 {
   polygon: {
-    waterSpeed: 0.003
+    water: true,
+    waterScale: "small"
+  }
+}
+```
+
+### waveStrength
+
+**Type:** `number | undefined`
+
+**Description:** 波の大きさ、急さ、速さを決めます。`1` 程度で穏やかなさざ波、`5` で標準、`20` で荒天になります。高さだけを変えるには [`waveExaggeration`](#waveexaggeration) を使います。`water` が有効なときだけ使われます。
+
+**Default:** `5`
+
+**Example:**
+
+```typescript
+{
+  polygon: {
+    water: true,
+    waveStrength: 12
+  }
+}
+```
+
+### waveDirection
+
+**Type:** `number | undefined`
+
+**Description:** 波が進む方向で、北から時計回りの角度（度）です。`water` が有効なときだけ使われます。
+
+**Default:** `0`
+
+**Example:**
+
+```typescript
+{
+  polygon: {
+    water: true,
+    waveDirection: 225
+  }
+}
+```
+
+### flowSpeed
+
+**Type:** `number | undefined`
+
+**Description:** 波を [`waveDirection`](#wavedirection) の向きに運ぶ流れの速さ（m/s）です。波の大きさや傾きは変わりません。水面全体が同じように動きます。`water` が有効なときだけ使われます。
+
+**Default:** `0`
+
+**Example:**
+
+```typescript
+{
+  polygon: {
+    water: true,
+    waveDirection: 90,
+    flowSpeed: 2
   }
 }
 ```
