@@ -86,10 +86,10 @@ export const generateTileWaterDefines = (
 #define TILE_FIRST_VECTOR_SLOT ${firstVectorSlot}`;
 
 /**
- * Goes in place of `#include <map_fragment>`. Reads the three atlas textures
- * once, decodes the winning slot index, and (when present) pulls per-slot
- * precision-sensitive attrs by dynamic indexing. Picking suppresses the
- * raster contribution by masking colour with the attr's isTexturized flag.
+ * Goes in place of `#include <map_fragment>`. Reads the color and attr atlas
+ * textures once, decodes the winning slot index, and (when present) pulls
+ * per-slot precision-sensitive attrs by dynamic indexing. Picking suppresses
+ * the raster contribution by masking colour with the attr's isTexturized flag.
  *
  * `texturizedSceneIndexFrom` is captured at material-build time (used by
  * generateTileEmissiveBuffer below to decide what gets written to the

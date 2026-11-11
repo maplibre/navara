@@ -31,37 +31,44 @@ export type DirtyReason =
   | "watermask";
 
 /**
- * A composite atlas is a single MRT render target (count=3) with three named
- * attachments:
+ * A composite atlas is a single MRT render target with named attachments:
  * - color: composited diffuse (sRGB)
  * - attr:  packed per-pixel material attributes (water flag/scale/speed, …)
- * - normal: hillshade normal map in [0,1] (neutral 0.5,0.5,1 when no hillshade)
+ * - normal: hillshade normal map in [0,1], `a = 1` where a hillshade slot won
  *
- * One draw call writes all three; the main TileMesh shader samples them
- * independently as Textures.
+ * `normal` exists only while the tile's main shader reads it (its hillshade
+ * branch). One draw call writes all attachments; the main TileMesh shader
+ * samples them as Textures.
  */
 export type CompositeAtlas = {
   readonly target: WebGLRenderTarget;
   readonly color: Texture;
   readonly attr: Texture;
-  readonly normal: Texture;
-  /** three allocates the target on its first render, so an atlas that was
-   * never baked holds no GPU memory. Survives pooling. */
-  allocated: boolean;
+  readonly normal: Texture | null;
   dispose: () => void;
 };
 
-/** Creates the per-tile MRT trio. Injected so tests can supply fakes. */
-export type AtlasFactory = (size: number) => CompositeAtlas;
+/** Creates a per-tile MRT atlas, with the normal attachment when
+ * `withNormal`. Injected so tests can supply fakes. */
+export type AtlasFactory = (
+  size: number,
+  withNormal: boolean,
+) => CompositeAtlas;
 
 /**
- * View on the atlas suitable for binding as TileMesh uniforms.
- * Same Textures live across the atlas's lifetime; only `needsUpdate` flips.
+ * View on the atlas suitable for binding as TileMesh uniforms. One object per
+ * cache entry, shared by every holder of the handle, that reads the entry's
+ * current atlas: it follows the atlas the composite pass picks (see
+ * `TileTextureCache.prepareAtlasForBake`). Every field is null until the
+ * first composite pass, which runs before the tile's first draw.
  */
 export type CompositeOutputs = {
-  color: Texture;
-  attr: Texture;
-  normal: Texture;
+  readonly color: Texture | null;
+  readonly attr: Texture | null;
+  /** Null without a normal attachment: three binds an all-zero texture to a
+   * null sampler, and its `a = 0` is what the composite pass writes where no
+   * hillshade slot won. */
+  readonly normal: Texture | null;
 };
 
 /** Features detected from the Rust material — drives CPU shader branch elision. */
@@ -80,7 +87,11 @@ export type CompositeFeatures = {
 /** A handle's cache entry. Public surface is via TileTextureCache methods. */
 export type CacheEntry = {
   readonly handle: TileHandle;
-  readonly atlas: CompositeAtlas;
+  /** Null until the first composite pass. three allocates a render target on
+   * its first render, which follows right after the atlas is picked, so a
+   * non-null atlas holds GPU memory. */
+  atlas: CompositeAtlas | null;
+  readonly outputs: CompositeOutputs;
   refCount: number;
   dirty: Set<DirtyReason>;
 };
