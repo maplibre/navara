@@ -1,4 +1,4 @@
-import { Group, Scene } from "three";
+import { Group, Light, type Object3D, Scene } from "three";
 
 import {
   EffectDesc,
@@ -25,7 +25,7 @@ export class TransparentPassEffectDesc extends EffectDesc<
   static insertBefore = ["final"];
 
   light = new Group();
-  lightsSyncMap = new Map();
+  lightsSyncMap = new Map<number, Object3D>();
 
   createPass(): RenderPass {
     // Create render pass for transparent objects
@@ -38,17 +38,36 @@ export class TransparentPassEffectDesc extends EffectDesc<
     const pass = new RenderPass(scene, camera);
     pass.clear = false;
 
-    this.ctx.scenes.light.addEventListener("childadded", ({ child }) => {
-      const cloned = child.clone(true);
-      this.lightsSyncMap.set(child.id, cloned);
-      this.light.add(cloned);
-    });
-    this.ctx.scenes.light.addEventListener("childremoved", ({ child }) => {
-      this.light.remove(this.lightsSyncMap.get(child.id));
-      this.lightsSyncMap.delete(child.id);
-    });
+    this.ctx.scenes.light.addEventListener("childadded", this.onLightAdded);
+    this.ctx.scenes.light.addEventListener("childremoved", this.onLightRemoved);
 
     return pass;
+  }
+
+  private onLightAdded = ({ child }: { child: Object3D }) => {
+    const cloned = child.clone(true);
+    this.lightsSyncMap.set(child.id, cloned);
+    this.light.add(cloned);
+  };
+
+  private onLightRemoved = ({ child }: { child: Object3D }) => {
+    const cloned = this.lightsSyncMap.get(child.id);
+    if (!cloned) return;
+    this.light.remove(cloned);
+    this.lightsSyncMap.delete(child.id);
+    disposeLights(cloned);
+  };
+
+  onDestroy(): void {
+    this.ctx.scenes.light.removeEventListener("childadded", this.onLightAdded);
+    this.ctx.scenes.light.removeEventListener(
+      "childremoved",
+      this.onLightRemoved,
+    );
+    for (const cloned of this.lightsSyncMap.values()) disposeLights(cloned);
+    this.lightsSyncMap.clear();
+    this.light.clear();
+    super.onDestroy();
   }
 
   update(_time: number): void {
@@ -60,4 +79,11 @@ export class TransparentPassEffectDesc extends EffectDesc<
       this.lightsSyncMap.get(child.id)?.copy(child, true);
     }
   }
+}
+
+/** A clone rendered with shadows allocates its own shadow map. */
+function disposeLights(root: Object3D): void {
+  root.traverse((object) => {
+    if (object instanceof Light) object.dispose();
+  });
 }

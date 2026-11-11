@@ -7,6 +7,13 @@ import { BatchedSdfTextMesh } from "../mesh";
 import type { EventContext } from "./context";
 
 /**
+ * Products already torn down. On view dispose, a product indexed before its
+ * job settled is reached by {@link disposeAllObjects} and again by the
+ * dispatcher's late teardown.
+ */
+const removedObjects = new WeakSet<Object3D>();
+
+/**
  * Dispose a job's product and drop it from the `meshes` index. `obj` is
  * `undefined` for a job that never produced one, including a `start` that
  * threw after indexing its object; the indexed object is disposed then. `ev`
@@ -24,7 +31,8 @@ export function processObjectRemoved(
     obj ??= indexed;
     if (indexed === obj) ctx.meshes.delete(id);
   }
-  if (!obj) return;
+  if (!obj || removedObjects.has(obj)) return;
+  removedObjects.add(obj);
 
   disposeObject3D(obj);
 
@@ -45,17 +53,16 @@ export function processObjectRemoved(
 }
 
 /**
- * Dispose every live product, as its removal would, and empty the `meshes`
- * index. Also covers tile meshes outside the index: one whose geometry was
- * never installed still holds its drape targets and atlas reference.
- * Descriptors' pickables share the index but stay theirs to dispose.
+ * Dispose every live product, as its removal would. Also covers tile meshes
+ * outside the `meshes` index: one whose geometry was never installed still
+ * holds its drape targets and atlas reference. Descriptors' pickables share
+ * the index but stay theirs to dispose.
  */
 export function disposeAllObjects(ctx: EventContext): void {
   for (const [key, obj] of ctx.meshes) {
     if (ctx.viewContext._isDescriptorPickable(key, obj)) continue;
     processObjectRemoved(ctx, obj);
   }
-  ctx.meshes.clear();
   // A disposed tile drops itself from the map.
   for (const tile of ctx.tileMapByHandle.values()) {
     processObjectRemoved(ctx, tile);

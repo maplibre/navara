@@ -129,18 +129,6 @@ export class RenderPassOrchestrator {
   }
 
   /**
-   * Clear all passes.
-   */
-  clearPasses(): void {
-    for (const namedPass of this.passMap.list) {
-      this.effectComposer.removePass(namedPass.pass);
-    }
-    this.passMap.list = [];
-    this.passMap.indexMap = {};
-    this.onPassesChanged?.();
-  }
-
-  /**
    * Estimates the resident GPU bytes of the fixed, screen-sized render-target
    * stack (composer buffers + every target reachable from the passes), for
    * reporting into the memory ledger's `fixed_gpu_bytes` term.

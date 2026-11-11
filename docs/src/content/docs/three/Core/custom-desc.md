@@ -27,7 +27,7 @@ All base classes inherit from `BaseDesc` and share a common lifecycle.
 | `constructor(view, ctx, config)` | When the Descriptor is created   | Receives the ThreeView, ViewContext, and configuration                                                 |
 | `onCreate()`                     | When `addMesh()`/`addLight()`/`addEffect()` is called | Calls the factory method to create an instance and adds it to the scene. Implemented by the base class |
 | `onUpdateConfig(updates)`        | When `handle.update()` is called | Processes partial configuration updates                                                                |
-| `onDestroy()`                    | When `handle.delete()` is called, or `view.dispose()` for effects | Releases resources and removes from the scene                                                          |
+| `onDestroy()`                    | When `handle.delete()` or `view.dispose()` is called | Releases resources and removes from the scene                                                          |
 | `update(time)`                   | Every frame (optional)           | Animation processing. Only called if implemented                                                       |
 | `onResize(width, height)`        | On viewport resize (optional)    | Mesh Descriptors only. Only called if implemented                                                           |
 
@@ -751,7 +751,7 @@ createPass() {
 
 ### Disposal
 
-When the effect is deleted (`handle.delete()`, or `view.dispose()` for every effect still added), the base `onDestroy()` removes the pass from the pipeline and disposes it: it calls the instance's `dispose()`, or `raw.dispose()` when the instance is a wrapper without one. A postprocessing pass's `dispose()` releases the render targets, materials, and textures held in its own properties and in those of its effects, so return a pass that owns them. Keep a texture shared with other effects (for example the MRT buffers from `find()`) in a uniform, not in a property of the pass or of one of its effects.
+When the effect is deleted (`handle.delete()`, or `view.dispose()` for every descriptor still added), the base `onDestroy()` removes the pass from the pipeline and disposes it: it calls the instance's `dispose()`, or `raw.dispose()` when the instance is a wrapper without one. A postprocessing pass's `dispose()` releases the render targets, materials, and textures held in its own properties and in those of its effects, so return a pass that owns them. Keep a texture shared with other effects (for example the MRT buffers from `find()`) in a uniform, not in a property of the pass or of one of its effects.
 
 ## Custom Light Desc
 

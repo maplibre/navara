@@ -171,6 +171,7 @@ export class Clouds extends Pass<
    */
   private loadedTextures = new Set<Texture>();
   private disposed = false;
+  private cancelTexturesReady?: () => void;
 
   constructor(camera: Camera, atmosphere: Atmosphere, options?: CloudsOptions) {
     const effect = new CloudsEffect(camera);
@@ -273,34 +274,34 @@ export class Clouds extends Pass<
       this.emit("needsUpdate");
     });
 
-    this.inner.events.addEventListener(
-      "change",
-      (event: CloudsEffectChangeEvent) => {
-        if (!this.rawEffect || !this.atmosphere) return;
-        switch (event.property) {
-          case "atmosphereOverlay":
-            this.atmosphere.overlay.value = this.rawEffect.atmosphereOverlay;
-            break;
-          case "atmosphereShadow":
-            if (!this.shadows) break;
-            this.atmosphere.shadow.value = this.inner.atmosphereShadow;
-            // Denoise shadow artifact.
-            new STBNLoader().load(this.options.stbnUrl, this.onSTBNLoad);
-            break;
-          case "atmosphereShadowLength":
-            this.atmosphere.shadowLength.value =
-              this.inner.atmosphereShadowLength;
-            break;
-        }
-        this.atmosphere.onUpdate();
-      },
-    );
+    this.inner.events.addEventListener("change", this.onEffectChange);
 
     // Cloud lighting genuinely samples all four precomputed textures.
-    this.atmosphere.onTexturesReady((t) => this.onTextureLoaded(t));
+    this.cancelTexturesReady = this.atmosphere.onTexturesReady((t) =>
+      this.onTextureLoaded(t),
+    );
 
     this.atmosphere.on("disposed", this.onDisposed);
   }
+
+  private onEffectChange = (event: CloudsEffectChangeEvent) => {
+    if (!this.rawEffect || !this.atmosphere) return;
+    switch (event.property) {
+      case "atmosphereOverlay":
+        this.atmosphere.overlay.value = this.rawEffect.atmosphereOverlay;
+        break;
+      case "atmosphereShadow":
+        if (!this.shadows) break;
+        this.atmosphere.shadow.value = this.inner.atmosphereShadow;
+        // Denoise shadow artifact.
+        new STBNLoader().load(this.options.stbnUrl, this.onSTBNLoad);
+        break;
+      case "atmosphereShadowLength":
+        this.atmosphere.shadowLength.value = this.inner.atmosphereShadowLength;
+        break;
+    }
+    this.atmosphere.onUpdate();
+  };
 
   private onTextureLoaded = (textures: PrecomputedTextures) => {
     Object.assign(this.rawEffect, textures);
@@ -319,6 +320,8 @@ export class Clouds extends Pass<
   dispose() {
     this.disposed = true;
     this.atmosphere.off("disposed", this.onDisposed);
+    this.cancelTexturesReady?.();
+    this.inner.events.removeEventListener("change", this.onEffectChange);
     this.atmosphere.overlay.value = null;
     this.atmosphere.shadow.value = null;
     this.atmosphere.shadowLength.value = null;

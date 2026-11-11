@@ -318,6 +318,20 @@ describe("Atmosphere.onTexturesReady", () => {
     expect(callback).toHaveBeenCalledTimes(1);
   });
 
+  it("does not invoke a callback cancelled before the load", async () => {
+    autoResolveLoads();
+    const atmosphere = createAtmosphere();
+    const callback = vi.fn();
+
+    const cancel = atmosphere.onTexturesReady(callback, {
+      transmittance: true,
+    });
+    cancel();
+    await flush();
+
+    expect(callback).not.toHaveBeenCalled();
+  });
+
   it("invokes the callback immediately once loaded", async () => {
     autoResolveLoads();
     const atmosphere = createAtmosphere();

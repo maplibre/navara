@@ -25,6 +25,7 @@ vi.mock("@navaramap/three", async () => ({
 
 const fakeAtmosphere = () => {
   const listeners = new Map<string, Set<() => void>>();
+  const cancelTexturesReady = vi.fn();
   return {
     ellipsoid: undefined,
     sunDirection: { x: 0, y: 0, z: 1 },
@@ -32,7 +33,8 @@ const fakeAtmosphere = () => {
     overlay: { value: null },
     shadow: { value: null },
     shadowLength: { value: null },
-    onTexturesReady: vi.fn(),
+    onTexturesReady: vi.fn(() => cancelTexturesReady),
+    cancelTexturesReady,
     onUpdate: vi.fn(),
     on: (t: string, f: () => void) => {
       const set = listeners.get(t) ?? new Set();
@@ -105,9 +107,18 @@ describe("Clouds.dispose", () => {
       qualityPreset: "low",
     });
 
+    const onUpdate = vi.mocked(atmosphere.onUpdate);
+    onUpdate.mockClear();
+
     clouds.dispose();
+    clouds.inner.events.dispatchEvent({
+      type: "change",
+      property: "atmosphereOverlay",
+    });
 
     expect(atmosphere.listenerCount("disposed")).toBe(0);
+    expect(atmosphere.cancelTexturesReady).toHaveBeenCalledOnce();
+    expect(onUpdate).not.toHaveBeenCalled();
   });
 
   it("frees a texture that finishes loading after dispose", async () => {

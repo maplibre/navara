@@ -6,6 +6,7 @@ import { Pass } from "../effects";
 import type ThreeView from "../index";
 import { initTestEngine } from "../test-utils/engine";
 
+import { EffectHandle } from "./BaseHandle";
 import { EffectDesc, type EffectConfig } from "./EffectDesc";
 import type { ViewContext } from "./ViewContext";
 
@@ -102,5 +103,25 @@ describe("EffectDesc.onDestroy", () => {
 
     expect(wrapperDispose).toHaveBeenCalledOnce();
     expect(rawDispose).toHaveBeenCalledOnce();
+  });
+
+  it("finishes the destroy when the pass's dispose throws", () => {
+    const ctx = makeCtx();
+    const desc = new TestEffectDesc({} as ThreeView, ctx, {});
+    desc.onCreate();
+    vi.spyOn(
+      desc.raw as unknown as PostProcessingPass,
+      "dispose",
+    ).mockImplementation(() => {
+      throw new Error("dispose failed");
+    });
+    const handle = new EffectHandle(desc);
+    const deleted = vi.fn();
+    handle.on("deleted", deleted);
+
+    expect(() => handle.delete()).toThrow("dispose failed");
+
+    expect(desc.destroyed).toBe(true);
+    expect(deleted).toHaveBeenCalledOnce();
   });
 });

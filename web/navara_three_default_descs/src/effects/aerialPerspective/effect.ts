@@ -57,6 +57,8 @@ export class AerialPerspective extends Pass<
 
   private cloudsShadows = true;
   private normalBuffer: Texture | null;
+  /** Cancels the pending `onTexturesReady` callbacks. */
+  private cancelTexturesReady: (() => void)[] = [];
 
   constructor(
     atmosphere: Atmosphere,
@@ -103,16 +105,28 @@ export class AerialPerspective extends Pass<
     // The effect samples the irradiance texture only when the `irradiance`
     // option lights geometry from the atmosphere; the `irradiance` setter
     // requests it when enabled.
-    this.atmosphere.onTexturesReady((t) => this.onTextureLoaded(t), {
-      transmittance: true,
-      scattering: true,
-      higherOrderScattering: true,
-    });
+    this.cancelTexturesReady.push(
+      this.atmosphere.onTexturesReady((t) => this.onTextureLoaded(t), {
+        transmittance: true,
+        scattering: true,
+        higherOrderScattering: true,
+      }),
+    );
 
     this.atmosphere.overlay.on("changed", this.onOverlayChanged);
     this.atmosphere.shadow.on("changed", this.onShadowChanged);
     this.atmosphere.shadowLength.on("changed", this.onShadowLengthChanged);
     this.atmosphere.enableShadows.on("changed", this.onEnableShadowChanged);
+  }
+
+  dispose() {
+    for (const cancel of this.cancelTexturesReady) cancel();
+    this.cancelTexturesReady = [];
+    this.atmosphere.overlay.off("changed", this.onOverlayChanged);
+    this.atmosphere.shadow.off("changed", this.onShadowChanged);
+    this.atmosphere.shadowLength.off("changed", this.onShadowLengthChanged);
+    this.atmosphere.enableShadows.off("changed", this.onEnableShadowChanged);
+    super.dispose();
   }
 
   onTextureLoaded = (textures: Partial<PrecomputedTextures>) => {
@@ -192,9 +206,11 @@ export class AerialPerspective extends Pass<
     if (v) {
       // Lighting from the atmosphere needs the irradiance texture, which is
       // not part of the base set; fetch it on demand (no-op once loaded).
-      this.atmosphere.onTexturesReady((t) => this.onTextureLoaded(t), {
-        irradiance: true,
-      });
+      this.cancelTexturesReady.push(
+        this.atmosphere.onTexturesReady((t) => this.onTextureLoaded(t), {
+          irradiance: true,
+        }),
+      );
     }
     this.onUpdate();
   }

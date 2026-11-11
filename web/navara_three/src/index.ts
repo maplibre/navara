@@ -84,6 +84,7 @@ import {
   LightHandle,
   EffectHandle,
   type AnyMeshDesc,
+  type BaseHandle,
 } from "./core/BaseHandle";
 import { Registries } from "./core/Registries";
 import { DeclutterManager, wasmDeclutterKernel } from "./declutter";
@@ -1861,11 +1862,15 @@ export default class ThreeView<
       disposeAllObjects(this.eventContext);
     }
 
-    // Delete every effect, so each descriptor disposes its pass. Newest
+    // Delete every descriptor, so each disposes what it created. Newest
     // first: the built-in passes (MRT, final) are added before the effects
     // that read their buffers.
-    for (const handle of [...this.layersManager.getEffectDescs()].reverse()) {
-      handle.delete();
+    for (const handle of [...this.layersManager.getHandles()].reverse()) {
+      try {
+        handle.delete();
+      } catch (error) {
+        console.error("Failed to delete a descriptor on dispose:", error);
+      }
     }
 
     this._fontManager.dispose();
@@ -2383,6 +2388,16 @@ export default class ThreeView<
     });
   }
 
+  /** Subscribes a descriptor's hook to a view event until its handle is deleted. */
+  private _hookUntilDeleted<E extends "preRender" | "resize">(
+    handle: BaseHandle,
+    event: E,
+    listener: ViewEvents[E],
+  ): void {
+    this.on(event, listener);
+    handle.on("deleted", () => this.off(event, listener));
+  }
+
   /**
    * Adds a 3D mesh to the scene.
    * The mesh kind is determined by the nested key (e.g., `{ box: { width: 200 } }`).
@@ -2411,6 +2426,8 @@ export default class ThreeView<
       throw error;
     }
 
+    const l = new MeshHandle(meshDesc);
+
     // Initialize the mesh; hooks are wired once the instance exists.
     this._trackAsyncCreate("mesh", meshDesc, meshDesc.onCreate(), () => {
       // If deleted while an async creation was loading, nothing to wire.
@@ -2418,11 +2435,11 @@ export default class ThreeView<
 
       // Set up update listener
       if (meshDesc.update) {
-        this.on("preRender", meshDesc.update.bind(meshDesc));
+        this._hookUntilDeleted(l, "preRender", meshDesc.update.bind(meshDesc));
       }
 
       if (meshDesc.onResize) {
-        this.on("resize", meshDesc.onResize.bind(meshDesc));
+        this._hookUntilDeleted(l, "resize", meshDesc.onResize.bind(meshDesc));
 
         const canvasSize = this._getCanvasSize();
         if (canvasSize) {
@@ -2432,11 +2449,10 @@ export default class ThreeView<
 
       // Trigger re-render
       meshDesc.on("needsUpdate", this.forceUpdate);
+      l.on("deleted", () => meshDesc.off("needsUpdate", this.forceUpdate));
 
       this.forceUpdate();
     });
-
-    const l = new MeshHandle(meshDesc);
 
     l.on("deleted", this.forceUpdate);
 
@@ -2451,6 +2467,8 @@ export default class ThreeView<
     // Registered after `layersManager.add`, so the deleted mesh is already
     // out of the union when this runs.
     l.on("deleted", () => {
+      // `dispose()` deletes every descriptor; nothing is left to re-derive for.
+      if (this._disposed) return;
       if (meshDesc.getRequiredBuffers().length > 0) {
         this._syncGBuffers();
       }
@@ -2478,6 +2496,8 @@ export default class ThreeView<
     // Create light descriptor instance
     const lightDesc = this.registries.light.create(lightType, config);
 
+    const l = new LightHandle(lightDesc);
+
     // Initialize the light; hooks are wired once the instance exists.
     this._trackAsyncCreate("light", lightDesc, lightDesc.onCreate(), () => {
       // Deleted while an async creation was loading — nothing to wire.
@@ -2485,16 +2505,19 @@ export default class ThreeView<
 
       // Set up update listener if the descriptor has an update method
       if (lightDesc.update) {
-        this.on("preRender", lightDesc.update.bind(lightDesc));
+        this._hookUntilDeleted(
+          l,
+          "preRender",
+          lightDesc.update.bind(lightDesc),
+        );
       }
 
       // Trigger re-render
       lightDesc.on("needsUpdate", this.forceUpdate);
+      l.on("deleted", () => lightDesc.off("needsUpdate", this.forceUpdate));
 
       this.forceUpdate();
     });
-
-    const l = new LightHandle(lightDesc);
 
     l.on("deleted", this.forceUpdate);
 
@@ -2548,7 +2571,7 @@ export default class ThreeView<
     // so tune effects via `update()` rather than re-adding them.
     this._syncGBuffers();
     l.on("deleted", () => {
-      // `dispose()` deletes every effect; nothing is left to re-derive for.
+      // `dispose()` deletes every descriptor; nothing is left to re-derive for.
       if (this._disposed) return;
       this._syncGBuffers();
       this.forceUpdate();
@@ -2561,11 +2584,16 @@ export default class ThreeView<
 
       // Set up update listener if the descriptor has an update method
       if (effectDesc.update) {
-        this.on("preRender", effectDesc.update.bind(effectDesc));
+        this._hookUntilDeleted(
+          l,
+          "preRender",
+          effectDesc.update.bind(effectDesc),
+        );
       }
 
       // Trigger re-render
       effectDesc.on("needsUpdate", this.forceUpdate);
+      l.on("deleted", () => effectDesc.off("needsUpdate", this.forceUpdate));
 
       this.forceUpdate();
     });

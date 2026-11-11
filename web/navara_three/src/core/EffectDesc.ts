@@ -346,13 +346,15 @@ export abstract class EffectDesc<
     // `dispose()` also releases what it holds beside the raw pass.
     const instance = this._instance as
       { dispose?: () => void; raw?: { dispose?: () => void } } | undefined;
-    if (typeof instance?.dispose === "function") {
-      instance.dispose();
-    } else {
-      instance?.raw?.dispose?.();
+    try {
+      if (typeof instance?.dispose === "function") {
+        instance.dispose();
+      } else {
+        instance?.raw?.dispose?.();
+      }
+    } finally {
+      super.onDestroy();
     }
-
-    super.onDestroy();
   }
 
   /**

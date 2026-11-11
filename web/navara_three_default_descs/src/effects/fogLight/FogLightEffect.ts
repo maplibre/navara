@@ -257,6 +257,12 @@ export class FogLightEffect extends PostProcessingEffect {
     this.depthCopyPass.setDepthTexture(depthTexture, depthPacking);
   }
 
+  /** `Effect.dispose()` reaches only own textures, not the tile grid's. */
+  dispose(): void {
+    this.tileGrid.dispose();
+    super.dispose();
+  }
+
   update(
     renderer: WebGLRenderer,
     inputBuffer: WebGLRenderTarget,

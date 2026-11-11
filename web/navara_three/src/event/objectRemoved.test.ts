@@ -5,7 +5,7 @@ import { ViewContext } from "../core/ViewContext";
 import type { MeshCache } from "../type";
 
 import type { EventContext } from "./context";
-import { disposeAllObjects } from "./objectRemoved";
+import { disposeAllObjects, processObjectRemoved } from "./objectRemoved";
 
 // The mesh barrel initializes a worker pool at module load (os.cpus()), which
 // is unavailable in the test environment. Stub it.
@@ -76,8 +76,24 @@ describe("disposeAllObjects", () => {
     expect(featureRemoved).toHaveBeenCalledOnce();
     expect(geometryDispose).toHaveBeenCalled();
     expect(materialDispose).toHaveBeenCalled();
-    expect(ctx.meshes.size).toBe(0);
     expect(ctx.tileMapByHandle.size).toBe(0);
+  });
+
+  // A product indexed before its job settled is torn down again by the
+  // dispatcher once the job settles after its dispose.
+  it("leaves a product it tore down to a later teardown untouched", () => {
+    const ctx = contextWith();
+    const feature = box();
+    const removed = vi.fn();
+    feature.addEventListener("removedFromWorld" as never, removed);
+    ctx.meshes.set("feature", feature);
+    const geometryDispose = vi.spyOn(feature.geometry, "dispose");
+
+    disposeAllObjects(ctx);
+    processObjectRemoved(ctx, feature);
+
+    expect(removed).toHaveBeenCalledOnce();
+    expect(geometryDispose).toHaveBeenCalledOnce();
   });
 
   it("leaves a descriptor's pickable to its descriptor", () => {
@@ -101,7 +117,6 @@ describe("disposeAllObjects", () => {
     expect(geometry.index).not.toBeNull();
     expect(pickable.parent).toBe(scene);
     expect(feature.geometry.getAttribute("position")).toBeUndefined();
-    expect(ctx.meshes.size).toBe(0);
   });
 
   // A descriptor's `id` is free-form, so it can equal the id of an engine

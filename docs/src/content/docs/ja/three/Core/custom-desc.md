@@ -27,7 +27,7 @@ Descriptor の種類に応じて、対応する基底クラスを継承して実
 | `constructor(view, ctx, config)` | Descriptor 生成時                                     | ThreeView、ViewContext、設定を受け取る                                                     |
 | `onCreate()`                     | `addMesh()` / `addEffect()` / `addLight()` 呼び出し時 | ファクトリメソッドを呼び出してインスタンスを作成し、シーンに追加する。基底クラスが実装済み |
 | `onUpdateConfig(updates)`        | `handle.update()` 呼び出し時                          | 設定の部分更新を処理する                                                                   |
-| `onDestroy()`                    | `handle.delete()` 呼び出し時（エフェクトは `view.dispose()` 時も） | リソースの解放とシーンからの削除                                                           |
+| `onDestroy()`                    | `handle.delete()` または `view.dispose()` 呼び出し時 | リソースの解放とシーンからの削除                                                           |
 | `update(time)`                   | 毎フレーム（オプション）                              | アニメーション処理。実装した場合のみ呼び出される                                           |
 | `onResize(width, height)`        | ビューポートリサイズ時（オプション）                  | メッシュのみ。実装した場合のみ呼び出される                                                 |
 
@@ -747,7 +747,7 @@ createPass() {
 
 ### 破棄
 
-エフェクトが削除されると（`handle.delete()`、または `view.dispose()` で追加済みのすべてのエフェクト）、基底クラスの `onDestroy()` がパスをパイプラインから外して破棄します。インスタンスの `dispose()` を呼び、`dispose()` を持たないラッパーの場合は `raw.dispose()` を呼びます。postprocessing のパスの `dispose()` は、パス自身とそのエフェクトのプロパティにあるレンダーターゲット、マテリアル、テクスチャを解放するため、それらを所有するパスを返してください。他のエフェクトと共有するテクスチャ（`find()` で得た MRT バッファなど）は、パスやそのエフェクトのプロパティではなく uniform に持たせてください。
+エフェクトが削除されると（`handle.delete()`、または `view.dispose()` で追加済みのすべての Descriptor）、基底クラスの `onDestroy()` がパスをパイプラインから外して破棄します。インスタンスの `dispose()` を呼び、`dispose()` を持たないラッパーの場合は `raw.dispose()` を呼びます。postprocessing のパスの `dispose()` は、パス自身とそのエフェクトのプロパティにあるレンダーターゲット、マテリアル、テクスチャを解放するため、それらを所有するパスを返してください。他のエフェクトと共有するテクスチャ（`find()` で得た MRT バッファなど）は、パスやそのエフェクトのプロパティではなく uniform に持たせてください。
 
 ## カスタムライト
 

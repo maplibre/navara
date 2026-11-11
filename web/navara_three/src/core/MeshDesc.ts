@@ -277,7 +277,7 @@ export function mergeGeodetic(
  *    custom properties. Always call `super.onUpdateConfig(updates)`.
  * 4. **{@link update}** - Optional per-frame callback for animation.
  * 5. **{@link onResize}** - Optional callback when the viewport is resized.
- * 6. **{@link onDestroy}** - Called on `handle.delete()`. The base class removes the mesh
+ * 6. **{@link onDestroy}** - Called on `handle.delete()` and by `view.dispose()`. The base class removes the mesh
  *    from its parent scene. Override to dispose geometry/material resources.
  *
  * @see The `custom-shader` example page for a complete custom mesh descriptor tutorial using

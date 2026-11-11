@@ -20,4 +20,19 @@ describe("SSAO.dispose", () => {
 
     expect(dispose).not.toHaveBeenCalled();
   });
+
+  it("disposes the materials of N8AO's fullscreen quads", () => {
+    const ssao = new SSAO(new PerspectiveCamera(), 4, 4);
+    const pass = ssao.rawPass;
+    const spies = [
+      pass.copyQuad,
+      pass.accumulationQuad,
+      pass.effectShaderQuad,
+      pass.effectCompositerQuad,
+    ].map((quad) => vi.spyOn(quad.material, "dispose"));
+
+    ssao.dispose();
+
+    for (const spy of spies) expect(spy).toHaveBeenCalled();
+  });
 });

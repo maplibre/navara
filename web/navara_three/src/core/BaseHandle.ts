@@ -59,8 +59,11 @@ export class BaseHandle<
   delete(): void {
     if (this._deleted) return;
     this._deleted = true;
-    this.desc.onDestroy();
-    this.emit("deleted");
+    try {
+      this.desc.onDestroy();
+    } finally {
+      this.emit("deleted");
+    }
   }
 
   private _deleted = false;

@@ -30,6 +30,8 @@ export class ColorGradingLUT extends Effect<
   private static lutCubeLoader: LUTCubeLoader | undefined;
   private static lut3dlLoader: LUT3dlLoader | undefined;
   private static textureLoader: TextureLoader | undefined;
+  /** A load that completes after dispose must not install its LUT. */
+  private disposed = false;
 
   constructor(camera: Camera, options?: ColorGradingLUTOptions) {
     const lut = LookupTexture.createNeutral(8);
@@ -51,6 +53,10 @@ export class ColorGradingLUT extends Effect<
       ColorGradingLUT.lutCubeLoader.load(
         url,
         (t) => {
+          if (this.disposed) {
+            t.texture3D.dispose();
+            return;
+          }
           const lut = new LookupTexture(
             t.texture3D.image.data as ArrayBufferView,
             t.size,
@@ -80,6 +86,10 @@ export class ColorGradingLUT extends Effect<
       ColorGradingLUT.lut3dlLoader.load(
         url,
         (t) => {
+          if (this.disposed) {
+            t.texture3D.dispose();
+            return;
+          }
           const lut = new LookupTexture(
             t.texture3D.image.data as ArrayBufferView,
             t.size,
@@ -113,6 +123,10 @@ export class ColorGradingLUT extends Effect<
       ColorGradingLUT.textureLoader.load(
         url,
         (t) => {
+          if (this.disposed) {
+            t.dispose();
+            return;
+          }
           const { width, height } = t.image;
           // LUT size is cube root of pixel count
           // Image pixels = N^3 (one pixel per LUT entry)
@@ -180,6 +194,7 @@ export class ColorGradingLUT extends Effect<
   }
 
   dispose() {
+    this.disposed = true;
     if (this.rawEffect && this.rawEffect.lut) {
       this.rawEffect.lut.dispose();
     }
