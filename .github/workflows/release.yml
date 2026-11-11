@@ -3,10 +3,10 @@ name: Release
 # Publishes the @navaramap/* packages to npm via trusted publishing (OIDC).
 # Two triggers share one build:
 #   - manual run on main: a nightly of every package, web/experimental
-#     included, versioned `X.Y.(Z+1)-nightly.N` (vX.Y.Z = latest release tag,
-#     N = run number) under the `nightly` dist-tag. No changelog or GitHub
-#     Release; the npm provenance records the commit. Skipped when main has
-#     not moved since the last successful nightly.
+#     included, versioned `X.Y.(Z+1)-nightly.N.gSHA` (vX.Y.Z = latest release
+#     tag, N = commits since it, SHA = abbreviated commit) under the `nightly`
+#     dist-tag. No changelog or GitHub Release. Skipped when main has not
+#     moved since the last successful nightly.
 #   - push of a tag like `v0.1.0`: the release. The tag is the single source
 #     of truth for the version; every package is stamped with it (lockstep
 #     versioning) and published under `latest`, web/experimental left out.
@@ -148,13 +148,17 @@ jobs:
           if [[ $GITHUB_REF_TYPE == tag ]]; then
             version=$GITHUB_REF_NAME
           else
-            latest=$(git describe --tags --abbrev=0 --match 'v[0-9]*.[0-9]*.[0-9]*' --exclude 'v*-*')
+            # vX.Y.Z-N-gSHA: the latest release tag, the commits since it and
+            # the commit. N orders the nightlies and the `g` keeps the SHA
+            # alphanumeric: an all-digit one would compare as a number, and
+            # one with a leading zero is not valid semver.
+            described=$(git describe --tags --long --abbrev=7 --match 'v[0-9]*.[0-9]*.[0-9]*' --exclude 'v*-*')
             # Checked before the arithmetic below, which would evaluate it.
-            if [[ ! $latest =~ ^v([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
-              echo "Latest release tag $latest is not vX.Y.Z." >&2
+            if [[ ! $described =~ ^v([0-9]+)\.([0-9]+)\.([0-9]+)-([0-9]+)-(g[0-9a-f]+)$ ]]; then
+              echo "git describe gave $described, not vX.Y.Z-N-gSHA." >&2
               exit 1
             fi
-            version=${BASH_REMATCH[1]}.${BASH_REMATCH[2]}.$((BASH_REMATCH[3] + 1))-nightly.$GITHUB_RUN_NUMBER
+            version=${BASH_REMATCH[1]}.${BASH_REMATCH[2]}.$((BASH_REMATCH[3] + 1))-nightly.${BASH_REMATCH[4]}.${BASH_REMATCH[5]}
           fi
           echo "VERSION=$version" >> "$GITHUB_ENV"
 

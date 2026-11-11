@@ -47,9 +47,10 @@ Mechanism: [`release.yml`](../.github/workflows/release.yml),
 
 Run the `Release` workflow on `main` from the Actions UI, then approve the
 `npm-publish` environment. CI publishes all packages, `web/experimental/`
-included, as `X.Y.(Z+1)-nightly.N` under the `nightly` dist-tag (`vX.Y.Z` =
-latest release tag reachable from `main`, `N` = workflow run number). No
-changelog, tag or GitHub Release; the npm provenance records the commit.
+included, as `X.Y.(Z+1)-nightly.N.gSHA` under the `nightly` dist-tag
+(`vX.Y.Z` = latest release tag reachable from `main`, `N` = commits since
+that tag, `SHA` = abbreviated commit), e.g. `0.3.1-nightly.12.gabc1234`. No
+changelog, tag or GitHub Release.
 
 - **Same build and environment as a release**: `npm-publish` accepts `v*`
   tags and `main`, and every run waits for reviewer approval.
@@ -60,11 +61,15 @@ changelog, tag or GitHub Release; the npm provenance records the commit.
 - **One nightly at a time, never cancelled**: a run stopped during its publish
   step would leave the packages at mixed versions, and their exact
   `workspace:*` pins would fail to install. A run triggered meanwhile waits.
-- **Versions order correctly**: `0.3.0 < 0.3.1-nightly.N < 0.3.1`, and `N`
-  grows with each run. A re-run keeps `N`, and `pnpm publish -r` skips the
-  packages already published, so a failed nightly is retried by re-running it.
-- **No per-nightly git tag**: a `v0.3.1-nightly.N` tag would match the
-  `v*.*.*` release trigger.
+- **Versions order correctly**: `0.3.0 < 0.3.1-nightly.N.gSHA < 0.3.1`, and
+  `N` grows with each commit on `main`, which cannot be force-pushed. The
+  `g` keeps the SHA alphanumeric: an all-digit SHA would compare as a number,
+  and one with a leading zero is not valid semver.
+- **One version per commit**: a re-run publishes the same version, and
+  `pnpm publish -r` skips the packages already published, so a failed nightly
+  is retried by re-running it.
+- **No per-nightly git tag**: the version is derived from the history, and a
+  `v0.3.1-nightly.…` tag would match the `v*.*.*` release trigger.
 
 ## Experimental packages
 
