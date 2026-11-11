@@ -32,6 +32,7 @@ const NOT_ACQUIRED =
 const {
   acquireWorkerPool,
   workerPoolHolders,
+  sharedWorkerPoolSize,
   warmUpWorkerPool,
   canWorkerPoolAcceptTasks,
   workerPoolLoad,
@@ -104,6 +105,8 @@ const {
     },
     /** Live claims on the pool; see `acquireWorkerPool`. */
     workerPoolHolders: () => holders,
+    /** Worker count of the live pool; undefined while none exists. */
+    sharedWorkerPoolSize: (): number | undefined => worker?.manager.total,
     /**
      * Pre-initializes WASM on the workers so that upcoming tasks don't pay
      * the initialization latency. Warms a single worker and resolves once
@@ -162,6 +165,7 @@ const {
 export {
   acquireWorkerPool,
   workerPoolHolders,
+  sharedWorkerPoolSize,
   warmUpWorkerPool,
   canWorkerPoolAcceptTasks,
   workerPoolLoad,

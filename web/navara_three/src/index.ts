@@ -42,6 +42,7 @@ import {
   workerPoolReservedSlots,
   reserveWorkerCore,
   probeWorkerPoolHeap,
+  sharedWorkerPoolSize,
   warmUpWorkerPool,
   workerPoolHeapStats,
   workerPoolHolders,
@@ -414,6 +415,19 @@ export type Options = {
    * @defaultValue see `getDefaultDynamicSse`
    */
   dynamicSse?: Partial<DynamicSseSettings>;
+  /**
+   * Number of tile workers. Each has its own JS isolate and WASM heap, so a
+   * smaller pool uses less memory but loads tiles slower after fast camera
+   * moves. Clamped to an integer in `[1, navigator.hardwareConcurrency]`
+   * (with a console warning); also replaces the mobile cap. The default
+   * `memoryBudget.maxWorkerHeapBytes` is a fixed amount per worker on mobile
+   * and without `navigator.deviceMemory`, so there more workers mean more
+   * peak memory. Read only by `init()`. All views share one pool: the first
+   * view to `init()` sets its size, and a later view's value only logs a
+   * warning.
+   * @defaultValue `navigator.hardwareConcurrency` (at most 2 with `mobileOptimization`)
+   */
+  workerPoolSize?: number;
   /**
    * Overrides for the worker-side memory budgets (per-tile-worker WASM heap
    * recycle threshold and the font worker's cache budget). Defaults derive
@@ -1481,8 +1495,10 @@ export default class ThreeView<
     this._initialized = true;
 
     const mobileOptimized = this.isMobileOptimized();
-    const defaultConcurrencyManager =
-      createDefaultConcurrencyManager(mobileOptimized);
+    const defaultConcurrencyManager = createDefaultConcurrencyManager(
+      mobileOptimized,
+      this._options.workerPoolSize,
+    );
     if (mobileOptimized) {
       this._hillshadeContext.normalMapScale = 0.5;
     }
@@ -1491,7 +1507,9 @@ export default class ThreeView<
     // tile-worker pool, and the font worker derive their budgets together.
     const budgets = getDefaultMemoryBudgets({
       isMobile: mobileOptimized,
-      poolSize: defaultConcurrencyManager.total,
+      // A later view joins the live pool, so split the heap budget over the
+      // workers it actually has.
+      poolSize: sharedWorkerPoolSize() ?? defaultConcurrencyManager.total,
     });
 
     // Every view on the page shares one pool; the first view's settings

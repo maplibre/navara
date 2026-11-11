@@ -71,11 +71,11 @@ function render() {
   report.textContent = [header, ...lines].join("\n");
 }
 
-function createView(container: HTMLElement): View {
+function createView(container: HTMLElement, workerPoolSize?: number): View {
   const canvas = document.createElement("canvas");
   canvas.style.cssText = "width:100%;height:100%;display:block;";
   container.replaceChildren(canvas);
-  const view = new ThreeView<DefaultDescriptions>({ canvas });
+  const view = new ThreeView<DefaultDescriptions>({ canvas, workerPoolSize });
   view.addPlugin(new DefaultPlugin());
   return view;
 }
@@ -154,17 +154,44 @@ async function main() {
   const right = element("right");
 
   // 1. Two views and the CSS font parser initialize the WASM modules at once.
-  const a = createView(left);
-  const b = createView(right);
+  //    The views ask for different pool sizes; the first one's wins.
+  const a = createView(left, 2);
+  const b = createView(right, 3);
+  const warnings: string[] = [];
+  const warn = console.warn;
+  console.warn = (...args: unknown[]) => {
+    warnings.push(args.map(String).join(" "));
+    warn(...args);
+  };
   const [, , family] = await Promise.all([
     a.init(),
     b.init(),
     fetchFontFamilyFromCss("MapFont", FONT_CSS),
-  ]);
+  ]).finally(() => {
+    console.warn = warn;
+  });
   check(
     "concurrent init instantiates each main-thread WASM module once",
     probe.wasm["engine"] === 1 && probe.wasm["engine-api"] === 1,
     { ...probe.wasm },
+  );
+  const poolSizes = await Promise.all(
+    [a, b].map(
+      async (view) =>
+        (await view.workerMemoryStats())?.tileWorkers?.perSlot.length,
+    ),
+  );
+  const expectedPoolSize = Math.min(2, navigator.hardwareConcurrency);
+  // With two cores both sizes clamp to 2, so the pool has nothing to warn about.
+  const expectWarning = Math.min(3, navigator.hardwareConcurrency) > 2;
+  const warned = warnings.some((w) =>
+    w.includes("shared worker pool keeps its size"),
+  );
+  check(
+    "the first view's workerPoolSize sizes the shared pool",
+    poolSizes.every((size) => size === expectedPoolSize) &&
+      warned === expectWarning,
+    { poolSizes, expectedPoolSize, expectWarning, warnings },
   );
   for (const view of [a, b]) {
     view.addFontFamily(family);
@@ -174,8 +201,8 @@ async function main() {
   const streaming = liveWorkers();
   check(
     "views share one tile-worker pool",
-    streaming.tile > 0 && streaming.tile <= navigator.hardwareConcurrency,
-    { ...streaming, hardwareConcurrency: navigator.hardwareConcurrency },
+    streaming.tile > 0 && streaming.tile <= expectedPoolSize,
+    { ...streaming, expectedPoolSize },
   );
 
   // 2. Disposing one view keeps the pool for the other.
@@ -230,18 +257,30 @@ async function main() {
     afterWarming,
   );
 
-  // 6. A view initialized after every view was disposed starts a new pool and
-  //    reuses the already instantiated WASM modules.
-  const c = createView(left);
+  // 6. A view initialized after every view was disposed starts a new pool,
+  //    sized by its own workerPoolSize, and reuses the already instantiated
+  //    WASM modules.
+  const c = createView(left, 3);
   await c.init();
+  const reinitPoolSize = (await c.workerMemoryStats())?.tileWorkers?.perSlot
+    .length;
+  const expectedReinitPoolSize = Math.min(3, navigator.hardwareConcurrency);
   c.addFontFamily(family);
   addContent(c);
   await sleep(8_000);
   const reinit = liveWorkers();
   check(
     "a view after all were disposed starts a new pool",
-    reinit.tile > 0 && probe.wasm["engine"] === 1,
-    { ...reinit, wasm: { ...probe.wasm } },
+    reinit.tile > 0 &&
+      reinit.tile <= expectedReinitPoolSize &&
+      reinitPoolSize === expectedReinitPoolSize &&
+      probe.wasm["engine"] === 1,
+    {
+      ...reinit,
+      reinitPoolSize,
+      expectedReinitPoolSize,
+      wasm: { ...probe.wasm },
+    },
   );
 
   check("no uncaught errors", probe.errors.length === 0, probe.errors);
