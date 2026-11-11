@@ -1,5 +1,24 @@
 [
   {
+    "title": "Glittering Skytree with PLATEAU",
+    "href": "https://humo-tech.github.io/30DayMapChallenge2026/navara/skytree/",
+    "image": "showcases/skytree.avif",
+    "attributions": [
+      {
+        "text": "Re:Earth Papers",
+        "href": "https://papers.reearth.land/attribution"
+      },
+      {
+        "text": "© OpenStreetMap contributors",
+        "href": "https://www.openstreetmap.org/copyright"
+      },
+      {
+        "text": "3D city model: PLATEAU (MLIT)",
+        "href": "https://www.mlit.go.jp/plateau/"
+      }
+    ]
+  },
+  {
     "title": "OpenStreetMap Sound Demo Navara",
     "href": "https://smellman.github.io/osm-sound-demo-navara/",
     "image": "showcases/osm-sound-demo-navara.avif",
