@@ -49,9 +49,10 @@ type ViewContextEvents = {
    */
   effectSlotsChanged: () => void;
   /**
-   * Emitted when the derived G-buffer configuration changes. Meshes re-evaluate
-   * their pass placement: outside the MRT pass they would leave the G-buffer
-   * holding whatever lies behind them.
+   * Emitted whenever the view re-derives its G-buffer configuration, even
+   * when it is unchanged: an added or removed effect can flip
+   * `requiresMrtPass`. Meshes re-evaluate their pass placement: outside the
+   * MRT pass they would leave the G-buffer holding whatever lies behind them.
    */
   gbufferChanged: () => void;
   /**
@@ -190,6 +191,13 @@ export class ViewContext extends EventHandler<ViewContextEvents> {
     this._renderPass?.setBuffers(buffers);
     this.emit("gbufferChanged");
   }
+
+  /**
+   * @internal
+   * Whether an active effect sets `requiresMrtPass`. Kept by the view next to
+   * the G-buffer configuration, since every mesh reads it in `getPassKey()`.
+   */
+  _mrtPassRequired = false;
 
   /** @internal No-op until the pass exists (see {@link _setGBufferOptions}). */
   _setLit(lit: boolean): void {

@@ -68,8 +68,8 @@ export type CloudsOptions = {
   // Whether enabling the shadow for all descriptors or not.
   // Need to enable `Atmosphere.irradiance` as well.
   shadows?: boolean;
-  shadowCascadeCount?: number;
-  shadowMapSize?: Vector2;
+  shadowCascadeCount?: Nullable<number>;
+  shadowMapSize?: Nullable<Vector2>;
   shadowFarScale?: number;
 
   // Haze
@@ -126,8 +126,8 @@ export const DEFAULT_CLOUDS_OPTIONS: ResolvedCloudsOptions = {
   maxStepSize: null,
 
   shadows: true,
-  shadowCascadeCount: 3,
-  shadowMapSize: new Vector2(512, 512),
+  shadowCascadeCount: null,
+  shadowMapSize: null,
   shadowFarScale: 0.05,
 
   haze: true,
@@ -262,8 +262,12 @@ export class Clouds extends Pass<
     this.coverage = this.options.coverage;
 
     this.shadowFarScale = this.options.shadowFarScale;
-    this.shadowMapSize = this.options.shadowMapSize;
-    this.shadowCascadeCount = this.options.shadowCascadeCount;
+    if (this.options.shadowMapSize != null) {
+      this.shadowMapSize = this.options.shadowMapSize;
+    }
+    if (this.options.shadowCascadeCount != null) {
+      this.shadowCascadeCount = this.options.shadowCascadeCount;
+    }
 
     this.loadAll().then(() => {
       this.emit("needsUpdate");
@@ -455,6 +459,8 @@ export class Clouds extends Pass<
   }
   set qualityPreset(v: CloudsQualityPreset) {
     this.rawEffect.qualityPreset = v;
+    // Presets assign a shared Vector2; copy it so in-place edits stay local.
+    this.rawEffect.shadow.mapSize = this.rawEffect.shadow.mapSize.clone();
 
     this.emit("needsUpdate");
   }

@@ -2,11 +2,42 @@
  * Shared utilities for StyleEngine implementations.
  */
 
-import { expression } from "@maplibre/maplibre-gl-style-spec";
+import {
+  expression,
+  migrate,
+  validateStyleMin,
+} from "@maplibre/maplibre-gl-style-spec";
+import type { StyleSpecification } from "@maplibre/maplibre-gl-style-spec";
 
 import { LAYOUT_SPECS_BY_TYPE } from "./layoutSpecs";
 import { PAINT_SPECS_BY_TYPE } from "./paintSpecs";
-import type { LayerType, PropertySpec, StyleValue } from "./types";
+import type { LayerType, ParsedStyle, PropertySpec, StyleValue } from "./types";
+
+/**
+ * Migrate legacy features (v7, functions, tokens, colors) to the current
+ * spec, then validate the result.
+ *
+ * Only `error` results reject the style. `warning` results (e.g. a filter
+ * mixing legacy and expression syntax) are logged and rendering continues,
+ * like maplibre-gl-js.
+ */
+export function validateAndMigrateStyle(raw: unknown): ParsedStyle {
+  const migrated = migrate(raw as StyleSpecification);
+
+  const results = validateStyleMin(migrated);
+  const errors = results.filter((e) => e.severity !== "warning");
+  const warnings = results.filter((e) => e.severity === "warning");
+
+  if (errors.length > 0) {
+    const errorMessages = errors.map((e) => e.message);
+    throw new Error(`Invalid MapLibre Style: ${errorMessages.join(", ")}`);
+  }
+  for (const warning of warnings) {
+    console.warn(`MapLibre Style: ${warning.message}`);
+  }
+
+  return migrated as ParsedStyle;
+}
 
 /**
  * Get paint property spec for a layer type.

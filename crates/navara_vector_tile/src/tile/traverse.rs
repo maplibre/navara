@@ -1,5 +1,7 @@
 use bevy_ecs::prelude::*;
 use navara_component::{OrderByDistance, Priority};
+use std::ops::Range;
+
 use navara_core::Ellipsoid;
 
 use navara_buffer_store::BufferStore;
@@ -53,6 +55,7 @@ pub fn traverse_tile(
     rendered_tiles: &Query<&RenderedTile>,
     features: &Query<&FeatureId, With<VectorTileFeatureMarker>>,
     renderable_features: &mut Query<&mut RenderableFeature>,
+    activations: &mut PendingActivations,
     fog: &Fog,
     dynamic_sse: DynamicSseTerm,
     degrade: SseDegrade,
@@ -248,7 +251,14 @@ pub fn traverse_tile(
         }
 
         if !were_children_rendered {
-            return TraversalResult::NotFound;
+            // A failed request is never retried: report it as such, or the
+            // parent waits on this tile forever and never hands over to its
+            // other children.
+            return if is_tile_failed {
+                TraversalResult::Failed
+            } else {
+                TraversalResult::NotFound
+            };
         }
     }
 
@@ -268,11 +278,14 @@ pub fn traverse_tile(
         let mut rendered_children_indices = vec![];
         let mut hidden_children_indices = vec![];
         let mut prepared_children_indices = vec![];
+        // Each child's run in `activations`: the tiles its subtree queued active.
+        let mut queued_descendants: Vec<Range<usize>> = Vec::with_capacity(children.len());
 
         // Overscaled tile is actually not rendered, since parent tile is reused in the rendering engine side.
         let mut overscaled_children_indices = vec![];
 
         for (i, child) in children.iter().enumerate() {
+            let queued_start = activations.mark();
             let traversal_result = traverse_tile(
                 command,
                 source_id,
@@ -289,6 +302,7 @@ pub fn traverse_tile(
                 rendered_tiles,
                 features,
                 renderable_features,
+                activations,
                 fog,
                 dynamic_sse,
                 degrade,
@@ -306,6 +320,7 @@ pub fn traverse_tile(
                 source,
                 buf,
             );
+            queued_descendants.push(queued_start..activations.mark());
 
             if matches!(traversal_result, TraversalResult::NotFound) {
                 are_all_children_rendered = false;
@@ -413,52 +428,47 @@ pub fn traverse_tile(
                 }
             }
 
-            for (i, child) in children.iter().enumerate() {
-                let activation_state = get_renderable_feature_activation_state(
-                    tc,
-                    child,
-                    rendered_tiles,
-                    features,
-                    renderable_features,
-                );
-
+            // Reversed, so taking a child's queued descendants leaves the
+            // earlier children's runs in place.
+            for (i, child) in children.iter().enumerate().rev() {
                 let tile = qt.qt.get_mut(*child).unwrap();
                 tile.is_rendered = are_all_children_mesh_prepared;
 
                 // If this child is not renderable, skip rendering this child.
                 if prepared_children_indices.contains(&i) || hidden_children_indices.contains(&i) {
-                    if activation_state.is_some_and(|state| state.any_active) {
+                    let state = write_activation(
+                        tc,
+                        child,
+                        rendered_tiles,
+                        features,
+                        renderable_features,
+                        false,
+                    );
+                    if state.is_some_and(|state| state.any_active) {
                         tile.is_rendered = false;
-                        activate_all_renderable_features(
+                    }
+                    continue;
+                }
+
+                if are_all_children_mesh_prepared && !hide_children {
+                    for descendant in activations.activate(*child, queued_descendants[i].clone()) {
+                        write_activation(
                             tc,
-                            child,
+                            &descendant,
                             rendered_tiles,
                             features,
                             renderable_features,
                             false,
                         );
                     }
-                    continue;
-                }
-
-                let target_active = are_all_children_mesh_prepared && !hide_children;
-                // An empty tile reads as all active whatever it is set to, so
-                // it must not ask for another pass, or the traversal would re-run
-                // every frame.
-                let needs_activation_update = activation_state
-                    .is_some_and(|state| !state.is_empty && state.all_active != target_active);
-
-                if needs_activation_update {
-                    // Re-run this traverse if `active` is updated, because the child tiles are updated depending on the parent state.
-                    tc.needs_update = true;
-
-                    activate_all_renderable_features(
+                } else {
+                    write_activation(
                         tc,
                         child,
                         rendered_tiles,
                         features,
                         renderable_features,
-                        target_active,
+                        false,
                     );
                 }
             }
@@ -589,6 +599,96 @@ pub fn activate_if_changed(mut feature: Mut<RenderableFeature>, active: bool) {
     }
 }
 
+/// The tiles a traversal targets active, written by [`Self::apply`] once no
+/// ancestor can take over from them any more. Inactive targets are final, so
+/// they are written right away.
+///
+/// A tile's child loop targets its children active before its own parent
+/// decides whether to hand over to it. A parent that falls back to drawing
+/// itself (a sibling is not ready) must not leave those descendants active
+/// beside it. The traversal is post-order, so everything a child's subtree
+/// queues sits in one contiguous run, which [`Self::activate`] drops.
+#[derive(Default)]
+pub struct PendingActivations(Vec<TileHandle>);
+
+impl PendingActivations {
+    /// Where the tiles queued from now on start.
+    pub fn mark(&self) -> usize {
+        self.0.len()
+    }
+
+    /// Queues `handle` active and takes back the tiles queued under it
+    /// (`descendants`, a run between two [`Self::mark`]s), to deactivate.
+    pub fn activate(
+        &mut self,
+        handle: TileHandle,
+        descendants: Range<usize>,
+    ) -> std::vec::Drain<'_, TileHandle> {
+        self.0.push(handle);
+        self.0.drain(descendants)
+    }
+
+    /// Writes the tiles still queued: no ancestor took over from them.
+    pub fn apply(
+        self,
+        tc: &mut TileCacheManager,
+        rendered_tiles: &Query<&RenderedTile>,
+        features: &Query<&FeatureId, With<VectorTileFeatureMarker>>,
+        renderable_features: &mut Query<&mut RenderableFeature>,
+    ) {
+        for handle in self.0 {
+            write_activation(
+                tc,
+                &handle,
+                rendered_tiles,
+                features,
+                renderable_features,
+                true,
+            );
+        }
+    }
+}
+
+/// Writes `active` to the tile's features when it changes their state,
+/// flagging `tc` for another pass, because the parents' decisions read it.
+/// Returns the state before the write.
+pub(crate) fn write_activation(
+    tc: &mut TileCacheManager,
+    handle: &TileHandle,
+    rendered_tiles: &Query<&RenderedTile>,
+    features: &Query<&FeatureId, With<VectorTileFeatureMarker>>,
+    renderable_features: &mut Query<&mut RenderableFeature>,
+    active: bool,
+) -> Option<RenderableFeatureActivationState> {
+    let state = get_renderable_feature_activation_state(
+        tc,
+        handle,
+        rendered_tiles,
+        features,
+        renderable_features,
+    )?;
+    // An empty tile reads as all active whatever it is set to, so it must not
+    // ask for another pass, or the traversal would re-run every frame.
+    let changed = !state.is_empty
+        && if active {
+            !state.all_active
+        } else {
+            state.any_active
+        };
+    if changed {
+        tc.needs_update = true;
+        activate_all_renderable_features(
+            tc,
+            handle,
+            rendered_tiles,
+            features,
+            renderable_features,
+            active,
+        );
+    }
+    Some(state)
+}
+
 pub fn are_all_renderable_features_active(
     tc: &TileCacheManager,
     handle: &TileHandle,
@@ -607,7 +707,7 @@ pub fn are_all_renderable_features_active(
 }
 
 #[derive(Clone, Copy)]
-struct RenderableFeatureActivationState {
+pub(crate) struct RenderableFeatureActivationState {
     all_active: bool,
     any_active: bool,
     /// The tile parsed to no features: vacuously all active and none active,
@@ -821,6 +921,43 @@ mod test {
         expected.sort();
         assert_eq!(changed, expected);
         assert!(!world.get::<RenderableFeature>(draped).unwrap().is_active());
+    }
+
+    /// A parent that falls back to drawing itself while a child's own loop
+    /// queued the grandchildren under it: activating the parent drops them,
+    /// and a sibling queued before keeps its target.
+    #[test]
+    fn it_should_drop_the_descendants_of_an_activated_tile() {
+        let mut pending = PendingActivations::default();
+        assert_eq!(pending.activate(1, 0..0).count(), 0);
+
+        let start = pending.mark();
+        for grandchild in 10..14 {
+            let at = pending.mark();
+            assert_eq!(pending.activate(grandchild, at..at).count(), 0);
+        }
+        let end = pending.mark();
+
+        let dropped: Vec<TileHandle> = pending.activate(2, start..end).collect();
+        assert_eq!(dropped, vec![10, 11, 12, 13]);
+        assert_eq!(pending.0, vec![1, 2]);
+    }
+
+    /// Siblings are activated last to first, so taking a later child's
+    /// descendants leaves an earlier child's run in place, and a child that
+    /// hands over keeps its descendants queued.
+    #[test]
+    fn it_should_keep_earlier_sibling_runs_when_activating_in_reverse() {
+        let mut pending = PendingActivations(vec![10, 11, 12]);
+        let (first, second) = (0..2, 2..3);
+
+        let dropped: Vec<TileHandle> = pending.activate(2, second).collect();
+        assert_eq!(dropped, vec![12]);
+        assert_eq!(pending.0, vec![10, 11, 2]);
+
+        let dropped: Vec<TileHandle> = pending.activate(1, first).collect();
+        assert_eq!(dropped, vec![10, 11]);
+        assert_eq!(pending.0, vec![2, 1]);
     }
 
     #[test]

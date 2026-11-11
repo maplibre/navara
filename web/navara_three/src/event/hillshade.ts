@@ -183,6 +183,7 @@ function processInitialHillshadeTexture(
   const hillshadeConfig = hillshadeContext.getHillshadeConfig(
     tileHandler,
     tileHandleBigInt,
+    event.elevation_decoder,
   );
 
   const contentWidth = paddedSize - 2;

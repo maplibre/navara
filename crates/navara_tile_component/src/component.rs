@@ -84,6 +84,10 @@ pub struct HillshadeBackfillEventData {
     /// Edge direction: 0=Left, 1=Right, 2=Top, 3=Bottom
     /// 255 when not applicable (initialization)
     pub edge_direction: u8,
+    /// DEM decoder of the hillshade layer's source, for decoding the original
+    /// DEM. Set on the initial event (`original_handle` is Some); None on edge
+    /// updates, which reuse the decoder captured at creation.
+    pub elevation_decoder: Option<navara_core::ElevationDecoder>,
 }
 
 /// Component storing multiple hillshade backfill events for a single entity

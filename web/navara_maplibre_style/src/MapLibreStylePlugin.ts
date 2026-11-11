@@ -29,11 +29,13 @@ import {
 import {
   colorReliefLayerFollowsZoom,
   getSymbolPlacement,
+  hillshadeLayerFollowsZoom,
   symbolLayerFollowsZoom,
   toLayerDescription,
 } from "./adapters/toLayerDescription";
 import { BackgroundHandler } from "./BackgroundHandler";
 import { RustStyleEngine } from "./engine/RustStyleEngine";
+import { validateAndMigrateStyle } from "./engine/styleEngineUtils";
 import type { ParsedStyle, StyleLayer } from "./engine/types";
 import { convertFontFacesToFontFamilies } from "./fontHelper";
 import {
@@ -73,6 +75,12 @@ function serializeMaterials(layerDesc: LayerDescription): string {
       layerDesc.raster?.opacity,
       layerDesc.elevationHeatmap.filter,
     ]);
+  }
+  if (layerDesc.type === "raster" && layerDesc.hillshade) {
+    // An interpolated exaggeration changes continuously with zoom; a 0.05 step keeps
+    // `layer.update()` to visible changes.
+    const exaggeration = layerDesc.hillshade.exaggeration ?? 0;
+    return String(Math.round(exaggeration / 0.05));
   }
   return "";
 }
@@ -376,7 +384,7 @@ export class MapLibreStylePlugin extends Plugin<ThreeView, ViewContext> {
 
     try {
       // Parse and validate the merged style
-      this.parsedStyle = await this.engine.parseStyle(styleData);
+      this.parsedStyle = validateAndMigrateStyle(styleData);
 
       // Check if style uses glyphs (not supported)
       const hasFontFaces = this.parsedStyle["font-faces"];
@@ -851,7 +859,8 @@ export class MapLibreStylePlugin extends Plugin<ThreeView, ViewContext> {
 
     if (
       symbolLayerFollowsZoom(styleLayer) ||
-      colorReliefLayerFollowsZoom(styleLayer)
+      colorReliefLayerFollowsZoom(styleLayer) ||
+      hillshadeLayerFollowsZoom(styleLayer)
     ) {
       this.zoomFollowingLayers.set(layer, {
         styleLayer,

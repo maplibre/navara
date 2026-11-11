@@ -963,6 +963,12 @@ pub struct PolylineMaterial {
     pub cap: LineCap,
     pub clamp_to_ground: bool,
     pub tiled: bool,
+    /// Edges of the tiled path follow the geodesic, and consecutive vertices
+    /// more than 180° apart in longitude take the short way. When `false`,
+    /// edges are straight lines in Web Mercator and longitudes are used as
+    /// given, as in MapLibre. Resolved per layer by the GeoJSON tiler; the
+    /// non-tiled path ignores it.
+    pub geodesic: bool,
     pub height: f32,
     /// Source geometry types this appearance consumes. Defaults to the native
     /// geometry only; opting in `Polygon` also renders polygon boundary rings
@@ -996,6 +1002,7 @@ impl Default for PolylineMaterial {
             cap: LineCap::Butt,
             clamp_to_ground: true,
             tiled: false,
+            geodesic: true,
             height: 1.,
             geometry_types: vec![SourceGeometryType::Line],
             internal: None,
@@ -1035,6 +1042,12 @@ pub struct PolygonMaterial {
     pub color: u32,
     pub clamp_to_ground: bool,
     pub tiled: bool,
+    /// Edges of the tiled path follow the geodesic, and consecutive vertices
+    /// more than 180° apart in longitude take the short way. When `false`,
+    /// edges are straight lines in Web Mercator and longitudes are used as
+    /// given, as in MapLibre. Resolved per layer by the GeoJSON tiler; the
+    /// non-tiled path ignores it.
+    pub geodesic: bool,
     pub height: f32,
     pub extruded_height: Option<f32>,
     pub wireframe: bool,
@@ -1085,6 +1098,7 @@ impl Default for PolygonMaterial {
             color: 0xffffff,
             clamp_to_ground: true,
             tiled: false,
+            geodesic: true,
             height: 1.,
             extruded_height: None,
             wireframe: false,

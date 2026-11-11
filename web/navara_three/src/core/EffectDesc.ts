@@ -206,6 +206,13 @@ export abstract class EffectDesc<
    * via `update()` instead of re-adding.
    */
   static requiredBuffers?: readonly GBufferName[];
+  /**
+   * Keeps selective-effect-capable meshes in the MRT pass while this effect
+   * is active, even when no optional G-buffer is allocated. For an effect
+   * composited over the MRT output whose look depends on the meshes sorting
+   * with it, such as aerial perspective without its normal buffer.
+   */
+  static requiresMrtPass?: boolean;
 
   private instanceId: string;
 

@@ -1,0 +1,26 @@
+---
+import { isNightlyOnly, NIGHTLY_DOCS_PATH, NIGHTLY_TOOLTIP } from '../../../site/release-status';
+
+interface Props {
+	/** The latest release + 0.0.1 when the feature landed, e.g. "0.3.2". */
+	since: string | undefined;
+}
+
+const { since } = Astro.props;
+const lang = Astro.locals.starlightRoute.locale === 'ja' ? 'ja' : 'en';
+const href = `${import.meta.env.BASE_URL.replace(/\/$/, '')}${lang === 'ja' ? '/ja' : ''}/${NIGHTLY_DOCS_PATH[lang]}`;
+---
+
+{
+	since && isNightlyOnly(since) && (
+		<a href={href} title={NIGHTLY_TOOLTIP[lang]} class="nightly-link">
+			<span class="nvr-nightly" />
+		</a>
+	)
+}
+
+<style>
+	.nightly-link {
+		text-decoration: none;
+	}
+</style>

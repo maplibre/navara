@@ -21,7 +21,7 @@
             ],
             "tileSize": 512,
             "encoding": "terrarium",
-            "maxzoom": 10
+            "maxzoom": 20
         },
         "terrain-2": {
             "type": "raster-dem",
@@ -30,7 +30,7 @@
             ],
             "tileSize": 512,
             "encoding": "terrarium",
-            "maxzoom": 10
+            "maxzoom": 20
         }
     },
     "layers": [
@@ -120,7 +120,20 @@
         {
             "id": "hillshade",
             "type": "hillshade",
-            "source": "terrain-1"
+            "source": "terrain-1",
+            "paint": {
+                "hillshade-exaggeration": [
+                    "interpolate",
+                    ["linear"],
+                    ["zoom"],
+                    4,
+                    0.3,
+                    8,
+                    0.5,
+                    12,
+                    0.8
+                ]
+            }
         }
     ],
     "terrain": {

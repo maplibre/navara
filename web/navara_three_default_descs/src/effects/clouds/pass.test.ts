@@ -4,10 +4,11 @@ import {
   PerspectiveCamera,
   Texture,
   TextureLoader,
+  Vector2,
 } from "three";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { Clouds } from "./pass";
+import { Clouds, type CloudsOptions } from "./pass";
 
 // The package index boots the worker pool, which needs a browser.
 vi.mock("@navaramap/three", async () => ({
@@ -44,6 +45,21 @@ const fakeAtmosphere = () => {
 };
 
 const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+const createClouds = (options: CloudsOptions) => {
+  vi.spyOn(Clouds.prototype, "loadAll").mockReturnValue(
+    new Promise<never>(() => {}),
+  );
+  return new Clouds(
+    new PerspectiveCamera(),
+    fakeAtmosphere() as never,
+    options,
+  );
+};
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
 
 describe("Clouds.dispose", () => {
   it("disposes the textures it loaded", async () => {
@@ -159,5 +175,42 @@ describe("Clouds.dispose", () => {
     clouds.dispose();
 
     expect(disposeSecond).toHaveBeenCalled();
+  });
+});
+
+describe("Clouds shadow map", () => {
+  it.each([
+    ["low", 256, 2],
+    ["medium", 256, 3],
+    ["high", 512, 3],
+    ["ultra", 1024, 3],
+  ] as const)(
+    "takes the %s preset's map size and cascade count",
+    (qualityPreset, mapSize, cascadeCount) => {
+      const clouds = createClouds({ qualityPreset });
+      expect(clouds.shadowMapSize.toArray()).toEqual([mapSize, mapSize]);
+      expect(clouds.shadowCascadeCount).toBe(cascadeCount);
+    },
+  );
+
+  it("prefers explicit options over the preset", () => {
+    const clouds = createClouds({
+      qualityPreset: "low",
+      shadowMapSize: new Vector2(1024, 1024),
+      shadowCascadeCount: 4,
+    });
+    expect(clouds.shadowMapSize.toArray()).toEqual([1024, 1024]);
+    expect(clouds.shadowCascadeCount).toBe(4);
+  });
+
+  it("keeps in-place size changes out of the preset", () => {
+    const clouds = createClouds({ qualityPreset: "medium" });
+    clouds.shadowMapSize.set(1024, 1024);
+    clouds.qualityPreset = "high";
+    clouds.qualityPreset = "medium";
+    expect(clouds.shadowMapSize.toArray()).toEqual([256, 256]);
+    expect(
+      createClouds({ qualityPreset: "medium" }).shadowMapSize.toArray(),
+    ).toEqual([256, 256]);
   });
 });

@@ -44,6 +44,7 @@ description: >
 - Prefer relative paths for page links, `@assets/` for images, `@components/` for component imports.
 - Every code block declares its language; frontmatter needs `title`, `description`, `sidebar.order`.
 - Add new examples **alongside** existing ones; don't remove or restructure existing content.
+- **Mark APIs the latest npm release lacks** with that release + 0.0.1 (`site/released-version.json`): `since: X.Y.Z` in the frontmatter for a new page, `:since[X.Y.Z]` at the end of a heading or paragraph otherwise. They render a Nightly badge until a release reaches that version (details: `docs/guide/NAVARA_THREE_UPDATE_CHECKLIST.md`, "Unreleased Features").
 
 ## Quality checklist before finishing
 

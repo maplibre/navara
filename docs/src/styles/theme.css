@@ -81,3 +81,53 @@ a.sl-link-button.primary:hover {
 a.sl-link-button.minimal:hover {
   color: var(--nv-cream);
 }
+
+/* Nightly badges, styled like the examples' NightlyBadge: the page title's
+   (NightlyBadge.astro) and the `:since[x.y.z]` directive's
+   (src/utils/remark-since.ts) empty .nvr-nightly spans, and the Starlight
+   <Badge> of the sidebar links (.nvr-nightly-badge, see Sidebar.astro). */
+.nvr-nightly,
+.sl-badge.nvr-nightly-badge {
+  display: inline-block;
+  padding: 0.125rem 0.375rem;
+  border: 1px solid var(--sl-color-accent-high);
+  border-radius: 8px;
+  background-color: var(--sl-color-accent-high);
+  color: var(--sl-color-accent-low);
+  font-family: "Arsenal", "Zen Kaku Gothic New", Arial, sans-serif;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.025em;
+  line-height: 1;
+  text-transform: uppercase;
+}
+/* 0.5rem matches the examples' gap-2 between a title and its badge. */
+.nvr-nightly {
+  margin-inline-start: 0.5rem;
+  vertical-align: middle;
+}
+.nvr-nightly::after {
+  content: "Nightly";
+}
+/* In the sidebar the badge sits at the right end of its link, vertically
+   centered. A label too long to share the line keeps its words whole and
+   pushes the badge to the next line. */
+.sidebar-content a:has(> .nvr-nightly-badge) {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  column-gap: 0.5rem;
+}
+.sidebar-content a:has(> .nvr-nightly-badge) > span:first-child {
+  overflow-wrap: break-word;
+}
+.sidebar-content .sl-badge.nvr-nightly-badge {
+  margin-inline-start: auto;
+}
+/* The current sidebar link is itself filled with the accent, so its badge is
+   drawn as an outline, like Starlight's own badges there. */
+.sidebar-content a[aria-current="page"] > .sl-badge.nvr-nightly-badge {
+  border-color: currentColor;
+  background-color: transparent;
+  color: inherit;
+}
