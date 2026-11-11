@@ -11,6 +11,7 @@ import invariant from "tiny-invariant";
 
 import {
   AerialPerspective,
+  DEFAULT_AERIAL_PERSPECTIVE_OPTIONS,
   type AerialPerspectiveOptions,
   type AerialPerspectiveLightingOptions,
 } from "./aerialPerspective/index";
@@ -31,6 +32,7 @@ export type AerialPerspectiveConfig = Description & EffectConfig;
 
 export type AerialPerspectiveUpdate = Description & EffectUpdate;
 
+const NO_REQUIRED_BUFFERS: readonly GBufferName[] = [];
 const REQUIRED_BUFFERS: readonly GBufferName[] = ["normal"];
 const REQUIRED_BUFFERS_WITH_SHADOW: readonly GBufferName[] = [
   "normal",
@@ -44,10 +46,11 @@ export class AerialPerspectiveEffectDesc extends EffectDesc<
 > {
   static key = "aerialPerspective";
   static insertAfter = ["mrt"];
+  // With `useNormalBuffer: false` it may require no buffer at all; meshes
+  // still render in the MRT pass so they sort with its transparent content.
+  static requiresMrtPass = true;
 
   private config: AerialPerspectiveConfig;
-  private shadowTerm: boolean;
-  private specularTerm: boolean;
 
   constructor(
     view: ThreeView,
@@ -55,18 +58,28 @@ export class AerialPerspectiveEffectDesc extends EffectDesc<
     config: AerialPerspectiveConfig,
   ) {
     super(view, ctx, config);
-    this.config = config;
-    const description = config.aerialPerspective ?? {};
-    this.shadowTerm = description.shadow ?? false;
-    this.specularTerm = description.specular ?? false;
+    // Copied: the requirements derive from it, and callers may share it
+    // between views.
+    this.config = {
+      ...config,
+      aerialPerspective: { ...config.aerialPerspective },
+    };
   }
 
   /**
    * Both terms read the shadow attachment: R for the shadow amount, G for the
-   * deferred-lit mask. Read before `onCreate`.
+   * deferred-lit mask. The shader compiles both out without a normal buffer
+   * or without `irradiance`, so neither reads it then. Read before `onCreate`.
    */
   getRequiredBuffers(): readonly GBufferName[] {
-    return this.shadowTerm || this.specularTerm
+    const options = this.config.aerialPerspective ?? {};
+    const defaults = DEFAULT_AERIAL_PERSPECTIVE_OPTIONS;
+    if (!(options.useNormalBuffer ?? defaults.useNormalBuffer)) {
+      return NO_REQUIRED_BUFFERS;
+    }
+    return (options.irradiance ?? defaults.irradiance) &&
+      ((options.shadow ?? defaults.shadow) ||
+        (options.specular ?? defaults.specular))
       ? REQUIRED_BUFFERS_WITH_SHADOW
       : REQUIRED_BUFFERS;
   }
@@ -97,10 +110,27 @@ export class AerialPerspectiveEffectDesc extends EffectDesc<
     super.onUpdateConfig(updates);
 
     if (!this._instance) return;
-    Object.assign(this.config, updates);
 
     const config = updates.aerialPerspective;
     if (!config) return;
+
+    // Merged, skipping `undefined` like the setters: the requirements derive
+    // from it.
+    const required = this.getRequiredBuffers();
+    this.config.aerialPerspective = {
+      ...this.config.aerialPerspective,
+      ...(Object.fromEntries(
+        Object.entries(config).filter(([, value]) => value !== undefined),
+      ) as typeof config),
+    };
+    const next = this.getRequiredBuffers();
+    const grows = next.some((name) => !required.includes(name));
+    const shrinks = required.some((name) => !next.includes(name));
+    if (grows) {
+      // Allocates the attachments before the shader reads them; the depth
+      // texture identity survives the MRT rebuild.
+      this.ctx.emit("gbufferRequirementsChanged");
+    }
 
     if (config.inscatter !== undefined) {
       this._instance.inscatter = config.inscatter;
@@ -127,30 +157,23 @@ export class AerialPerspectiveEffectDesc extends EffectDesc<
       this._instance.useNormalBuffer = config.useNormalBuffer;
     }
     this.updateLighting(config);
+
+    if (shrinks && !grows) {
+      // Releases the attachments the shader no longer reads. A growth's
+      // re-derivation above already released them.
+      this.ctx.emit("gbufferRequirementsChanged");
+    }
   }
 
   private updateLighting(config: AerialPerspectiveLightingOptions): void {
     invariant(this._instance);
     const effect = this._instance.rawEffect;
 
-    const wasEnabled = this.shadowTerm || this.specularTerm;
     if (config.shadow !== undefined) {
-      this.shadowTerm = config.shadow;
+      effect.shadowTerm = config.shadow;
     }
     if (config.specular !== undefined) {
-      this.specularTerm = config.specular;
-    }
-    const enabled = this.shadowTerm || this.specularTerm;
-    if (enabled && !wasEnabled) {
-      // Allocates the shadow attachment before the shader reads it; the
-      // depth texture identity survives the MRT rebuild.
-      this.ctx.emit("gbufferRequirementsChanged");
-    }
-    effect.shadowTerm = this.shadowTerm;
-    effect.specularTerm = this.specularTerm;
-    if (!enabled && wasEnabled) {
-      // Releases the shadow attachment.
-      this.ctx.emit("gbufferRequirementsChanged");
+      effect.specularTerm = config.specular;
     }
 
     if (config.shadowIntensity !== undefined) {

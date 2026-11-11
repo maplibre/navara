@@ -127,7 +127,8 @@ import { LayersManager } from "./layersManager";
 import { disposeTexture } from "./loaders";
 import {
   overrideMaterialsForMRT,
-  GBUFFER_ATTACHMENT_NAMES,
+  countGBufferAttachments,
+  exceededGBufferCapacity,
   resolveGBufferOptions,
   unionGBufferRequirements,
   type GBufferName,
@@ -541,7 +542,7 @@ export default class ThreeView<
 
   /** Handle for the sky environment map effect descriptor. Used for sky reflections. */
   private skyEnvMap!: EffectHandle<SkyEnvMapEffectDesc>;
-  /** Handle for the Multi-Render Target pass that outputs color and normal buffers. */
+  /** Handle for the Multi-Render Target pass that outputs color and the optional G-buffers. */
   private mrtPass!: EffectHandle<MRTPassEffectDesc>;
   /** Handle for the transparent objects rendering pass. */
   private transparentPass!: EffectHandle<TransparentPassEffectDesc>;
@@ -2562,21 +2563,21 @@ export default class ThreeView<
    * when changed.
    */
   private _syncGBuffers = (): void => {
-    const requirements: (readonly GBufferName[])[] = [];
-    for (const handle of this.layersManager.getHandles()) {
-      const desc = handle.ref;
-      if (desc instanceof EffectDesc) {
-        requirements.push(desc.getRequiredBuffers());
-      } else if (desc instanceof MeshDesc) {
-        requirements.push(desc.getRequiredBuffers());
+    // Set first: the mesh requirements below go through `getPassKey()`.
+    let mrtPassRequired = false;
+    for (const handle of this.layersManager.getEffectDescs()) {
+      if (handle.ref.getConstructor().requiresMrtPass) {
+        mrtPassRequired = true;
+        break;
       }
     }
-    const buffers = unionGBufferRequirements(requirements);
+    this.viewContext._mrtPassRequired = mrtPassRequired;
+    const buffers = unionGBufferRequirements(this._gbufferRequirements());
     // `addEffect`/`addMesh` reject an over-limit descriptor up front. A
     // requirement that grows after creation is reported instead and the
     // previous configuration kept, since the GL level would give an
     // incomplete framebuffer. A later re-derivation that fits applies.
-    const attachmentCount = this._countGBufferAttachments(buffers);
+    const attachmentCount = countGBufferAttachments(buffers);
     const maxDrawBuffers = this._maxDrawBuffers();
     if (attachmentCount > maxDrawBuffers) {
       console.error(
@@ -2584,11 +2585,26 @@ export default class ThreeView<
           `exceeding this device's MAX_DRAW_BUFFERS (${maxDrawBuffers}). ` +
           "Keeping the previous G-buffers.",
       );
+      // Re-applied anyway: meshes re-evaluate their pass on the event, and
+      // `requiresMrtPass` may have changed.
+      this.viewContext._setGBufferOptions(this._buffers);
       return;
     }
     this._buffers = buffers;
     this.viewContext._setGBufferOptions(this._buffers);
   };
+
+  // Lazy, so the capacity check's already-allocated shortcut walks no layer.
+  private *_gbufferRequirements(): Generator<readonly GBufferName[]> {
+    for (const handle of this.layersManager.getHandles()) {
+      const desc = handle.ref;
+      if (desc instanceof EffectDesc) {
+        yield desc.getRequiredBuffers();
+      } else if (desc instanceof MeshDesc) {
+        yield desc.getRequiredBuffers();
+      }
+    }
+  }
 
   /**
    * Throws when enabling a descriptor's required G-buffers would push the
@@ -2600,27 +2616,20 @@ export default class ThreeView<
     label: string,
   ): void {
     if (required.length === 0) return;
-    const prospective = unionGBufferRequirements([
-      (Object.keys(this._buffers) as GBufferName[]).filter(
-        (name) => this._buffers[name],
-      ),
-      required,
-    ]);
-    const attachmentCount = this._countGBufferAttachments(prospective);
     const maxDrawBuffers = this._maxDrawBuffers();
-    if (attachmentCount > maxDrawBuffers) {
+    const attachmentCount = exceededGBufferCapacity(
+      this._gbufferRequirements(),
+      required,
+      this._buffers,
+      maxDrawBuffers,
+    );
+    if (attachmentCount !== undefined) {
       throw new Error(
         `The ${label} requires G-buffers [${required.join(", ")}], ` +
           `but the resulting ${attachmentCount} MRT attachments exceed this ` +
           `device's MAX_DRAW_BUFFERS (${maxDrawBuffers}).`,
       );
     }
-  }
-
-  private _countGBufferAttachments(buffers: ResolvedGBufferOptions): number {
-    // Color is the only always-present draw buffer; depth takes no
-    // `MAX_DRAW_BUFFERS` slot.
-    return 1 + GBUFFER_ATTACHMENT_NAMES.filter((name) => buffers[name]).length;
   }
 
   private _maxDrawBuffers(): number {

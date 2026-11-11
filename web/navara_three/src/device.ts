@@ -55,8 +55,8 @@ const MOBILE_MAX_PIXEL_RATIO = 1.0;
  * `mobileOptimization`). The fixed screen-sized render-target stack (composer
  * buffers, gbuffer MRT and depth textures, counted by the ledger as
  * `fixed_gpu_bytes`) grows quadratically with the drawing-buffer size — and
- * with the derived `buffers` configuration, which starts at two attachments
- * (color + normal) and grows as effects declare `requiredBuffers`: at
+ * with the derived `buffers` configuration, which starts at one attachment
+ * (color) and grows as effects declare `requiredBuffers`: at
  * DPR 3 it alone can exceed a mobile tile-cache budget and permanently close
  * the load gate. Above DPR 2 the sharpness gain is marginal on phone screens.
  */
