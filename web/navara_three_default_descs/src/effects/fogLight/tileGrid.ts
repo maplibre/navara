@@ -107,6 +107,12 @@ export class FogLightTileGrid {
     this._maxLightsPerTile = maxLightsPerTile;
   }
 
+  dispose(): void {
+    this.gridTex?.dispose();
+    this.indexTex?.dispose();
+    this.residualTex?.dispose();
+  }
+
   get gridTexture(): DataTexture | undefined {
     return this.gridTex;
   }

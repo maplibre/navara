@@ -84,8 +84,10 @@ export class CustomRenderPass extends RenderPass {
   private buffers: ResolvedGBufferOptions;
   // Scene-level default of the `lit` material option (`view.lit`).
   private sceneLit: boolean;
-  // Template for rebuilding the G-buffer render target in setBuffers.
-  private inputBufferTemplate: WebGLRenderTarget;
+  // Template for rebuilding the G-buffer render target in setBuffers. The
+  // template is the composer's input buffer, so it is not held in a property
+  // `Pass.dispose()` would dispose.
+  private readonly cloneInputBuffer: () => WebGLRenderTarget;
   /**
    * Attachment indices of `gbufferRenderTarget.textures` for this view.
    * Recomputed by {@link setBuffers}.
@@ -137,7 +139,7 @@ export class CustomRenderPass extends RenderPass {
     this.sceneLit = options?.lit ?? true;
     this.textureIndex = computeGBufferTextureIndex(this.buffers);
     this.gbufferDefines = computeGBufferDefines(this.buffers);
-    this.inputBufferTemplate = inputBuffer;
+    this.cloneInputBuffer = () => inputBuffer.clone();
 
     this.gbufferRenderTarget = inputBuffer.clone();
     // Extra G-buffer attachments (normal/effectIds/emissive) – see
@@ -224,7 +226,7 @@ export class CustomRenderPass extends RenderPass {
     // Texture identity; every optional attachment is reallocated, which is why
     // consumers must re-fetch each frame rather than capture at creation.
     const old = this.gbufferRenderTarget;
-    const rt = this.inputBufferTemplate.clone();
+    const rt = this.cloneInputBuffer();
     rt.setSize(old.width, old.height);
     rt.texture = old.texture;
     appendOptionalGBufferAttachments(rt, buffers);

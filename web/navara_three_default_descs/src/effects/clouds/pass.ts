@@ -165,6 +165,13 @@ export class Clouds extends Pass<
 > {
   atmosphere: Atmosphere;
   private _cloudLayers: CloudLayer[] = [];
+  /**
+   * Textures this pass loaded. The effect holds them in uniforms, which
+   * `Pass.dispose()` does not reach.
+   */
+  private loadedTextures = new Set<Texture>();
+  private disposed = false;
+  private cancelTexturesReady?: () => void;
 
   constructor(camera: Camera, atmosphere: Atmosphere, options?: CloudsOptions) {
     const effect = new CloudsEffect(camera);
@@ -267,37 +274,34 @@ export class Clouds extends Pass<
       this.emit("needsUpdate");
     });
 
-    this.inner.events.addEventListener(
-      "change",
-      (event: CloudsEffectChangeEvent) => {
-        if (!this.rawEffect || !this.atmosphere) return;
-        switch (event.property) {
-          case "atmosphereOverlay":
-            this.atmosphere.overlay.value = this.rawEffect.atmosphereOverlay;
-            break;
-          case "atmosphereShadow":
-            if (!this.shadows) break;
-            this.atmosphere.shadow.value = this.inner.atmosphereShadow;
-            // Denoise shadow artifact.
-            new STBNLoader().load(this.options.stbnUrl, (data) => {
-              if (!this.rawEffect) return;
-              this.rawEffect.stbnTexture = data;
-            });
-            break;
-          case "atmosphereShadowLength":
-            this.atmosphere.shadowLength.value =
-              this.inner.atmosphereShadowLength;
-            break;
-        }
-        this.atmosphere.onUpdate();
-      },
-    );
+    this.inner.events.addEventListener("change", this.onEffectChange);
 
     // Cloud lighting genuinely samples all four precomputed textures.
-    this.atmosphere.onTexturesReady((t) => this.onTextureLoaded(t));
+    this.cancelTexturesReady = this.atmosphere.onTexturesReady((t) =>
+      this.onTextureLoaded(t),
+    );
 
     this.atmosphere.on("disposed", this.onDisposed);
   }
+
+  private onEffectChange = (event: CloudsEffectChangeEvent) => {
+    if (!this.rawEffect || !this.atmosphere) return;
+    switch (event.property) {
+      case "atmosphereOverlay":
+        this.atmosphere.overlay.value = this.rawEffect.atmosphereOverlay;
+        break;
+      case "atmosphereShadow":
+        if (!this.shadows) break;
+        this.atmosphere.shadow.value = this.inner.atmosphereShadow;
+        // Denoise shadow artifact.
+        new STBNLoader().load(this.options.stbnUrl, this.onSTBNLoad);
+        break;
+      case "atmosphereShadowLength":
+        this.atmosphere.shadowLength.value = this.inner.atmosphereShadowLength;
+        break;
+    }
+    this.atmosphere.onUpdate();
+  };
 
   private onTextureLoaded = (textures: PrecomputedTextures) => {
     Object.assign(this.rawEffect, textures);
@@ -305,7 +309,6 @@ export class Clouds extends Pass<
 
   private onDisposed = () => {
     this.dispose();
-    this.atmosphere?.off("disposed", this.onDisposed);
   };
 
   _update() {
@@ -315,10 +318,25 @@ export class Clouds extends Pass<
   }
 
   dispose() {
+    this.disposed = true;
+    this.atmosphere.off("disposed", this.onDisposed);
+    this.cancelTexturesReady?.();
+    this.inner.events.removeEventListener("change", this.onEffectChange);
     this.atmosphere.overlay.value = null;
     this.atmosphere.shadow.value = null;
     this.atmosphere.shadowLength.value = null;
+    for (const texture of this.loadedTextures) texture.dispose();
+    this.loadedTextures.clear();
     super.dispose();
+  }
+
+  private own(texture: Texture): boolean {
+    if (this.disposed) {
+      texture.dispose();
+      return false;
+    }
+    this.loadedTextures.add(texture);
+    return true;
   }
 
   initializeCloudLayers(options?: CloudOptions[]) {
@@ -384,6 +402,7 @@ export class Clouds extends Pass<
   }
 
   onLocalWeatherLoad = (texture: Texture): void => {
+    if (!this.own(texture)) return;
     texture.minFilter = LinearMipMapLinearFilter;
     texture.magFilter = LinearFilter;
     texture.wrapS = RepeatWrapping;
@@ -394,6 +413,7 @@ export class Clouds extends Pass<
   };
 
   onShapeLoad = (texture: Data3DTexture): void => {
+    if (!this.own(texture)) return;
     texture.format = RedFormat;
     texture.minFilter = LinearFilter;
     texture.magFilter = LinearFilter;
@@ -406,6 +426,7 @@ export class Clouds extends Pass<
   };
 
   onShapeDetailLoad = (texture: Data3DTexture): void => {
+    if (!this.own(texture)) return;
     texture.format = RedFormat;
     texture.minFilter = LinearFilter;
     texture.magFilter = LinearFilter;
@@ -418,6 +439,7 @@ export class Clouds extends Pass<
   };
 
   onTurbulenceLoad = (texture: Texture): void => {
+    if (!this.own(texture)) return;
     texture.minFilter = LinearMipMapLinearFilter;
     texture.magFilter = LinearFilter;
     texture.wrapS = RepeatWrapping;
@@ -428,6 +450,10 @@ export class Clouds extends Pass<
   };
 
   onSTBNLoad = (texture: Data3DTexture): void => {
+    if (!this.own(texture)) return;
+    // The shadow reload loads a second STBN; free the one it replaces.
+    const previous = this.rawEffect.stbnTexture;
+    if (previous && this.loadedTextures.delete(previous)) previous.dispose();
     this.rawEffect.stbnTexture = texture;
   };
 

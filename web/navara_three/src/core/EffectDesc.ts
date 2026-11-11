@@ -168,8 +168,10 @@ export type EffectBaseInstance<Instance extends object = object> =
  * 3. **{@link onUpdateConfig}** - Called when `handle.update()` is invoked. The base class
  *    handles `visible`; override to handle your custom properties.
  * 4. **{@link update}** - Optional per-frame callback for animating effect parameters.
- * 5. **{@link onDestroy}** - Called on `handle.delete()`. The base class removes the pass
- *    from the render pipeline.
+ * 5. **{@link onDestroy}** - Called on `handle.delete()` and by `view.dispose()`. The base
+ *    class removes the pass from the render pipeline and disposes it (the instance's own
+ *    `dispose()` when it has one, otherwise its `raw` pass), so a pass must not own
+ *    resources other effects still use.
  *
  * @see The `custom-effect` example page for a complete custom effect descriptor tutorial
  *      implementing a vignette effect.
@@ -340,7 +342,19 @@ export abstract class EffectDesc<
       this.ctx.removePass(this.instanceId);
     }
 
-    super.onDestroy();
+    // Removing a pass from the composer does not dispose it. A wrapper's own
+    // `dispose()` also releases what it holds beside the raw pass.
+    const instance = this._instance as
+      { dispose?: () => void; raw?: { dispose?: () => void } } | undefined;
+    try {
+      if (typeof instance?.dispose === "function") {
+        instance.dispose();
+      } else {
+        instance?.raw?.dispose?.();
+      }
+    } finally {
+      super.onDestroy();
+    }
   }
 
   /**

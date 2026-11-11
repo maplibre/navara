@@ -439,6 +439,18 @@ describe("FontManager", () => {
       expect(mocks.mockUnloadFont).toHaveBeenCalledTimes(1);
     });
 
+    it("should not reject when the manager is disposed mid-unload", async () => {
+      await manager.loadFont(FONT_URL, false);
+      mocks.mockUnloadFont.mockReturnValueOnce(
+        Promise.reject(new Error("FontWorkerClient disposed")),
+      );
+
+      const unload = manager.unloadFont(FONT_URL, false);
+      manager.dispose();
+
+      await expect(unload).resolves.toBeUndefined();
+    });
+
     it("should be a no-op for unknown font URLs", async () => {
       await manager.unloadFont("https://fonts.test/unknown.ttf", false);
       expect(mocks.mockUnloadFont).not.toHaveBeenCalled();

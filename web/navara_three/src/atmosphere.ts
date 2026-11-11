@@ -345,6 +345,7 @@ export class Atmosphere extends EventHandler<AtmosphereEvents> {
    * guaranteed to be present.
    * @param needs - The textures the caller needs, e.g.
    * `{ transmittance: true }`. Omit to load all of them.
+   * @returns A function that cancels the callback if it has not run yet.
    *
    * @example
    * atmosphere.onTexturesReady(
@@ -357,7 +358,7 @@ export class Atmosphere extends EventHandler<AtmosphereEvents> {
   >(
     callback: (textures: LoadedAtmosphereTextures<N>) => void,
     needs?: N,
-  ): void {
+  ): () => void {
     const names =
       needs == null
         ? ALL_ATMOSPHERE_TEXTURE_NAMES
@@ -377,14 +378,15 @@ export class Atmosphere extends EventHandler<AtmosphereEvents> {
     };
     if (isReady()) {
       invoke();
-    } else {
-      const listener = () => {
-        if (!isReady()) return;
-        this.off("textureLoaded", listener);
-        invoke();
-      };
-      this.on("textureLoaded", listener);
+      return () => {};
     }
+    const listener = () => {
+      if (!isReady()) return;
+      this.off("textureLoaded", listener);
+      invoke();
+    };
+    this.on("textureLoaded", listener);
+    return () => this.off("textureLoaded", listener);
   }
 
   /**

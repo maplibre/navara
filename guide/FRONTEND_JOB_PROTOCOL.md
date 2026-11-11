@@ -74,7 +74,13 @@ on one job never overlap. `start` rejecting (or throwing) calls the kind's
 `undefined` means "done, no product". A job that settles without a product
 (or whose `start` failed) leaves the table, so the data requesters despawned
 without `removed` (see Event contract) do not leak. `dispose()` aborts
-everything and tears late products down with `ev === undefined`.
+everything and tears late products down with `ev === undefined`. It leaves
+settled products to their owner: `ThreeView.dispose()` tears them down right
+after, through `disposeAllObjects` (`event/objectRemoved.ts`), which runs
+`processObjectRemoved` on every indexed product and live tile mesh, then
+deletes every descriptor, which disposes the pickables it registered in the
+same index. `processObjectRemoved` runs once per object, so a product indexed
+before its job settled is not torn down again by the late teardown.
 `inFlight()` counts jobs with a call outstanding and is O(1).
 
 **Event ownership.** The dispatcher frees every WASM event object it takes:

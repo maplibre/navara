@@ -404,7 +404,14 @@ export class FontManager {
     }
 
     if (this._client) {
-      const result = await this._client.unloadFont(qUrl);
+      let result;
+      try {
+        result = await this._client.unloadFont(qUrl);
+      } catch (err) {
+        // `dispose()` terminated the worker, and the font with it.
+        if (!this._client) return;
+        throw err;
+      }
       if (!result.ok) {
         console.warn(
           `Failed to unload font "${url}" (${highQuality}) in worker`,
