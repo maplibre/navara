@@ -1,5 +1,7 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import type { ElevationDecoder } from "@navaramap/engine";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 
+import type { TileHandler } from "./context";
 import { HillshadeContext } from "./HillshadeContext";
 import type { HillshadeConfig } from "./HillshadeContext";
 
@@ -16,6 +18,56 @@ describe("HillshadeContext", () => {
 
   beforeEach(() => {
     context = new HillshadeContext();
+  });
+
+  describe("getHillshadeConfig", () => {
+    // Mapbox Terrain-RGB and Terrarium, as the engine reports them.
+    const mapbox = {
+      r_scaler: 65536,
+      g_scaler: 256,
+      b_scaler: 1,
+      boundary: 10000,
+      min_offset: 0,
+      max_offset: 0,
+      epsilon: 0.1,
+      offset: -10000,
+    } as ElevationDecoder;
+    const terrarium = {
+      r_scaler: 256,
+      g_scaler: 1,
+      b_scaler: 1 / 256,
+      boundary: 0,
+      min_offset: 0,
+      max_offset: 0,
+      epsilon: 1.0,
+      offset: -32768,
+    } as ElevationDecoder;
+    const tileHandler = (terrainDecoder?: ElevationDecoder) =>
+      ({
+        getTileElevationDecoder: vi.fn(() => terrainDecoder),
+      }) as unknown as TileHandler;
+
+    it("uses the hillshade source's decoder over the terrain's", () => {
+      const config = context.getHillshadeConfig(
+        tileHandler(terrarium),
+        1n,
+        mapbox,
+      );
+      expect(config.rgbScaler).toEqual([65536, 256, 1]);
+      expect(config.epsilon).toBe(0.1);
+      expect(config.offset).toBe(-10000);
+    });
+
+    it("decodes with the source's decoder when the terrain has no DEM", () => {
+      const config = context.getHillshadeConfig(tileHandler(), 1n, mapbox);
+      expect(config.rgbScaler).toEqual([65536, 256, 1]);
+    });
+
+    it("falls back to the terrain's decoder without a source decoder", () => {
+      const config = context.getHillshadeConfig(tileHandler(terrarium), 1n);
+      expect(config.rgbScaler).toEqual([256, 1, 1 / 256]);
+      expect(config.offset).toBe(-32768);
+    });
   });
 
   describe("pendingEdges management", () => {

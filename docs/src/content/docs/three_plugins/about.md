@@ -19,7 +19,8 @@ navara_three (core: ThreeView, Plugin, addPlugin)
         ├── PersonViewPlugin (keyboard-driven first/third-person view controller)
         ├── OverlayPlugin (world-to-screen HTML overlay projection)
         ├── CesiumIonPlugin (Cesium Ion quantized-mesh terrain)
-        └── TileJsonPlugin (TileJSON 3.0.0 tile source registration)
+        ├── TileJsonPlugin (TileJSON 3.0.0 tile source registration)
+        └── StreetLightsPlugin (street lamps, roof beacons and traffic at night)
 ```
 
 `three_plugins` depends on `navara_three` for the `Plugin` base class and core APIs, and on `three_default_plugin` for the `DefaultDescriptions` type. Each plugin is independent. You can use one without the other.
@@ -33,6 +34,7 @@ import {
   moveOverlayElement,
   CesiumIonPlugin,
   TileJsonPlugin,
+  StreetLightsPlugin,
 } from "@navaramap/three-plugins";
 ```
 
@@ -53,6 +55,10 @@ Resolves a Cesium Ion asset endpoint at `init()` time and registers it as a quan
 ### TileJsonPlugin
 
 Fetches a TileJSON 3.0.0 document and registers it as a single raster, vector, or raster-DEM (elevation) tile source via `addSource()`, deriving the tile URL, zoom range, scheme, attribution (and, for raster-DEM, the MapLibre-compatible `tileSize` / `encoding`) from the document. See [TileJsonPlugin](../tilejsonplugin/) for details.
+
+### StreetLightsPlugin :since[0.3.2]
+
+Takes the roads and the buildings of a vector tile set, each with its source and a reader for its properties, draws the road surfaces, and streams the zoom 14 tiles in around a position to place street lamps along the roads, red beacons on the roofs the reader picks and cars that drive the road segments. The lamps and beacons take part in the selective effects given to `start()`, such as the built-in bloom. See [StreetLightsPlugin](../streetlightsplugin/) for details.
 
 ## Usage
 

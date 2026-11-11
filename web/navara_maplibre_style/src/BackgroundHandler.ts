@@ -47,6 +47,18 @@ export class BackgroundHandler {
    */
   private readonly defaultColor: { color: Color; alpha: number };
 
+  /**
+   * The globe's appearance before the first apply(), restored when no
+   * background layer applies. Captured lazily because the view is only known
+   * at apply time.
+   */
+  private viewGlobe?: {
+    // The globe's own color type (navara_core's), not three's Color.
+    color: ThreeView["globe"]["color"];
+    opacity: number;
+    transparent: boolean;
+  };
+
   constructor(
     private readonly engine: StyleEngine,
     private readonly parsedStyle: ParsedStyle,
@@ -120,9 +132,24 @@ export class BackgroundHandler {
   }
 
   /**
-   * Apply default background to the view.
-   * Used as fallback when no layer applies or on errors.
-   * Matches MapLibre's fallback: opaque black background.
+   * Restore the globe the view had before this style touched it. Used when no
+   * background layer applies: MapLibre then draws no background at all (its
+   * canvas stays transparent). Navara's globe base color is always opaque, so
+   * the closest equivalent is to impose nothing and keep the view's own globe
+   * (Navara's default is white).
+   */
+  private restoreViewBackground(view: ThreeView): void {
+    if (!this.viewGlobe) return;
+    const { color, opacity, transparent } = this.viewGlobe;
+    // Note: view.globe.color is a getter/setter, so we must assign rather than modify
+    if (color) view.globe.color = color.clone();
+    view.globe.opacity = opacity;
+    view.globe.transparent = transparent;
+  }
+
+  /**
+   * Apply the spec default background color (#000000, opaque). Used when a
+   * background layer applies but its color cannot be evaluated.
    */
   private applyDefaultBackground(view: ThreeView): void {
     // Apply cached default color (typically black #000000)
@@ -140,6 +167,12 @@ export class BackgroundHandler {
    * Reuses compiled evaluators when the background layer hasn't changed.
    */
   apply(view: ThreeView, zoom: number): void {
+    this.viewGlobe ??= {
+      color: view.globe.color?.clone(),
+      opacity: view.globe.opacity,
+      transparent: view.globe.transparent,
+    };
+
     // Find the LAST applicable background layer (later layers override earlier ones)
     // Use precomputed backgroundLayers (already in reverse order) to avoid scanning all layers
     let backgroundLayer: StyleLayer | undefined;
@@ -157,9 +190,9 @@ export class BackgroundHandler {
       break;
     }
 
-    // If no background layer applies, reset to MapLibre's default background (#000000)
+    // No background layer applies: MapLibre draws none, so keep the view's own globe
     if (!backgroundLayer) {
-      this.applyDefaultBackground(view);
+      this.restoreViewBackground(view);
       return;
     }
 

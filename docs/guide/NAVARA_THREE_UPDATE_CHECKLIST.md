@@ -29,6 +29,7 @@ Scenario-based checklists for specific documentation updates. For conventions, s
 - [ ] Read property definition for type and default
 - [ ] Add documentation with Type, Description, Default, Example
 - [ ] Note if read-only
+- [ ] Mark it with `:since[X.Y.Z]` (see [Unreleased Features](#unreleased-features))
 
 ### New Event
 
@@ -175,8 +176,17 @@ title: PageTitle
 description: Brief description for SEO
 sidebar:
   order: 1  # Lower numbers appear first
+since: 0.3.2  # Optional, see "Unreleased Features" below
 ---
 ```
+
+### Unreleased Features
+
+`main` is ahead of the latest npm release, so mark a feature that the latest release (`site/released-version.json`) lacks with that version + 0.0.1, e.g. `0.3.2` while `0.3.1` is the latest. Any later release, `0.3.2` or `0.4.0`, ships it. Until then the docs show a **Nightly** badge linking to the nightly install instructions, and once it is released the badge disappears, so the markers need no cleanup.
+
+- A whole new page: `since: 0.3.2` in the frontmatter (badges the title and the sidebar link). Repeat it in every translation.
+- A section or sentence in an existing page: `:since[0.3.2]` at the end of the heading or paragraph, e.g. `### shadowSoftness :since[0.3.2]`. It works in `.md` and `.mdx`, and the heading anchor stays the same after the release.
+- Write the version as `X.Y.Z` with no `v`. A malformed version fails the build.
 
 ### Callouts
 

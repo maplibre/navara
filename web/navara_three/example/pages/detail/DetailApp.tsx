@@ -2,12 +2,14 @@ import { Check, Copy, ExternalLink } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { HighlighterCore } from "shiki/core";
 
+import { NIGHTLY_DOCS_PATH } from "../../../../../site/release-status";
 import { withBase } from "../../helpers/base";
 import { SCENE_LOADED_MESSAGE } from "../../helpers/initialize";
 import { docsUrl, localize, SECTION_LABELS } from "../examples/sections";
 import type { ExampleMeta, Lang, Localized } from "../examples/sections";
 
 import { useLang } from "@/components/hooks/useLang";
+import { NightlyBadge } from "@/components/NightlyBadge";
 import { SiteFooter } from "@/components/SiteFooter";
 import { SiteHeader } from "@/components/SiteHeader";
 import { Button } from "@/components/ui/button";
@@ -336,9 +338,16 @@ export const DetailApp = () => {
         <header className="mb-8 flex min-w-0 flex-col gap-2">
           {meta && (
             <div className="min-w-0">
-              <h1 className="text-lg font-semibold tracking-tight sm:text-xl">
-                {t(meta.title)}
-              </h1>
+              <div className="flex items-center gap-2">
+                <h1 className="text-lg font-semibold tracking-tight sm:text-xl">
+                  {t(meta.title)}
+                </h1>
+                <NightlyBadge
+                  since={meta.since}
+                  lang={lang}
+                  href={docsUrl(NIGHTLY_DOCS_PATH[lang], lang)}
+                />
+              </div>
               <p className="text-xs text-muted-foreground">
                 {SECTION_LABELS[meta.section][lang]}
               </p>

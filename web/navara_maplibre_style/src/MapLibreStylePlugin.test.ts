@@ -5,7 +5,7 @@ import { fileURLToPath } from "url";
 import type { StyleSpecification } from "@maplibre/maplibre-gl-style-spec";
 import { initSync } from "@navaramap/engine";
 import type ThreeView from "@navaramap/three";
-import type { ViewContext } from "@navaramap/three";
+import { Color, type ViewContext } from "@navaramap/three";
 import {
   describe,
   it,
@@ -748,8 +748,8 @@ describe("MapLibreStylePlugin", () => {
       });
     });
 
-    // BackgroundHandler-specific tests: default background fallback
-    it("should reset to default background when no layer applies", async () => {
+    // BackgroundHandler-specific tests: no applicable background layer
+    it("should restore the view's globe when no layer applies", async () => {
       const style: StyleSpecification = {
         version: 8,
         sources: {},
@@ -766,6 +766,8 @@ describe("MapLibreStylePlugin", () => {
 
       const plugin = new MapLibreStylePlugin(style);
       const view = createMockView(7); // Within range
+      // The view's own globe before the style touches it
+      view.globe.color = new Color().setRGB(0.2, 0.4, 0.6);
       await plugin.init(view, mockViewContext);
 
       expect(view.globe.opacity).toBe(0.5); // Layer applies
@@ -782,7 +784,7 @@ describe("MapLibreStylePlugin", () => {
       setMockZoom(view, 12);
       moveListener();
 
-      // Should reset to default (#000000, opacity 1.0)
+      // MapLibre draws no background: the view's own globe comes back
       expect(view.globe.opacity).toBe(1.0);
       expect(view.globe.transparent).toBe(false);
       const color = view.globe.color as unknown as {
@@ -790,9 +792,32 @@ describe("MapLibreStylePlugin", () => {
         g: number;
         b: number;
       };
-      expect(color.r).toBe(0);
-      expect(color.g).toBe(0);
-      expect(color.b).toBe(0);
+      expect(color.r).toBe(0.2);
+      expect(color.g).toBe(0.4);
+      expect(color.b).toBe(0.6);
+    });
+
+    it("should leave the view's globe as is when the style has no background layer", async () => {
+      const style: StyleSpecification = {
+        version: 8,
+        sources: {},
+        layers: [],
+      };
+
+      const plugin = new MapLibreStylePlugin(style);
+      const view = createMockView();
+      view.globe.color = new Color().setRGB(1, 1, 1);
+      await plugin.init(view, mockViewContext);
+
+      const color = view.globe.color as unknown as {
+        r: number;
+        g: number;
+        b: number;
+      };
+      // Not MapLibre's background-color default (#000000)
+      expect([color.r, color.g, color.b]).toEqual([1, 1, 1]);
+      expect(view.globe.opacity).toBe(1.0);
+      expect(view.globe.transparent).toBe(false);
     });
   });
 

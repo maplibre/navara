@@ -20,20 +20,8 @@ import {
   Ellipsoid,
   EXR3DTextureLoader,
   EXRTextureLoader,
-  Float16Array,
-  isFloatLinearSupported,
-  reinterpretType,
 } from "@takram/three-geospatial";
-import {
-  FloatType,
-  HalfFloatType,
-  LinearFilter,
-  Matrix4,
-  Vector3,
-  type DataTextureImageData,
-  type Texture,
-  type WebGLRenderer,
-} from "three";
+import { LinearFilter, Matrix4, Vector3, type Texture } from "three";
 
 import { type ThreeViewCamera } from "./camera";
 import { ATMOSPHERE_TEXTURE_URLS, STBN_URL } from "./constants";
@@ -97,6 +85,14 @@ const ALL_ATMOSPHERE_TEXTURE_NAMES = Object.keys(
   ATMOSPHERE_TEXTURE_KEYS,
 ) as AtmosphereTextureName[];
 
+type TextureImageData = { data: ArrayBufferView | null };
+
+/** Textures whose CPU data is dropped once uploaded to the GPU. */
+const CPU_RELEASED_TEXTURE_NAMES: readonly AtmosphereTextureName[] = [
+  "scattering",
+  "higherOrderScattering",
+];
+
 /**
  * The textures guaranteed to be present in an {@link Atmosphere.onTexturesReady}
  * callback for a given needs declaration.
@@ -145,11 +141,6 @@ export const DEFAULT_ATMOSPHERE_OPTIONS: Required<
  */
 export class Atmosphere extends EventHandler<AtmosphereEvents> {
   /**
-   * @private
-   */
-  private renderer: WebGLRenderer;
-
-  /**
    * Current sun direction in ECEF coordinates.
    */
   sunDirection = new Vector3();
@@ -186,6 +177,9 @@ export class Atmosphere extends EventHandler<AtmosphereEvents> {
    * Precomputed atmosphere textures used for rendering. Each texture is
    * loaded lazily when a consumer declares a need for it via
    * {@link onTexturesReady}, so the object may hold any subset at a time.
+   * The two 3D textures (`scatteringTexture`, `higherOrderScatteringTexture`)
+   * drop their CPU data once uploaded to the GPU: they cannot be read on the
+   * CPU, used with another renderer, or restored after a WebGL context loss.
    */
   textures: Partial<PrecomputedTextures> = {};
 
@@ -219,18 +213,12 @@ export class Atmosphere extends EventHandler<AtmosphereEvents> {
 
   /**
    * Creates a new Atmosphere instance.
-   * @param renderer - The WebGL renderer used for texture type detection.
    * @param options - Configuration options for the atmosphere.
    * @param camera - Camera reference used by {@link setDateAt}.
    */
-  constructor(
-    renderer: WebGLRenderer,
-    options: AtmosphereOptions = {},
-    camera?: ThreeViewCamera,
-  ) {
+  constructor(options: AtmosphereOptions = {}, camera?: ThreeViewCamera) {
     super();
 
-    this.renderer = renderer;
     this.options = { ...DEFAULT_ATMOSPHERE_OPTIONS, ...options };
     this._camera = camera;
 
@@ -269,30 +257,22 @@ export class Atmosphere extends EventHandler<AtmosphereEvents> {
   private loadTexture(name: AtmosphereTextureName): Promise<void> {
     let promise = this.texturePromises.get(name);
     if (promise == null) {
-      const assetsUrl = this.options.atmosphereAssetsUrl;
-      const file = ATMOSPHERE_TEXTURE_FILES[name];
-      const url =
-        assetsUrl == null
-          ? ATMOSPHERE_TEXTURE_URLS[file]
-          : `${assetsUrl.replace(/\/+$/, "")}/${file}`;
-      promise = this.fetchTexture(name, url)
+      promise = this.fetchTexture(name)
         .then((texture) => {
-          const type = isFloatLinearSupported(this.renderer)
-            ? FloatType
-            : HalfFloatType;
-          texture.type = type;
-          // EXR data is parsed to Uint16Array, which must be converted to
-          // Float32Array when FloatType is used.
-          if (type === FloatType) {
-            reinterpretType<DataTextureImageData>(texture.image);
-            if (texture.image.data != null) {
-              texture.image.data = new Float32Array(
-                new Float16Array(texture.image.data.buffer),
-              );
-            }
+          // Disposed while loading.
+          if (this.texturePromises.get(name) !== promise) {
+            texture.dispose();
+            return;
           }
           texture.minFilter = LinearFilter;
           texture.magFilter = LinearFilter;
+          if (CPU_RELEASED_TEXTURE_NAMES.includes(name)) {
+            // Only the 2D textures are sampled on the CPU (sun light color,
+            // sky light probe).
+            texture.onUpdate = () => {
+              (texture.image as TextureImageData).data = null;
+            };
+          }
           Object.assign(this.textures, {
             [ATMOSPHERE_TEXTURE_KEYS[name]]: texture,
           });
@@ -309,10 +289,18 @@ export class Atmosphere extends EventHandler<AtmosphereEvents> {
     return promise;
   }
 
-  private fetchTexture(
-    name: AtmosphereTextureName,
-    url: string,
-  ): Promise<Texture> {
+  /**
+   * Loads a texture file. The EXR loaders decode to half floats
+   * (`HalfFloatType`, `Uint16Array`).
+   * @private
+   */
+  private fetchTexture(name: AtmosphereTextureName): Promise<Texture> {
+    const assetsUrl = this.options.atmosphereAssetsUrl;
+    const file = ATMOSPHERE_TEXTURE_FILES[name];
+    const url =
+      assetsUrl == null
+        ? ATMOSPHERE_TEXTURE_URLS[file]
+        : `${assetsUrl.replace(/\/+$/, "")}/${file}`;
     switch (name) {
       case "transmittance":
         return new EXRTextureLoader({

@@ -13,23 +13,12 @@ import type {
   FeatureContext,
   FilterExpression,
   LayerType,
-  ParsedStyle,
   PropertySpec,
   StyleValue,
   ValueExpression,
 } from "./types";
 
 export type StyleEngine = {
-  /**
-   * Validate and normalize Style JSON.
-   * In WASM implementations, this may also include async initialization.
-   *
-   * @param raw - Raw style JSON object
-   * @returns Validated and normalized style
-   * @throws Error if validation fails
-   */
-  parseStyle(raw: unknown): Promise<ParsedStyle>;
-
   /**
    * Turn a filter expression into a boolean predicate function.
    *

@@ -52,6 +52,7 @@ type PolygonMeshEventMap = Object3DEventMap & CustomObject3DEventMap;
 export type PolygonMeshStyle = Omit<
   NonNullable<VectorLayer["polygon"]>,
   | "tiled"
+  | "geodesic"
   | "show"
   | "surfaceShow"
   | "outline"

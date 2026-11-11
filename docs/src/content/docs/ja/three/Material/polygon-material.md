@@ -159,6 +159,27 @@ import { Color } from "@navaramap/three";
 }
 ```
 
+### geodesic :since[0.3.2]
+
+**Type:** `boolean | undefined`
+
+**Description:** GeoJSON ソースのうちタイル分割された描画パス（`clampToGround` または `tiled`）で描かれる辺を測地線に沿わせるかどうかを指定します。`true` の場合、経度が 180° より離れた連続する 2 頂点も、日付変更線をまたぐ近い側の経路で結ばれます。ただし、そうすると閉じなくなるリング（極を囲むリングなど）は指定されたとおりに扱われます。`false` の場合、辺は Web メルカトル上の直線になり、経度は指定されたとおりに扱われます。つまり MapLibre と同じく、経度 190° は 180° の東にあります。タイル分割されない描画パスの辺と、vector tile ソースの辺には影響しません。
+
+このオプションはレイヤー全体に適用されます。タイル分割された `polygon` と `polyline` は 1 つのジオメトリを共有し、両方が `geodesic: false` を指定しない限り、そのジオメトリは測地線に沿います。値はレイヤーのタイルを最初に構築するときに読み取られるため、既存のレイヤーで変更しても効果はありません。
+
+**Default:** `true`
+
+**Example:**
+
+```typescript
+{
+  polygon: {
+    clampToGround: true,
+    geodesic: false
+  }
+}
+```
+
 ### height
 
 **Type:** `number | undefined`

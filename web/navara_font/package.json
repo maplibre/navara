@@ -44,9 +44,9 @@
     "@navaramap/engine-api": "workspace:*",
     "@navaramap/engine-font-worker": "workspace:*",
     "@navaramap/worker": "workspace:*",
-    "three": "0.186.1"
+    "three": "0.187.0"
   },
   "devDependencies": {
-    "@types/three": "0.186.0"
+    "@types/three": "0.187.0"
   }
 }

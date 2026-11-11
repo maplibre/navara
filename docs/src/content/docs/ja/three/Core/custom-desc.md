@@ -97,7 +97,7 @@ Descriptor の種類に応じて、対応する基底クラスを継承して実
 | `ctx.getRenderTarget()`       | メインレンダーターゲット（G-buffer を含む）を取得    |
 | `ctx.getGlobeDepthTexture()`  | ポストプロセッシング用のグローブ深度テクスチャを取得 |
 | `ctx.getGlobeNormalTexture()` | 地形のみの法線を画面座標で取得。`requiredBuffers` に `globeNormal` を宣言すること（未宣言だと 1x1 のまま） |
-| `ctx.getNormalTexture()`      | G-buffer からシーン法線テクスチャを取得              |
+| `ctx.getNormalTexture()`      | G-buffer からシーン法線テクスチャを取得。`requiredBuffers` に `normal` を宣言すること |
 | `ctx.getEffectIdsTexture()`   | G-buffer からエフェクト ID テクスチャを取得          |
 | `ctx.getEmissiveTexture()`    | G-buffer からエミッシブテクスチャを取得              |
 | `ctx.getShadowTexture()`      | G-buffer からシャドウテクスチャ（R=影の量、0=非影..1=完全な影）を取得 |
@@ -129,12 +129,12 @@ Descriptor の種類に応じて、対応する基底クラスを継承して実
 
 Navara は複数のレンダーターゲット（MRT）からなる G-buffer にレンダリングします。深度・法線を利用するエフェクト（SSAO、SSR、Outline、大気透視、雲）や Selective Effect（Bloom / Outline）はこれらのアタッチメントを読み取るため、メッシュがそれらのエフェクトに参加できるのは、そのマテリアルが G-buffer に書き込む場合だけです。
 
-常に存在するのは color と normal だけです。それ以外は必要に応じて確保され、**隙間なく後ろに詰められる**ため、ロケーションは構成によって変わります。シェーダーには各バッファの `layout(location = …)` が define として渡されます。
+常に存在するのは color だけです。normal を含むそれ以外は必要に応じて確保され、**隙間なく後ろに詰められる**ため、ロケーションは構成によって変わります。シェーダーには各バッファの `layout(location = …)` が define として渡されます。
 
 | アタッチメント | ロケーション | 内容                                                         | 確保される条件            |
 | -------------- | ------------ | ------------------------------------------------------------ | ------------------------- |
 | Color          | 0            | `gl_FragColor`                                                | 常時                      |
-| Normal         | 1            | ビュー空間の法線（＋マテリアルプロパティ）                    | 常時                      |
+| Normal         | 1            | ビュー空間の法線（＋マテリアルプロパティ）                    | `buffers.normal`          |
 | Effect ID      | 可変         | Selective Effect のビットマスク                                | `buffers.selectiveEffect` |
 | Emissive       | 可変         | Selective Effect の加算エミッシブ                              | `buffers.emissive`        |
 | Shadow         | 可変         | R = 影の量（0=非影..1=完全な影）、G = albedo 出力フラグ       | `buffers.shadow`          |
@@ -255,9 +255,11 @@ view.addMesh<GlowSphereDesc>({
 
 これらのバッファをカスタムエフェクトから読み取るには、`ctx` の [バッファ / テクスチャアクセス](#バッファ--テクスチャアクセス) アクセサを使うか、[`find<MRTPassEffectDesc>("mrt")`](#他のエフェクトを参照) で他のエフェクトから MRT パスを参照します。
 
-エフェクト ID・エミッシブ・シャドウ・globeNormal のバッファはオプションです。アクティブなエフェクトが `static requiredBuffers` で宣言している（例: `["selectiveEffect", "emissive"]` / `["shadow"]` / `["globeNormal"]`）か、メッシュが要求している（[G-Buffer の要求](#g-buffer-の要求)を参照）間だけ存在し、それ以外ではアクセサは `undefined` を返します。
+法線・エフェクト ID・エミッシブ・シャドウ・globeNormal のバッファはオプションです。アクティブなエフェクトが `static requiredBuffers` で宣言している（例: `["normal"]` / `["selectiveEffect", "emissive"]` / `["shadow"]` / `["globeNormal"]`）か、メッシュが要求している（[G-Buffer の要求](#g-buffer-の要求)を参照）間だけ存在し、それ以外ではアクセサは `undefined` を返します。
 
-必要なバッファが自身の設定に依存するエフェクトは、代わりに `getRequiredBuffers()` をオーバーライドします。オーバーライドは static を完全に置き換えるので、どちらか一方だけを宣言してください。`onCreate()` より前に読まれるためコンストラクタの config から結果を導き、`update()` で結果が変わるときは `ctx` に `gbufferRequirementsChanged` を emit します。view はバッファを再導出します。新しいアタッチメントがデバイスの `MAX_DRAW_BUFFERS` を超える場合、view はエラーをログに出し、以前のバッファ構成を保ちます。`addEffect()` と `addMesh()` の時点で超える場合は throw します。
+必要なバッファが自身の設定に依存するエフェクトは、代わりに `getRequiredBuffers()` をオーバーライドします。オーバーライドは static を完全に置き換えるので、どちらか一方だけを宣言してください。`onCreate()` より前に読まれるためコンストラクタの config から結果を導き、`update()` で結果が変わるときは `ctx` に `gbufferRequirementsChanged` を emit します。view はバッファを再導出します。新しいアタッチメントがデバイスの `MAX_DRAW_BUFFERS` を超える場合、view はエラーをログに出し、以前のバッファ構成を保ちます。`addEffect()` と `addMesh()` の時点で超える場合は、そのディスクリプタのバッファがすでに確保されていない限り throw します。
+
+Selective Effect に対応するメッシュは、Selective Effect かオプションのバッファが有効な間だけ G-buffer パスで描画されます。G-buffer の出力に合成され、バッファを一つも必要としない場合があるエフェクトは、`static requiresMrtPass = true` を設定してメッシュをそこに留め、パスの半透明コンテンツと正しく前後関係を保ちます（大気透視がこれを行います）。
 
 ```typescript
 import { type GBufferName } from "@navaramap/three";

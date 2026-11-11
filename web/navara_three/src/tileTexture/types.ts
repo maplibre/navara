@@ -202,8 +202,6 @@ export type CompositeLayer =
  * versa). Consumed by the layer enhancers that own slot-independent uniforms.
  */
 export type CompositeGlobals = {
-  /** Hillshade normal exaggeration (shared across hillshade layers). */
-  hillshadeExaggeration: number;
   /** Quantized-mesh watermask (1×1 uniform or 256×256), or null. */
   watermask: Texture | null;
   /** Elevation heatmap colormap ramp, or null. */
