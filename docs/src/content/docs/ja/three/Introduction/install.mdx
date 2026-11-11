@@ -38,3 +38,37 @@ pnpm add @navaramap/three @navaramap/three-default-plugin three postprocessing
 </TabItem>
 
 </Tabs>
+
+## Nightly ビルド
+
+このドキュメントと examples で **Nightly** と表示されている機能は、最新リリースにはまだ含まれていません。これらは `main` ブランチから npm の `nightly` dist-tag で公開される nightly ビルドに含まれます。同じビルドのパッケージ同士は完全一致のバージョンで依存し合うため、Navara のパッケージはすべてこのタグからインストールします。
+
+<Tabs syncKey="pkg">
+
+<TabItem label="npm">
+
+```bash
+npm install @navaramap/three@nightly @navaramap/three-default-plugin@nightly three postprocessing
+```
+
+</TabItem>
+
+<TabItem label="yarn">
+
+```bash
+yarn add @navaramap/three@nightly @navaramap/three-default-plugin@nightly three postprocessing
+```
+
+</TabItem>
+
+<TabItem label="pnpm">
+
+```bash
+pnpm add @navaramap/three@nightly @navaramap/three-default-plugin@nightly three postprocessing
+```
+
+</TabItem>
+
+</Tabs>
+
+`0.3.2-nightly.13.g303ac6f` のような nightly のバージョンは、最新リリースより後、次のリリースより前に並びます。nightly ビルドには changelog がなく、API はリリースまでに変わることがあります。それぞれの公開頻度と保証内容は [Release Cycle](../../../guides/community/release-cycle/) を参照してください。

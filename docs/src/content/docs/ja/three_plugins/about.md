@@ -56,7 +56,7 @@ import {
 
 TileJSON 3.0.0 ドキュメントを取得し、`addSource()` を通じて単一のラスター・ベクトル・raster-DEM（標高）タイルソースとして登録するプラグインです。タイル URL、ズーム範囲、スキーム、アトリビューション、そして raster-DEM では MapLibre 互換の `tileSize` / `encoding` をドキュメントから導出します。詳細は [TileJsonPlugin](../tilejsonplugin/) を参照してください。
 
-### StreetLightsPlugin
+### StreetLightsPlugin :since[0.3.2]
 
 ベクトルタイルセットの道路と建物を、それぞれのソースとプロパティのリーダーとともに受け取り、路面を描き、ズーム 14 のタイルを位置の周辺にストリーミングして、道路に沿った街灯、リーダーが選んだ屋上の赤い灯、道路の区間を走る車を配置するプラグインです。街灯と屋上灯は `start()` に渡した Selective Effect（組み込みの Bloom など）に参加します。詳細は [StreetLightsPlugin](../streetlightsplugin/) を参照してください。
 

@@ -3,6 +3,7 @@ title: BuildingWindowsEffectDesc
 description: navara_three_default_descs の Building windows エフェクト Descriptor
 sidebar:
   order: 63
+since: 0.3.2
 ---
 
 `BuildingWindowsEffectDesc`クラスは、建物の壁面に灯りのともった窓を描く Descriptor です。`effectIds` にこのエフェクトを指定したオブジェクトの壁面に、ワールドに固定された窓のグリッド(壁に沿って `columnWidth` メートルごとに 1 列、高さ方向に `floorHeight` メートルごとに 1 段)を描きます。屋根と床には窓は描かれず、点灯している窓の割合は地面からの高さとともに増えます。押し出しポリゴンや 3D Tiles など、シーン内のあらゆるジオメトリに適用できます。

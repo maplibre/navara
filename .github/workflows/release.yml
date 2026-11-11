@@ -14,7 +14,8 @@ name: Release
 #
 # Release steps:
 #   1. cargo make changelog vX.Y.Z  — generates the CHANGELOG.md section from
-#      conventional commits (git-cliff, see cliff.toml)
+#      conventional commits (git-cliff, see cliff.toml) and sets the version
+#      in site/released-version.json
 #   2. review/edit the section, commit it to main
 #   3. push the vX.Y.Z tag — this workflow publishes to npm and then creates
 #      a GitHub Release whose notes are the reviewed CHANGELOG.md section
@@ -142,6 +143,16 @@ jobs:
       - name: Verify changelog has an entry for this tag
         if: github.ref_type == 'tag'
         run: node scripts/extract-changelog.mjs "$GITHUB_REF_NAME" > /dev/null
+
+      # The docs and examples mark features newer than this version "Nightly".
+      - name: Verify site/released-version.json matches this tag
+        if: github.ref_type == 'tag'
+        run: |
+          released=$(node -p 'require("./site/released-version.json").version')
+          if [[ "v$released" != "$GITHUB_REF_NAME" ]]; then
+            echo "::error::site/released-version.json is $released, expected ${GITHUB_REF_NAME#v} (run cargo make changelog $GITHUB_REF_NAME)"
+            exit 1
+          fi
 
       - name: Determine version
         run: |

@@ -3,6 +3,8 @@ import { Star } from "lucide-react";
 import { withBase } from "../../helpers/base";
 import { localize, type ExampleEntry, type Lang } from "../examples/sections";
 
+import { NightlyBadge } from "@/components/NightlyBadge";
+
 type ExampleGridProps = {
   entries: ExampleEntry[];
   lang: Lang;
@@ -38,6 +40,11 @@ export const ExampleGrid = ({ entries, lang }: ExampleGridProps) => {
                 onError={(e) => {
                   (e.currentTarget as HTMLImageElement).style.opacity = "0.3";
                 }}
+              />
+              <NightlyBadge
+                since={entry.since}
+                lang={lang}
+                className="absolute left-2 top-2"
               />
               {entry.signature && (
                 <span className="absolute right-2 top-2 flex items-center rounded border border-border bg-background/80 p-1 backdrop-blur-sm">
