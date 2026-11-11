@@ -133,7 +133,7 @@ pnpm pack:externals
 dependencies = ["build-all", "build-web"]
 
 [tasks.changelog]
-description = "Generate the CHANGELOG.md section for a new version from conventional commits (usage: cargo make changelog vX.Y.Z), then review/edit it before committing"
+description = "Generate the CHANGELOG.md section for a new version from conventional commits and set it as site/released-version.json (usage: cargo make changelog vX.Y.Z), then review/edit them before committing"
 install_crate = { crate_name = "git-cliff", binary = "git-cliff", test_arg = "--version" }
 script = ['''
 #!/usr/bin/env bash -eu
@@ -143,7 +143,8 @@ if [ -f CHANGELOG.md ]; then
 else
   git-cliff --tag "$version" -o CHANGELOG.md
 fi
-echo "CHANGELOG.md updated for $version - review and edit it before committing."
+printf '{ "version": "%s" }\n' "${version#v}" > site/released-version.json
+echo "CHANGELOG.md and site/released-version.json updated for $version - review and edit them before committing."
 ''']
 
 [tasks.check-easy-panic]

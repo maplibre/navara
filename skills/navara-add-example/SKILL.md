@@ -15,7 +15,7 @@ description: >
 > "Don't hide our API inside abstractions in the example"
 
 - Call `view.addLayer()`, `layer.on("featureUpdated", ...)`, `layer.update()` directly — no wrapper functions that obscure API calls.
-- One example = one feature. Don't combine unrelated features.
+- One example = one feature. Don't combine unrelated features. The exception is the gallery's `showcase` section, which composes several features into one scene; its reusable machinery goes into a package (a plugin or a Descriptor) so main.ts still reads as the API story.
 
 ## Two example tracks — and who decides what goes where
 
@@ -24,7 +24,7 @@ description: >
 
    **The gallery is curated, not exhaustive.** Pages under `pages/examples/` require **design approval** and are planned against the gallery's overall design. Never add a page there for development/debug purposes, and never add one proactively "for coverage" the way docs pages are added — only add a gallery example when explicitly asked to, with the placement already decided.
 
-   Sections and the `ExampleMeta` type are declared in `pages/examples/sections.ts` (`getting-started`, `2d`, `2.5d`, `3d`, `basemap`, `terrain`, `source`, `styling`, `interaction`, `lighting-effect`). `meta.ts` shape:
+   Sections and the `ExampleMeta` type are declared in `pages/examples/sections.ts` (`getting-started`, `2d`, `2.5d`, `3d`, `basemap`, `terrain`, `tiles-3d`, `styling`, `interaction`, `lighting-effect`, `showcase`). `meta.ts` shape:
 
 ```typescript
 import type { ExampleMeta } from "../../sections";
@@ -35,10 +35,13 @@ export default {
   title: { en: "Hello World", ja: "Hello World" },
   description: { en: "One-line summary.", ja: "一行の説明。" },
   docs: "three/tutorial/basic-visualization",   // docs-site path or absolute URL
+  since: "0.3.2",   // only when it shows an API not in the latest npm release
 } satisfies ExampleMeta;
 ```
 
 Provide both `en` and `ja` for title/description (a bare string is a fallback for all languages).
+
+When the example uses an API that the latest release (`site/released-version.json`) does not have yet, set `since` to that version + 0.0.1 (`X.Y.Z`, no `v`; `0.3.2` while `0.3.1` is the latest). The gallery card and detail page show a **Nightly** badge until a release reaches it, then the badge disappears by itself, so leave `since` in place.
 
 ## File structure convention
 
@@ -108,7 +111,7 @@ Under `example/helpers/`:
 - `constants.ts` — `TERRAIN_DATASETS`, `TILE_DATASETS`, `TILES_3D_DATASETS`, `VECTOR_DATASETS`, `LOCAL_DATASETS` (GSI tiles/terrain, PLATEAU 3D Tiles, etc. with attribution metadata)
 - `control.ts` — `addCameraControl(view, pane)`, `addDateControl(view, pane)`, `addHidePaneKeyShortcut`
 - `panel.ts` — `addFieldsToFolder` for Tweakpane folders with many fields
-- `button.ts` — `addButton(label, onClick?)` plain DOM buttons for gallery examples (see the gallery code layout section)
+- `button.ts` — plain DOM controls for gallery examples (see the gallery code layout section): `addButton(label, onClick?)`, `addSwitch`, `addCheckbox`, `addSlider`, `addReadout`. They share one bar that wraps onto more rows on a narrow screen
 - `initialize.ts` — `initializeExample(view)` example-harness bootstrap + `SCENE_LOADED_MESSAGE`, required in every gallery example; the detail page owns the loading overlay (see the gallery code layout section)
 - `keys.ts` — API keys (e.g. `GOOGLE_MAPS_API_KEY`)
 - `overture.ts` — `resolveOvertureDatasets()` resolves the current Overture release from its STAC catalog and returns the per-theme PMTiles `Dataset`s; never hardcode a dated `tiles.overturemaps.org` URL (releases expire after ~60 days)

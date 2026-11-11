@@ -134,7 +134,6 @@ describe("defaultAtlasFactory", () => {
 describe("TileTextureCompositor atlas accounting", () => {
   const plan = { rasterCount: 0, vectorCount: 0, boundary: 2, slots: [] };
   const globals = {
-    hillshadeExaggeration: 1,
     watermask: null,
     colorMapTexture: null,
   };

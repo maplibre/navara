@@ -7,6 +7,7 @@
 //     brand-assets/index.html, ...   <- brand assets page, relocated likewise
 //     showcases/index.html, ...      <- showcases page, relocated likewise
 //     favicon.png, og.jpg, 404.html  <- copied from docs/dist for the site root
+//     released-version.json          <- copied from site/
 //     docs/...                       <- docs/dist verbatim
 //     examples/...                   <- web/navara_three/dist-example verbatim
 //
@@ -85,6 +86,13 @@ for (const file of ["favicon.png", "og.jpg"]) {
 // Site-wide 404 page, covering everything outside /docs (Workers assets
 // serves the nearest 404.html; /docs/* keeps Starlight's own 404).
 cpSync(resolve(root, "site/404.html"), resolve(out, "404.html"));
+
+// The latest release, also read at build time by the docs and examples to
+// mark nightly-only features.
+cpSync(
+  resolve(root, "site/released-version.json"),
+  resolve(out, "released-version.json"),
+);
 
 cpSync(examplesDist, resolve(out, "examples"), { recursive: true });
 

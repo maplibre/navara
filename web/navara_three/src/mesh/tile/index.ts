@@ -454,7 +454,6 @@ export class TileMesh
     }
 
     const globals: CompositeGlobals = {
-      hillshadeExaggeration: ud.hillshadeExaggeration?.value ?? 1,
       watermask: this.userData.watermask?.texture ?? null,
       // Built lazily here, so a burst of colorMap changes rebuilds it once.
       colorMapTexture: this.ctx.colorMapAtlas?.getTexture() ?? null,

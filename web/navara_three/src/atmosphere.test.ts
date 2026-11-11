@@ -1,4 +1,4 @@
-import { type WebGLRenderer } from "three";
+import { DataTexture, HalfFloatType, RGBAFormat, type Texture } from "three";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { Atmosphere, type AtmosphereOptions } from "./atmosphere";
@@ -33,12 +33,12 @@ vi.mock("@takram/three-geospatial", async (importOriginal) => {
     Ellipsoid,
     EXRTextureLoader: MockLoader,
     EXR3DTextureLoader: MockLoader,
-    isFloatLinearSupported: () => false,
-    reinterpretType: () => {},
   };
 });
 
-const fakeTexture = () => ({ image: {}, dispose: vi.fn() });
+/** What the EXR loaders resolve with: half floats in a `Uint16Array`. */
+const fakeTexture = () =>
+  new DataTexture(new Uint16Array(4), 1, 1, RGBAFormat, HalfFloatType);
 
 /** Resolves every load immediately with a fake texture, recording the URL. */
 const autoResolveLoads = () => {
@@ -52,10 +52,7 @@ const requestedFiles = () =>
   });
 
 const createAtmosphere = (options?: Partial<AtmosphereOptions>) =>
-  new Atmosphere({} as unknown as WebGLRenderer, {
-    date: new Date(0),
-    ...options,
-  });
+  new Atmosphere({ date: new Date(0), ...options });
 
 const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
 
@@ -138,6 +135,32 @@ describe("Atmosphere.initTextures", () => {
     );
   });
 
+  it("drops a texture that arrives after dispose", async () => {
+    const pending: ((texture: Texture) => void)[] = [];
+    loadAsyncMock.mockImplementation(
+      () => new Promise((resolve) => pending.push(resolve)),
+    );
+    const atmosphere = createAtmosphere();
+    const onLoaded = vi.fn();
+    atmosphere.on("textureLoaded", onLoaded);
+    const loading = atmosphere.initTextures();
+
+    atmosphere._dispose();
+    const textures = pending.map((resolve) => {
+      const texture = fakeTexture();
+      const dispose = vi.spyOn(texture, "dispose");
+      resolve(texture);
+      return dispose;
+    });
+    await loading;
+
+    expect(atmosphere.textures).toEqual({});
+    expect(onLoaded).not.toHaveBeenCalled();
+    for (const dispose of textures) {
+      expect(dispose).toHaveBeenCalled();
+    }
+  });
+
   it("loads from atmosphereAssetsUrl when provided, normalizing slashes", async () => {
     autoResolveLoads();
     const atmosphere = createAtmosphere({
@@ -149,6 +172,53 @@ describe("Atmosphere.initTextures", () => {
     for (const [url] of loadAsyncMock.mock.calls as [string][]) {
       expect(url).toMatch(/^https:\/\/example\.com\/assets\/[a-z_]+\.exr$/);
     }
+  });
+});
+
+describe("Atmosphere texture data", () => {
+  beforeEach(() => {
+    loadAsyncMock.mockReset();
+  });
+
+  const dataOf = (texture: Texture | undefined) =>
+    (texture?.image as { data: unknown } | undefined)?.data;
+
+  const uploadAll = (atmosphere: Atmosphere) => {
+    for (const texture of Object.values(atmosphere.textures)) {
+      texture.onUpdate?.(texture);
+    }
+  };
+
+  it("keeps the loaded half-float data", async () => {
+    const loadedData: unknown[] = [];
+    loadAsyncMock.mockImplementation(() => {
+      const texture = fakeTexture();
+      loadedData.push(texture.image.data);
+      return Promise.resolve(texture);
+    });
+    const atmosphere = createAtmosphere();
+
+    await atmosphere.initTextures();
+
+    const textures = Object.values(atmosphere.textures);
+    expect(textures.map((t) => t.type)).toEqual(Array(4).fill(HalfFloatType));
+    for (const texture of textures) {
+      expect(loadedData).toContain(dataOf(texture));
+    }
+  });
+
+  it("drops the CPU copy of the 3D textures once uploaded", async () => {
+    autoResolveLoads();
+    const atmosphere = createAtmosphere();
+    await atmosphere.initTextures();
+
+    uploadAll(atmosphere);
+
+    const { textures } = atmosphere;
+    expect(dataOf(textures.scatteringTexture)).toBeNull();
+    expect(dataOf(textures.higherOrderScatteringTexture)).toBeNull();
+    expect(dataOf(textures.transmittanceTexture)).toBeInstanceOf(Uint16Array);
+    expect(dataOf(textures.irradianceTexture)).toBeInstanceOf(Uint16Array);
   });
 });
 

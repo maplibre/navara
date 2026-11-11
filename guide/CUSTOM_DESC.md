@@ -328,6 +328,8 @@ class MyPlugin extends Plugin {
 }
 ```
 
+`StreetLightsPlugin` in `@navaramap/three-plugins` is a shipped example: it registers `StreetTrafficMeshDesc` in `init()` and adds one such mesh per streamed tile.
+
 ## `@navaramap/three-default-plugin`
 
 `@navaramap/three-default-plugin` is a plugin that registers the default descriptors from `@navaramap/three-default-descs`. It also exports `DefaultDescriptions` — a structured type with `mesh`, `light`, and `effect` fields for type-safe descriptions.

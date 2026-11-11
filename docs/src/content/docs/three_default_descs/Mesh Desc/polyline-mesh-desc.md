@@ -426,7 +426,7 @@ import { Color } from "@navaramap/three";
 }
 ```
 
-The layer-only options `tiled`, `geometryTypes`, `show` and `lit` of [`PolylineMaterial`](../../../three/material/polyline-material/) are not available. Use the mesh config's `visible` and `lit` instead of `show` and `lit`.
+The layer-only options `tiled`, `geodesic`, `geometryTypes`, `show` and `lit` of [`PolylineMaterial`](../../../three/material/polyline-material/) are not available. Use the mesh config's `visible` and `lit` instead of `show` and `lit`.
 
 ## Methods and Accessors
 
