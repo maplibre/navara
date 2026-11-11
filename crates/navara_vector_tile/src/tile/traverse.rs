@@ -35,7 +35,8 @@ use super::render::RenderedTile;
 // 5. On the other hand, if SSE works but the tile isn't loaded, the tile should be requested, not rendered.
 // 6. If above steps aren't matched, traverse children.
 // 7. If children couldn't be rendered completely, use this tile instead. But if this tile isn't on screen
-//    and tiles under it are, keep those drawn and leave the missing children's area empty until they load.
+//    and tiles under it are, keep those drawn and leave the missing children's area empty until they load,
+//    as long as no more children are missing than covered.
 // 8. If all children is rendered, use children.
 // 9. If the tile is overscaled, it's leaf is marked just in quadtree, but it isn't actually rendered. It reuses a parent tile.
 
@@ -234,15 +235,18 @@ pub fn traverse_tile(
             return TraversalResult::TileRendered;
         }
 
-        if !meets_sse_ancestors {
-            let tile = qt.qt.get_mut(handle).unwrap();
+        // A tile that isn't loaded and keeps its children drawn is requested
+        // once, below, after its children.
+        let is_requested_below = were_children_rendered && !is_renderable;
+        if !meets_sse_ancestors && !is_requested_below {
             // Frustum-culled tiles still request (parent backfill) but
             // demoted, so in-view tiles win the pending-request slots.
-            source.prepare_tile(
+            request_tile_data(
                 command,
-                tile,
-                handle,
+                source,
+                qt,
                 tc,
+                handle,
                 buf,
                 data_requesters,
                 if is_culled_by_frustum {
@@ -283,11 +287,13 @@ pub fn traverse_tile(
         let mut prepared_children_indices = vec![];
         // Each child's run in `activations`: the tiles its subtree queued active.
         let mut queued_descendants: Vec<Range<usize>> = Vec::with_capacity(children.len());
-        let subtree_start = activations.mark();
         // Children that can be drawn as they are: selected, with every mesh built.
         let mut ready_children = vec![false; children.len()];
-        // A child is on screen, or keeps the tiles on screen under it.
-        let mut has_drawn_descendant = false;
+        // Children on screen, or that keep the tiles on screen under them.
+        let mut drawn_children = vec![false; children.len()];
+        // Children whose data isn't loaded. One whose mesh is still being
+        // built is drawn in a frame or two, so it doesn't count.
+        let mut missing_children = vec![false; children.len()];
 
         // Overscaled tile is actually not rendered, since parent tile is reused in the rendering engine side.
         let mut overscaled_children_indices = vec![];
@@ -340,8 +346,10 @@ pub fn traverse_tile(
                 are_all_children_activated = false;
             }
 
-            if matches!(traversal_result, TraversalResult::DescendantsKept) {
-                has_drawn_descendant = true;
+            match traversal_result {
+                TraversalResult::DescendantsKept => drawn_children[i] = true,
+                TraversalResult::NotFound => missing_children[i] = true,
+                _ => {}
             }
 
             if matches!(
@@ -392,9 +400,7 @@ pub fn traverse_tile(
                 if !activation.is_some_and(|state| state.all_active) {
                     are_all_children_activated = false;
                 }
-                if activation.is_some_and(|state| state.any_active) {
-                    has_drawn_descendant = true;
-                }
+                drawn_children[i] = activation.is_some_and(|state| state.any_active);
             }
 
             // Skip rendering children in this tile.
@@ -428,15 +434,25 @@ pub fn traverse_tile(
 
             // While a child is missing and this tile isn't on screen, the tiles
             // on screen under it stay drawn instead of this tile. They wait for
-            // a tile to load, which needs the load gate open.
-            let keeps_drawn_descendants = can_load
-                && !hide_children
-                && !are_all_children_mesh_prepared
-                && !is_drawn
-                && (has_drawn_descendant
-                    || activations.queued_since(subtree_start).iter().any(|d| {
-                        is_tile_drawn(tc, d, rendered_tiles, features, renderable_features)
-                    }));
+            // a tile to load, which needs the load gate open. They are kept
+            // only while they cover at least as many children as are missing:
+            // with more missing, this tile would leave less of its area empty.
+            let keeps_drawn_descendants =
+                can_load && !hide_children && !are_all_children_mesh_prepared && !is_drawn && {
+                    let (mut covered, mut missing) = (0, 0);
+                    for (i, range) in queued_descendants.iter().enumerate() {
+                        let is_covered = drawn_children[i]
+                            || activations.queued(range.clone()).iter().any(|d| {
+                                is_tile_drawn(tc, d, rendered_tiles, features, renderable_features)
+                            });
+                        if is_covered {
+                            covered += 1;
+                        } else if missing_children[i] {
+                            missing += 1;
+                        }
+                    }
+                    covered > 0 && missing <= covered
+                };
 
             let tile = qt.qt.get_mut(handle).unwrap();
             // The kept tiles are visited on a zoom-out like a complete group,
@@ -552,12 +568,12 @@ pub fn traverse_tile(
         // raster traverse, only request at or above `min_zoom` (traversal still
         // descends toward it above).
         if coords_z >= traversal_config.min_zoom {
-            let tile = qt.qt.get_mut(handle).unwrap();
-            source.prepare_tile(
+            request_tile_data(
                 command,
-                tile,
-                handle,
+                source,
+                qt,
                 tc,
+                handle,
                 buf,
                 data_requesters,
                 if is_culled_by_frustum {
@@ -676,9 +692,9 @@ impl PendingActivations {
         self.0.drain(descendants)
     }
 
-    /// The tiles queued from `start` (a [`Self::mark`]) on.
-    pub fn queued_since(&self, start: usize) -> &[TileHandle] {
-        &self.0[start..]
+    /// The tiles queued in `range` (between two [`Self::mark`]s).
+    pub fn queued(&self, range: Range<usize>) -> &[TileHandle] {
+        &self.0[range]
     }
 
     /// Writes the tiles still queued: no ancestor took over from them.
@@ -742,6 +758,28 @@ pub(crate) fn write_activation(
     Some(state)
 }
 
+/// Asks the source for the tile's data, and records that this pass wants it
+/// (see [`TileCacheManager::wanted_data`]).
+#[allow(clippy::too_many_arguments)]
+fn request_tile_data(
+    command: &mut Commands,
+    source: &mut dyn crate::source::VectorTileSource,
+    qt: &mut VectorTileQuadtree,
+    tc: &mut TileCacheManager,
+    handle: TileHandle,
+    buf: &mut BufferStore,
+    data_requesters: &VectorTileDataRequesterQuery,
+    priority: Priority,
+) {
+    // Another camera's pass may have asked first: keep the more urgent.
+    tc.wanted_data
+        .entry(handle)
+        .and_modify(|wanted| *wanted = (*wanted).min(priority))
+        .or_insert(priority);
+    let tile = qt.qt.get_mut(handle).unwrap();
+    source.prepare_tile(command, tile, handle, tc, buf, data_requesters, priority);
+}
+
 /// Whether the tile is on screen: some of its features are active.
 fn is_tile_drawn(
     tc: &TileCacheManager,
@@ -750,20 +788,14 @@ fn is_tile_drawn(
     features: &Query<&FeatureId, With<VectorTileFeatureMarker>>,
     renderable_features: &Query<&mut RenderableFeature>,
 ) -> bool {
-    tc.rendered_tile_caches
-        .get(handle)
-        .and_then(|e| rendered_tiles.get(*e).ok())
-        .and_then(|tile| tile.feature_ids.as_ref())
-        .is_some_and(|ids| {
-            ids.iter().any(|id| {
-                features
-                    .get(*id)
-                    .ok()
-                    .and_then(|feature| feature.0)
-                    .and_then(|e| renderable_features.get(e).ok())
-                    .is_some_and(|feature| feature.is_active())
-            })
-        })
+    get_renderable_feature_activation_state(
+        tc,
+        handle,
+        rendered_tiles,
+        features,
+        renderable_features,
+    )
+    .is_some_and(|state| state.any_active)
 }
 
 pub fn are_all_renderable_features_active(
@@ -797,7 +829,7 @@ fn get_renderable_feature_activation_state(
     handle: &TileHandle,
     rendered_tiles: &Query<&RenderedTile>,
     features: &Query<&FeatureId, With<VectorTileFeatureMarker>>,
-    renderable_features: &mut Query<&mut RenderableFeature>,
+    renderable_features: &Query<&mut RenderableFeature>,
 ) -> Option<RenderableFeatureActivationState> {
     let rendered_tile_entity = tc.rendered_tile_caches.get(handle)?;
     let rendered_tile = rendered_tiles.get(*rendered_tile_entity).ok()?;

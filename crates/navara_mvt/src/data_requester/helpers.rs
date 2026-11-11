@@ -16,10 +16,8 @@ pub(crate) fn request_mvt_data(
     data_requesters: &MvtDataRequesterQuery,
     priority: Priority,
 ) -> Option<Entity> {
-    // A requester spawned earlier this frame is not in the query yet, so a
-    // second call in the same pass must not spawn another.
-    if matches!(tile.data_requester_entity_id, Some(e) if data_requesters.contains(e) || commands.get_entity(e).is_ok())
-    {
+    let data_requester_entity_id = tile.data_requester_entity_id;
+    if matches!(data_requester_entity_id, Some(e) if data_requesters.contains(e)) {
         return None;
     }
 
@@ -41,33 +39,4 @@ pub(crate) fn request_mvt_data(
     tile.data_requester_entity_id = Some(e);
 
     Some(e)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use bevy_ecs::{system::RunSystemOnce, world::World};
-    use navara_core::TileXYZ;
-
-    /// Two calls in one pass spawn one requester: the first one is not in
-    /// the query yet.
-    #[test]
-    fn it_should_not_request_a_tile_twice_in_one_pass() {
-        let mut world = World::new();
-        let mut tile = VectorTile::new(TileXYZ { x: 0, y: 0, z: 0 }, 0., 0.);
-        let mut buf = BufferStore::default();
-        let url = "https://example.com/{z}/{x}/{y}.mvt";
-        let (first, second) = world
-            .run_system_once(move |mut commands: Commands, q: MvtDataRequesterQuery| {
-                let mut request = |commands: &mut Commands, q: &MvtDataRequesterQuery| {
-                    request_mvt_data(commands, &mut tile, &mut buf, url, 0, q, Priority::Medium)
-                };
-                let first = request(&mut commands, &q);
-                let second = request(&mut commands, &q);
-                (first, second)
-            })
-            .unwrap();
-        assert!(first.is_some());
-        assert_eq!(second, None);
-    }
 }

@@ -355,10 +355,8 @@ impl VectorTileSource for PmtilesSource {
             tile.coords.y as u32,
         ) {
             Resolution::Tile { request } => {
-                // Don't duplicate a tile request that's already in flight, or
-                // spawned earlier this frame (not in the query yet).
-                if matches!(tile.data_requester_entity_id, Some(e) if data_requesters.contains(e) || commands.get_entity(e).is_ok())
-                {
+                // Don't duplicate a tile request that's already in flight.
+                if matches!(tile.data_requester_entity_id, Some(e) if data_requesters.contains(e)) {
                     return false;
                 }
                 let entity = commands

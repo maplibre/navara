@@ -138,6 +138,10 @@ pub fn update_tiles(
 
             tc.needs_update = false;
 
+            // Every camera's traversal in a frame adds to the same set.
+            if tc.last_rendered_frame != frame.rendered_frame() {
+                tc.wanted_data.clear();
+            }
             tc.is_updated_in_this_frame = true;
             tc.last_rendered_frame = frame.rendered_frame();
 
@@ -1350,6 +1354,8 @@ mod keep_drawn_descendants_tests {
     #[derive(Default)]
     struct MockSource {
         pending: FxHashSet<Coords>,
+        /// Every `prepare_tile` call, in order.
+        requests: Vec<(Coords, Priority)>,
     }
 
     impl VectorTileSource for MockSource {
@@ -1360,13 +1366,15 @@ mod keep_drawn_descendants_tests {
         fn prepare_tile(
             &mut self,
             _commands: &mut Commands,
-            _tile: &mut VectorTile,
+            tile: &mut VectorTile,
             _handle: navara_tile_component::TileHandle,
             _tc: &mut TileCacheManager,
             _buf: &mut BufferStore,
             _data_requesters: &VectorTileDataRequesterQuery,
-            _priority: Priority,
+            priority: Priority,
         ) -> bool {
+            self.requests
+                .push(((tile.coords.x, tile.coords.y, tile.coords.z), priority));
             false
         }
 
@@ -1665,6 +1673,69 @@ mod keep_drawn_descendants_tests {
         settle(&mut app, &scene);
         assert!(is_drawn(&app, &scene, PARENT));
         assert!(!is_drawn(&app, &scene, DRAWN_CHILD));
+    }
+
+    /// More children are missing than drawn: the parent, loaded, covers the
+    /// tile instead of leaving most of it empty.
+    #[test]
+    fn it_should_fall_back_when_more_children_are_missing_than_drawn() {
+        const OTHER_NEW_CHILD: Coords = (2, 0, 2);
+        let (mut app, scene) = setup();
+        settle(&mut app, &scene);
+        assert!(!is_drawn(&app, &scene, OTHER_NEW_CHILD));
+        set_pending(&mut app, &scene, NEW_CHILD, true);
+        set_pending(&mut app, &scene, OTHER_NEW_CHILD, true);
+        look_from(&mut app, &scene, 45.);
+        settle(&mut app, &scene);
+
+        assert!(is_drawn(&app, &scene, PARENT));
+        assert!(!is_drawn(&app, &scene, DRAWN_CHILD));
+    }
+
+    /// The tiles one pass asked data for, with the priority.
+    fn take_requests(app: &mut App, scene: &Scene) -> Vec<(Coords, Priority)> {
+        let mut source = app.world_mut().get_mut::<TileSource>(scene.source).unwrap();
+        let mock = source.0.as_any_mut().downcast_mut::<MockSource>().unwrap();
+        std::mem::take(&mut mock.requests)
+    }
+
+    /// A tile that meets the screen-space error but isn't loaded, while its
+    /// children stay drawn, is asked for once per pass, and is wanted at that
+    /// priority.
+    #[test]
+    fn it_should_request_a_tile_once_per_pass() {
+        let (mut app, scene) = setup();
+        set_pending(&mut app, &scene, PARENT, true);
+        settle(&mut app, &scene);
+        set_pending(&mut app, &scene, NEW_CHILD, true);
+        look_from(&mut app, &scene, 45.);
+        settle(&mut app, &scene);
+
+        let max_sse = (tile(&app, &scene, ROOT).sse + tile(&app, &scene, PARENT).sse) / 2.;
+        set_max_sse(&mut app, &scene, max_sse);
+        take_requests(&mut app, &scene);
+        traverse(&mut app, &scene);
+
+        let parent_requests: Vec<Priority> = take_requests(&mut app, &scene)
+            .into_iter()
+            .filter(|(coords, _)| *coords == PARENT)
+            .map(|(_, priority)| priority)
+            .collect();
+        assert_eq!(parent_requests, vec![Priority::Medium]);
+
+        let handle = app
+            .world()
+            .get::<VectorTileQuadtree>(scene.quadtree)
+            .unwrap()
+            .qt
+            .leaf(PARENT)
+            .unwrap()
+            .handle();
+        let tc = app
+            .world()
+            .get::<TileCacheManager>(scene.tile_cache_manager)
+            .unwrap();
+        assert_eq!(tc.wanted_data.get(&handle), Some(&Priority::Medium));
     }
 
     /// With the load gate closed the missing child cannot load, so the parent

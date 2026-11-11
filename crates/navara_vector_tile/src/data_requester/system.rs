@@ -3,9 +3,10 @@ use bevy_ecs::{
     query::{Added, Has, Or, With, Without},
     system::{Commands, Query, Res, ResMut},
 };
-use navara_component::{Deleted, OrderByDistance, Priority, Requested, Waiting};
+use navara_component::{Deleted, Ignored, OrderByDistance, Priority, Requested, Waiting};
 use navara_data_requester::{DataManager, DataRequester, send_data_request};
 use navara_event_store::EventStore;
+use navara_tile_component::{TileHandle, VectorTileQuadtree};
 use navara_worker_component::WorkerLimits;
 use rustc_hash::FxHashMap;
 
@@ -13,14 +14,39 @@ use crate::{VectorTileSourceResources, layer::tile_cache_manager::TileCacheManag
 
 use super::VectorTileDataRequesterMarker;
 
+/// A source's entities: its first layer (the key of its memory reservations),
+/// its quadtree and its cache manager.
+#[derive(Clone, Copy)]
+struct SourceEntities {
+    layer: Entity,
+    quadtree: Entity,
+    tile_cache_manager: Entity,
+}
+
+/// The source a requester belongs to, through its cache manager's
+/// `requested_tile_caches` slot.
+fn source_of(
+    sources: &[SourceEntities],
+    tcs: &Query<&mut TileCacheManager>,
+    e: Entity,
+    handle: TileHandle,
+) -> Option<SourceEntities> {
+    sources.iter().copied().find(|s| {
+        tcs.get(s.tile_cache_manager)
+            .is_ok_and(|tc| tc.requested_tile_caches.get(&handle) == Some(&e))
+    })
+}
+
 /// Admits pending vector tile requests into the request slots
 /// (`RequestLimits::max_pendings`, shared by every vector source).
 ///
 /// A request that gets no slot waits ([`Waiting`]) instead of being dropped,
 /// and is sent once a slot frees: the traversal asks for a tile once, and the
-/// tile keeps its requester. Within a priority, every source gets its best
-/// request in before any source gets its second, so no source is starved by
-/// the order the sources are traversed in.
+/// tile keeps its requester. A waiting request is ranked by what the last
+/// traversal asked for its tile (`TileCacheManager::wanted_data`), and is
+/// dropped once the traversal stops asking. Within a priority, the slots go
+/// round-robin across sources, counting the ones each source already has in
+/// flight, so no source is starved by the order the sources are traversed in.
 #[allow(clippy::type_complexity, clippy::too_many_arguments)]
 pub fn filter_requestable_data_requester(
     mut commands: Commands,
@@ -28,7 +54,8 @@ pub fn filter_requestable_data_requester(
     mut data_manager: ResMut<DataManager>,
     worker_limits: Option<Res<WorkerLimits>>,
     layers: Query<(Entity, &VectorTileSourceResources)>,
-    tcs: Query<&TileCacheManager>,
+    mut qts: Query<&mut VectorTileQuadtree>,
+    mut tcs: Query<&mut TileCacheManager>,
     data_requesters: Query<
         (
             Entity,
@@ -45,74 +72,149 @@ pub fn filter_requestable_data_requester(
         ),
     >,
     requested_data_requesters: Query<
-        Entity,
-        (
-            With<VectorTileDataRequesterMarker>,
-            With<DataRequester>,
-            With<Requested>,
-            Without<Deleted>,
-        ),
+        (Entity, &VectorTileDataRequesterMarker),
+        (With<DataRequester>, With<Requested>, Without<Deleted>),
     >,
     limits: Res<navara_data_requester::RequestLimits>,
     pressure: Res<navara_memory::SsePressure>,
     ledger: Res<navara_memory::MemoryLedger>,
 ) {
-    let pendings = requested_data_requesters.iter().count();
+    let mut sources: Vec<SourceEntities> = vec![];
+    for (layer, resources) in &layers {
+        if sources
+            .iter()
+            .all(|s| s.tile_cache_manager != resources.tile_cache_manager)
+        {
+            sources.push(SourceEntities {
+                layer,
+                quadtree: resources.quadtree,
+                tile_cache_manager: resources.tile_cache_manager,
+            });
+        }
+    }
+    let traversed = sources.iter().any(|s| {
+        tcs.get(s.tile_cache_manager)
+            .is_ok_and(|tc| tc.is_updated_in_this_frame)
+    });
+
     // Load gate: when the memory budget is exhausted, start ZERO new fetches
     // and settle on the already-loaded tiles instead of evicting → refetching
     // in an endless loop. In-flight requests proceed; the rest wait.
     let free_slots = if pressure.load_gate_closed {
         0
     } else {
-        (limits.max_pendings as usize).saturating_sub(pendings)
+        (limits.max_pendings as usize).saturating_sub(requested_data_requesters.iter().count())
     };
 
-    // The source a requester belongs to, through its cache manager's
-    // `requested_tile_caches` slot.
-    let source_of = |e: Entity, marker: &VectorTileDataRequesterMarker| {
-        layers.iter().find_map(|(layer_entity, layer)| {
-            let tc = tcs.get(layer.tile_cache_manager).ok()?;
-            (tc.requested_tile_caches.get(&marker.0) == Some(&e)).then_some(layer_entity)
-        })
-    };
+    // Nothing can be sent, and no traversal changed what is wanted: only
+    // hold the new requests.
+    if free_slots == 0 && !traversed {
+        for (e, .., waiting) in &data_requesters {
+            if !waiting {
+                commands.entity(e).try_insert(Waiting);
+            }
+        }
+        return;
+    }
 
     struct Candidate<'a> {
         entity: Entity,
-        source: Option<Entity>,
+        source: Option<SourceEntities>,
         data_req: &'a DataRequester,
-        order: &'a OrderByDistance,
+        order: OrderByDistance,
         priority: Priority,
         waiting: bool,
     }
 
-    let mut candidates: Vec<Candidate> = data_requesters
-        .iter()
-        .filter(|(_, _, data_req, _, _, _)| data_req.is_pending())
-        .map(
-            |(entity, marker, data_req, order, priority, waiting)| Candidate {
-                entity,
-                source: source_of(entity, marker),
-                data_req,
-                order,
-                priority: *priority,
-                waiting,
-            },
-        )
-        .collect();
+    let mut candidates: Vec<Candidate> = vec![];
+    let mut unwanted: Vec<(Entity, SourceEntities, TileHandle)> = vec![];
+    for (entity, marker, data_req, order, priority, waiting) in &data_requesters {
+        if !data_req.is_pending() {
+            continue;
+        }
+        let source = source_of(&sources, &tcs, entity, marker.0);
+        let (order, priority) = match source {
+            Some(s) => {
+                let wanted = tcs
+                    .get(s.tile_cache_manager)
+                    .ok()
+                    .and_then(|tc| tc.wanted_data.get(&marker.0).copied());
+                let Some(priority) = wanted else {
+                    unwanted.push((entity, s, marker.0));
+                    continue;
+                };
+                // The tile was visited by the traversal that wants it, so its
+                // screen-space error and distance are current.
+                let order = qts
+                    .get(s.quadtree)
+                    .ok()
+                    .and_then(|qt| qt.qt.get(marker.0))
+                    .map_or_else(
+                        || order.clone(),
+                        |tile| OrderByDistance {
+                            sse: tile.sse,
+                            distance: tile.distance_from_camera,
+                        },
+                    );
+                (order, priority)
+            }
+            None => (order.clone(), *priority),
+        };
+        candidates.push(Candidate {
+            entity,
+            source,
+            data_req,
+            order,
+            priority,
+            waiting,
+        });
+    }
 
-    // Round-robin across sources within a priority: the n-th best request of
-    // every source goes before any source's (n+1)-th.
+    // The traversal no longer asks for these tiles: drop their requests, as
+    // it would ask again with a fresh one.
+    for (e, source, handle) in unwanted {
+        if let Ok(mut tc) = tcs.get_mut(source.tile_cache_manager) {
+            tc.requested_tile_caches.remove(&handle);
+        }
+        if let Ok(mut qt) = qts.get_mut(source.quadtree)
+            && let Some(tile) = qt.qt.get_mut(handle)
+            && tile.data_requester_entity_id == Some(e)
+        {
+            tile.data_requester_entity_id = None;
+        }
+        commands.entity(e).try_insert((Deleted, Ignored));
+    }
+
+    if free_slots == 0 {
+        for c in candidates.iter().filter(|c| !c.waiting) {
+            commands.entity(c.entity).try_insert(Waiting);
+        }
+        return;
+    }
+
+    // Round-robin across sources within a priority: the n-th request of
+    // every source goes before any source's (n+1)-th, counting the requests a
+    // source already has in flight.
+    let mut in_flight: FxHashMap<Entity, usize> = FxHashMap::default();
+    for (e, marker) in &requested_data_requesters {
+        if let Some(s) = source_of(&sources, &tcs, e, marker.0) {
+            *in_flight.entry(s.layer).or_default() += 1;
+        }
+    }
     candidates.sort_by(|a, b| {
         a.priority
             .rank()
             .cmp(&b.priority.rank())
-            .then_with(|| a.order.cmp(b.order))
+            .then_with(|| a.order.cmp(&b.order))
     });
     let mut taken: FxHashMap<(Option<Entity>, u8), usize> = FxHashMap::default();
     let mut ranked: Vec<(usize, Candidate)> = candidates
         .into_iter()
         .map(|c| {
-            let nth = taken.entry((c.source, c.priority.rank())).or_default();
+            let source = c.source.map(|s| s.layer);
+            let nth = taken
+                .entry((source, c.priority.rank()))
+                .or_insert_with(|| source.and_then(|s| in_flight.get(&s).copied()).unwrap_or(0));
             let rank = *nth;
             *nth += 1;
             (rank, c)
@@ -123,7 +225,7 @@ pub fn filter_requestable_data_requester(
             .rank()
             .cmp(&b.priority.rank())
             .then(ra.cmp(rb))
-            .then_with(|| a.order.cmp(b.order))
+            .then_with(|| a.order.cmp(&b.order))
     });
 
     for (i, (_, c)) in ranked.into_iter().enumerate() {
@@ -140,9 +242,9 @@ pub fn filter_requestable_data_requester(
         // frame.
         if ledger.enabled() {
             let reservation = match c.source {
-                Some(k) => {
-                    navara_memory::ReservedCost::for_key(navara_memory::ReserveKey::VectorLayer(k))
-                }
+                Some(s) => navara_memory::ReservedCost::for_key(
+                    navara_memory::ReserveKey::VectorLayer(s.layer),
+                ),
                 // No resolvable layer → no EMA pool; reserve the flat seed.
                 None => navara_memory::ReservedCost::fixed(
                     navara_memory::DEFAULT_VECTOR_TILE_RESERVE_BYTES,
@@ -152,9 +254,13 @@ pub fn filter_requestable_data_requester(
         }
 
         // A new requester is sent by the senders this frame; a released one
-        // is not seen by them any more, so send it here.
+        // is not seen by them any more, so send it here, at the priority its
+        // tile is wanted at now.
         if c.waiting {
-            commands.entity(c.entity).remove::<Waiting>();
+            commands
+                .entity(c.entity)
+                .remove::<Waiting>()
+                .insert((c.priority, c.order));
             send_data_request(
                 &mut commands,
                 &mut events,
@@ -172,16 +278,16 @@ mod tests {
     use super::*;
     use crate::source_cache::{SourceId, TraversalConfig};
     use bevy_app::{App, Update};
+    use bevy_ecs::world::Mut;
     use navara_data_requester::RequestLimits;
     use navara_memory::{MemoryLedger, SsePressure};
-    use navara_tile_component::{TileHandle, VectorTileQuadtree};
 
     fn spawn_requester(app: &mut App, priority: Priority, sse: f64) -> Entity {
         spawn_requester_of(app, None, 0, priority, sse)
     }
 
     /// A requester of `source`'s tile `handle`, registered in the source's
-    /// cache manager as the traversal does.
+    /// cache manager as the traversal does, which also wants the tile.
     fn spawn_requester_of(
         app: &mut App,
         source: Option<Entity>,
@@ -199,18 +305,29 @@ mod tests {
             ))
             .id();
         if let Some(source) = source {
-            let tc_entity = app
-                .world()
-                .get::<VectorTileSourceResources>(source)
-                .unwrap()
-                .tile_cache_manager;
-            app.world_mut()
-                .get_mut::<TileCacheManager>(tc_entity)
-                .unwrap()
-                .requested_tile_caches
-                .insert(handle, e);
+            let mut tc = tile_cache_manager(app, source);
+            tc.requested_tile_caches.insert(handle, e);
+            tc.wanted_data.insert(handle, priority);
         }
         e
+    }
+
+    fn tile_cache_manager(app: &mut App, source: Entity) -> Mut<'_, TileCacheManager> {
+        let tc_entity = app
+            .world()
+            .get::<VectorTileSourceResources>(source)
+            .unwrap()
+            .tile_cache_manager;
+        app.world_mut()
+            .get_mut::<TileCacheManager>(tc_entity)
+            .unwrap()
+    }
+
+    /// A traversal of `source` ran this frame and wants exactly `wanted`.
+    fn traverse(app: &mut App, source: Entity, wanted: &[(TileHandle, Priority)]) {
+        let mut tc = tile_cache_manager(app, source);
+        tc.is_updated_in_this_frame = true;
+        tc.wanted_data = wanted.iter().copied().collect();
     }
 
     fn spawn_source(app: &mut App, key: &str) -> Entity {
@@ -340,5 +457,73 @@ mod tests {
         assert!(!is_waiting(&app, b_high));
         assert!(is_waiting(&app, a_low));
         assert!(is_waiting(&app, b_low));
+    }
+
+    /// A waiting request is ranked by the priority its tile is wanted at
+    /// now, not the one it was spawned with.
+    #[test]
+    fn a_waiting_request_is_ranked_by_the_current_traversal() {
+        let mut app = setup(true, 1);
+        let a = spawn_source(&mut app, "a");
+        // Requested while out of view, demoted.
+        let panned_in = spawn_requester_of(&mut app, Some(a), 10, Priority::VeryLow, 1.0);
+        app.update();
+        assert!(is_waiting(&app, panned_in));
+
+        // The camera pans: the tile is in view, and a new tile is wanted too.
+        app.world_mut()
+            .resource_mut::<SsePressure>()
+            .load_gate_closed = false;
+        let new = spawn_requester_of(&mut app, Some(a), 11, Priority::Low, 1.0);
+        traverse(&mut app, a, &[(10, Priority::Medium), (11, Priority::Low)]);
+        app.update();
+
+        assert!(is_requested(&app, panned_in));
+        assert_eq!(
+            app.world().get::<Priority>(panned_in),
+            Some(&Priority::Medium)
+        );
+        assert!(is_waiting(&app, new));
+    }
+
+    /// A waiting request whose tile the traversal no longer asks for is
+    /// dropped instead of fetched later.
+    #[test]
+    fn a_waiting_request_is_dropped_when_its_tile_is_no_longer_wanted() {
+        let mut app = setup(true, 1);
+        let a = spawn_source(&mut app, "a");
+        let e = spawn_requester_of(&mut app, Some(a), 10, Priority::Medium, 1.0);
+        app.update();
+        assert!(is_waiting(&app, e));
+
+        // Still wanted while no traversal runs.
+        app.update();
+        assert!(app.world().get::<Deleted>(e).is_none());
+
+        traverse(&mut app, a, &[]);
+        app.update();
+        assert!(app.world().get::<Deleted>(e).is_some());
+        assert!(
+            !tile_cache_manager(&mut app, a)
+                .requested_tile_caches
+                .contains_key(&10)
+        );
+    }
+
+    /// The slots a source already holds count in the round-robin: a freed
+    /// slot goes to the source with fewer in flight.
+    #[test]
+    fn requests_in_flight_count_in_the_round_robin() {
+        let mut app = setup(false, 2);
+        let a = spawn_source(&mut app, "a");
+        let b = spawn_source(&mut app, "b");
+        let in_flight = spawn_requester_of(&mut app, Some(a), 10, Priority::Medium, 1.0);
+        app.world_mut().entity_mut(in_flight).insert(Requested);
+        let a_next = spawn_requester_of(&mut app, Some(a), 11, Priority::Medium, 2.0);
+        let b_next = spawn_requester_of(&mut app, Some(b), 20, Priority::Medium, 1.0);
+        app.update();
+
+        assert!(is_waiting(&app, a_next));
+        assert!(!is_waiting(&app, b_next));
     }
 }
