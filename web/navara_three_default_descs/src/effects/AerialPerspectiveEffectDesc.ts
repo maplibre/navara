@@ -68,8 +68,8 @@ export class AerialPerspectiveEffectDesc extends EffectDesc<
 
   /**
    * Both terms read the shadow attachment: R for the shadow amount, G for the
-   * deferred-lit mask. Without a normal buffer the shader compiles both out,
-   * so `useNormalBuffer: false` reads neither. Read before `onCreate`.
+   * deferred-lit mask. The shader compiles both out without a normal buffer
+   * or without `irradiance`, so neither reads it then. Read before `onCreate`.
    */
   getRequiredBuffers(): readonly GBufferName[] {
     const options = this.config.aerialPerspective ?? {};
@@ -77,8 +77,9 @@ export class AerialPerspectiveEffectDesc extends EffectDesc<
     if (!(options.useNormalBuffer ?? defaults.useNormalBuffer)) {
       return NO_REQUIRED_BUFFERS;
     }
-    return (options.shadow ?? defaults.shadow) ||
-      (options.specular ?? defaults.specular)
+    return (options.irradiance ?? defaults.irradiance) &&
+      ((options.shadow ?? defaults.shadow) ||
+        (options.specular ?? defaults.specular))
       ? REQUIRED_BUFFERS_WITH_SHADOW
       : REQUIRED_BUFFERS;
   }
@@ -122,9 +123,10 @@ export class AerialPerspectiveEffectDesc extends EffectDesc<
         Object.entries(config).filter(([, value]) => value !== undefined),
       ) as typeof config),
     };
-    // The requirement sets are nested, so their sizes order them.
-    const delta = this.getRequiredBuffers().length - required.length;
-    if (delta > 0) {
+    const next = this.getRequiredBuffers();
+    const grows = next.some((name) => !required.includes(name));
+    const shrinks = required.some((name) => !next.includes(name));
+    if (grows) {
       // Allocates the attachments before the shader reads them; the depth
       // texture identity survives the MRT rebuild.
       this.ctx.emit("gbufferRequirementsChanged");
@@ -156,8 +158,9 @@ export class AerialPerspectiveEffectDesc extends EffectDesc<
     }
     this.updateLighting(config);
 
-    if (delta < 0) {
-      // Releases the attachments the shader no longer reads.
+    if (shrinks && !grows) {
+      // Releases the attachments the shader no longer reads. A growth's
+      // re-derivation above already released them.
       this.ctx.emit("gbufferRequirementsChanged");
     }
   }

@@ -156,7 +156,7 @@ The first four are G-buffer attachments. `globeNormal` is a separate screen-spac
 
 ```tsx
 console.log(view.buffers);
-// { normal: true, selectiveEffect: false, emissive: false, shadow: false, globeNormal: false }
+// { normal: false, selectiveEffect: false, emissive: false, shadow: false, globeNormal: false }
 ```
 
 :::tip[Related Documentation]

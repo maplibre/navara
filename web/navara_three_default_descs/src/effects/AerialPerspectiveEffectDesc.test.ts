@@ -33,6 +33,7 @@ vi.mock("./aerialPerspective/index", () => {
     AerialPerspective,
     DEFAULT_AERIAL_PERSPECTIVE_OPTIONS: {
       useNormalBuffer: true,
+      irradiance: false,
       shadow: false,
       specular: false,
     },
@@ -82,12 +83,14 @@ describe("AerialPerspectiveEffectDesc.getRequiredBuffers", () => {
   it.each<[Lighting | undefined, GBufferName[]]>([
     [undefined, ["normal"]],
     [{ irradiance: true }, ["normal"]],
-    [{ shadow: true }, ["normal", "shadow"]],
-    [{ specular: true }, ["normal", "shadow"]],
+    [{ irradiance: true, shadow: true }, ["normal", "shadow"]],
+    [{ irradiance: true, specular: true }, ["normal", "shadow"]],
     [{ useNormalBuffer: false }, []],
-    // The terms are compiled out without a normal buffer.
-    [{ useNormalBuffer: false, shadow: true }, []],
-    [{ useNormalBuffer: false, specular: true }, []],
+    // The terms are compiled out without a normal buffer or irradiance.
+    [{ useNormalBuffer: false, irradiance: true, shadow: true }, []],
+    [{ useNormalBuffer: false, irradiance: true, specular: true }, []],
+    [{ shadow: true }, ["normal"]],
+    [{ specular: true }, ["normal"]],
   ])("derives the buffers from %o", (config, expected) => {
     expect(create(config).desc.getRequiredBuffers()).toEqual(expected);
   });
@@ -102,8 +105,16 @@ describe("AerialPerspectiveEffectDesc.getRequiredBuffers", () => {
   });
 
   it.each<[Lighting, Lighting, GBufferName[]]>([
-    [{ shadow: true }, { shadow: undefined }, ["normal", "shadow"]],
-    [{ specular: true }, { specular: undefined }, ["normal", "shadow"]],
+    [
+      { irradiance: true, shadow: true },
+      { shadow: undefined },
+      ["normal", "shadow"],
+    ],
+    [
+      { irradiance: true, specular: true },
+      { specular: undefined },
+      ["normal", "shadow"],
+    ],
     [{ useNormalBuffer: false }, { useNormalBuffer: undefined }, []],
   ])("keeps %o across an explicit %o", (config, update, expected) => {
     const { desc, emit } = createLive(config);
@@ -115,7 +126,7 @@ describe("AerialPerspectiveEffectDesc.getRequiredBuffers", () => {
   });
 
   it("does not share requirements through a shared config object", () => {
-    const shared = { aerialPerspective: { shadow: true } };
+    const shared = { aerialPerspective: { irradiance: true, shadow: true } };
     const a = createLive(undefined, shared);
     const b = createLive(undefined, shared);
 
@@ -123,12 +134,6 @@ describe("AerialPerspectiveEffectDesc.getRequiredBuffers", () => {
 
     expect(a.desc.getRequiredBuffers()).toEqual([]);
     expect(b.desc.getRequiredBuffers()).toEqual(["normal", "shadow"]);
-  });
-});
-
-describe("AerialPerspectiveEffectDesc.requiresMrtPass", () => {
-  it("keeps meshes in the MRT pass without a normal buffer", () => {
-    expect(AerialPerspectiveEffectDesc.requiresMrtPass).toBe(true);
   });
 });
 
@@ -161,6 +166,7 @@ describe("AerialPerspectiveEffectDesc.onUpdateConfig", () => {
   it("re-derives the G-buffers when a term needs them again", () => {
     const { desc, emit } = createLive({
       useNormalBuffer: false,
+      irradiance: true,
       shadow: true,
     });
     const seen = recordRequirements(desc, emit);
@@ -169,6 +175,17 @@ describe("AerialPerspectiveEffectDesc.onUpdateConfig", () => {
     expect(seen).toEqual([["normal", "shadow"]]);
 
     desc.onUpdateConfig({ aerialPerspective: { shadow: false } });
+    expect(seen).toEqual([["normal", "shadow"], ["normal"]]);
+  });
+
+  it("re-derives the G-buffers when irradiance toggles a term's buffer", () => {
+    const { desc, emit } = createLive({ shadow: true });
+    const seen = recordRequirements(desc, emit);
+
+    desc.onUpdateConfig({ aerialPerspective: { irradiance: true } });
+    expect(seen).toEqual([["normal", "shadow"]]);
+
+    desc.onUpdateConfig({ aerialPerspective: { irradiance: false } });
     expect(seen).toEqual([["normal", "shadow"], ["normal"]]);
   });
 

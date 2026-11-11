@@ -156,7 +156,7 @@ view.addMesh<SphereMeshDesc>({
 
 ```tsx
 console.log(view.buffers);
-// { normal: true, selectiveEffect: false, emissive: false, shadow: false, globeNormal: false }
+// { normal: false, selectiveEffect: false, emissive: false, shadow: false, globeNormal: false }
 ```
 
 :::tip[関連ドキュメント]

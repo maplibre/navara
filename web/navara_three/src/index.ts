@@ -2564,9 +2564,14 @@ export default class ThreeView<
    */
   private _syncGBuffers = (): void => {
     // Set first: the mesh requirements below go through `getPassKey()`.
-    this.viewContext._mrtPassRequired = [
-      ...this.layersManager.getEffectDescs(),
-    ].some((handle) => handle.ref.getConstructor().requiresMrtPass);
+    let mrtPassRequired = false;
+    for (const handle of this.layersManager.getEffectDescs()) {
+      if (handle.ref.getConstructor().requiresMrtPass) {
+        mrtPassRequired = true;
+        break;
+      }
+    }
+    this.viewContext._mrtPassRequired = mrtPassRequired;
     const buffers = unionGBufferRequirements(this._gbufferRequirements());
     // `addEffect`/`addMesh` reject an over-limit descriptor up front. A
     // requirement that grows after creation is reported instead and the
@@ -2580,23 +2585,25 @@ export default class ThreeView<
           `exceeding this device's MAX_DRAW_BUFFERS (${maxDrawBuffers}). ` +
           "Keeping the previous G-buffers.",
       );
+      // Re-applied anyway: meshes re-evaluate their pass on the event, and
+      // `requiresMrtPass` may have changed.
+      this.viewContext._setGBufferOptions(this._buffers);
       return;
     }
     this._buffers = buffers;
     this.viewContext._setGBufferOptions(this._buffers);
   };
 
-  private _gbufferRequirements(): (readonly GBufferName[])[] {
-    const requirements: (readonly GBufferName[])[] = [];
+  // Lazy, so the capacity check's already-allocated shortcut walks no layer.
+  private *_gbufferRequirements(): Generator<readonly GBufferName[]> {
     for (const handle of this.layersManager.getHandles()) {
       const desc = handle.ref;
       if (desc instanceof EffectDesc) {
-        requirements.push(desc.getRequiredBuffers());
+        yield desc.getRequiredBuffers();
       } else if (desc instanceof MeshDesc) {
-        requirements.push(desc.getRequiredBuffers());
+        yield desc.getRequiredBuffers();
       }
     }
-    return requirements;
   }
 
   /**

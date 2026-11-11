@@ -188,7 +188,7 @@ There is no user-facing buffers option. The configuration is the **union of
 active effects' and meshes' `getRequiredBuffers()`** (`selectiveBloom` →
 `["selectiveEffect", "emissive"]`, `selectiveOutline` → `["selectiveEffect"]`,
 `aerialPerspective` → `["normal"]`, `["normal", "shadow"]` with a lighting
-term and `[]` with `useNormalBuffer: false`, a draped
+term under `irradiance` and `[]` with `useNormalBuffer: false`, a draped
 `box`/`cylinder`/`polygon` mesh or a `polyline` mesh with `useGroundNormals` →
 `["globeNormal"]`). For effects the
 instance method defaults to the class's `static requiredBuffers`; for meshes it
