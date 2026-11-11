@@ -13,24 +13,18 @@ import {
   getPaintSpec,
   getTypeDefault,
   isLiteralArray,
-  validateAndMigrateStyle,
 } from "./styleEngineUtils";
 import type {
   EvaluationContext,
   FeatureContext,
   FilterExpression,
   LayerType,
-  ParsedStyle,
   PropertySpec,
   StyleValue,
   ValueExpression,
 } from "./types";
 
 export class RustStyleEngine implements StyleEngine {
-  async parseStyle(raw: unknown): Promise<ParsedStyle> {
-    return validateAndMigrateStyle(raw);
-  }
-
   createFilter(
     expr: FilterExpression,
     _layerType: LayerType,
@@ -66,7 +60,7 @@ export class RustStyleEngine implements StyleEngine {
     featureGeometryType = "Point",
   ): (ctx: EvaluationContext) => T {
     // Note: migrate() has already converted legacy functions and tokens to modern expressions
-    // in parseStyle(), so we don't need to handle them here.
+    // in validateAndMigrateStyle(), so we don't need to handle them here.
 
     // Handle constant values directly (optimization).
     // For color strings, still compile via WASM so maplibre-expr can validate/coerce (and preserve alpha).

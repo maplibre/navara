@@ -99,11 +99,13 @@ describe("styleEngineUtils", () => {
 
       const inner = ["step", ["number", ["get", "p"]], 5, 0, 5];
       const layout = parsed.layers[0].layout as Record<string, unknown>;
+      // The outer zoom step is padded by migrate() with a second stop at 0
+      // that repeats the same output.
       expect(layout["circle-sort-key"]).toEqual([
         "step",
         ["zoom"],
         inner,
-        1,
+        0,
         inner,
       ]);
     });

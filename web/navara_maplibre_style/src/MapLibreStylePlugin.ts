@@ -35,6 +35,7 @@ import {
 } from "./adapters/toLayerDescription";
 import { BackgroundHandler } from "./BackgroundHandler";
 import { RustStyleEngine } from "./engine/RustStyleEngine";
+import { validateAndMigrateStyle } from "./engine/styleEngineUtils";
 import type { ParsedStyle, StyleLayer } from "./engine/types";
 import { convertFontFacesToFontFamilies } from "./fontHelper";
 import {
@@ -383,7 +384,7 @@ export class MapLibreStylePlugin extends Plugin<ThreeView, ViewContext> {
 
     try {
       // Parse and validate the merged style
-      this.parsedStyle = await this.engine.parseStyle(styleData);
+      this.parsedStyle = validateAndMigrateStyle(styleData);
 
       // Check if style uses glyphs (not supported)
       const hasFontFaces = this.parsedStyle["font-faces"];

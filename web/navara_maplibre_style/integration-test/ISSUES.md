@@ -107,7 +107,6 @@ only means both images are mostly background.
 - MapLibre uses the property default instead.
 - Cases: `global-state/default`, `regressions/mapbox-gl-js#4124`, `#4150`.
 
-
 ## Packaging and docs
 
 ### `@navaramap/three` bundles part of three

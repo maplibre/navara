@@ -19,24 +19,18 @@ import {
   getPaintSpec,
   getTypeDefault,
   isLiteralArray,
-  validateAndMigrateStyle,
 } from "./styleEngineUtils";
 import type {
   EvaluationContext,
   FeatureContext,
   FilterExpression,
   LayerType,
-  ParsedStyle,
   PropertySpec,
   StyleValue,
   ValueExpression,
 } from "./types";
 
 export class JsStyleEngine implements StyleEngine {
-  async parseStyle(raw: unknown): Promise<ParsedStyle> {
-    return validateAndMigrateStyle(raw);
-  }
-
   createFilter(
     expr: FilterExpression,
     _layerType: LayerType,
