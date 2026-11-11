@@ -35,8 +35,7 @@ use super::render::RenderedTile;
 // 5. On the other hand, if SSE works but the tile isn't loaded, the tile should be requested, not rendered.
 // 6. If above steps aren't matched, traverse children.
 // 7. If children couldn't be rendered completely, use this tile instead. But if this tile isn't on screen
-//    and tiles under it are, keep those drawn and leave the missing children's area empty until they load,
-//    as long as no more children are missing than covered.
+//    and tiles under it are, keep those drawn and leave the missing children's area empty until they load.
 // 8. If all children is rendered, use children.
 // 9. If the tile is overscaled, it's leaf is marked just in quadtree, but it isn't actually rendered. It reuses a parent tile.
 
@@ -64,8 +63,6 @@ pub fn traverse_tile(
     is_ancestor_rendered: bool,
     // This is used to keep rendering current children when parent tile isn't ready after you zoomed out.
     meets_sse_ancestors: bool,
-    // False while the memory load gate is closed: a tile that isn't loaded stays so.
-    can_load: bool,
     terrain_layer: &Option<&TerrainLayer>,
     terrain_tile_qt: &TerrainTileQuadtree,
     terrain_exaggeration: &TerrainExaggeration,
@@ -291,9 +288,6 @@ pub fn traverse_tile(
         let mut ready_children = vec![false; children.len()];
         // Children on screen, or that keep the tiles on screen under them.
         let mut drawn_children = vec![false; children.len()];
-        // Children whose data isn't loaded. One whose mesh is still being
-        // built is drawn in a frame or two, so it doesn't count.
-        let mut missing_children = vec![false; children.len()];
 
         // Overscaled tile is actually not rendered, since parent tile is reused in the rendering engine side.
         let mut overscaled_children_indices = vec![];
@@ -326,7 +320,6 @@ pub fn traverse_tile(
                     is_rendered_last_frame
                 },
                 meets_sse,
-                can_load,
                 terrain_layer,
                 terrain_tile_qt,
                 terrain_exaggeration,
@@ -346,10 +339,8 @@ pub fn traverse_tile(
                 are_all_children_activated = false;
             }
 
-            match traversal_result {
-                TraversalResult::DescendantsKept => drawn_children[i] = true,
-                TraversalResult::NotFound => missing_children[i] = true,
-                _ => {}
+            if matches!(traversal_result, TraversalResult::DescendantsKept) {
+                drawn_children[i] = true;
             }
 
             if matches!(
@@ -433,26 +424,21 @@ pub fn traverse_tile(
                 || (meets_sse && is_rendered_last_frame);
 
             // While a child is missing and this tile isn't on screen, the tiles
-            // on screen under it stay drawn instead of this tile. They wait for
-            // a tile to load, which needs the load gate open. They are kept
-            // only while they cover at least as many children as are missing:
-            // with more missing, this tile would leave less of its area empty.
-            let keeps_drawn_descendants =
-                can_load && !hide_children && !are_all_children_mesh_prepared && !is_drawn && {
-                    let (mut covered, mut missing) = (0, 0);
-                    for (i, range) in queued_descendants.iter().enumerate() {
-                        let is_covered = drawn_children[i]
-                            || activations.queued(range.clone()).iter().any(|d| {
-                                is_tile_drawn(tc, d, rendered_tiles, features, renderable_features)
-                            });
-                        if is_covered {
-                            covered += 1;
-                        } else if missing_children[i] {
-                            missing += 1;
-                        }
-                    }
-                    covered > 0 && missing <= covered
-                };
+            // on screen under it stay drawn instead of this tile, and the
+            // missing children's area stays empty until they load. Falling
+            // back to this tile would trade them for a coarser tile: low zoom
+            // tiles often drop most features or have none, and while the
+            // memory load gate is closed nothing new loads to replace it, so
+            // the working set stays frozen rather than coarsened.
+            let keeps_drawn_descendants = !hide_children
+                && !are_all_children_mesh_prepared
+                && !is_drawn
+                && queued_descendants.iter().enumerate().any(|(i, range)| {
+                    drawn_children[i]
+                        || activations.queued(range.clone()).iter().any(|d| {
+                            is_tile_drawn(tc, d, rendered_tiles, features, renderable_features)
+                        })
+                });
 
             let tile = qt.qt.get_mut(handle).unwrap();
             // The kept tiles are visited on a zoom-out like a complete group,

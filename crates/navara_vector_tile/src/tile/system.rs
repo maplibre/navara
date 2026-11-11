@@ -208,7 +208,6 @@ pub fn update_tiles(
                 degrade,
                 false,
                 false,
-                !pressure.load_gate_closed,
                 &terrain_layer,
                 &terrain.1,
                 &terrain.3,
@@ -1675,10 +1674,11 @@ mod keep_drawn_descendants_tests {
         assert!(!is_drawn(&app, &scene, DRAWN_CHILD));
     }
 
-    /// More children are missing than drawn: the parent, loaded, covers the
-    /// tile instead of leaving most of it empty.
+    /// More children are missing than drawn, and the parent is loaded and
+    /// built: the drawn child still stays. A parent at a lower zoom can hold
+    /// far fewer features than the child it would replace.
     #[test]
-    fn it_should_fall_back_when_more_children_are_missing_than_drawn() {
+    fn it_should_keep_the_drawn_tiles_when_more_children_are_missing_than_drawn() {
         const OTHER_NEW_CHILD: Coords = (2, 0, 2);
         let (mut app, scene) = setup();
         settle(&mut app, &scene);
@@ -1688,8 +1688,8 @@ mod keep_drawn_descendants_tests {
         look_from(&mut app, &scene, 45.);
         settle(&mut app, &scene);
 
-        assert!(is_drawn(&app, &scene, PARENT));
-        assert!(!is_drawn(&app, &scene, DRAWN_CHILD));
+        assert!(is_drawn(&app, &scene, DRAWN_CHILD));
+        assert!(!is_drawn(&app, &scene, PARENT));
     }
 
     /// The tiles one pass asked data for, with the priority.
@@ -1738,10 +1738,10 @@ mod keep_drawn_descendants_tests {
         assert_eq!(tc.wanted_data.get(&handle), Some(&Priority::Medium));
     }
 
-    /// With the load gate closed the missing child cannot load, so the parent
-    /// covers its area instead of leaving it empty.
+    /// With the load gate closed the missing child cannot load: the drawn
+    /// tiles stay as they are (frozen), not traded for the coarser parent.
     #[test]
-    fn it_should_fall_back_to_the_parent_while_the_load_gate_is_closed() {
+    fn it_should_keep_the_drawn_tiles_while_the_load_gate_is_closed() {
         let (mut app, scene) = scene_with_a_loading_child();
 
         app.world_mut()
@@ -1749,7 +1749,7 @@ mod keep_drawn_descendants_tests {
             .load_gate_closed = true;
         traverse(&mut app, &scene);
 
-        assert!(is_drawn(&app, &scene, PARENT));
-        assert!(!is_drawn(&app, &scene, DRAWN_CHILD));
+        assert!(is_drawn(&app, &scene, DRAWN_CHILD));
+        assert!(!is_drawn(&app, &scene, PARENT));
     }
 }
