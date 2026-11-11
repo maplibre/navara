@@ -3,6 +3,7 @@ title: BuildingWindowsEffectDesc
 description: Building windows effect descriptor for navara_three_default_descs
 sidebar:
   order: 63
+since: 0.3.2
 ---
 
 The `BuildingWindowsEffectDesc` class is a Descriptor that draws lit windows on building walls. It paints a grid of windows anchored to the world, one column every `columnWidth` meters along the wall and one row every `floorHeight` meters, on the walls of the objects whose `effectIds` list the effect. Roofs and floors get no windows, and the share of lit windows rises with height above the ground. It works on any geometry in the scene, such as extruded polygons and 3D Tiles.

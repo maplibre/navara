@@ -1,0 +1,19 @@
+---
+import NightlyBadge from './NightlyBadge.astro';
+
+const { title, since } = Astro.locals.starlightRoute.entry.data;
+---
+
+<!-- "_top" is Starlight's page title id, the target of the "Overview" link in
+     the table of contents. -->
+<h1 id="_top">{title}<NightlyBadge since={since} /></h1>
+
+<style>
+	h1 {
+		margin-top: 1rem;
+		font-size: var(--sl-text-h1);
+		line-height: var(--sl-line-height-headings);
+		font-weight: 600;
+		color: var(--sl-color-white);
+	}
+</style>

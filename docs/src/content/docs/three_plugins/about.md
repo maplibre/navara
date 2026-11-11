@@ -56,7 +56,7 @@ Resolves a Cesium Ion asset endpoint at `init()` time and registers it as a quan
 
 Fetches a TileJSON 3.0.0 document and registers it as a single raster, vector, or raster-DEM (elevation) tile source via `addSource()`, deriving the tile URL, zoom range, scheme, attribution (and, for raster-DEM, the MapLibre-compatible `tileSize` / `encoding`) from the document. See [TileJsonPlugin](../tilejsonplugin/) for details.
 
-### StreetLightsPlugin
+### StreetLightsPlugin :since[0.3.2]
 
 Takes the roads and the buildings of a vector tile set, each with its source and a reader for its properties, draws the road surfaces, and streams the zoom 14 tiles in around a position to place street lamps along the roads, red beacons on the roofs the reader picks and cars that drive the road segments. The lamps and beacons take part in the selective effects given to `start()`, such as the built-in bloom. See [StreetLightsPlugin](../streetlightsplugin/) for details.
 

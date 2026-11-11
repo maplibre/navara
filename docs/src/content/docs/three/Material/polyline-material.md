@@ -181,7 +181,7 @@ import { Color } from "@navaramap/three";
 }
 ```
 
-### geodesic
+### geodesic :since[0.3.2]
 
 **Type:** `boolean | undefined`
 

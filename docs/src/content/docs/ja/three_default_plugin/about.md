@@ -13,7 +13,7 @@ sidebar:
 
 ```
 navara_three（コア: ThreeView, Plugin, addPlugin, registerMesh/Effect/Light）
-  ├── three_default_descs（Descriptorの実装: 22 メッシュ, 15 エフェクト, 4 ライト）
+  ├── three_default_descs（Descriptorの実装: メッシュ, エフェクト, ライト）
   └── three_default_plugin（DefaultPlugin: Descriptorの一括登録 + ユーティリティ）
 ```
 
@@ -35,13 +35,7 @@ view.addPlugin(plugin);
 await view.init({ canvas: document.getElementById("canvas") });
 ```
 
-プラグインの `init()` で以下のDescriptorが自動的に登録されます：
-
-**メッシュ（24 種）:** `rain`, `snow`, `sky`, `skyBox`, `stars`, `box`, `sphere`, `glowGlobe`, `cylinder`, `tube`, `plane`, `gltfModel`, `splat`, `axesHelper`, `arrowHelper`, `arcLines`, `polygon`, `polyline`, `smoothLines`, `boxes`, `spheres`, `planes`, `cylinders`, `gltfModels`
-
-**エフェクト（15 種）:** `aerialPerspective`, `buildingWindows`, `rainDrop`, `selectiveBloom`, `selectiveOutline`, `clouds`, `fogLight`, `lensFlare`, `ssao`, `ssr`, `depthOfField`, `colorGradingLUT`, `toneMapping`, `smaa`, `fxaa`
-
-**ライト（4 種）:** `sun`, `ambient`, `skyLightProbe`, `lightProbe`
+プラグインの `init()` は `three_default_descs` のすべてのDescriptorを登録します。利用できるDescriptorは [Mesh Descriptor](../../three_default_descs/mesh-desc/about/)、[Effect Descriptor](../../three_default_descs/effect-desc/about/)、[Light Descriptor](../../three_default_descs/light-desc/about/) を、追加するときのキー（例: `BoxMeshDesc` なら `box`）は各Descriptorのページを参照してください。
 
 ### addDefaultPhotorealScene()
 

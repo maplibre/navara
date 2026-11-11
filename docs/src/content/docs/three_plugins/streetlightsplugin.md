@@ -3,6 +3,7 @@ title: StreetLightsPlugin
 description: Street lamps, roof beacons and moving traffic at night, streamed in around the camera from vector tiles.
 sidebar:
   order: 4
+since: 0.3.2
 ---
 
 ## Overview

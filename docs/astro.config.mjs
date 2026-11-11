@@ -3,6 +3,7 @@ import { defineConfig } from "astro/config";
 import starlight from "@astrojs/starlight";
 import rehypeMermaid from "rehype-mermaid";
 import { readdir } from "fs/promises";
+import { remarkSince } from "./src/utils/remark-since";
 
 // Locale directory names to exclude from sidebar generation.
 // These are handled by Starlight's built-in locale routing.
@@ -47,6 +48,7 @@ export default defineConfig({
   site: "https://navara.world",
   base: "/docs",
   markdown: {
+    remarkPlugins: [remarkSince],
     rehypePlugins: [[rehypeMermaid, { strategy: "inline-svg" }]],
   },
   integrations: [
@@ -72,6 +74,7 @@ export default defineConfig({
         // light mode is disabled for now, so the theme provider pins dark and
         // the theme picker renders nothing (see each override).
         Header: "./src/components/Header.astro",
+        PageTitle: "./src/components/PageTitle.astro",
         ThemeProvider: "./src/components/ThemeProvider.astro",
         ThemeSelect: "./src/components/ThemeSelect.astro",
       },

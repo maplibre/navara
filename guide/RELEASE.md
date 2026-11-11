@@ -17,8 +17,11 @@ Mechanism: [`release.yml`](../.github/workflows/release.yml),
 
    git-cliff prepends a `## v0.2.0 - YYYY-MM-DD` section to CHANGELOG.md,
    grouped by commit type (`feat`/`fix`/`perf`/…, breaking = **BREAKING:**).
+   The task also writes `0.2.0` to `site/released-version.json`
+   ([Nightly badges](#nightly-badges-in-docs-and-examples)).
 
-2. **Review & edit the section**, then commit it to `main` (via PR).
+2. **Review & edit the section**, then commit it to `main` (via PR) together
+   with `site/released-version.json`.
    Keep the `## v0.2.0` heading line intact — CI matches on it.
 
 3. **Push the tag:**
@@ -30,10 +33,14 @@ Mechanism: [`release.yml`](../.github/workflows/release.yml),
 4. **Approve the `npm-publish` environment** in the Actions UI.
    CI then publishes to npm and creates the GitHub Release automatically.
 
+5. **Redeploy the site** (`cargo make deploy-web-site`) so the docs and
+   examples drop the Nightly badges of the released version.
+
 ## What CI does (`release.yml`, on `v*.*.*` tag)
 
 - `publish` job:
   - fail fast if CHANGELOG.md has no `## vX.Y.Z` section for the tag
+  - fail fast if `site/released-version.json` is not the tag's version
   - clean WASM release build (no caches), stamp tag version into all packages
     (lockstep — the tag is the only version source)
   - npm publish via trusted publishing (OIDC) + provenance under `latest`,
@@ -70,6 +77,18 @@ changelog, tag or GitHub Release.
   is retried by re-running it.
 - **No per-nightly git tag**: the version is derived from the history, and a
   `v0.3.1-nightly.…` tag would match the `v*.*.*` release trigger.
+
+## Nightly badges in docs and examples
+
+The site is built from `main`, so it documents features that only nightlies
+ship. Such features carry the latest release + 0.0.1 at the time they land
+(`since` in an example's `meta.ts` or a docs page's frontmatter,
+`:since[X.Y.Z]` inline in docs). `site/released-version.json` holds the
+version under `latest`, and the docs and examples read it at build time: a
+feature whose `since` is newer renders a Nightly badge linking to the
+nightly install instructions. Any release reaching that version, followed
+by a redeploy, removes the badges, so the markers stay in the sources. Mechanism: [`site/release-status.ts`](../site/release-status.ts).
+The file is also served at `https://navara.world/released-version.json`.
 
 ## Experimental packages
 

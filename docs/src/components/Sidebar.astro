@@ -1,17 +1,28 @@
 ---
+import { getCollection } from 'astro:content';
 import SidebarPersister from '@astrojs/starlight/components/SidebarPersister.astro';
 import SidebarSublist from '@astrojs/starlight/components/SidebarSublist.astro';
 import SectionSwitcher from './SectionSwitcher.astro';
 import { getFilteredSidebar } from '../utils/sidebar';
 import { translateFolderName } from '../utils/translations';
 import type { SidebarEntry } from '../utils/sidebar';
+import { isNightlyOnly } from '../../../site/release-status';
 
 const { sidebar } = Astro.locals.starlightRoute;
 const { locale } = Astro.locals.starlightRoute;
 const pathname = Astro.url.pathname;
 
+const base = import.meta.env.BASE_URL.replace(/\/$/, '');
+const trimSlash = (href: string) => href.replace(/\/$/, '');
+const nightlyHrefs = new Set(
+  (await getCollection('docs'))
+    .filter((page) => page.data.since && isNightlyOnly(page.data.since))
+    .map((page) => `${base}/${page.id}`)
+);
+
 /**
- * Recursively translate sidebar entries labels based on current locale
+ * Recursively translate sidebar entries labels based on current locale, and
+ * badge the links to pages only nightlies ship
  */
 function translateSidebarEntries(entries: SidebarEntry[]): SidebarEntry[] {
   return entries.map(entry => {
@@ -21,6 +32,9 @@ function translateSidebarEntries(entries: SidebarEntry[]): SidebarEntry[] {
         label: translateFolderName(entry.label, locale),
         entries: translateSidebarEntries(entry.entries)
       };
+    }
+    if (!entry.badge && nightlyHrefs.has(trimSlash(entry.href))) {
+      return { ...entry, badge: { text: 'Nightly', variant: 'default', class: 'nvr-nightly-badge' } };
     }
     return entry;
   });

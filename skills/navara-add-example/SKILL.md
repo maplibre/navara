@@ -35,10 +35,13 @@ export default {
   title: { en: "Hello World", ja: "Hello World" },
   description: { en: "One-line summary.", ja: "一行の説明。" },
   docs: "three/tutorial/basic-visualization",   // docs-site path or absolute URL
+  since: "0.3.2",   // only when it shows an API not in the latest npm release
 } satisfies ExampleMeta;
 ```
 
 Provide both `en` and `ja` for title/description (a bare string is a fallback for all languages).
+
+When the example uses an API that the latest release (`site/released-version.json`) does not have yet, set `since` to that version + 0.0.1 (`X.Y.Z`, no `v`; `0.3.2` while `0.3.1` is the latest). The gallery card and detail page show a **Nightly** badge until a release reaches it, then the badge disappears by itself, so leave `since` in place.
 
 ## File structure convention
 

@@ -9,4 +9,5 @@ export default {
     ja: "OpenStreetMap の建物と道路に、灯る窓・街灯・流れる車を重ねた夜景。",
   },
   docs: "three_default_descs/effect-desc/building-windows-effect-desc",
+  since: "0.3.2",
 } satisfies ExampleMeta;

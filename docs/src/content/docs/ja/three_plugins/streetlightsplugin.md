@@ -3,6 +3,7 @@ title: StreetLightsPlugin
 description: ベクトルタイルから、カメラ周辺に夜の街灯・屋上灯・流れる車をストリーミングするプラグイン。
 sidebar:
   order: 4
+since: 0.3.2
 ---
 
 ## 概要
