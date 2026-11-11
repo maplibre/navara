@@ -1,7 +1,8 @@
 # Release
 
 Semi-automated release flow: changelog drafted from conventional commits →
-human review → tag push → CI publishes npm packages + GitHub Release.
+human review → tag push → CI publishes npm packages + GitHub Release. `main` can
+also be published as a nightly on demand ([Nightlies](#nightlies-releaseyml-manual-run)).
 Mechanism: [`release.yml`](../.github/workflows/release.yml),
 [`cliff.toml`](../cliff.toml),
 [`scripts/extract-changelog.mjs`](../scripts/extract-changelog.mjs).
@@ -35,11 +36,57 @@ Mechanism: [`release.yml`](../.github/workflows/release.yml),
   - fail fast if CHANGELOG.md has no `## vX.Y.Z` section for the tag
   - clean WASM release build (no caches), stamp tag version into all packages
     (lockstep — the tag is the only version source)
-  - npm publish via trusted publishing (OIDC) + provenance, gated by the
-    `npm-publish` environment approval
+  - npm publish via trusted publishing (OIDC) + provenance under `latest`,
+    gated by the `npm-publish` environment approval; `web/experimental/` is
+    left out
 - `github-release` job (only after `publish` succeeds):
   - extract the tag's section from CHANGELOG.md
   - `gh release create --verify-tag --notes-file …`
+
+## Nightlies (`release.yml`, manual run)
+
+Run the `Release` workflow on `main` from the Actions UI, then approve the
+`npm-publish` environment. CI publishes all packages, `web/experimental/`
+included, as `X.Y.(Z+1)-nightly.N.gSHA` under the `nightly` dist-tag
+(`vX.Y.Z` = latest release tag reachable from `main`, `N` = commits since
+that tag, `SHA` = abbreviated commit), e.g. `0.3.1-nightly.12.gabc1234`. No
+changelog, tag or GitHub Release.
+
+- **Same build and environment as a release**: `npm-publish` accepts `v*`
+  tags and `main`, and every run waits for reviewer approval.
+- **Skipped when `main` has not moved**: the `changes` job compares `main`
+  with the commit of the last successful nightly run and skips the build,
+  before asking for approval, when they match. A nightly whose publish failed
+  does not count, so the next run retries that commit.
+- **One nightly at a time, never cancelled**: a run stopped during its publish
+  step would leave the packages at mixed versions, and their exact
+  `workspace:*` pins would fail to install. A run triggered meanwhile waits.
+- **Versions order correctly**: `0.3.0 < 0.3.1-nightly.N.gSHA < 0.3.1`, and
+  `N` grows with each commit on `main`, which cannot be force-pushed. The
+  `g` keeps the SHA alphanumeric: an all-digit SHA would compare as a number,
+  and one with a leading zero is not valid semver.
+- **One version per commit**: a re-run publishes the same version, and
+  `pnpm publish -r` skips the packages already published, so a failed nightly
+  is retried by re-running it.
+- **No per-nightly git tag**: the version is derived from the history, and a
+  `v0.3.1-nightly.…` tag would match the `v*.*.*` release trigger.
+
+## Experimental packages
+
+Packages under `web/experimental/` (e.g. `@navaramap/three-flood-mesh`) are
+published in nightlies only, at the nightly version.
+
+- **Built with the workspace**: they depend on Navara with `workspace:*`,
+  which pnpm replaces with the exact nightly version, so an experimental
+  package always runs on the Navara of the same commit.
+- **Excluded from `vX.Y.Z`**: `release.yml` publishes releases with
+  `--filter "!./web/experimental/**"`.
+- **First publish** is by hand (trusted publishing needs the package to
+  exist), with `--tag nightly`, then register `release.yml` / `npm-publish`
+  as its trusted publisher and turn on "Require two-factor authentication and
+  disallow tokens".
+- **Joining the release**: move the package to `web/`. Keeping its name lets
+  users upgrade from a nightly to the next release.
 
 ## Security design
 
@@ -50,8 +97,12 @@ Mechanism: [`release.yml`](../.github/workflows/release.yml),
 - **Least privilege per job** — `contents: write` only on `github-release`,
   never alongside the npm OIDC permission (`id-token: write`)
 - **No shell interpolation** — notes passed to `gh` as a file (`--notes-file`)
-- **Fork guard + `--verify-tag`** — release created only on the canonical repo
-  for an existing tag
+- **Fork guard + `--verify-tag`** — nothing is published from forks, and the
+  GitHub Release is created only for an existing tag
+- **Every publish is approved** — releases and nightlies share the
+  `npm-publish` environment and its single npm trusted publisher. npm cannot
+  limit a trusted publisher to a dist-tag, so a second one without reviewers
+  would let any workflow change merged to `main` publish under `latest`
 
 ## Troubleshooting
 
