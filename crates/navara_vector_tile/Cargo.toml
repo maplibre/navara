@@ -31,3 +31,4 @@ navara_material.workspace = true
 navara_memory.workspace = true
 navara_mesh.workspace = true
 navara_event_store.workspace = true
+navara_worker_component.workspace = true

@@ -232,10 +232,11 @@ computed from the *resident* footprint with hysteresis:
 - holds its previous state in between.
 
 While closed, every pipeline's `filter_requestable_*` system dispatches **zero
-new fetches** (terrain DEM, raster, hillshade, vector, 3D Tiles alike).
-Traversal-wise the effect is that children never become ready, so traversals
-settle on the currently-loaded tiles: the working set is **frozen**, not
-coarsened. Already-loaded tiles keep rendering. An over-tight budget therefore
+new fetches** (terrain DEM, raster, hillshade, vector, 3D Tiles alike); the
+vector pipeline keeps its requests waiting (`Waiting`), the others drop them
+and re-request on the next traversal. Traversal-wise the effect is that
+children never become ready, so traversals settle on the currently-loaded
+tiles: the working set is **frozen**, not coarsened. Already-loaded tiles keep rendering. An over-tight budget therefore
 degrades to "stops refining" rather than an endless evict → refetch loop. The
 gate-open transition is change-detected so the traversals re-run and resume the
 descent that was cut short.

@@ -1,6 +1,6 @@
 use bevy_ecs::prelude::*;
 use navara_buffer_store::BufferStore;
-use navara_component::{Deleted, OrderByDistance, Priority, Rendered};
+use navara_component::{Deleted, OrderByDistance, Rendered};
 use navara_core::{TileXYZ, WGS84_64};
 use navara_feature_component::{
     batch::BatchTable, batch::BatchedFeature, id::FeatureId, render::RenderableFeature,
@@ -233,18 +233,6 @@ pub fn update_tiles(
                     }
 
                     qt.qt.get_mut(zero_tile_handle).unwrap().is_rendered = is_rendered;
-                }
-                TraversalResult::NotFound => {
-                    let tile = qt.qt.get_mut(zero_tile_handle).unwrap();
-                    tile_source.0.prepare_tile(
-                        &mut commands,
-                        tile,
-                        zero_tile_handle,
-                        &mut tc,
-                        &mut buf,
-                        &data_requester,
-                        Priority::Medium,
-                    );
                 }
                 TraversalResult::ChildrenMeshPrepared => {
                     write_activation(
@@ -899,6 +887,7 @@ mod memory_budget_tests {
     use super::*;
     use crate::source::{ReadyState, VectorTileSource};
     use bevy_app::{App, Update};
+    use navara_component::Priority;
     use navara_frame::FramePlugin;
     use navara_memory::MIN_RETAIN_FRAMES;
     use std::any::Any;
@@ -1340,6 +1329,7 @@ mod keep_drawn_descendants_tests {
     use crate::source::{ReadyState, VectorTileSource};
     use crate::source_cache::{SourceId, TraversalConfig};
     use bevy_app::{App, Update};
+    use navara_component::Priority;
     use navara_core::WGS84_A_64;
     use navara_feature_component::render::PointRenderInformation;
     use navara_frame::FramePlugin;
