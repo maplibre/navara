@@ -13,7 +13,7 @@ sidebar:
 
 ```
 navara_three（コア: ThreeView, Plugin, addPlugin, registerMesh/Effect/Light）
-  ├── three_default_descs（Descriptorの実装: 22 メッシュ, 14 エフェクト, 4 ライト）
+  ├── three_default_descs（Descriptorの実装: 22 メッシュ, 15 エフェクト, 4 ライト）
   └── three_default_plugin（DefaultPlugin: Descriptorの一括登録 + ユーティリティ）
 ```
 
@@ -39,7 +39,7 @@ await view.init({ canvas: document.getElementById("canvas") });
 
 **メッシュ（24 種）:** `rain`, `snow`, `sky`, `skyBox`, `stars`, `box`, `sphere`, `glowGlobe`, `cylinder`, `tube`, `plane`, `gltfModel`, `splat`, `axesHelper`, `arrowHelper`, `arcLines`, `polygon`, `polyline`, `smoothLines`, `boxes`, `spheres`, `planes`, `cylinders`, `gltfModels`
 
-**エフェクト（14 種）:** `aerialPerspective`, `rainDrop`, `selectiveBloom`, `selectiveOutline`, `clouds`, `fogLight`, `lensFlare`, `ssao`, `ssr`, `depthOfField`, `colorGradingLUT`, `toneMapping`, `smaa`, `fxaa`
+**エフェクト（15 種）:** `aerialPerspective`, `buildingWindows`, `rainDrop`, `selectiveBloom`, `selectiveOutline`, `clouds`, `fogLight`, `lensFlare`, `ssao`, `ssr`, `depthOfField`, `colorGradingLUT`, `toneMapping`, `smaa`, `fxaa`
 
 **ライト（4 種）:** `sun`, `ambient`, `skyLightProbe`, `lightProbe`
 

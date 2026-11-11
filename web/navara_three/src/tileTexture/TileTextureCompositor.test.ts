@@ -118,7 +118,7 @@ describe("TileTextureCompositor.isAtlasAllocated", () => {
     compositor.runCompositePassIfDirty(
       1n,
       { rasterCount: 0, vectorCount: 0, boundary: 2, slots: [] },
-      { hillshadeExaggeration: 1, watermask: null, colorMapTexture: null },
+      { watermask: null, colorMapTexture: null },
       {
         hasHillshade: false,
         hasWater: false,

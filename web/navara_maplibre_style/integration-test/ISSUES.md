@@ -14,17 +14,6 @@ partly.
 
 ## Rendering
 
-### A style without a visible background layer paints the globe opaque black
-
-MapLibre leaves the canvas transparent when no background layer is drawn;
-Navara fills the globe with opaque black (`BackgroundHandler`'s
-`applyDefaultBackground`, documented there as "MapLibre's fallback").
-
-- Affects nearly every GeoJSON case. It also hides black features on top, for
-  example the 50% black fills in `within/*`.
-- Cases: `empty/empty`, `visibility/background/none`, `fill-color/*`,
-  `geojson/*`, `within/*`.
-
 ### Only the top-most background layer is used
 
 Background layers are not composited. The top-most one alone sets the globe
@@ -86,36 +75,11 @@ The extrusions render once the scene has lights, which the harness adds
 - `fill-extrusion-color/default`, `fill-extrusion-height/*`,
   `fill-extrusion-base/*`: the unset color is drawn white (see "Unset paint colors").
 
-### hillshade relief is barely visible
-
-- With the harness lights the terrain is an almost flat light gray; MapLibre
-  draws strong relief with its own illumination
-  (`hillshade-illumination-direction`, default 335°), independent of scene
-  lights.
-- `hillshade-*-color` paint properties have no effect (supported.json marks
-  the layer ⚠️, "layer only").
-- Cases: `hillshade-*/default`, `hillshade-accent-color/terrarium`,
-  `hillshade-maxzoom/*`, `resampling/hillshade/default`.
-
 ### `interpolate-hcl` (legacy `colorSpace: "hcl"`) yields a different color
 
 - `background-color/colorSpace-hcl`: Navara draws `(224, 38, 88)` and MapLibre
   `(245, 7, 53)`.
 - `colorSpace-lab` matches.
-
-### GeoJSON longitudes outside ±180° are dropped
-
-- In `projection/globe/antimeridian-overdraw/wide-band-*`, polygons given with
-  longitudes such as 319° or -191° lose those parts. In `wide-band-pole-view`
-  only slivers of the ring around the pole remain.
-- MapLibre wraps them across the antimeridian.
-- `geojson-crossing-z0`/`-z3`, whose coordinates stay within ±180°, match.
-
-### A polygon covering the pole is not drawn
-
-- `projection/globe/pole-cap`: a GeoJSON polygon spanning the eastern
-  hemisphere up to 90°N, seen pitched from 85°N, is missing entirely.
-- The background reaches the pole, and MapLibre draws the fill there too.
 
 ### Symbol text is never drawn
 

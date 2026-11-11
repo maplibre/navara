@@ -24,6 +24,5 @@ export function createTileHillshadeEnhancer(
     postLoop: hillshadePostLoop,
     attachUniforms: mutates.attachUniforms,
     bindSlot: mutates.bindSlot,
-    bindGlobal: mutates.bindGlobal,
   };
 }

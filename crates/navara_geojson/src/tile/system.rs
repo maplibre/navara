@@ -17,6 +17,21 @@ use super::source::GeoJsonTileSource;
 #[derive(Component)]
 pub(crate) struct Tiled;
 
+/// `None` when no polygon or polyline appearance takes the tiled path,
+/// otherwise whether any tiled one is geodesic. One index serves every
+/// appearance of the layer, so a single geodesic appearance densifies the
+/// shared geometry.
+fn tiled_geodesic(appearances: &[Appearance]) -> Option<bool> {
+    appearances
+        .iter()
+        .filter_map(|a| match a {
+            Appearance::Polygon(p) if p.clamp_to_ground || p.tiled => Some(p.geodesic),
+            Appearance::Polyline(p) if p.clamp_to_ground || p.tiled => Some(p.geodesic),
+            _ => None,
+        })
+        .reduce(|a, b| a || b)
+}
+
 /// Sets up tiled rendering for GeoJSON layers with clamped polygon appearances.
 ///
 /// When a GeoJsonLayer with `clamp_to_ground` polygon is added, this system:
@@ -31,13 +46,9 @@ pub fn setup_tiled_geojson(
     mut source_cache: ResMut<VectorTileSourceCache>,
 ) {
     for (layer_entity, layer) in &geojson_layers {
-        let is_tiled = layer.appearances.iter().any(|a| {
-            matches!(a, Appearance::Polygon(p) if p.clamp_to_ground || p.tiled)
-                || matches!(a, Appearance::Polyline(p) if p.clamp_to_ground || p.tiled)
-        });
-        if !is_tiled {
+        let Some(geodesic) = tiled_geodesic(&layer.appearances) else {
             continue;
-        }
+        };
 
         // Read the inline GeoJSON live from the source; skip until a URL source
         // has been fetched and cached onto the source.
@@ -71,7 +82,11 @@ pub fn setup_tiled_geojson(
         let max_zoom = opts.max_zoom;
         let extent = opts.extent;
 
-        let densified = densify_geojson(geojson, DEFAULT_POLYLINE_GRANULARITY_METERS);
+        let densified = if geodesic {
+            densify_geojson(geojson, DEFAULT_POLYLINE_GRANULARITY_METERS)
+        } else {
+            None
+        };
         let geojson = densified.as_ref().unwrap_or(geojson);
         let vt = GeoJsonVt::new(geojson, opts);
 
@@ -123,5 +138,43 @@ pub fn setup_tiled_geojson(
                 tile_cache_manager,
             })
             .insert(Tiled);
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use navara_material::{PolygonMaterial, PolylineMaterial};
+
+    use super::*;
+
+    fn polygon(clamp_to_ground: bool, geodesic: bool) -> Appearance {
+        Appearance::Polygon(PolygonMaterial {
+            clamp_to_ground,
+            geodesic,
+            ..Default::default()
+        })
+    }
+
+    fn polyline(clamp_to_ground: bool, geodesic: bool) -> Appearance {
+        Appearance::Polyline(PolylineMaterial {
+            clamp_to_ground,
+            geodesic,
+            ..Default::default()
+        })
+    }
+
+    #[test]
+    fn tiled_geodesic_resolves_per_layer() {
+        // No tiled appearance: the layer is not tiled at all.
+        assert_eq!(tiled_geodesic(&[polygon(false, true)]), None);
+        // Every tiled appearance opts out: densification is skipped.
+        let all_off = [polygon(true, false), polyline(true, false)];
+        assert_eq!(tiled_geodesic(&all_off), Some(false));
+        // One geodesic tiled appearance densifies the shared geometry.
+        let mixed = [polygon(true, false), polyline(true, true)];
+        assert_eq!(tiled_geodesic(&mixed), Some(true));
+        // A non-tiled appearance does not count.
+        let untiled = [polygon(true, false), polyline(false, true)];
+        assert_eq!(tiled_geodesic(&untiled), Some(false));
     }
 }

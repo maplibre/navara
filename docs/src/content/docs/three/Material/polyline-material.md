@@ -181,6 +181,27 @@ import { Color } from "@navaramap/three";
 }
 ```
 
+### geodesic
+
+**Type:** `boolean | undefined`
+
+**Description:** Specifies whether edges drawn through the tiled path (`clampToGround` or `tiled`) of a GeoJSON source follow the geodesic. When `true`, two consecutive vertices more than 180° apart in longitude are also joined the short way, across the antimeridian; a closed ring that would then no longer close, such as one around a pole, is kept as given. When `false`, edges are straight lines in Web Mercator and longitudes are used as given, so a longitude of 190° lies east of 180°, as in MapLibre. Edges outside the tiled path and edges from vector tile sources are not affected.
+
+The option applies to the whole layer: its tiled `polygon` and `polyline` share one geometry, which follows the geodesic unless both set `geodesic: false`. It is read when the layer's tiles are first built, so changing it on an existing layer has no effect.
+
+**Default:** `true`
+
+**Example:**
+
+```typescript
+{
+  polyline: {
+    clampToGround: true,
+    geodesic: false
+  }
+}
+```
+
 ### geometryTypes
 
 **Type:** `("line" | "polygon")[] | undefined`

@@ -13,7 +13,7 @@ sidebar:
 
 ```
 navara_three (core: ThreeView, Plugin, addPlugin, registerMesh/Effect/Light)
-  ├── three_default_descs (descriptor implementations: 22 meshes, 14 effects, 4 lights)
+  ├── three_default_descs (descriptor implementations: 22 meshes, 15 effects, 4 lights)
   └── three_default_plugin (DefaultPlugin: bulk descriptor registration + utilities)
 ```
 
@@ -39,7 +39,7 @@ The following descriptors are automatically registered during the plugin's `init
 
 **Mesh descriptors (24 types):** `rain`, `snow`, `sky`, `skyBox`, `stars`, `box`, `sphere`, `glowGlobe`, `cylinder`, `tube`, `plane`, `gltfModel`, `splat`, `axesHelper`, `arrowHelper`, `arcLines`, `polygon`, `polyline`, `smoothLines`, `boxes`, `spheres`, `planes`, `cylinders`, `gltfModels`
 
-**Effect descriptors (14 types):** `aerialPerspective`, `rainDrop`, `selectiveBloom`, `selectiveOutline`, `clouds`, `fogLight`, `lensFlare`, `ssao`, `ssr`, `depthOfField`, `colorGradingLUT`, `toneMapping`, `smaa`, `fxaa`
+**Effect descriptors (15 types):** `aerialPerspective`, `buildingWindows`, `rainDrop`, `selectiveBloom`, `selectiveOutline`, `clouds`, `fogLight`, `lensFlare`, `ssao`, `ssr`, `depthOfField`, `colorGradingLUT`, `toneMapping`, `smaa`, `fxaa`
 
 **Light descriptors (4 types):** `sun`, `ambient`, `skyLightProbe`, `lightProbe`
 
