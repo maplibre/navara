@@ -107,26 +107,6 @@ only means both images are mostly background.
 - MapLibre uses the property default instead.
 - Cases: `global-state/default`, `regressions/mapbox-gl-js#4124`, `#4150`.
 
-### Valid styles are rejected during validation
-
-Both styles are valid for MapLibre, but `MapLibreStylePlugin` throws from
-`init` and nothing is rendered. Verified: both causes are in
-`RustStyleEngine.parseStyle` (`src/engine/RustStyleEngine.ts`).
-
-- **Warnings are treated as errors.** `filter/mixed-legacy-expression` mixes
-  legacy and expression filter syntax. The style spec (already in 26.2.1)
-  reports this with `severity: "warning"`, and maplibre-gl-js stopped failing
-  the load on warnings in
-  [#7941](https://github.com/maplibre/maplibre-gl-js/pull/7941). `parseStyle`
-  throws on any validation result, including warnings.
-- **Validation runs after `migrate()`.** `regressions/mapbox-gl-js#4146` uses a
-  legacy `interval` function with one stop. The original style validates
-  cleanly, but `migrate()` (also in style-spec 26.4.4) turns it into
-  `["step", input, "blue", 0, 0]`, which then fails validation (`Expected color
-but found number`). maplibre-gl-js never migrates at render time.
-- Likely fix: validate the original style, then migrate, and throw only on
-  `severity` other than `"warning"`. Report the `migrate()` output upstream.
-
 ## Packaging and docs
 
 ### `@navaramap/three` bundles part of three
