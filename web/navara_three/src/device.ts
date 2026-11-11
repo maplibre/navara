@@ -155,9 +155,9 @@ export type MemoryCostHintsInputs = {
 
 const ATLAS_SIZE_DESKTOP = 512;
 const ATLAS_SIZE_MOBILE = 512;
-/** The MRT composite atlas has two RGBA attachments (color, attr); a tile with
- * hillshade adds a third (normal), which its own report charges. */
-const ATLAS_ATTACHMENTS = 2;
+/** The MRT composite atlas has up to three RGBA attachments: color, attr, and
+ * normal while the tile has hillshade. */
+const ATLAS_ATTACHMENTS = 3;
 /** Raster tiles are 256² RGBA. Mipmaps add ~1/3, matching the Rust default. */
 const RASTER_TILE_SIZE = 256;
 const RASTER_MIPMAP_NUMERATOR = 133;
@@ -173,9 +173,12 @@ export function getCompositeAtlasSize(isMobile: boolean): number {
 /**
  * GPU cost hints for the memory ledger, matching the actual allocation sizes.
  * The composite atlas is 512² on both desktop and mobile (see
- * `getCompositeAtlasSize`), so with two MRT attachments each rendered tile
- * costs ~2MB (~3MB with hillshade, see `TileTextureCompositor.atlasGpuBytes`). The ledger must
- * match reality or the map settles far too coarse.
+ * `getCompositeAtlasSize`), so each rendered tile costs ~2MB, or ~3MB with
+ * hillshade. The Rust terrain reservation stands in for a tile before it is
+ * rendered, so the atlas hint is the hillshade size: a lower one would let a
+ * hillshade burst past the load gate. The rendered tile reports its actual
+ * size (`TileTextureCompositor.atlasGpuBytes`). The ledger must match reality
+ * or the map settles far too coarse.
  */
 export function getDefaultMemoryCostHints(
   inputs?: MemoryCostHintsInputs,

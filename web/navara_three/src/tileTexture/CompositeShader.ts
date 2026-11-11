@@ -32,12 +32,14 @@ export { compositeSlotMarker, COMPOSITE_VERTEX_SHADER };
  * this feature set and `composeCompositeContributions` folds it onto the base
  * enhancer's skeleton. CPU branch elision falls out naturally: an inactive
  * enhancer contributes empty GLSL, so absent features cost nothing.
+ * `writesNormal` declares the normal output for an atlas that has it.
  */
 export function generateCompositeFragmentShader(
   rasterCount: number,
   vectorCount: number,
   texturizedSceneIndexFrom: number,
   features: CompositeFeatures,
+  writesNormal = true,
 ): string {
   const enhancers = createCompositeLayerEnhancers(features);
   const contributions = composeCompositeContributions(
@@ -49,5 +51,6 @@ export function generateCompositeFragmentShader(
     vectorCount,
     texturizedSceneIndexFrom,
     contributions,
+    writesNormal,
   );
 }

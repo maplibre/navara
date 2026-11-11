@@ -407,16 +407,21 @@ per tile by `TileTextureCache`. The single quad draw writes all of them:
 | `normal` | rgb / a | Hillshade normal in `[0,1]` / `1` when present else `0` |
 
 Only the main shader's hillshade branch reads `normal`, so the atlas has that
-attachment only while a hillshade layer feeds the bake (2 MB at 512² instead of
-3 MB). Without it, the tile's `normal` output is `null`: three binds an
-all-zero texture (`a = 0`, as if no hillshade slot won), and WebGL2 discards the
-composite shader's location 2 output, which has no draw buffer. When the bake
-gains or loses hillshade, `runCompositePassIfDirty` has the cache swap in an
-atlas of the other shape (a pooled one when available) and bakes it in full.
-The tile's outputs object switches to the new textures in place, and
-`atlasUniforms` reads it on every upload, so every mesh holding the handle
-follows the swap. The pool keeps the most recently released rendered atlases of
-either shape; a never-rendered atlas holds no GPU memory and is disposed.
+attachment only while the tile's main material compiles that branch
+(`USE_HILLSHADE`, 2 MB at 512² instead of 3 MB). The shape follows the main
+material rather than the bake's own layer list, which counts a hillshade layer
+only once its texture has loaded, so the atlas does not change shape when that
+texture arrives. Without the attachment, the composite shader does not declare
+its location 2 output and the tile's `normal` output is `null`: three binds an
+all-zero texture (`a = 0`, as if no hillshade slot won).
+
+A tile has no atlas until its first bake. `runCompositePassIfDirty` asks the
+cache for an atlas of the needed shape (`prepareAtlasForBake`): the current one
+when it fits, otherwise a pooled one of that shape or a new one, and the
+replaced atlas goes back to the pool. The tile's outputs object reads the
+entry's current atlas, and `atlasUniforms` reads the outputs on every upload,
+so every mesh holding the handle follows a swap. The pool keeps the most
+recently released atlases of either shape.
 
 That `attr.a` is how the absolute winning slot survives into the main shader,
 and `attr.g` is how raster and vector pixels stay distinguishable — both used in
@@ -519,8 +524,9 @@ sequenceDiagram
 Dirty reasons are coalesced per tile (`DirtyReason`: `material`,
 `texture-binding`, `vector-revision`, `raster-revision`, `hillshade`) so one bake services many
 changes, and the atlas Textures persist across passes — only `needsUpdate` flips
-when a new bake overwrites them, except when the tile gains or loses hillshade
-and the atlas is swapped (see [What the bake produces](#what-the-bake-produces)).
+when a new bake overwrites them, except when the main material gains or loses
+hillshade and the atlas is swapped (see
+[What the bake produces](#what-the-bake-produces)).
 
 ## Quantized-mesh and watermask
 

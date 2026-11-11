@@ -91,15 +91,14 @@ export const defaultAtlasFactory =
       color,
       attr,
       normal: normal ?? null,
-      allocated: false,
       dispose: () => target.dispose(),
     };
   };
 
 /**
  * Main TileMesh material uniforms for a handle's atlas outputs. They read
- * `outputs` on every upload, so the material follows the atlas swaps of
- * `TileTextureCache.setNormalAttachment`.
+ * `outputs` on every upload, so the material follows the atlas the composite
+ * pass picks (see `TileTextureCache.prepareAtlasForBake`).
  */
 export function atlasUniforms(outputs: CompositeOutputs) {
   return {
@@ -338,11 +337,11 @@ export class TileTextureCompositor {
   }
 
   /** GPU bytes the handle's atlas holds: one size² RGBA8 texture per
-   * attachment, 0 while it has never been rendered (see
-   * `CompositeAtlas.allocated`). */
+   * attachment, 0 before the first composite pass picks the atlas (see
+   * `CacheEntry.atlas`). */
   atlasGpuBytes(handle: TileHandle): number {
     const atlas = this.cache.getEntry(handle)?.atlas;
-    if (!atlas?.allocated) return 0;
+    if (!atlas) return 0;
     return this.size * this.size * 4 * (atlas.normal ? 3 : 2);
   }
 
@@ -699,9 +698,11 @@ export class TileTextureCompositor {
    *   attr   attachment  = water + texturized-layer flags + winning slot idx
    *   normal attachment  = hillshade normal (a = 0 where no hillshade won)
    *
-   * The atlas has the normal attachment only while a hillshade layer feeds
-   * it (see `TileTextureCache.setNormalAttachment`). Without it the shader's
-   * location 2 has no draw buffer, and WebGL2 discards that output.
+   * The atlas has the normal attachment iff `withNormal`, which the caller
+   * sets when its main shader samples it (see
+   * `TileTextureCache.prepareAtlasForBake`). It follows the main shader rather
+   * than `features.hasHillshade`, which also needs the hillshade texture to
+   * be loaded, so the shape is fixed before that texture arrives.
    *
    * Returns true when a render happened.
    */
@@ -710,13 +711,11 @@ export class TileTextureCompositor {
     plan: SlotPlan,
     globals: CompositeGlobals,
     features: CompositeFeatures,
+    withNormal: boolean,
   ): boolean {
     if (!this.cache.isDirty(handle)) return false;
-    const entry = this.cache.getEntry(handle);
-    if (!entry) return false;
-    this.cache.setNormalAttachment(handle, features.hasHillshade);
-    // Both branches below render into the atlas.
-    entry.atlas.allocated = true;
+    const atlas = this.cache.prepareAtlasForBake(handle, withNormal);
+    if (!atlas) return false;
 
     const prevTarget = this.renderer.getRenderTarget();
     const prevClear = this.renderer.getClearColor(PREV_CLEAR_COLOR);
@@ -729,24 +728,24 @@ export class TileTextureCompositor {
     // that have no raster/vector layers (e.g. open-ocean quantized-mesh).
     const noSlots = plan.rasterCount + plan.vectorCount === 0;
     if (noSlots && !features.hasWatermask) {
-      this.renderer.setRenderTarget(entry.atlas.target);
+      this.renderer.setRenderTarget(atlas.target);
       this.renderer.setClearColor(0x000000, 0);
       this.renderer.clear();
       this.renderer.setRenderTarget(prevTarget);
       this.renderer.setClearColor(prevClear, prevClearAlpha);
-      entry.atlas.color.needsUpdate = true;
-      entry.atlas.attr.needsUpdate = true;
-      if (entry.atlas.normal) entry.atlas.normal.needsUpdate = true;
+      atlas.color.needsUpdate = true;
+      atlas.attr.needsUpdate = true;
+      if (atlas.normal) atlas.normal.needsUpdate = true;
       this.cache.consumeDirty(handle);
       return true;
     }
 
-    const mat = this.getOrCreateMaterial(plan, features);
+    const mat = this.getOrCreateMaterial(plan, features, withNormal);
 
     this.bindUniforms(mat, plan, globals);
     this.quadMesh.material = mat.material;
 
-    this.renderer.setRenderTarget(entry.atlas.target);
+    this.renderer.setRenderTarget(atlas.target);
     this.renderer.setClearColor(0x000000, 0);
     this.renderer.clear();
     this.renderer.render(this.quadScene, this.quadCamera);
@@ -754,9 +753,9 @@ export class TileTextureCompositor {
     this.renderer.setRenderTarget(prevTarget);
     this.renderer.setClearColor(prevClear, prevClearAlpha);
 
-    entry.atlas.color.needsUpdate = true;
-    entry.atlas.attr.needsUpdate = true;
-    if (entry.atlas.normal) entry.atlas.normal.needsUpdate = true;
+    atlas.color.needsUpdate = true;
+    atlas.attr.needsUpdate = true;
+    if (atlas.normal) atlas.normal.needsUpdate = true;
 
     this.cache.consumeDirty(handle);
     return true;
@@ -765,10 +764,11 @@ export class TileTextureCompositor {
   private getOrCreateMaterial(
     plan: SlotPlan,
     features: CompositeFeatures,
+    withNormal: boolean,
   ): CachedMaterial {
     const { rasterCount, vectorCount, boundary } = plan;
     const numTextures = rasterCount + vectorCount;
-    const key = `${rasterCount}|${vectorCount}|${boundary}|${compositeFeatureKey(features)}`;
+    const key = `${rasterCount}|${vectorCount}|${boundary}|${withNormal}|${compositeFeatureKey(features)}`;
     const cached = this.materialCache.get(key);
     if (cached) return cached;
 
@@ -808,6 +808,7 @@ export class TileTextureCompositor {
         vectorCount,
         boundary,
         composeCompositeContributions(chain, numTextures),
+        withNormal,
       ),
       depthTest: false,
       depthWrite: false,

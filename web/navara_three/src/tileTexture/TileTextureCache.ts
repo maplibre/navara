@@ -13,9 +13,9 @@ const DEV =
   typeof import.meta !== "undefined" && !!(import.meta as ImportMeta).env?.DEV;
 
 // Tile churn during pan/zoom would allocate and dispose a 2–3MB MRT render
-// target per terrain tile swap; a few released atlases let the next acquire
-// reuse one. Kept small on purpose: a pooled spare belongs to no tile, so the
-// per-tile ledger does not see its GPU memory.
+// target per terrain tile swap; a few released atlases let the next tile's
+// first composite pass reuse one. Kept small on purpose: a pooled spare
+// belongs to no tile, so the per-tile ledger does not see its GPU memory.
 const DEFAULT_MAX_POOLED_ATLASES = 4;
 
 export type TileTextureCacheOptions = {
@@ -48,32 +48,17 @@ export class TileTextureCache {
   }
 
   /**
-   * Acquire (or create) the atlas for a handle. Refcounted: a TileMesh
+   * Acquire (or create) the entry for a handle. Refcounted: a TileMesh
    * acquires once on construction and releases once on dispose.
-   * Newly-created entries start dirty in every category so the first composite
-   * pass paints them — which also repaints any stale content in a pooled
-   * atlas, so reuse needs no explicit clear.
+   * Newly-created entries have no atlas yet (the first composite pass picks
+   * one of the shape the tile needs, see `prepareAtlasForBake`) and start
+   * dirty in every category so that pass runs — which also repaints any stale
+   * content in a pooled atlas, so reuse needs no explicit clear.
    */
   acquire(handle: TileHandle): CompositeOutputs {
     let entry = this.entries.get(handle);
     if (!entry) {
-      // Any pooled atlas will do: the first composite pass gives it the
-      // tile's shape (see `setNormalAttachment`) before rendering into it.
-      const atlas =
-        this.pool.pop() ?? this.opts.atlasFactory(this.opts.size, false);
-      entry = {
-        handle,
-        atlas,
-        outputs: { color: atlas.color, attr: atlas.attr, normal: atlas.normal },
-        refCount: 0,
-        dirty: new Set<DirtyReason>([
-          "material",
-          "texture-binding",
-          "vector-revision",
-          "raster-revision",
-          "hillshade",
-        ]),
-      };
+      entry = createEntry(handle);
       this.entries.set(handle, entry);
     }
     entry.refCount++;
@@ -101,45 +86,43 @@ export class TileTextureCache {
       );
     }
     if (entry.refCount <= 0) {
-      this.recycle(entry.atlas);
+      if (entry.atlas) this.recycle(entry.atlas);
       this.entries.delete(handle);
     }
   }
 
   /**
-   * Give the handle's atlas a normal attachment iff `withNormal`, replacing
-   * the atlas (with a pooled one of that shape when there is one) when it has
-   * the other shape. The replacement starts with undefined contents, so call
-   * this only right before rendering the whole atlas. The entry's outputs
-   * switch to the new textures in place; the replaced atlas goes to
-   * `recycle`.
+   * The atlas the handle's composite pass renders into: one with a normal
+   * attachment iff `withNormal`. Keeps the entry's atlas when it has that
+   * shape; otherwise takes a pooled atlas of that shape (or creates one) and
+   * recycles the previous atlas. A taken atlas holds undefined contents, so
+   * call this only right before rendering the whole atlas.
    */
-  setNormalAttachment(handle: TileHandle, withNormal: boolean): void {
+  prepareAtlasForBake(
+    handle: TileHandle,
+    withNormal: boolean,
+  ): CompositeAtlas | undefined {
     const entry = this.entries.get(handle);
-    if (!entry || (entry.atlas.normal !== null) === withNormal) return;
+    if (!entry) return undefined;
     const previous = entry.atlas;
+    if (previous && (previous.normal !== null) === withNormal) return previous;
     const index = this.pool.findIndex(
       (atlas) => (atlas.normal !== null) === withNormal,
     );
-    const atlas =
+    entry.atlas =
       index >= 0
         ? this.pool.splice(index, 1)[0]
         : this.opts.atlasFactory(this.opts.size, withNormal);
-    entry.atlas = atlas;
-    entry.outputs.color = atlas.color;
-    entry.outputs.attr = atlas.attr;
-    entry.outputs.normal = atlas.normal;
-    this.recycle(previous);
+    if (previous) this.recycle(previous);
+    return entry.atlas;
   }
 
   /**
-   * Pool an atlas no tile uses any more. An atlas that was never rendered is
-   * disposed instead: it holds no GPU memory, and pooling it would push out a
-   * rendered one. A full pool disposes its oldest atlas, so the pool follows
-   * the shape tiles currently release.
+   * Pool a rendered atlas no tile uses any more. A full pool disposes its
+   * oldest atlas, so the pool follows the shape tiles currently release.
    */
   private recycle(atlas: CompositeAtlas): void {
-    if (!atlas.allocated || this.maxPooled === 0) {
+    if (this.maxPooled === 0) {
       atlas.dispose();
       return;
     }
@@ -211,7 +194,7 @@ export class TileTextureCache {
           `TileTextureCache.disposeAll: handle ${entry.handle} still has refcount ${entry.refCount} (leaked acquire)`,
         );
       }
-      entry.atlas.dispose();
+      entry.atlas?.dispose();
     }
     this.entries.clear();
     for (const atlas of this.pool) {
@@ -219,4 +202,33 @@ export class TileTextureCache {
     }
     this.pool.length = 0;
   }
+}
+
+/** A fresh entry with no atlas, dirty in every category. Its outputs read the
+ * entry's current atlas, so they follow every `prepareAtlasForBake` swap. */
+function createEntry(handle: TileHandle): CacheEntry {
+  const entry: CacheEntry = {
+    handle,
+    atlas: null,
+    outputs: {
+      get color() {
+        return entry.atlas?.color ?? null;
+      },
+      get attr() {
+        return entry.atlas?.attr ?? null;
+      },
+      get normal() {
+        return entry.atlas?.normal ?? null;
+      },
+    },
+    refCount: 0,
+    dirty: new Set<DirtyReason>([
+      "material",
+      "texture-binding",
+      "vector-revision",
+      "raster-revision",
+      "hillshade",
+    ]),
+  };
+  return entry;
 }

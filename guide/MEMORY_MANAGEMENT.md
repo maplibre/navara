@@ -103,7 +103,7 @@ side (which owns the actual Three.js allocations) reports corrections:
 
 | Tile kind | Rust-side seed | JS correction |
 | --- | --- | --- |
-| Terrain mesh | mesh buffer byte lengths, attached by `attach_terrain_mesh_cost`; the drape term starts at 0 | `reportTerrainDrapeGpuBytes` sets the drape term to the allocated footprint: the composite atlas (2 MB at 512², 3 MB with hillshade) once the first composite pass renders into it, plus one target per draped layer (clamp-to-ground vectors and, on Geographic terrain, baked rasters). three allocates a render target on its first render, so a tile that is never rendered (a hidden ancestor, or outside the frustum) is not charged for a fresh atlas; an atlas it took from the reuse pool is already allocated and is charged from the tile's construction |
+| Terrain mesh | mesh buffer byte lengths, attached by `attach_terrain_mesh_cost`; the drape term starts at 0 | `reportTerrainDrapeGpuBytes` sets the drape term to the allocated footprint: the composite atlas (2 MB at 512², 3 MB with hillshade) once the first composite pass renders into it, plus one target per draped layer (clamp-to-ground vectors and, on Geographic terrain, baked rasters). The tile takes its atlas (a fresh one or one from the reuse pool) only in that first pass, so a tile that is never rendered (a hidden ancestor, or outside the frustum) holds no atlas memory |
 | Raster texture | `CostHints::raster_tile_bytes` (w×h×4 + ~33% mipmaps) per fragment, attached eagerly by `attach_texture_fragment_cost` | — (dimensions are known) |
 | Vector (MVT) geometry | geometry buffer bytes at mesh transfer | — |
 | Billboard image atlas | — (allocated lazily on the JS side as billboard images load) | `reportFeatureGpuBytes` folds the measured atlas footprint (CPU pixel buffer + equal-sized GPU texture — the CPU copy stays resident for growth re-blits) into the owning vector tile's `VectorTileGpuCost` next to the geometry term, re-reporting on every atlas growth and clearing with `0` when the mesh is disposed; non-tiled (e.g. GeoJSON-layer) billboards have no owning tile and are not charged |
@@ -214,12 +214,13 @@ being fetched.
 Terrain's pool has two quirks. It is a *single* pool (`ReserveKey::Terrain`)
 because there is exactly one terrain source per session — a per-source split
 would buy nothing. And the recorded sample is the mesh geometry plus the
-~2 MB composite atlas (the dominant term), not the fetch payload: the
+~3 MB composite atlas (the dominant term), not the fetch payload: the
 reservation stands in for what a requested tile costs once it is shown, even
 though the ledger charges the atlas only when the tile is first rendered (see
-the table above). The hint assumes no hillshade; a hillshade tile's 3 MB
-atlas is charged by its own drape report. Quantized-mesh geometry varies with
-vertex count (terrain roughness), which is exactly why an adaptive estimate replaced the earlier
+the table above). The hint is the atlas size with hillshade, so the reservation
+never undercounts a hillshade tile; a tile without hillshade then reports its
+2 MB atlas. Quantized-mesh geometry varies with vertex count (terrain
+roughness), which is exactly why an adaptive estimate replaced the earlier
 fixed raster-tile hint that undercounted the resident cost roughly 10× and
 let camera-move terrain bursts slip past the gate.
 
@@ -377,9 +378,9 @@ render-target stack counted as `fixed_gpu_bytes` scales quadratically with
 pixel ratio (~100 B/px), so an uncapped DPR-3 phone would spend more of its
 budget on framebuffers than on tiles.
 
-`Core.setMemoryCostHints` passes the atlas (512² × RGBA × 2 MRT attachments
-≈ 2 MB/tile; a hillshade tile's own report adds the third) and raster
-(256² × RGBA × 1.33 ≈ 349 KB) costs.
+`Core.setMemoryCostHints` passes the atlas (512² × RGBA × 3 MRT attachments
+≈ 3 MB/tile, the size with hillshade) and raster (256² × RGBA × 1.33 ≈ 349 KB)
+costs.
 `Core.setFixedGpuBytes` reports the fixed render-target stack (estimated by
 `RenderPassOrchestrator.estimateFixedGpuBytes`); `ThreeView` re-reports it on
 init, resize, and whenever effects add or remove passes.

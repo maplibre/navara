@@ -439,6 +439,47 @@ describe("TileMesh composite atlas accounting", () => {
     expect(reportDrapeGpuBytes).toHaveBeenLastCalledWith(1n, ATLAS_BYTES);
   });
 
+  it("bakes the atlas with a normal attachment iff the main shader reads it", () => {
+    const { tile, compositor } = makeTile();
+    compositor.cache.isDirty.mockReturnValue(true);
+
+    frame(tile);
+    expect(compositor.runCompositePassIfDirty).toHaveBeenLastCalledWith(
+      1n,
+      expect.anything(),
+      expect.anything(),
+      expect.anything(),
+      false,
+    );
+
+    tile.material.userData.defines = { USE_HILLSHADE: 1 };
+    frame(tile);
+    expect(compositor.runCompositePassIfDirty).toHaveBeenLastCalledWith(
+      1n,
+      expect.anything(),
+      expect.anything(),
+      expect.anything(),
+      true,
+    );
+  });
+
+  it("reports an atlas the outgoing mesh bakes through the registered mesh", () => {
+    const { tile, ctx, meshAdded, compositor, reportDrapeGpuBytes } =
+      makeTile();
+    // A replacement mesh for the same handle claims it and shares the atlas.
+    new TileMesh(ctx, meshAdded);
+    expect(reportDrapeGpuBytes).not.toHaveBeenCalled();
+
+    // The outgoing mesh still renders and bakes the shared atlas.
+    compositor.cache.isDirty.mockReturnValue(true);
+    frame(tile);
+
+    expect(reportDrapeGpuBytes).toHaveBeenCalledExactlyOnceWith(
+      1n,
+      ATLAS_BYTES,
+    );
+  });
+
   it("charges an already-allocated atlas on construction", () => {
     const { reportDrapeGpuBytes } = makeTile({ atlasAllocated: true });
 

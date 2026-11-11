@@ -59,12 +59,15 @@ const defaultRasterSampleProducer = ({ k }: CompositeSlotContext): string => `
  *                       r = isWater, g = isTexturized, b = 0,
  *                       a = (winSlot + 1) / 255 — 0 means no winner
  *   2: normalBuffer — hillshade normal in [0,1]; .a = 1 when present, 0 when not.
+ *                     Declared only when `writesNormal`, i.e. the target atlas
+ *                     has the normal attachment.
  */
 export function buildCompositeFragmentShader(
   rasterCount: number,
   vectorCount: number,
   texturizedSceneIndexFrom: number,
   contributions: CompositeShaderContributions,
+  writesNormal: boolean,
 ): string {
   const numTextures = rasterCount + vectorCount;
 
@@ -194,7 +197,7 @@ ${contributions.includes}
 
 layout(location = 0) out vec4 colorBuffer;
 layout(location = 1) out vec4 attrBuffer;
-layout(location = 2) out vec4 normalBuffer;
+${writesNormal ? "layout(location = 2) out vec4 normalBuffer;" : ""}
 
 void main() {
   vec4 compositedColor = vec4(0.0);
@@ -226,7 +229,7 @@ ${contributions.postLoop}
     float(winningSlot + 1) / 255.0
   );
 
-  normalBuffer = vec4(hillshadeNormal, hasHillshadeNormal ? 1.0 : 0.0);
+${writesNormal ? "  normalBuffer = vec4(hillshadeNormal, hasHillshadeNormal ? 1.0 : 0.0);" : ""}
 }
 `;
 }

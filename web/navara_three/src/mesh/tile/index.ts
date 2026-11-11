@@ -236,8 +236,8 @@ export class TileMesh
       : new DirectRasterDrapeResolver();
 
     tileMapByHandle.set(handle, this);
-    // A pooled atlas, or one shared with the mesh this one replaces, may
-    // already be allocated.
+    // The atlas shared with the mesh this one replaces may already be
+    // allocated.
     this.reportDrapeGpuBytesIfChanged();
 
     this.onBeforeRender = this._onBeforeRender;
@@ -254,13 +254,6 @@ export class TileMesh
    * maxZoom — a cost per-source-tile accounting cannot see.
    */
   private reportDrapeGpuBytesIfChanged() {
-    const rtCount =
-      this.vectorDrape.liveRenderTargetCount() +
-      this.rasterDrape.liveRenderTargetCount();
-    const bytes =
-      this.compositor.atlasGpuBytes(this.handle) +
-      rtCount * drapeRtBytes(this.drapeRtSize);
-    if (bytes === this.reportedDrapeGpuBytes) return;
     // Only the mesh currently registered for this position-stable handle may
     // report. During a terrain mesh replacement the outgoing mesh briefly
     // coexists with the incoming one, which has already claimed the handle
@@ -268,8 +261,21 @@ export class TileMesh
     // `attach_terrain_mesh_cost`. A stray report from the outgoing mesh would
     // resolve on the Rust side (via `Without<Deleted>`) to the NEW live entity
     // and overwrite its drape cost — the same hazard the dispose() 0-report
-    // guards against, here on the non-zero path.
-    if (this.ctx.tileMapByHandle.get(this.handle) !== this) return;
+    // guards against, here on the non-zero path. The two meshes share the
+    // handle's atlas, so a change the outgoing mesh makes to it (a bake that
+    // allocates or reshapes it) is reported by the registered mesh instead.
+    const owner = this.ctx.tileMapByHandle.get(this.handle);
+    if (owner !== this) {
+      owner?.reportDrapeGpuBytesIfChanged();
+      return;
+    }
+    const rtCount =
+      this.vectorDrape.liveRenderTargetCount() +
+      this.rasterDrape.liveRenderTargetCount();
+    const bytes =
+      this.compositor.atlasGpuBytes(this.handle) +
+      rtCount * drapeRtBytes(this.drapeRtSize);
+    if (bytes === this.reportedDrapeGpuBytes) return;
     this.reportedDrapeGpuBytes = bytes;
     this.tileHandler.reportDrapeGpuBytes(this.handle, bytes);
   }
@@ -297,6 +303,9 @@ export class TileMesh
       plan,
       globals,
       deriveCompositeFeatures(layers, globals),
+      // The atlas carries the normal attachment for its only reader: the
+      // main shader's hillshade branch.
+      this.computeFeatures().hasHillshade,
     );
     if (baked) this.reportDrapeGpuBytesIfChanged();
   };

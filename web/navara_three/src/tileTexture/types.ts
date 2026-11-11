@@ -36,18 +36,15 @@ export type DirtyReason =
  * - attr:  packed per-pixel material attributes (water flag/scale/speed, …)
  * - normal: hillshade normal map in [0,1], `a = 1` where a hillshade slot won
  *
- * `normal` exists only while the tile has a hillshade layer: only the main
- * shader's hillshade branch reads it. One draw call writes all attachments;
- * the main TileMesh shader samples them as Textures.
+ * `normal` exists only while the tile's main shader reads it (its hillshade
+ * branch). One draw call writes all attachments; the main TileMesh shader
+ * samples them as Textures.
  */
 export type CompositeAtlas = {
   readonly target: WebGLRenderTarget;
   readonly color: Texture;
   readonly attr: Texture;
   readonly normal: Texture | null;
-  /** three allocates the target on its first render, so an atlas that was
-   * never baked holds no GPU memory. Survives pooling. */
-  allocated: boolean;
   dispose: () => void;
 };
 
@@ -60,17 +57,18 @@ export type AtlasFactory = (
 
 /**
  * View on the atlas suitable for binding as TileMesh uniforms. One object per
- * cache entry, shared by every holder of the handle: when the entry's atlas is
- * replaced (see `TileTextureCache.setNormalAttachment`) its fields switch to
- * the new atlas's textures in place.
+ * cache entry, shared by every holder of the handle, that reads the entry's
+ * current atlas: it follows the atlas the composite pass picks (see
+ * `TileTextureCache.prepareAtlasForBake`). Every field is null until the
+ * first composite pass, which runs before the tile's first draw.
  */
 export type CompositeOutputs = {
-  color: Texture;
-  attr: Texture;
+  readonly color: Texture | null;
+  readonly attr: Texture | null;
   /** Null without a normal attachment: three binds an all-zero texture to a
    * null sampler, and its `a = 0` is what the composite pass writes where no
    * hillshade slot won. */
-  normal: Texture | null;
+  readonly normal: Texture | null;
 };
 
 /** Features detected from the Rust material — drives CPU shader branch elision. */
@@ -89,7 +87,10 @@ export type CompositeFeatures = {
 /** A handle's cache entry. Public surface is via TileTextureCache methods. */
 export type CacheEntry = {
   readonly handle: TileHandle;
-  atlas: CompositeAtlas;
+  /** Null until the first composite pass. three allocates a render target on
+   * its first render, which follows right after the atlas is picked, so a
+   * non-null atlas holds GPU memory. */
+  atlas: CompositeAtlas | null;
   readonly outputs: CompositeOutputs;
   refCount: number;
   dirty: Set<DirtyReason>;
