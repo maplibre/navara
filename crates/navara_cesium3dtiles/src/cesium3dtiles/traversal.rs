@@ -32,6 +32,9 @@
 //! sse = geometric_error / (distance * sse_denominator / window_height)
 //! ```
 //!
+//! `window_height` is in CSS pixels, so `max_sse` means the same detail at
+//! any device pixel ratio (as in `Tile::calc_sse`).
+//!
 //! When SSE > max_sse, the tile needs more detail (traverse to children).
 //! When SSE <= max_sse, the tile is sufficient detail (render this tile).
 //!
@@ -236,7 +239,7 @@ fn mark_leaves(
             // volume case where distance collapses to 0.
             let distance_from_camera = bv.distance_to_point(camera_position).max(1.0);
             let mut sse = (tile_meta.geometric_error)
-                / (distance_from_camera * (frustum.sse_denominator / window.height));
+                / (distance_from_camera * (frustum.sse_denominator / window.raw_height()));
             // Distance-weighted LOD fog relaxation, mirroring
             // `Tile::calc_sse`: far tiles tolerate a larger error and stay
             // coarser. Negative values simply always meet the threshold.
