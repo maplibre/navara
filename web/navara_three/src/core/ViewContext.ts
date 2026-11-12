@@ -50,9 +50,10 @@ type ViewContextEvents = {
    */
   effectSlotsChanged: () => void;
   /**
-   * Emitted when the derived G-buffer configuration changes. Meshes re-evaluate
-   * their pass placement: outside the MRT pass they would leave the G-buffer
-   * holding whatever lies behind them.
+   * Emitted whenever the view re-derives its G-buffer configuration, even
+   * when it is unchanged: an added or removed effect can flip
+   * `requiresMrtPass`. Meshes re-evaluate their pass placement: outside the
+   * MRT pass they would leave the G-buffer holding whatever lies behind them.
    */
   gbufferChanged: () => void;
   /**
@@ -92,6 +93,8 @@ export class ViewContext extends EventHandler<ViewContextEvents> {
   private _renderPass?: CustomRenderPass;
   private _registries?: Registries;
   private _lineDashAtlas = new LineDashAtlas();
+  /** Objects of {@link registerPickableMesh} by key: the mesh cache entries descriptors own. */
+  private _pickables = new Map<string, Object3D>();
 
   constructor(
     /** Scene containers for different rendering passes. */
@@ -231,6 +234,13 @@ export class ViewContext extends EventHandler<ViewContextEvents> {
     this._renderPass?.setBuffers(buffers);
     this.emit("gbufferChanged");
   }
+
+  /**
+   * @internal
+   * Whether an active effect sets `requiresMrtPass`. Kept by the view next to
+   * the G-buffer configuration, since every mesh reads it in `getPassKey()`.
+   */
+  _mrtPassRequired = false;
 
   /** @internal No-op until the pass exists (see {@link _setGBufferOptions}). */
   _setLit(lit: boolean): void {
@@ -494,6 +504,7 @@ export class ViewContext extends EventHandler<ViewContextEvents> {
    */
   registerPickableMesh(key: string, mesh: PickableMesh & Object3D): void {
     this._meshes?.set(key, mesh);
+    this._pickables.set(key, mesh);
   }
 
   /**
@@ -501,6 +512,15 @@ export class ViewContext extends EventHandler<ViewContextEvents> {
    * @param key - The key used during registration.
    */
   unregisterPickableMesh(key: string): void {
-    this._meshes?.delete(key);
+    // Keep an engine product that has since taken over the key.
+    if (this._meshes?.get(key) === this._pickables.get(key)) {
+      this._meshes?.delete(key);
+    }
+    this._pickables.delete(key);
+  }
+
+  /** @internal Whether `obj` is the pickable a descriptor registered as `key`. */
+  _isDescriptorPickable(key: string, obj: Object3D): boolean {
+    return this._pickables.get(key) === obj;
   }
 }

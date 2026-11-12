@@ -5,8 +5,6 @@
  * providing better performance and type safety through the maplibre-expr crate.
  */
 
-import { validateStyleMin, migrate } from "@maplibre/maplibre-gl-style-spec";
-import type { StyleSpecification } from "@maplibre/maplibre-gl-style-spec";
 import { CompiledExpression, CompiledFilter } from "@navaramap/engine";
 
 import type { StyleEngine } from "./StyleEngine";
@@ -21,28 +19,12 @@ import type {
   FeatureContext,
   FilterExpression,
   LayerType,
-  ParsedStyle,
   PropertySpec,
   StyleValue,
   ValueExpression,
 } from "./types";
 
 export class RustStyleEngine implements StyleEngine {
-  async parseStyle(raw: unknown): Promise<ParsedStyle> {
-    // Migrate legacy style features (functions, tokens) to modern expressions
-    const migrated = migrate(raw as StyleSpecification);
-
-    // Validate the migrated style
-    const errors = validateStyleMin(migrated);
-
-    if (errors && errors.length > 0) {
-      const errorMessages = errors.map((e: { message: string }) => e.message);
-      throw new Error(`Invalid MapLibre Style: ${errorMessages.join(", ")}`);
-    }
-
-    return migrated as ParsedStyle;
-  }
-
   createFilter(
     expr: FilterExpression,
     _layerType: LayerType,
@@ -78,7 +60,7 @@ export class RustStyleEngine implements StyleEngine {
     featureGeometryType = "Point",
   ): (ctx: EvaluationContext) => T {
     // Note: migrate() has already converted legacy functions and tokens to modern expressions
-    // in parseStyle(), so we don't need to handle them here.
+    // in validateAndMigrateStyle(), so we don't need to handle them here.
 
     // Handle constant values directly (optimization).
     // For color strings, still compile via WASM so maplibre-expr can validate/coerce (and preserve alpha).

@@ -116,7 +116,7 @@ export type LightBaseInstance<Instance extends object = object> =
  * 3. **{@link onUpdateConfig}** - Called when `handle.update()` is invoked. The base class
  *    handles `visible` and `position`; override to handle your custom properties.
  * 4. **{@link update}** - Optional per-frame callback for animation (e.g. moving lights).
- * 5. **{@link onDestroy}** - Called on `handle.delete()`. The base class removes the light
+ * 5. **{@link onDestroy}** - Called on `handle.delete()` and by `view.dispose()`. The base class removes the light
  *    from its parent scene.
  *
  * @see {@link AmbientLightDesc} for a minimal built-in example.
@@ -203,7 +203,7 @@ export abstract class LightDesc<
       this.raw.parent.remove(this.raw);
     }
 
-    this._instance = undefined;
+    super.onDestroy();
   }
 
   /**

@@ -36,16 +36,18 @@ import {
   type GeographicExtent,
 } from "@navaramap/three-api";
 import {
+  acquireWorkerPool,
   canWorkerPoolAcceptTasks,
-  initializeWorkerPool,
   workerPoolLoad,
   workerPoolReservedSlots,
   reserveWorkerCore,
   probeWorkerPoolHeap,
-  terminateWorkerPool,
+  sharedWorkerPoolSize,
   warmUpWorkerPool,
   workerPoolHeapStats,
+  workerPoolHolders,
   type WorkerPoolHeapStats,
+  type WorkerPoolLease,
 } from "@navaramap/worker";
 import {
   Scene,
@@ -83,6 +85,7 @@ import {
   LightHandle,
   EffectHandle,
   type AnyMeshDesc,
+  type BaseHandle,
 } from "./core/BaseHandle";
 import { Registries } from "./core/Registries";
 import { DeclutterManager, wasmDeclutterKernel } from "./declutter";
@@ -95,6 +98,7 @@ import {
   getDevicePixelRatio,
   isMobileDevice,
   type DynamicSseSettings,
+  type MemoryBudgets,
   type LodFogSettings,
 } from "./device";
 import {
@@ -111,6 +115,7 @@ import {
   type TileHandler,
   type WorkerTaskHandler,
 } from "./event";
+import { disposeAllObjects } from "./event/objectRemoved";
 import { createTileHandler } from "./event/tileHandler";
 import { InMemoryBufferStore } from "./inMemoryBufferStore";
 import { registerInputEvents } from "./input";
@@ -125,7 +130,8 @@ import { LayersManager } from "./layersManager";
 import { disposeTexture } from "./loaders";
 import {
   overrideMaterialsForMRT,
-  GBUFFER_ATTACHMENT_NAMES,
+  countGBufferAttachments,
+  exceededGBufferCapacity,
   resolveGBufferOptions,
   unionGBufferRequirements,
   type GBufferName,
@@ -412,6 +418,19 @@ export type Options = {
    */
   dynamicSse?: Partial<DynamicSseSettings>;
   /**
+   * Number of tile workers. Each has its own JS isolate and WASM heap, so a
+   * smaller pool uses less memory but loads tiles slower after fast camera
+   * moves. Clamped to an integer in `[1, navigator.hardwareConcurrency]`
+   * (with a console warning); also replaces the mobile cap. The default
+   * `memoryBudget.maxWorkerHeapBytes` is a fixed amount per worker on mobile
+   * and without `navigator.deviceMemory`, so there more workers mean more
+   * peak memory. Read only by `init()`. All views share one pool: the first
+   * view to `init()` sets its size, and a later view's value only logs a
+   * warning.
+   * @defaultValue `navigator.hardwareConcurrency` (at most 2 with `mobileOptimization`)
+   */
+  workerPoolSize?: number;
+  /**
    * Overrides for the worker-side memory budgets (per-tile-worker WASM heap
    * recycle threshold and the font worker's cache budget). Defaults derive
    * from the device memory together with `cacheBytes` — see
@@ -572,12 +591,8 @@ export default class ThreeView<
 
   /** Handle for the sky environment map effect descriptor. Used for sky reflections. */
   private skyEnvMap!: EffectHandle<SkyEnvMapEffectDesc>;
-  /** Handle for the Multi-Render Target pass that outputs color and normal buffers. */
+  /** Handle for the Multi-Render Target pass that outputs color and the optional G-buffers. */
   private mrtPass!: EffectHandle<MRTPassEffectDesc>;
-  /** Handle for the transparent objects rendering pass. */
-  private transparentPass!: EffectHandle<TransparentPassEffectDesc>;
-  /** Handle for the final compositing pass that outputs to screen. */
-  private finalPass!: EffectHandle<FinalCopyEffectDesc>;
 
   /** The render pass orchestrator that manages the post-processing effect pipeline. */
   private renderPassOrchestrator: RenderPassOrchestrator;
@@ -603,6 +618,8 @@ export default class ThreeView<
   };
 
   private _eventDisposer: (() => void) | undefined;
+  /** Removes the view's own canvas listeners on dispose. */
+  private _canvasListeners = new AbortController();
   private _disposed = false;
   private _renderFlag: RenderFlag = {
     forceUpdate: false,
@@ -633,6 +650,7 @@ export default class ThreeView<
   /** Last frame the in-flight job count changed. */
   private _jobsProgressedAt = 0;
   private _workerPoolSize = 0;
+  private _releaseWorkerPool: (() => void) | undefined;
   /** The delegated-task cap last sent to the engine. */
   private _maxWorkerTasks = 0;
   /** Whether the engine's worker-task intake is paused because every pool
@@ -1058,9 +1076,13 @@ export default class ThreeView<
     this._terrainPicker = new TerrainPicker();
 
     // disable right-click
-    options.canvas?.addEventListener("contextmenu", (e) => {
-      e.preventDefault();
-    });
+    options.canvas?.addEventListener(
+      "contextmenu",
+      (e) => {
+        e.preventDefault();
+      },
+      { signal: this._canvasListeners.signal },
+    );
 
     const renderer = new WebGLRenderer({
       // If it's true, some noise will happen. So use other AA algorithm instead.
@@ -1245,11 +1267,7 @@ export default class ThreeView<
         NUM_CASCADED_SHADOW_MAPS,
     };
 
-    this._atmosphere = new Atmosphere(
-      this._renderer,
-      options.atmosphere,
-      this._camera,
-    );
+    this._atmosphere = new Atmosphere(options.atmosphere, this._camera);
     this._atmosphere.on("needsUpdate", this.forceUpdate);
     // Textures load lazily, kicked off by the first consumer registering via
     // onTexturesReady(); re-render whenever they arrive.
@@ -1301,10 +1319,10 @@ export default class ThreeView<
         // debugNormal: true,
       },
     });
-    this.transparentPass = this.addEffect<TransparentPassEffectDesc>({
+    this.addEffect<TransparentPassEffectDesc>({
       transparent: {},
     });
-    this.finalPass = this.addEffect<FinalCopyEffectDesc>({
+    this.addEffect<FinalCopyEffectDesc>({
       final: {},
     });
   }
@@ -1522,12 +1540,15 @@ export default class ThreeView<
    * Must be called before using the view.
    */
   async init() {
-    if (this._core || this._initialized) return;
+    if (this._core || this._initialized || this._disposed) return;
 
     this._initialized = true;
 
     const mobileOptimized = this.isMobileOptimized();
-    const concurrencyManager = createDefaultConcurrencyManager(mobileOptimized);
+    const defaultConcurrencyManager = createDefaultConcurrencyManager(
+      mobileOptimized,
+      this._options.workerPoolSize,
+    );
     if (mobileOptimized) {
       this._hillshadeContext.normalMapScale = 0.5;
     }
@@ -1536,21 +1557,45 @@ export default class ThreeView<
     // tile-worker pool, and the font worker derive their budgets together.
     const budgets = getDefaultMemoryBudgets({
       isMobile: mobileOptimized,
-      poolSize: concurrencyManager.total,
+      // A later view joins the live pool, so split the heap budget over the
+      // workers it actually has.
+      poolSize: sharedWorkerPoolSize() ?? defaultConcurrencyManager.total,
     });
 
-    initializeWorkerPool(WorkerURL, concurrencyManager, {
+    // Every view on the page shares one pool; the first view's settings
+    // create it.
+    const workerPool = acquireWorkerPool(WorkerURL, defaultConcurrencyManager, {
       // A worker over this WASM heap budget is recycled; tighter on mobile,
       // where the process is killed at much lower memory pressure.
       maxWorkerHeapBytes:
         this._options.memoryBudget?.maxWorkerHeapBytes ??
         budgets.maxWorkerHeapBytes,
     });
+    this._releaseWorkerPool = workerPool.release;
+
+    try {
+      await this._initWithWorkerPool(workerPool, mobileOptimized, budgets);
+    } catch (e) {
+      workerPool.release();
+      // Nothing was built yet, so a later init() can retry.
+      if (!this._core && !this._disposed) this._initialized = false;
+      throw e;
+    }
+  }
+
+  private async _initWithWorkerPool(
+    workerPool: WorkerPoolLease,
+    mobileOptimized: boolean,
+    budgets: MemoryBudgets,
+  ) {
+    const concurrencyManager = workerPool.manager;
 
     // Fetch WASM resources. Atmosphere textures are not fetched here: they
     // load lazily once a consumer (sky, sun light, aerial perspective, ...)
     // registers via atmosphere.onTexturesReady().
-    await Promise.all([initCore(), initNavaraApi()]);
+    await Promise.all([initEngine(), initNavaraApi()]);
+    // dispose() during the await already released the pool.
+    if (this._disposed) return;
 
     this._core = new Core(newId());
     this._core.start();
@@ -1734,12 +1779,16 @@ export default class ThreeView<
 
     // Warm up workers. Non-blocking: warms one worker, the rest follow
     // in the background off the HTTP cache; tasks dispatched to a still-cold
-    // worker just await WASM inside the task.
-    warmUpWorkerPool().catch((e) =>
-      console.error("Failed to warm up the worker pool:", e),
-    );
+    // worker just await WASM inside the task. Only the view that created the
+    // shared pool warms it.
+    if (workerPool.created) {
+      warmUpWorkerPool().catch((e) =>
+        console.error("Failed to warm up the worker pool:", e),
+      );
+    }
 
     await Promise.all(this.plugins.map((p) => p.init(this, this.viewContext)));
+    if (this._disposed) return;
 
     this._startMainLoop();
 
@@ -1756,8 +1805,16 @@ export default class ThreeView<
     // tolerance, with no pinch and no cancellation. Camera drags never
     // fire it.
     let clickStart: Vector2 | undefined;
+    const canvas = this._renderer.domElement;
+    const listen = <K extends keyof HTMLElementEventMap>(
+      type: K,
+      listener: (event: HTMLElementEventMap[K]) => void,
+    ) =>
+      canvas.addEventListener(type, listener, {
+        signal: this._canvasListeners.signal,
+      });
 
-    this._renderer.domElement.addEventListener("pointerdown", (event) => {
+    listen("pointerdown", (event) => {
       // A second finger turns the gesture into a pinch, not a tap.
       clickStart =
         event.isPrimary && event.button === 0
@@ -1769,28 +1826,28 @@ export default class ThreeView<
       }
     });
 
-    this._renderer.domElement.addEventListener("pointerenter", (event) => {
+    listen("pointerenter", (event) => {
       const mapEvent = this.convertToMapEvent(event);
       if (mapEvent) {
         this.emit("pointerenter", mapEvent);
       }
     });
 
-    this._renderer.domElement.addEventListener("pointerleave", (event) => {
+    listen("pointerleave", (event) => {
       const mapEvent = this.convertToMapEvent(event);
       if (mapEvent) {
         this.emit("pointerleave", mapEvent);
       }
     });
 
-    this._renderer.domElement.addEventListener("pointermove", (event) => {
+    listen("pointermove", (event) => {
       const mapEvent = this.convertToMapEvent(event);
       if (mapEvent) {
         this.emit("pointermove", mapEvent);
       }
     });
 
-    this._renderer.domElement.addEventListener("pointerup", (event) => {
+    listen("pointerup", (event) => {
       const mapEvent = this.convertToMapEvent(event);
       if (mapEvent) {
         this.emit("pointerup", mapEvent);
@@ -1814,7 +1871,7 @@ export default class ThreeView<
       }
     });
 
-    this._renderer.domElement.addEventListener("pointercancel", (event) => {
+    listen("pointercancel", (event) => {
       clickStart = undefined;
       this.emit("pointercancel", event);
     });
@@ -1827,6 +1884,11 @@ export default class ThreeView<
   dispose() {
     this._disposed = true;
     this._initialized = false;
+    // Released first so a throw below, or an init() still in flight, cannot
+    // keep the shared worker pool alive. The last view to release it
+    // terminates it.
+    this._releaseWorkerPool?.();
+    this._releaseWorkerPool = undefined;
     // Settle pending flyTo promises so callers never hang on a disposed view.
     for (const resolve of this._pendingFlights.values()) {
       resolve(false);
@@ -1851,6 +1913,7 @@ export default class ThreeView<
       this._eventDisposer();
       this._eventDisposer = undefined;
     }
+    this._canvasListeners.abort();
 
     if (this._pickHelper) {
       this._pickHelper.dispose();
@@ -1861,17 +1924,28 @@ export default class ThreeView<
       this._terrainPicker.dispose();
     }
 
+    // Abort all in-flight jobs (fetches, worker tasks, mesh builds).
+    this._dispatcher.dispose();
+    // Live meshes are the view's to dispose. Their removal releases into the
+    // font manager, declutter and tile compositor, so it runs before those.
+    if (this.eventContext) {
+      disposeAllObjects(this.eventContext);
+    }
+
+    // Delete every descriptor, so each disposes what it created. Newest
+    // first: the built-in passes (MRT, final) are added before the effects
+    // that read their buffers.
+    for (const handle of [...this.layersManager.getHandles()].reverse()) {
+      try {
+        handle.delete();
+      } catch (error) {
+        console.error("Failed to delete a descriptor on dispose:", error);
+      }
+    }
+
     this._fontManager.dispose();
     this._uniforms.water.dispose();
     this._atmosphere._dispose();
-
-    this.skyEnvMap?.delete();
-    this.mrtPass?.delete();
-    this.transparentPass?.delete();
-    this.finalPass?.delete();
-
-    // Abort all in-flight jobs (fetches, worker tasks, mesh builds).
-    this._dispatcher.dispose();
 
     // Dispose loaded textures (closes any ImageBitmap backing so the decoded
     // pixels are freed, not just the GL texture).
@@ -1903,7 +1977,8 @@ export default class ThreeView<
     // Release per-tile composite atlases, cached shader materials, placeholder
     // textures, and the fullscreen quad geometry owned by the compositor.
     this._tileTextureCompositor.dispose();
-    this.viewContext._dispose();
+    // Unset while init() is still awaiting the WASM modules.
+    this.viewContext?._dispose();
 
     // Clean up WASM core
     this._core?.free();
@@ -1925,9 +2000,6 @@ export default class ThreeView<
     // Remove auto-created DOM container so a new ThreeView can append its own
     this._ownedRootElement?.remove();
     this._ownedRootElement = undefined;
-
-    // Reset worker pool so a new ThreeView can reinitialize it
-    terminateWorkerPool();
   }
 
   /**
@@ -2109,6 +2181,9 @@ export default class ThreeView<
    *   descriptor and plugin tasks, tasks cancelled while running), which take
    *   from the same cap, so a burst of them does not queue the next terrain
    *   mesh behind it. Each in-flight delegated job holds one pool task.
+   *   Other views on the shared pool count as external load too, but only
+   *   up to the cap minus this view's even share, so one view cannot take
+   *   every slot while another has tasks waiting.
    * - Whether to pause intake (and model feature adds and image fetches,
    *   which also run on the pool) while every pool worker is over its heap
    *   budget, so the draining workers reach a task boundary and recycle
@@ -2124,10 +2199,15 @@ export default class ThreeView<
       this._core?.setMaxWorkerTasks(maxTasks);
     }
 
-    const external = Math.max(
+    let external = Math.max(
       0,
       workerPoolLoad() - (this._workerTaskJobs?.inFlight() ?? 0),
     );
+    const holders = workerPoolHolders();
+    if (holders > 1) {
+      const fairShare = Math.floor(maxTasks / holders);
+      external = Math.min(external, maxTasks - fairShare);
+    }
     if (external !== this._workerExternalLoad) {
       this._workerExternalLoad = external;
       this._core?.setWorkerExternalLoad(external);
@@ -2409,6 +2489,16 @@ export default class ThreeView<
     });
   }
 
+  /** Subscribes a descriptor's hook to a view event until its handle is deleted. */
+  private _hookUntilDeleted<E extends "preRender" | "resize">(
+    handle: BaseHandle,
+    event: E,
+    listener: ViewEvents[E],
+  ): void {
+    this.on(event, listener);
+    handle.on("deleted", () => this.off(event, listener));
+  }
+
   /**
    * Adds a 3D mesh to the scene.
    * The mesh kind is determined by the nested key (e.g., `{ box: { width: 200 } }`).
@@ -2437,8 +2527,7 @@ export default class ThreeView<
       throw error;
     }
 
-    // View listeners bound for this descriptor, removed on delete.
-    const unwire: (() => void)[] = [];
+    const l = new MeshHandle(meshDesc);
 
     // Initialize the mesh; hooks are wired once the instance exists.
     this._trackAsyncCreate("mesh", meshDesc, meshDesc.onCreate(), () => {
@@ -2447,15 +2536,11 @@ export default class ThreeView<
 
       // Set up update listener
       if (meshDesc.update) {
-        const update = meshDesc.update.bind(meshDesc);
-        this.on("preRender", update);
-        unwire.push(() => this.off("preRender", update));
+        this._hookUntilDeleted(l, "preRender", meshDesc.update.bind(meshDesc));
       }
 
       if (meshDesc.onResize) {
-        const onResize = meshDesc.onResize.bind(meshDesc);
-        this.on("resize", onResize);
-        unwire.push(() => this.off("resize", onResize));
+        this._hookUntilDeleted(l, "resize", meshDesc.onResize.bind(meshDesc));
 
         const canvasSize = this._getCanvasSize();
         if (canvasSize) {
@@ -2465,16 +2550,12 @@ export default class ThreeView<
 
       // Trigger re-render
       meshDesc.on("needsUpdate", this.forceUpdate);
+      l.on("deleted", () => meshDesc.off("needsUpdate", this.forceUpdate));
 
       this.forceUpdate();
     });
 
-    const l = new MeshHandle(meshDesc);
-
-    l.on("deleted", () => {
-      for (const off of unwire) off();
-      this.forceUpdate();
-    });
+    l.on("deleted", this.forceUpdate);
 
     // Store the mesh descriptor
     this.layersManager.add(l);
@@ -2487,6 +2568,8 @@ export default class ThreeView<
     // Registered after `layersManager.add`, so the deleted mesh is already
     // out of the union when this runs.
     l.on("deleted", () => {
+      // `dispose()` deletes every descriptor; nothing is left to re-derive for.
+      if (this._disposed) return;
       if (meshDesc.getRequiredBuffers().length > 0) {
         this._syncGBuffers();
       }
@@ -2514,8 +2597,7 @@ export default class ThreeView<
     // Create light descriptor instance
     const lightDesc = this.registries.light.create(lightType, config);
 
-    // View listeners bound for this descriptor, removed on delete.
-    const unwire: (() => void)[] = [];
+    const l = new LightHandle(lightDesc);
 
     // Initialize the light; hooks are wired once the instance exists.
     this._trackAsyncCreate("light", lightDesc, lightDesc.onCreate(), () => {
@@ -2524,23 +2606,21 @@ export default class ThreeView<
 
       // Set up update listener if the descriptor has an update method
       if (lightDesc.update) {
-        const update = lightDesc.update.bind(lightDesc);
-        this.on("preRender", update);
-        unwire.push(() => this.off("preRender", update));
+        this._hookUntilDeleted(
+          l,
+          "preRender",
+          lightDesc.update.bind(lightDesc),
+        );
       }
 
       // Trigger re-render
       lightDesc.on("needsUpdate", this.forceUpdate);
+      l.on("deleted", () => lightDesc.off("needsUpdate", this.forceUpdate));
 
       this.forceUpdate();
     });
 
-    const l = new LightHandle(lightDesc);
-
-    l.on("deleted", () => {
-      for (const off of unwire) off();
-      this.forceUpdate();
-    });
+    l.on("deleted", this.forceUpdate);
 
     // Store the light descriptor
     this.layersManager.add(l);
@@ -2591,10 +2671,9 @@ export default class ThreeView<
     // and recompiles shaders when the derived configuration actually changes,
     // so tune effects via `update()` rather than re-adding them.
     this._syncGBuffers();
-    // View listeners bound for this descriptor, removed on delete.
-    const unwire: (() => void)[] = [];
     l.on("deleted", () => {
-      for (const off of unwire) off();
+      // `dispose()` deletes every descriptor; nothing is left to re-derive for.
+      if (this._disposed) return;
       this._syncGBuffers();
       this.forceUpdate();
     });
@@ -2606,13 +2685,16 @@ export default class ThreeView<
 
       // Set up update listener if the descriptor has an update method
       if (effectDesc.update) {
-        const update = effectDesc.update.bind(effectDesc);
-        this.on("preRender", update);
-        unwire.push(() => this.off("preRender", update));
+        this._hookUntilDeleted(
+          l,
+          "preRender",
+          effectDesc.update.bind(effectDesc),
+        );
       }
 
       // Trigger re-render
       effectDesc.on("needsUpdate", this.forceUpdate);
+      l.on("deleted", () => effectDesc.off("needsUpdate", this.forceUpdate));
 
       this.forceUpdate();
     });
@@ -2627,21 +2709,21 @@ export default class ThreeView<
    * when changed.
    */
   private _syncGBuffers = (): void => {
-    const requirements: (readonly GBufferName[])[] = [];
-    for (const handle of this.layersManager.getHandles()) {
-      const desc = handle.ref;
-      if (desc instanceof EffectDesc) {
-        requirements.push(desc.getRequiredBuffers());
-      } else if (desc instanceof MeshDesc) {
-        requirements.push(desc.getRequiredBuffers());
+    // Set first: the mesh requirements below go through `getPassKey()`.
+    let mrtPassRequired = false;
+    for (const handle of this.layersManager.getEffectDescs()) {
+      if (handle.ref.getConstructor().requiresMrtPass) {
+        mrtPassRequired = true;
+        break;
       }
     }
-    const buffers = unionGBufferRequirements(requirements);
+    this.viewContext._mrtPassRequired = mrtPassRequired;
+    const buffers = unionGBufferRequirements(this._gbufferRequirements());
     // `addEffect`/`addMesh` reject an over-limit descriptor up front. A
     // requirement that grows after creation is reported instead and the
     // previous configuration kept, since the GL level would give an
     // incomplete framebuffer. A later re-derivation that fits applies.
-    const attachmentCount = this._countGBufferAttachments(buffers);
+    const attachmentCount = countGBufferAttachments(buffers);
     const maxDrawBuffers = this._maxDrawBuffers();
     if (attachmentCount > maxDrawBuffers) {
       console.error(
@@ -2649,11 +2731,26 @@ export default class ThreeView<
           `exceeding this device's MAX_DRAW_BUFFERS (${maxDrawBuffers}). ` +
           "Keeping the previous G-buffers.",
       );
+      // Re-applied anyway: meshes re-evaluate their pass on the event, and
+      // `requiresMrtPass` may have changed.
+      this.viewContext._setGBufferOptions(this._buffers);
       return;
     }
     this._buffers = buffers;
     this.viewContext._setGBufferOptions(this._buffers);
   };
+
+  // Lazy, so the capacity check's already-allocated shortcut walks no layer.
+  private *_gbufferRequirements(): Generator<readonly GBufferName[]> {
+    for (const handle of this.layersManager.getHandles()) {
+      const desc = handle.ref;
+      if (desc instanceof EffectDesc) {
+        yield desc.getRequiredBuffers();
+      } else if (desc instanceof MeshDesc) {
+        yield desc.getRequiredBuffers();
+      }
+    }
+  }
 
   /**
    * Throws when enabling a descriptor's required G-buffers would push the
@@ -2665,27 +2762,20 @@ export default class ThreeView<
     label: string,
   ): void {
     if (required.length === 0) return;
-    const prospective = unionGBufferRequirements([
-      (Object.keys(this._buffers) as GBufferName[]).filter(
-        (name) => this._buffers[name],
-      ),
-      required,
-    ]);
-    const attachmentCount = this._countGBufferAttachments(prospective);
     const maxDrawBuffers = this._maxDrawBuffers();
-    if (attachmentCount > maxDrawBuffers) {
+    const attachmentCount = exceededGBufferCapacity(
+      this._gbufferRequirements(),
+      required,
+      this._buffers,
+      maxDrawBuffers,
+    );
+    if (attachmentCount !== undefined) {
       throw new Error(
         `The ${label} requires G-buffers [${required.join(", ")}], ` +
           `but the resulting ${attachmentCount} MRT attachments exceed this ` +
           `device's MAX_DRAW_BUFFERS (${maxDrawBuffers}).`,
       );
     }
-  }
-
-  private _countGBufferAttachments(buffers: ResolvedGBufferOptions): number {
-    // Color is the only always-present draw buffer; depth takes no
-    // `MAX_DRAW_BUFFERS` slot.
-    return 1 + GBUFFER_ATTACHMENT_NAMES.filter((name) => buffers[name]).length;
   }
 
   private _maxDrawBuffers(): number {
@@ -3567,4 +3657,19 @@ export default class ThreeView<
 
 function newId() {
   return Math.random().toString(36).slice(2);
+}
+
+let engineReady: Promise<unknown> | undefined;
+
+/**
+ * wasm-bindgen's init only short-circuits once a call has finished, so views
+ * initializing concurrently must share one promise or the later instantiation
+ * replaces the module the earlier view's `Core` lives in.
+ */
+function initEngine() {
+  engineReady ??= initCore().catch((e: unknown) => {
+    engineReady = undefined;
+    throw e;
+  });
+  return engineReady;
 }

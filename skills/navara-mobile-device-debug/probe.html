@@ -1,0 +1,122 @@
+<!doctype html>
+<!--
+  Copy to web/navara_three/example/public/__probe.html, then open
+  http://<mac-ip>:5173/examples/__probe.html?page=<example>&variant=<name>
+  Logs go to debug_tile_server's device-log server on port 8765 of the same host.
+-->
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>probe</title>
+<style>html,body{margin:0;height:100%;overflow:hidden}iframe{position:fixed;inset:0;width:100vw;height:100vh;border:0}</style></head>
+<body>
+<script>
+// Shader rewrites to bisect on device: name -> (source) => source. Return the
+// source unchanged for shaders the variant does not target.
+const VARIANTS = {
+  // nomix: (src) => src.includes("uColorAtlas")
+  //   ? src.replace("  diffuseColor.rgb = mix(diffuseColor.rgb, uWaterMaskColor.rgb, watermaskWater ? uWaterMaskColor.a : 0.0);\n", "")
+  //   : src,
+};
+
+(async () => {
+  const q = new URLSearchParams(location.search);
+  const page = q.get("page") || "pmtiles";
+  // `page` becomes a path that is fetched and written into the iframe.
+  if (!/^[\w-]+(\/[\w-]+)*$/.test(page)) throw new Error(`invalid page ${page}`);
+  const variant = q.get("variant") || "none";
+  const run = Math.random().toString(36).slice(2, 7);
+  const t0 = performance.now();
+  const send = (msg) => {
+    const ms = Math.round(performance.now() - t0);
+    fetch(`http://${location.hostname}:8765/log?run=${run}&page=${encodeURIComponent(page)}&msg=${encodeURIComponent(ms + "ms " + msg)}`, { mode: "no-cors", keepalive: true }).catch(() => {});
+  };
+  send(`start variant=${variant} ua=${navigator.userAgent} dpr=${devicePixelRatio} ${innerWidth}x${innerHeight}`);
+  if (variant !== "none" && !VARIANTS[variant]) send(`unknown variant ${variant}`);
+
+  // Load the example into a same-origin iframe without the vite client and
+  // the react-refresh preamble, so the hooks below run before its code.
+  let html = await fetch(`/examples/${page}.html`, { cache: "no-store" }).then((r) => r.text());
+  html = html
+    .replace(/<script type="module">import \{ injectIntoGlobalHook[\s\S]*?<\/script>/, "<script>window.$RefreshReg$=()=>{};window.$RefreshSig$=()=>(t)=>t;<" + "/script>")
+    .replace(/<script type="module" src="\/examples\/@vite\/client"><\/script>/, "");
+
+  const f = document.createElement("iframe");
+  document.body.appendChild(f);
+  const w = f.contentWindow;
+
+  const S = { programs: 0, draws: 0, frame: 0, tex: new Map(), unit: 0, bound: {}, buf: new Map(), curBuf: {} };
+  const bpp = (fmt, type) => ({ 0x8058: 4, 0x881A: 8, 0x8814: 16, 0x8229: 1, 0x822B: 2, 0x822D: 2, 0x822E: 4, 0x8230: 8, 0x88F0: 4, 0x81A6: 4, 0x8CAC: 4, 0x8C43: 4, 0x1908: type === 0x1406 ? 16 : type === 0x140B || type === 0x8D61 ? 8 : 4, 0x1903: 1 })[fmt] ?? 4;
+  const texMB = () => { let s = 0; for (const m of S.tex.values()) for (const v of m.values()) s += v; return (s / 1048576).toFixed(1); };
+  const bufMB = () => { let s = 0; for (const v of S.buf.values()) s += v; return (s / 1048576).toFixed(1); };
+  const stats = () => `frame=${S.frame} programs=${S.programs} texMB=${texMB()} bufMB=${bufMB()}`;
+
+  for (const k of ["error", "warn"]) {
+    const o = w.console[k].bind(w.console);
+    w.console[k] = (...a) => { send(`console.${k} ${a.map((x) => (x && x.stack) || String(x)).join(" ").slice(0, 600)}`); o(...a); };
+  }
+
+  const gc = w.HTMLCanvasElement.prototype.getContext;
+  w.HTMLCanvasElement.prototype.getContext = function (type, attrs) {
+    const ctx = gc.call(this, type, attrs);
+    if (/webgl/.test(type)) {
+      // lost=true here means WebKit is still blocking WebGL after an earlier crash.
+      send(`getContext ${type} lost=${ctx && ctx.isContextLost()} size=${this.width}x${this.height}`);
+      this.addEventListener("webglcontextlost", () => send(`EVENT webglcontextlost ${stats()}`));
+    }
+    return ctx;
+  };
+
+  const P = w.WebGL2RenderingContext.prototype;
+  const wrap = (name, fn) => { const o = P[name]; P[name] = function (...a) { fn.call(this, a); return o.apply(this, a); }; };
+  const faceKey = (t) => (t >= 0x8515 && t <= 0x851A ? 0x8513 : t);
+  const curTex = (t) => S.bound[S.unit]?.[faceKey(t)];
+  const setTex = (tex, key, b) => { if (!tex) return; let m = S.tex.get(tex); if (!m) S.tex.set(tex, (m = new Map())); m.set(key, b); };
+  wrap("activeTexture", (a) => { S.unit = a[0]; });
+  wrap("bindTexture", (a) => { (S.bound[S.unit] ??= {})[a[0]] = a[1]; });
+  wrap("texImage2D", (a) => {
+    let wd, ht, type;
+    if (a.length >= 8) { wd = a[3]; ht = a[4]; type = a[7]; } else { const s = a[5]; wd = s?.width ?? 0; ht = s?.height ?? 0; type = a[4]; }
+    setTex(curTex(a[0]), `${a[0]}:${a[1]}`, wd * ht * bpp(a[2], type));
+  });
+  wrap("texImage3D", (a) => setTex(curTex(a[0]), `${a[0]}:${a[1]}`, a[3] * a[4] * a[5] * bpp(a[2], a[8])));
+  wrap("texStorage2D", (a) => { let b = 0, x = a[3], y = a[4]; for (let i = 0; i < a[1]; i++) { b += x * y * bpp(a[2]); x = Math.max(1, x >> 1); y = Math.max(1, y >> 1); } setTex(curTex(a[0]), "s", b * (a[0] === 0x8513 ? 6 : 1)); });
+  wrap("deleteTexture", (a) => S.tex.delete(a[0]));
+  wrap("bindBuffer", (a) => { S.curBuf[a[0]] = a[1]; });
+  wrap("bufferData", (a) => { const b = S.curBuf[a[0]]; if (b) S.buf.set(b, typeof a[1] === "number" ? a[1] : a[1].byteLength); });
+  wrap("deleteBuffer", (a) => S.buf.delete(a[0]));
+  for (const n of ["drawElements", "drawArrays", "drawElementsInstanced", "drawArraysInstanced"]) wrap(n, () => { S.draws++; });
+
+  const ss = P.shaderSource;
+  P.shaderSource = function (sh, src) {
+    const out = VARIANTS[variant]?.(src) ?? src;
+    if (out !== src) send(`rewrite variant=${variant} ${src.length} -> ${out.length}`);
+    return ss.call(this, sh, out);
+  };
+  const lp = P.linkProgram;
+  P.linkProgram = function (p) {
+    S.programs++;
+    const r = lp.call(this, p);
+    send(`linked#${S.programs} ok=${this.getProgramParameter(p, this.LINK_STATUS)} lost=${this.isContextLost()}`);
+    return r;
+  };
+
+  const rafLoop = () => {
+    S.frame++;
+    if (S.frame <= 30 || S.frame % 30 === 0) send(`frame ${S.frame} draws=${S.draws} programs=${S.programs} texMB=${texMB()} bufMB=${bufMB()}`);
+    S.draws = 0;
+    w.requestAnimationFrame(rafLoop);
+  };
+  w.requestAnimationFrame(rafLoop);
+  // A heartbeat that stops means the WebContent process died (e.g. memory),
+  // not a GPU fault.
+  setInterval(() => send(`alive frame=${S.frame}`), 250);
+
+  f.contentDocument.open();
+  // document.open() erases the window's listeners, so register them after it.
+  w.addEventListener("error", (e) => send(`window.error ${e.message} @${e.filename}:${e.lineno}`));
+  w.addEventListener("unhandledrejection", (e) => send(`unhandledrejection ${(e.reason && e.reason.stack) || e.reason}`.slice(0, 600)));
+  w.addEventListener("pagehide", () => send("pagehide"));
+  f.contentDocument.write(html);
+  f.contentDocument.close();
+})();
+</script>
+</body></html>

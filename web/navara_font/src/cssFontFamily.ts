@@ -41,13 +41,19 @@ export type FetchCssFontFamilyOptions = CssFontFaceFilter & {
 // initialize that WASM module and delegate. Parsing correctness is covered by
 // the crate's Rust tests; the TS tests here cover the fetch orchestration.
 //
-// The WASM module is instantiated lazily and at most once — the promise is
-// memoized so concurrent callers share a single init (`__wbg_init` itself is
-// idempotent once resolved, but memoizing avoids a redundant instantiate while
-// the first is still in flight).
-let apiReady: Promise<unknown> | undefined;
+// The WASM module is instantiated lazily and at most once. `__wbg_init` is
+// idempotent only once resolved, and a second instantiation while the first
+// is in flight replaces the module other callers' objects live in, so every
+// caller, including @navaramap/three-api's `initNavaraApi`, shares one
+// promise under a global key.
+const API_READY = Symbol.for("@navaramap/engine-api/init");
+type ApiReadyHolder = { [API_READY]?: Promise<unknown> };
 function ensureApi(): Promise<unknown> {
-  return (apiReady ??= initApi());
+  const holder = globalThis as ApiReadyHolder;
+  return (holder[API_READY] ??= initApi().catch((e: unknown) => {
+    holder[API_READY] = undefined;
+    throw e;
+  }));
 }
 
 /**

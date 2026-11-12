@@ -74,7 +74,13 @@ on one job never overlap. `start` rejecting (or throwing) calls the kind's
 `undefined` means "done, no product". A job that settles without a product
 (or whose `start` failed) leaves the table, so the data requesters despawned
 without `removed` (see Event contract) do not leak. `dispose()` aborts
-everything and tears late products down with `ev === undefined`.
+everything and tears late products down with `ev === undefined`. It leaves
+settled products to their owner: `ThreeView.dispose()` tears them down right
+after, through `disposeAllObjects` (`event/objectRemoved.ts`), which runs
+`processObjectRemoved` on every indexed product and live tile mesh, then
+deletes every descriptor, which disposes the pickables it registered in the
+same index. `processObjectRemoved` runs once per object, so a product indexed
+before its job settled is not torn down again by the late teardown.
 `inFlight()` counts jobs with a call outstanding and is O(1).
 
 **Event ownership.** The dispatcher frees every WASM event object it takes:
@@ -212,6 +218,14 @@ own in-flight count and the worker's busy plus queued count: a task
 cancelled while running drops from the former at once but keeps the worker
 busy until it ends. A task cancelled while queued costs nothing; workerpool
 skips it when it reaches the front.
+
+Every `ThreeView` on the page shares one pool: `acquireWorkerPool` creates
+it on the first claim (with that view's size and heap budget) and the last
+`release` terminates it. Each view's `external_load` then includes the
+other views' tasks, so their delegations share the pool's cap. That share is
+clamped to the cap minus the view's even share (`cap / holders`), so one view
+cannot take every slot while another has tasks waiting. The views' in-flight
+tasks may then exceed the cap until the busier view drains to its share.
 
 `ConcurrencyManager` counts the pool's in-flight tasks (`queueTask`
 increments and decrements it), oversubscription included, and its `total`

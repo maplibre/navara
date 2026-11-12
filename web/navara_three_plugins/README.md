@@ -7,6 +7,7 @@ Optional feature plugins for `@navaramap/three`. Each plugin packages a self-con
 - **`CesiumIonPlugin`**: resolves a Cesium Ion asset endpoint and registers the asset as a quantized-mesh terrain layer via `addTerrain()`.
 - **`TileJsonPlugin`**: fetches a TileJSON 3.0.0 document and registers it as a Navara source, surfacing its attribution through the view's built-in credit UI.
 - **`ProfilerPlugin`** and **`LayerDebuggerPlugin`**: development-only debug tools on a tweakpane panel (see [Debug tools](#debug-tools)).
+- **`StreetLightsPlugin`**: street lamps, roof beacons and moving traffic at night, streamed in around the camera from vector tiles, read through the caller's readers for any schema.
 
 ## Usage
 

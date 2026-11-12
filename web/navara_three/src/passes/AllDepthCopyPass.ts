@@ -161,5 +161,7 @@ export class AllDepthCopyPass extends Pass {
   dispose(): void {
     this._renderTarget.dispose();
     this._material.dispose();
+    this._copyPass.dispose();
+    this._copyPassRenderTarget.dispose();
   }
 }

@@ -6,12 +6,9 @@
 import {
   createExpression,
   featureFilter,
-  validateStyleMin,
-  migrate,
 } from "@maplibre/maplibre-gl-style-spec";
 import type {
   FilterSpecification,
-  StyleSpecification,
   StylePropertySpecification,
   Feature,
 } from "@maplibre/maplibre-gl-style-spec";
@@ -28,28 +25,12 @@ import type {
   FeatureContext,
   FilterExpression,
   LayerType,
-  ParsedStyle,
   PropertySpec,
   StyleValue,
   ValueExpression,
 } from "./types";
 
 export class JsStyleEngine implements StyleEngine {
-  async parseStyle(raw: unknown): Promise<ParsedStyle> {
-    // Migrate legacy style features (functions, tokens) to modern expressions
-    const migrated = migrate(raw as StyleSpecification);
-
-    // Validate the migrated style
-    const errors = validateStyleMin(migrated);
-
-    if (errors && errors.length > 0) {
-      const errorMessages = errors.map((e: { message: string }) => e.message);
-      throw new Error(`Invalid MapLibre Style: ${errorMessages.join(", ")}`);
-    }
-
-    return migrated as ParsedStyle;
-  }
-
   createFilter(
     expr: FilterExpression,
     _layerType: LayerType,

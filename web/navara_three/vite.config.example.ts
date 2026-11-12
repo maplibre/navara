@@ -277,7 +277,8 @@ export default defineConfig(async (env) => {
     server: {
       open: true,
       fs: {
-        allow: ["../../.."],
+        // The dev server listens on the LAN (`--host`): serve the repo only.
+        allow: [normalizePath(path.resolve(__dirname, "../.."))],
       },
     },
   };

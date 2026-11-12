@@ -5,21 +5,19 @@ float IorToFresnel0(float ior) {
 
 // ref: https://github.com/mrdoob/three.js/blob/54ac263593c81b669ca9a089491ddd9e240427d2/examples/jsm/objects/Water.js#L165-L167
 vec3 specularColor( const vec3 surfaceNormal, const vec3 eyeDirection, float shiny, float spec) {
-    vec3 sunLightColor;
-    vec3 sunLightDirection;
     #if NUM_DIR_LIGHTS > 0
-        DirectionalLight sunLight = directionalLights[0]; // Assuming first light is sun light.
-        sunLightColor = sunLight.color;
-        sunLightDirection = sunLight.direction;
-    #endif
+    DirectionalLight sunLight = directionalLights[0]; // Assuming first light is sun light.
 
-    float ndotL = max(dot(surfaceNormal, sunLightDirection), 0.0);
+    float ndotL = max(dot(surfaceNormal, sunLight.direction), 0.0);
     if (ndotL <= 0.0) return vec3(0.0);
 
-    vec3 reflection = normalize( reflect( -sunLightDirection, surfaceNormal ) );
+    vec3 reflection = normalize( reflect( -sunLight.direction, surfaceNormal ) );
     float direction = max(dot( eyeDirection, reflection ), 0.0);
     // A layer may set shininess 0, and pow(0, 0) is undefined (NaN on some GPUs).
-    return pow( direction, max( shiny, 1e-4 ) ) * sunLightColor * spec;
+    return pow( direction, max( shiny, 1e-4 ) ) * sunLight.color * spec;
+    #else
+    return vec3(0.0);
+    #endif
 }
 
 vec3 computeSpecular(

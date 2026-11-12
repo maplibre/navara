@@ -91,10 +91,13 @@ export class CloudsEffectDesc extends EffectDesc<
     if (config.shadows !== undefined) {
       this._instance.shadows = config.shadows;
     }
-    if (config.shadowCascadeCount !== undefined) {
+    if (
+      config.shadowCascadeCount !== undefined &&
+      config.shadowCascadeCount !== null
+    ) {
       this._instance.shadowCascadeCount = config.shadowCascadeCount;
     }
-    if (config.shadowMapSize !== undefined) {
+    if (config.shadowMapSize !== undefined && config.shadowMapSize !== null) {
       this._instance.shadowMapSize = config.shadowMapSize;
     }
     if (config.shadowFarScale !== undefined) {

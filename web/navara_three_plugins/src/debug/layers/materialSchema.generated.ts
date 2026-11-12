@@ -810,6 +810,12 @@ export const MATERIAL_SCHEMA: Record<string, MaterialField[]> = {
       default: false,
     },
     {
+      name: "geodesic",
+      kind: "boolean",
+      doc: "Whether edges of the tiled path (`clamp_to_ground` or `tiled`) follow the geodesic. Defaults to `true`, which also connects consecutive vertices more than 180° apart in longitude the short way, across the antimeridian; a closed ring that would then no longer close, such as one around a pole, is kept as given. When `false`, edges are straight lines in Web Mercator and longitudes are used as given (e.g. 190° is east of 180°), as in MapLibre. Ignored outside the tiled path. Applies to the whole layer: its tiled appearances share one geometry, which follows the geodesic unless every one of them sets `false`. Read when the layer's tiles are first built; later changes have no effect.",
+      default: true,
+    },
+    {
       name: "height",
       kind: "number",
       default: 1,
@@ -891,6 +897,12 @@ export const MATERIAL_SCHEMA: Record<string, MaterialField[]> = {
       kind: "boolean",
       doc: "Splits the polygon into XYZ vector tiles for rendering, even when the data source is not an MVT layer. This can improve performance for large polygons. Enabling `clamp_to_ground` implicitly forces `tiled` to `true`. Outline rendering is not supported when `tiled` is enabled.",
       default: false,
+    },
+    {
+      name: "geodesic",
+      kind: "boolean",
+      doc: "Whether edges of the tiled path (`clamp_to_ground` or `tiled`) follow the geodesic. Defaults to `true`, which also connects consecutive vertices more than 180° apart in longitude the short way, across the antimeridian; a closed ring that would then no longer close, such as one around a pole, is kept as given. When `false`, edges are straight lines in Web Mercator and longitudes are used as given (e.g. 190° is east of 180°), as in MapLibre. Ignored outside the tiled path. Applies to the whole layer: its tiled appearances share one geometry, which follows the geodesic unless every one of them sets `false`. Read when the layer's tiles are first built; later changes have no effect.",
+      default: true,
     },
     {
       name: "height",

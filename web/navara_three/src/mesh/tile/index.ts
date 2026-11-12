@@ -60,6 +60,7 @@ import { deriveCompositeFeatures } from "../../material/enhancer/tileComposite";
 import type { CustomObject3DEventMap } from "../../object3DEvent";
 import type { TextureOptions } from "../../textures";
 import {
+  atlasUniforms,
   DEFAULT_ELEVATION_HEATMAP_LOG_BOUNDARY,
   planSlots,
   type CompositeFeatures,
@@ -99,23 +100,9 @@ import { VectorDrapeResolver } from "./vectorDrapeResolver";
 
 export type TileMaterial = MeshBasicMaterial | MeshLambertMaterial;
 
-/** The MRT composite atlas has three RGBA attachments (color, attr, normal). */
-const ATLAS_ATTACHMENTS = 3;
 /** GPU bytes for one drape render target at side length `size`: size² RGBA. */
 function drapeRtBytes(size: number): number {
   return size * size * 4;
-}
-/** GPU bytes for the per-tile composite atlas at side length `size`: one MRT
- * with three size² RGBA attachments. A terrain tile acquires this atlas in its
- * constructor and holds it for its whole lifetime (raster-only tiles
- * included), so Rust seeds it into the tile's cost at mesh-attach time and
- * every drape report from here must keep including it. The side length is 512²
- * on both desktop and mobile (so ~3MB per tile with three attachments) and
- * flows in from the compositor, which is the SAME source of truth
- * `getDefaultMemoryCostHints` feeds to the Rust ledger — so the reported bytes
- * always match the seed. */
-function compositeAtlasBytes(size: number): number {
-  return size * size * 4 * ATLAS_ATTACHMENTS;
 }
 
 export class TileMesh
@@ -153,20 +140,17 @@ export class TileMesh
 
   private compositor: TileTextureCompositor;
 
-  // Drape RT side length + atlas byte cost, read from the compositor (the
-  // single source of truth shared with the Rust cost hints) in the constructor.
-  // Per-instance rather than module constants because the compositor size is a
-  // runtime value (512² on both desktop and mobile today, but configurable).
+  // Drape RT side length, read from the compositor (the single source of truth
+  // shared with the Rust cost hints) in the constructor. Per-instance rather
+  // than a module constant because the compositor size is a runtime value
+  // (512² on both desktop and mobile today, but configurable).
   private readonly drapeRtSize: number;
-  private readonly atlasBytes: number;
   /** Current `Mesh::fill_quadrants` mask (see `setFillQuadrants`). */
   private fillQuadrants = 0;
   // Drape footprint (bytes) last reported to the memory ledger, so a report
-  // only crosses the WASM boundary when it actually changes. Starts at the
-  // atlas cost to match the seed Rust charges at mesh-attach time (the atlas
-  // is acquired in the constructor) — a tile that never drapes therefore
-  // never reports. Assigned in the constructor once `atlasBytes` is known.
-  private reportedDrapeGpuBytes: number;
+  // only crosses the WASM boundary when it actually changes. Starts at 0 to
+  // match the drape term Rust seeds at mesh-attach time.
+  private reportedDrapeGpuBytes = 0;
   private _waterMaskWaves: WaterWavesRef | undefined;
 
   readonly ctx: EventContext;
@@ -191,8 +175,6 @@ export class TileMesh
     // Device-dependent atlas / drape RT sizing, sourced from the compositor so
     // it always matches the ledger cost hints (see device.ts).
     this.drapeRtSize = this.compositor.size;
-    this.atlasBytes = compositeAtlasBytes(this.compositor.size);
-    this.reportedDrapeGpuBytes = this.atlasBytes;
 
     // Acquire the per-tile composite atlas from the compositor. Pairing the
     // acquire with the mesh keeps the atlas lifecycle tied to the tile and lets
@@ -257,6 +239,9 @@ export class TileMesh
       : new DirectRasterDrapeResolver();
 
     tileMapByHandle.set(handle, this);
+    // The atlas shared with the mesh this one replaces may already be
+    // allocated.
+    this.reportDrapeGpuBytesIfChanged();
 
     this.onBeforeRender = this._onBeforeRender;
     this.onBeforeShadow = this._onBeforeShadow;
@@ -265,28 +250,35 @@ export class TileMesh
 
   /**
    * Report the tile's drape GPU footprint (composite atlas + vector and baked-raster
-   * drape render targets) to the memory ledger when it changed. The atlas is acquired
-   * in the constructor and held for the tile's lifetime regardless of draping, so it
-   * is always part of the report — otherwise a tile whose last draped layer vanished
-   * would report 0 and wipe the atlas cost Rust seeds at mesh-attach time. The render
-   * targets on top of it scale with terrain subdivision past the layers' maxZoom — a
-   * cost per-source-tile accounting cannot see.
+   * drape render targets) to the memory ledger when it changed. The atlas counts once
+   * it is allocated and stays counted for the tile's lifetime regardless of draping;
+   * it grows by the normal attachment while the tile has hillshade.
+   * The render targets on top of it scale with terrain subdivision past the layers'
+   * maxZoom — a cost per-source-tile accounting cannot see.
    */
   private reportDrapeGpuBytesIfChanged() {
-    const rtCount =
-      this.vectorDrape.liveRenderTargetCount() +
-      this.rasterDrape.liveRenderTargetCount();
-    const bytes = this.atlasBytes + rtCount * drapeRtBytes(this.drapeRtSize);
-    if (bytes === this.reportedDrapeGpuBytes) return;
     // Only the mesh currently registered for this position-stable handle may
     // report. During a terrain mesh replacement the outgoing mesh briefly
     // coexists with the incoming one, which has already claimed the handle
     // (constructor's `tileMapByHandle.set`) and been seeded by
     // `attach_terrain_mesh_cost`. A stray report from the outgoing mesh would
     // resolve on the Rust side (via `Without<Deleted>`) to the NEW live entity
-    // and overwrite its freshly-seeded atlas cost — the same hazard the
-    // dispose() 0-report guards against, here on the non-zero path.
-    if (this.ctx.tileMapByHandle.get(this.handle) !== this) return;
+    // and overwrite its drape cost — the same hazard the dispose() 0-report
+    // guards against, here on the non-zero path. The two meshes share the
+    // handle's atlas, so a change the outgoing mesh makes to it (a bake that
+    // allocates or reshapes it) is reported by the registered mesh instead.
+    const owner = this.ctx.tileMapByHandle.get(this.handle);
+    if (owner !== this) {
+      owner?.reportDrapeGpuBytesIfChanged();
+      return;
+    }
+    const rtCount =
+      this.vectorDrape.liveRenderTargetCount() +
+      this.rasterDrape.liveRenderTargetCount();
+    const bytes =
+      this.compositor.atlasGpuBytes(this.handle) +
+      rtCount * drapeRtBytes(this.drapeRtSize);
+    if (bytes === this.reportedDrapeGpuBytes) return;
     this.reportedDrapeGpuBytes = bytes;
     this.tileHandler.reportDrapeGpuBytes(this.handle, bytes);
   }
@@ -309,12 +301,16 @@ export class TileMesh
       this.texturizedSceneIndexFrom,
       this.maxTextures,
     );
-    this.compositor.runCompositePassIfDirty(
+    const baked = this.compositor.runCompositePassIfDirty(
       this.handle,
       plan,
       globals,
       deriveCompositeFeatures(layers, globals),
+      // The atlas carries the normal attachment for its only reader: the
+      // main shader's hillshade branch.
+      this.computeFeatures().hasHillshade,
     );
+    if (baked) this.reportDrapeGpuBytesIfChanged();
   };
 
   // The skirt casts no shadow.
@@ -470,7 +466,6 @@ export class TileMesh
     }
 
     const globals: CompositeGlobals = {
-      hillshadeExaggeration: ud.hillshadeExaggeration?.value ?? 1,
       watermask: this.userData.watermask?.texture ?? null,
       // Built lazily here, so a burst of colorMap changes rebuilds it once.
       colorMapTexture: this.ctx.colorMapAtlas?.getTexture() ?? null,
@@ -909,13 +904,11 @@ export class TileMesh
     const maxTextures = this.maxTextures;
 
     // Bind the compositor's atlas outputs as TileMesh-visible uniforms so the
-    // slim shader can sample them. Atlas Textures are created once per tile
-    // and persist across composite passes — `needsUpdate` is flipped by the
-    // compositor when a new pass writes to them.
-    const atlasOutputs = this.compositor.acquireOutputs(this.handle);
-    m.userData.uColorAtlas = { value: atlasOutputs.color };
-    m.userData.uAttrAtlas = { value: atlasOutputs.attr };
-    m.userData.uNormalAtlas = { value: atlasOutputs.normal };
+    // slim shader can sample them.
+    Object.assign(
+      m.userData,
+      atlasUniforms(this.compositor.acquireOutputs(this.handle)),
+    );
 
     m.customProgramCacheKey = () =>
       `TILE${this.numTexturizedVector}${JSON.stringify(this.computeFeatures())}`;
@@ -1747,7 +1740,7 @@ ${generateTileCommonInjection(maxTextures)}
     // mesh-replacement path the old entity is marked `Deleted` while a NEW live
     // mesh reuses the same position-stable handle, so `reportDrapeGpuBytes(0)`
     // would resolve (via `Without<Deleted>`) to the NEW entity and wipe the
-    // atlas cost `attach_terrain_mesh_cost` just seeded. Leaving accounting to
+    // atlas cost the incoming mesh reported. Leaving accounting to
     // the entity despawn keeps both paths correct.
     this.reportedDrapeGpuBytes = 0;
 

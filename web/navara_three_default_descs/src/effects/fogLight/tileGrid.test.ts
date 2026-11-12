@@ -1,5 +1,5 @@
 import { Matrix4, OrthographicCamera, PerspectiveCamera, Vector3 } from "three";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { effectiveRange } from "./math";
 import { FogLightTileGrid } from "./tileGrid";
@@ -127,6 +127,19 @@ describe("FogLightTileGrid", () => {
     expect(grid.gridTexture).toBeDefined();
     expect(grid.indexTexture).toBeDefined();
     expect(grid.residualTexture).toBeDefined();
+  });
+
+  it("disposes its textures", () => {
+    const grid = new FogLightTileGrid(TILE_SIZE, 64);
+    grid.setSize(WIDTH, HEIGHT);
+    const spies = [grid.gridTexture, grid.indexTexture, grid.residualTexture]
+      .filter((t) => t !== undefined)
+      .map((t) => vi.spyOn(t, "dispose"));
+
+    grid.dispose();
+
+    expect(spies).toHaveLength(3);
+    for (const spy of spies) expect(spy).toHaveBeenCalledOnce();
   });
 
   it("bakes effective ranges into buf1.w and reports the change once", () => {

@@ -152,4 +152,25 @@ export class SSAO extends Pass<N8AOPostPass, unknown, SSAOOptions> {
 
     this.emit("needsUpdate");
   }
+
+  /**
+   * The depth texture is the composer's, and `Pass.dispose()` disposes every
+   * texture in the pass's own properties. N8AO's fullscreen quads are not
+   * passes, so `Pass.dispose()` skips their materials; `quad.dispose()` would
+   * also free the triangle geometry every N8AO pass shares.
+   */
+  dispose() {
+    const pass = this.rawPass;
+    pass.depthTexture = null;
+    for (const quad of [
+      pass.copyQuad,
+      pass.accumulationQuad,
+      pass.effectShaderQuad,
+      pass.effectCompositerQuad,
+      pass.depthDownsampleQuad,
+    ]) {
+      quad?.material.dispose();
+    }
+    super.dispose();
+  }
 }

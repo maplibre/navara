@@ -13,7 +13,7 @@ import ImageAttribution from "./ImageAttribution.astro";
 import GalleryTile from "./GalleryTile.astro";
 import LpHeader from "./LpHeader.astro";
 import LpFooter from "./LpFooter.astro";
-import { DOCS_BASE, docsHref, getLpLocale, lpRootStyle } from "./lp-shared";
+import { DOCS_BASE, docsHref, getLpLocale, lpRootStyle, siteHref } from "./lp-shared";
 import { logoSvg } from "./brand-logo";
 import "../styles/lp-base.css";
 import googleMapsLogo from "../assets/lp/google-maps-logo.png";
@@ -715,9 +715,19 @@ const heroScenes = [
               </div>
               <div class="lp-gallery-side-set" data-gallery-set="example">
                 <p class="lp-gallery-label">{t.gallery.example.label}</p>
+                <p class="lp-gallery-link">
+                  <a href={links.examples}
+                    >{t.gallery.viewMore}<ArrowUpRight class="lp-link-icon" size={15} /></a
+                  >
+                </p>
               </div>
               <div class="lp-gallery-side-set" data-gallery-set="showcase">
                 <p class="lp-gallery-label">{t.gallery.showcase.label}</p>
+                <p class="lp-gallery-link">
+                  <a href={siteHref(locale, links.showcases)}
+                    >{t.gallery.viewMore}<ArrowUpRight class="lp-link-icon" size={15} /></a
+                  >
+                </p>
               </div>
             </div>
           </aside>
@@ -2108,9 +2118,10 @@ const heroScenes = [
         font-weight: 700;
         font-size: 14px;
       }
-      .lp a.lp-btn-primary:hover {
-        background: var(--acc);
-        color: var(--on-acc);
+      .lp a.lp-btn-primary:hover,
+      .lp a.lp-btn-primary:active {
+        background: var(--acc-brand);
+        color: var(--pri-ink);
       }
       .lp a.lp-btn-outline {
         border: 1.5px solid color-mix(in srgb, var(--on-band) 45%, transparent);
@@ -2120,9 +2131,10 @@ const heroScenes = [
         font-weight: 700;
         font-size: 14px;
       }
-      .lp a.lp-btn-outline:hover {
-        border-color: var(--acc);
-        color: var(--acc);
+      .lp a.lp-btn-outline:hover,
+      .lp a.lp-btn-outline:active {
+        border-color: var(--acc-brand);
+        color: var(--acc-brand);
       }
       .lp-getting-started {
         margin-top: 18px;
@@ -2130,10 +2142,10 @@ const heroScenes = [
         font-weight: 700;
       }
       .lp .lp-getting-started a {
-        color: var(--acc);
+        color: var(--on-band);
       }
       .lp .lp-getting-started a:hover {
-        color: var(--on-band);
+        color: var(--acc-brand);
       }
 
       /* Eyebrow labels */
@@ -2485,10 +2497,10 @@ const heroScenes = [
         font-weight: 700;
       }
       .lp .lp-hello-cta a {
-        color: var(--acc);
+        color: var(--on-dark);
       }
       .lp .lp-hello-cta a:hover {
-        color: var(--on-dark);
+        color: var(--acc-brand);
       }
 
       /* Architecture: primary band between the light hello band and the
@@ -2702,18 +2714,36 @@ const heroScenes = [
          overlay crosses into the example grid. */
       .lp-gallery-side-set {
         grid-area: 1 / 1;
-        /* Bottom-align both sets so "See more" (and its distance to the screen
-           edge) stays put regardless of the vertical label's length — only the
-           taller label extends further up. */
+        /* Bottom-align the sets so the "View more" link (and its distance to
+           the screen edge) stays put regardless of the vertical label's
+           length: only the taller label extends further up. */
         align-self: end;
         opacity: 0;
         transition: opacity 0.35s ease;
         pointer-events: none;
       }
-      /* The whole overlay is click-transparent (no links inside since the
-         "See more" line was dropped) — clicks land on the tile underneath. */
+      /* The overlay is click-transparent, so clicks land on the tile
+         underneath, except for the active set's "View more" link. */
       .lp-gallery-side-set.lp-set-active {
         opacity: 1;
+      }
+      .lp-gallery-link {
+        margin-top: 22px;
+        font-size: 14px;
+        font-weight: 700;
+      }
+      .lp .lp-gallery-side-set.lp-set-active .lp-gallery-link a {
+        pointer-events: auto;
+      }
+      .lp .lp-gallery-link a {
+        color: var(--on-dark);
+        transition: color 0.4s ease;
+      }
+      .lp .lp-gallery-side.lp-side-dark .lp-gallery-link a {
+        color: var(--pri-ink);
+      }
+      .lp .lp-gallery-link a:hover {
+        text-decoration: underline;
       }
       .lp-gallery-label {
         /* Fluid with the viewport (≈32px on desktop, floors at 20px on
@@ -3051,17 +3081,19 @@ const heroScenes = [
         background: var(--on-dark);
         color: var(--pri-ink);
       }
-      .lp .lp-outro-ctas a.lp-btn-primary:hover {
-        background: var(--acc);
-        color: var(--on-acc);
+      .lp .lp-outro-ctas a.lp-btn-primary:hover,
+      .lp .lp-outro-ctas a.lp-btn-primary:active {
+        background: var(--acc-brand);
+        color: var(--pri-ink);
       }
       .lp .lp-outro-ctas a.lp-btn-outline {
         border-color: color-mix(in srgb, #fff 45%, transparent);
         color: var(--on-dark);
       }
-      .lp .lp-outro-ctas a.lp-btn-outline:hover {
-        border-color: var(--acc);
-        color: var(--acc);
+      .lp .lp-outro-ctas a.lp-btn-outline:hover,
+      .lp .lp-outro-ctas a.lp-btn-outline:active {
+        border-color: var(--acc-brand);
+        color: var(--acc-brand);
       }
 
       /* The footer's own look lives in LpFooter.astro; here it sits over the
@@ -3373,6 +3405,10 @@ const heroScenes = [
         }
         .lp-gallery-label {
           letter-spacing: 0.3em;
+        }
+        .lp-gallery-link {
+          margin-top: 16px;
+          font-size: 13px;
         }
 
         .lp-maplibre {

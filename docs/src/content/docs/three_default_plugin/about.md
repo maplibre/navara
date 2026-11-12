@@ -13,7 +13,7 @@ sidebar:
 
 ```
 navara_three (core: ThreeView, Plugin, addPlugin, registerMesh/Effect/Light)
-  ├── three_default_descs (descriptor implementations: 22 meshes, 14 effects, 4 lights)
+  ├── three_default_descs (descriptor implementations: meshes, effects, lights)
   └── three_default_plugin (DefaultPlugin: bulk descriptor registration + utilities)
 ```
 
@@ -35,13 +35,7 @@ view.addPlugin(plugin);
 await view.init({ canvas: document.getElementById("canvas") });
 ```
 
-The following descriptors are automatically registered during the plugin's `init()`:
-
-**Mesh descriptors (24 types):** `rain`, `snow`, `sky`, `skyBox`, `stars`, `box`, `sphere`, `glowGlobe`, `cylinder`, `tube`, `plane`, `gltfModel`, `splat`, `axesHelper`, `arrowHelper`, `arcLines`, `polygon`, `polyline`, `smoothLines`, `boxes`, `spheres`, `planes`, `cylinders`, `gltfModels`
-
-**Effect descriptors (14 types):** `aerialPerspective`, `rainDrop`, `selectiveBloom`, `selectiveOutline`, `clouds`, `fogLight`, `lensFlare`, `ssao`, `ssr`, `depthOfField`, `colorGradingLUT`, `toneMapping`, `smaa`, `fxaa`
-
-**Light descriptors (4 types):** `sun`, `ambient`, `skyLightProbe`, `lightProbe`
+The plugin's `init()` registers every Descriptor of `three_default_descs`. See [Mesh Descriptor](../../three_default_descs/mesh-desc/about/), [Effect Descriptor](../../three_default_descs/effect-desc/about/) and [Light Descriptor](../../three_default_descs/light-desc/about/) for the available Descriptors, and each Descriptor's page for the key it is added with (e.g. `box` for `BoxMeshDesc`).
 
 ### addDefaultPhotorealScene()
 
