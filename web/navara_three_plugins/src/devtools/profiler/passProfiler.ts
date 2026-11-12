@@ -10,7 +10,10 @@ export type PassSample = {
   /** Whether the composer ran the pass this tick (disabled passes are skipped). */
   ran: boolean;
   cpuMs: number;
-  /** Latest resolved GPU time; `undefined` without timer-query support. */
+  /**
+   * GPU time of the latest tick whose queries resolved, summed over every
+   * run of the pass in that tick; `undefined` without timer-query support.
+   */
   gpuMs: number | undefined;
   calls: number;
   triangles: number;
@@ -37,6 +40,8 @@ export class PassProfiler {
   readonly gpu: GpuTimer;
   private readonly wrapped = new Map<Pass, Wrapped>();
   private readonly results: GpuTimerResult[] = [];
+  /** Per pass, the GPU time summed so far for the newest tick resolved. */
+  private readonly gpuSums = new Map<string, { tick: number; ms: number }>();
   private tick = 0;
   private enabled = false;
 
@@ -60,6 +65,7 @@ export class PassProfiler {
     this.ctx.off("passesChanged", this.sync);
     for (const pass of Array.from(this.wrapped.keys())) this.unwrap(pass);
     this.samples.clear();
+    this.gpuSums.clear();
   }
 
   /** Starts a tick: clears the per-tick counters and collects GPU results. */
@@ -73,9 +79,18 @@ export class PassProfiler {
     }
     this.results.length = 0;
     this.gpu.poll(this.results);
+    // Results come in issue order, and one tick's queries for a pass may
+    // resolve over several polls: sum them while the tick stays the same.
     for (const result of this.results) {
       const sample = this.samples.get(result.label);
-      if (sample) sample.gpuMs = result.ms;
+      if (!sample) continue;
+      let sum = this.gpuSums.get(result.label);
+      if (!sum || sum.tick !== result.tick) {
+        sum = { tick: result.tick, ms: 0 };
+        this.gpuSums.set(result.label, sum);
+      }
+      sum.ms += result.ms;
+      sample.gpuMs = sum.ms;
     }
   }
 
@@ -155,5 +170,6 @@ export class PassProfiler {
     else delete (pass as Partial<Pass>).render;
     this.wrapped.delete(pass);
     this.samples.delete(entry.name);
+    this.gpuSums.delete(entry.name);
   }
 }

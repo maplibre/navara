@@ -569,6 +569,12 @@ export type ViewEvents = {
   layerAdded: (layer: Layer, description: LayerDescription) => void;
   /** Emitted when a resource layer is deleted, after its `deleted` event. */
   layerRemoved: (layer: Layer) => void;
+  /**
+   * Emitted once at the start of `dispose()`, while the view still works.
+   * Plugins are the caller's to dispose; a plugin can listen to release
+   * what it holds on the view.
+   */
+  disposed: () => void;
 };
 
 /**
@@ -1882,6 +1888,13 @@ export default class ThreeView<
    * Call this when the view is no longer needed.
    */
   dispose() {
+    if (!this._disposed) {
+      try {
+        this.emit("disposed");
+      } catch (error) {
+        console.error("A disposed listener threw:", error);
+      }
+    }
     this._disposed = true;
     this._initialized = false;
     // Released first so a throw below, or an init() still in flight, cannot

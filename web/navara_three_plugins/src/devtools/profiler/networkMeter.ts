@@ -5,7 +5,10 @@ export type NetworkEntry = {
   /** When the response headers arrived (or the fetch failed). */
   end: number | undefined;
   status: number | undefined;
+  /** No response: a network error or a status of 400 or more. */
   failed: boolean;
+  /** Cancelled by its `AbortSignal` (a tile that left the view); not a failure. */
+  aborted: boolean;
   /** `Content-Length` of the response (compressed bytes), when sent. */
   bytes: number | undefined;
   /** Bytes on the wire from resource timing, when the origin allows it. */
@@ -117,7 +120,8 @@ export class NetworkMeter {
       entry: NetworkEntry,
       status: number | undefined,
       headers: Headers | undefined,
-    ) => this.finish(entry, status, headers);
+      aborted = false,
+    ) => this.finish(entry, status, headers, aborted);
     this.wrapper = globalThis.fetch = function (
       this: unknown,
       input: RequestInfo | URL,
@@ -131,7 +135,7 @@ export class NetworkMeter {
           return response;
         },
         (error: unknown) => {
-          finish(entry, undefined, undefined);
+          finish(entry, undefined, undefined, isAbort(error, input, init));
           throw error;
         },
       );
@@ -217,6 +221,7 @@ export class NetworkMeter {
       end: undefined,
       status: undefined,
       failed: false,
+      aborted: false,
       bytes: undefined,
       transferBytes: undefined,
       decodedBytes: undefined,
@@ -233,10 +238,12 @@ export class NetworkMeter {
     entry: NetworkEntry,
     status: number | undefined,
     headers: Headers | undefined,
+    aborted: boolean,
   ): void {
     entry.end = performance.now();
     entry.status = status;
-    entry.failed = status === undefined || status >= 400;
+    entry.aborted = aborted;
+    entry.failed = !aborted && (status === undefined || status >= 400);
     this.inFlight--;
     const length = headers?.get("content-length");
     if (length !== null && length !== undefined) {
@@ -275,6 +282,19 @@ export class NetworkMeter {
     }
     return best;
   }
+}
+
+/** Whether a rejected fetch was cancelled through its signal. */
+function isAbort(
+  error: unknown,
+  input: RequestInfo | URL,
+  init: RequestInit | undefined,
+): boolean {
+  if (init?.signal?.aborted) return true;
+  if (typeof Request !== "undefined" && input instanceof Request) {
+    if (input.signal.aborted) return true;
+  }
+  return (error as { name?: unknown } | null)?.name === "AbortError";
 }
 
 function urlOf(input: RequestInfo | URL): string {

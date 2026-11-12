@@ -150,11 +150,11 @@ function toHex(value: unknown): string | undefined {
   return undefined;
 }
 
-function show(value: unknown): string {
+/** A default for a tooltip; only a color field's number is a hex color. */
+function show(value: unknown, kind: MaterialField["kind"]): string {
   if (value === undefined) return "decided by the engine";
-  const hex = toHex(value);
-  if (hex && typeof value !== "boolean") return hex;
-  return JSON.stringify(value);
+  const hex = kind === "color" ? toHex(value) : undefined;
+  return hex ?? JSON.stringify(value);
 }
 
 /** The material keys an editor shows for a layer. */
@@ -292,7 +292,7 @@ export class StyleEditor {
     const label = `${field.name}${set ? " •" : ""}`;
     const title = [
       field.doc ?? "",
-      `Default: ${show(field.default)}.`,
+      `Default: ${show(field.default, field.kind)}.`,
       set
         ? "Set on this layer (•)."
         : "Not set on this layer: the default applies.",

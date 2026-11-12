@@ -86,6 +86,27 @@ describe("NetworkMeter", () => {
     expect(meter.entries.map((e) => e.sourceId)).toEqual(["y"]);
   });
 
+  it("does not count an aborted fetch as failed", async () => {
+    globalThis.fetch = ((_input: RequestInfo | URL, init?: RequestInit) =>
+      init?.signal?.aborted
+        ? Promise.reject(new DOMException("aborted", "AbortError"))
+        : Promise.reject(new TypeError("network error"))) as typeof fetch;
+    const meter = new NetworkMeter();
+    meter.enable();
+    const controller = new AbortController();
+    controller.abort();
+    await fetch("https://a.example/1", { signal: controller.signal }).catch(
+      () => undefined,
+    );
+    await fetch("https://a.example/2").catch(() => undefined);
+    meter.disable();
+    expect(meter.entries.map((e) => [e.aborted, e.failed])).toEqual([
+      [true, false],
+      [false, true],
+    ]);
+    expect(meter.perSource()[0].failed).toBe(1);
+  });
+
   it("leaves a fetch wrapper installed after it in place", async () => {
     globalThis.fetch = stubFetch;
     const meter = new NetworkMeter();

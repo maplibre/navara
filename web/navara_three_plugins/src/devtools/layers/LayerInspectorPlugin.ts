@@ -1,4 +1,8 @@
-import type { Layer, LayerDescription } from "@navaramap/three";
+import type {
+  Layer,
+  LayerDescription,
+  SourceDescription,
+} from "@navaramap/three";
 import type { FolderApi } from "tweakpane";
 
 import {
@@ -20,9 +24,11 @@ export type LayerInspectorPluginOptions = DevtoolPluginOptions & {
   /** When given, the layer list shows each layer's downloads from it. */
   profiler?: ProfilerPlugin;
   /**
-   * Keep geometries' CPU arrays so wireframes can be drawn (see
-   * `ViewContext.retainGeometryArrays`). Costs a JS-heap copy of every
-   * terrain and polygon geometry, which the Profiler's JS heap includes.
+   * While the tool is enabled, keep geometries' CPU arrays so wireframes can
+   * be drawn (see `ViewContext.retainGeometryArrays`). Costs a JS-heap copy
+   * of every terrain and polygon geometry built meanwhile, which the
+   * Profiler's JS heap includes. Disabling the tool restores the previous
+   * setting; geometries built before it was enabled cannot draw a wireframe.
    * @defaultValue `true`
    */
   wireframe?: boolean;
@@ -79,7 +85,19 @@ export class LayerInspectorPlugin extends DevtoolPlugin {
   /** Descriptions of layers deleted here, newest last, for restoring. */
   private readonly removed: LayerDescription[] = [];
   private costs = new Map<string, LayerCost>();
-  private readonly ticker = new Ticker(UI_INTERVAL_MS, () => this.refresh());
+  /**
+   * Source descriptions by id, for the layer names. Cleared when sources or
+   * layers are added or removed; a `source.update()` alone shows on the next
+   * such change.
+   */
+  private readonly sources = new Map<string, SourceDescription | undefined>();
+  private layersFolder!: FolderApi;
+  /** Skipped while the list cannot be seen (panel hidden, folder closed). */
+  private readonly ticker = new Ticker(UI_INTERVAL_MS, () => {
+    if (this.shown && this.layersFolder.expanded) this.refresh();
+  });
+  /** `retainGeometryArrays` before `onEnable()` turned it on. */
+  private retainedBefore: boolean | undefined;
   /** Stops recording layer descriptions; set from `onInit()`. */
   private stopTracking: (() => void) | undefined;
 
@@ -103,10 +121,10 @@ export class LayerInspectorPlugin extends DevtoolPlugin {
     // Before anything else, and whether or not the tool is enabled: `init()`
     // runs before the app can add a layer, so every layer is recorded.
     this.stopTracking = trackLayerDescriptions(this.view);
-    if (this.wireframeSupport) this.ctx.retainGeometryArrays = true;
     const ui = this.ui;
 
     const layers = ui.addFolder({ title: "Layers" });
+    this.layersFolder = layers;
     this.list = addHtmlBlock(layers);
     this.list.element.addEventListener("click", this.onListClick);
 
@@ -121,8 +139,14 @@ export class LayerInspectorPlugin extends DevtoolPlugin {
   }
 
   protected onEnable(): void {
+    if (this.wireframeSupport) {
+      this.retainedBefore = this.ctx.retainGeometryArrays;
+      this.ctx.retainGeometryArrays = true;
+    }
     this.view.on("layerAdded", this.onLayersChanged);
     this.view.on("layerRemoved", this.onLayersChanged);
+    this.view.on("sourceAdded", this.onSourceAdded);
+    this.sources.clear();
     this.ticker.start();
     this.onLayersChanged();
   }
@@ -130,9 +154,14 @@ export class LayerInspectorPlugin extends DevtoolPlugin {
   protected onDisable(): void {
     this.view.off("layerAdded", this.onLayersChanged);
     this.view.off("layerRemoved", this.onLayersChanged);
+    this.view.off("sourceAdded", this.onSourceAdded);
     this.cancelLayersSync();
     this.ticker.stop();
     this.showAll();
+    if (this.retainedBefore !== undefined) {
+      this.ctx.retainGeometryArrays = this.retainedBefore;
+      this.retainedBefore = undefined;
+    }
   }
 
   protected onDispose(): void {
@@ -155,7 +184,10 @@ export class LayerInspectorPlugin extends DevtoolPlugin {
     this.syncSelection();
   }
 
-  /** Resident cost per layer id, plus the globe-tile and untagged buckets. */
+  /**
+   * Resident cost per layer id, plus the globe-tile and untagged buckets.
+   * Updated while the layer list can be seen.
+   */
   get layerCosts(): ReadonlyMap<string, LayerCost> {
     return this.costs;
   }
@@ -233,9 +265,22 @@ export class LayerInspectorPlugin extends DevtoolPlugin {
     if (this.layersSync !== undefined) return;
     this.layersSync = setTimeout(() => {
       this.layersSync = undefined;
+      // A removed layer may have taken its source with it.
+      this.sources.clear();
       if (!this.selected()) this.selectedId = this.layerList()[0]?.id ?? "";
       this.syncSelection();
     }, 0);
+  };
+
+  private readonly onSourceAdded = (): void => {
+    this.sources.clear();
+  };
+
+  private readonly sourceOf = (id: string): SourceDescription | undefined => {
+    if (!this.sources.has(id)) {
+      this.sources.set(id, this.view.getSourceDescription(id));
+    }
+    return this.sources.get(id);
   };
 
   private cancelLayersSync(): void {
@@ -279,7 +324,7 @@ export class LayerInspectorPlugin extends DevtoolPlugin {
     }
     // The name follows the description, which edits change.
     this.actions.title = layer
-      ? `Selected: ${labelLayer(this.view, layer).name}`
+      ? `Selected: ${labelLayer(layer, this.sourceOf).name}`
       : "Selected layer";
     this.refresh();
   }
@@ -331,7 +376,7 @@ export class LayerInspectorPlugin extends DevtoolPlugin {
     this.editor = undefined;
     const layer = this.selected();
     this.styleFolder.title = layer
-      ? `Style: ${labelLayer(this.view, layer).name}`
+      ? `Style: ${labelLayer(layer, this.sourceOf).name}`
       : "Style";
     if (!layer) return;
     let originals = this.originals.get(layer.id);
@@ -354,7 +399,7 @@ export class LayerInspectorPlugin extends DevtoolPlugin {
   private renderList(): string {
     const network = this.profiler?.networkBySource();
     const rows = this.layerList().map((layer) => {
-      const label = labelLayer(this.view, layer);
+      const label = labelLayer(layer, this.sourceOf);
       const cost = this.costs.get(layer.id);
       const type = descriptionOf(layer).type ?? "";
       const visible = !this.hidden.has(layer.id);

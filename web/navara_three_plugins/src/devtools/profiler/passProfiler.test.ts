@@ -59,6 +59,48 @@ describe("PassProfiler", () => {
     expect(profiler.samples.size).toBe(0);
   });
 
+  it("sums the GPU time of every run of a pass in one tick", () => {
+    const passes = new Map([["a", new FakePass()]]);
+    const ctx = fakeContext(passes);
+    const queries: object[] = [];
+    const results = new Map<object, number>();
+    const gl = {
+      QUERY_RESULT_AVAILABLE: 1,
+      QUERY_RESULT: 2,
+      getExtension: () => ({ TIME_ELAPSED_EXT: 1, GPU_DISJOINT_EXT: 2 }),
+      createQuery: () => {
+        const query = {};
+        queries.push(query);
+        return query;
+      },
+      deleteQuery: () => {},
+      beginQuery: () => {},
+      endQuery: () => {},
+      getQueryParameter: (q: object, p: number) =>
+        p === 1 ? results.has(q) : (results.get(q) ?? 0),
+      getParameter: () => false,
+    };
+    const timed = {
+      info,
+      getContext: () => gl,
+    } as unknown as WebGLRenderer;
+    const profiler = new PassProfiler(ctx, timed);
+    profiler.enable();
+    const a = passes.get("a") as unknown as Pass;
+
+    profiler.beginTick(1);
+    a.render(timed, null, null);
+    a.render(timed, null, null);
+    // The first run resolves before the second: the sum spans two polls.
+    results.set(queries[0], 2e6);
+    profiler.beginTick(2);
+    expect(profiler.samples.get("a")?.gpuMs).toBe(2);
+    results.set(queries[1], 3e6);
+    profiler.beginTick(3);
+    expect(profiler.samples.get("a")?.gpuMs).toBe(5);
+    profiler.dispose();
+  });
+
   it("follows passesChanged: wraps new passes and unwraps removed ones", () => {
     const passes = new Map([["a", new FakePass()]]);
     const ctx = fakeContext(passes);

@@ -44,6 +44,9 @@ export class DevtoolsPlugin extends Plugin<ThreeView, ViewContext> {
   readonly layers: LayerInspectorPlugin | undefined;
 
   private readonly tools: DevtoolPlugin[] = [];
+  private view: ThreeView | undefined;
+  private disposed = false;
+  private readonly onViewDisposed = (): void => this.dispose();
 
   constructor(options: DevtoolsPluginOptions = {}) {
     super();
@@ -69,13 +72,24 @@ export class DevtoolsPlugin extends Plugin<ThreeView, ViewContext> {
   }
 
   async init(view: ThreeView, ctx: ViewContext): Promise<void> {
+    if (this.disposed) return;
+    // The view leaves plugins to the caller; a disposed view takes these
+    // down with it, so timers and the `fetch` wrapper stop.
+    this.view = view;
+    view.on("disposed", this.onViewDisposed);
     // Each tool adds its tab synchronously at the start of `init`, so the
     // tabs follow `tools`.
     await Promise.all(this.tools.map((tool) => tool.init(view, ctx)));
   }
 
-  /** Removes the tools and the panel. */
+  /**
+   * Removes the tools and the panel. Called by `view.dispose()` too; safe to
+   * call more than once.
+   */
   dispose(): void {
+    if (this.disposed) return;
+    this.disposed = true;
+    this.view?.off("disposed", this.onViewDisposed);
     for (const tool of this.tools) tool.dispose();
     this.panel.dispose();
   }

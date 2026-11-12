@@ -22,7 +22,8 @@ export type DevtoolPluginOptions = {
  * at runtime. `init` stores the view and context, builds the UI container
  * (a tab of the shared panel or an own pane) with an `enabled` toggle, calls
  * `onInit()`, then `onEnable()` when enabled. A disabled tool must hold no
- * listeners, pass wrappers or DOM beyond its controls.
+ * listeners, pass wrappers or DOM beyond its controls. The tool disposes
+ * itself when the view is disposed (the view leaves plugins to the caller).
  */
 export abstract class DevtoolPlugin<
   V extends ThreeView = ThreeView,
@@ -41,6 +42,7 @@ export abstract class DevtoolPlugin<
   private page: TabPageApi | undefined;
   private _enabled: boolean;
   private ready = false;
+  private disposed = false;
   private readonly state = { enabled: true };
   private enabledBinding: { refresh(): void } | undefined;
 
@@ -51,8 +53,10 @@ export abstract class DevtoolPlugin<
   }
 
   async init(view: V, ctx: ViewContext): Promise<void> {
+    if (this.disposed) return;
     this.view = view;
     this.ctx = ctx;
+    view.on("disposed", this.onViewDisposed);
     if (this.panel) {
       this.ui = this.page = this.panel.addPage(this.title);
     } else {
@@ -78,19 +82,36 @@ export abstract class DevtoolPlugin<
     if (this._enabled) this.onEnable();
   }
 
-  /** Whether the tool is doing its work. Toggling before `init` is deferred. */
+  /**
+   * Whether the tool is doing its work. Toggling before `init` is deferred;
+   * after `dispose` it does nothing.
+   */
   get enabled(): boolean {
     return this._enabled;
   }
 
   set enabled(value: boolean) {
-    if (value === this._enabled) return;
+    if (this.disposed || value === this._enabled) return;
     this._enabled = value;
     this.state.enabled = value;
     this.enabledBinding?.refresh();
     if (!this.ready) return;
     if (value) this.onEnable();
     else this.onDisable();
+  }
+
+  /**
+   * Whether the tool's controls can be seen: the panel is shown, this tool's
+   * tab is selected, and the pane is expanded. UI tickers skip their work
+   * while it is false.
+   */
+  protected get shown(): boolean {
+    if (this.panel) {
+      return (
+        this.panel.visible && this.panel.pane.expanded && !!this.page?.selected
+      );
+    }
+    return !!this.ownPane?.expanded;
   }
 
   /** Builds the controls. The view is initialized; the tool is not enabled yet. */
@@ -102,10 +123,18 @@ export abstract class DevtoolPlugin<
   /** Releases resources that outlive enable / disable cycles. */
   protected onDispose(): void {}
 
+  private readonly onViewDisposed = (): void => this.dispose();
+
+  /** Stops the tool and removes its controls. Safe to call more than once. */
   dispose(): void {
+    if (this.disposed) return;
+    this.disposed = true;
+    this.view?.off("disposed", this.onViewDisposed);
+    const wasReady = this.ready;
     if (this.ready && this._enabled) this.onDisable();
+    this.ready = false;
     this._enabled = false;
-    this.onDispose();
+    if (wasReady) this.onDispose();
     this.ownPane?.dispose();
     this.ownPane = undefined;
     if (this.page) this.panel?.removePage(this.page);

@@ -92,7 +92,7 @@ Register the plugin with `view.addPlugin()` **before** `view.init()`. The Layers
 dispose(): void
 ```
 
-Disables every tool and removes the panel from the page.
+Disables every tool and removes the panel from the page. `view.dispose()` calls it too, so the tools stop with the view. Calling it more than once is safe.
 
 ## Profiler
 
@@ -119,7 +119,7 @@ The style form lists every setting of the selected layer's materials. A setting 
 
 ### Wireframe and memory
 
-The wireframe toggle needs each geometry's vertex arrays kept in JS memory, so the Layers tool keeps them for every terrain and polygon geometry. The Profiler's JS heap includes that copy. Pass `layers: { wireframe: false }` to measure memory without it. The wireframe toggle is then hidden.
+The wireframe toggle needs each geometry's vertex arrays kept in JS memory. While the Layers tool is enabled, it keeps them for every terrain and polygon geometry built in that time. The Profiler's JS heap includes that copy. Disabling the tool stops this, but geometries built before the tool was enabled cannot show a wireframe. Pass `layers: { wireframe: false }` to measure memory without the copy. The wireframe toggle is then hidden.
 
 ## Types
 
@@ -166,7 +166,7 @@ type DevtoolsPanelOptions = {
 
 ## Notes
 
-- **Development only.** The Profiler wraps `fetch` and each render pass while it is enabled, and the Layers tool keeps geometry arrays for wireframes. Both cost time and memory that an application does not need.
+- **Development only.** The Profiler wraps `fetch` and each render pass while it is enabled, and the Layers tool keeps geometry arrays for wireframes while it is enabled. Both cost time and memory that an application does not need.
 - **One tool at a time.** `ProfilerPlugin` and `LayerInspectorPlugin` are also exported. Add one of them alone with `view.addPlugin()` to get that tool in a panel of its own.
 
 ## Related Resources

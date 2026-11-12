@@ -1,4 +1,3 @@
-import type ThreeView from "@navaramap/three";
 import type { Layer, SourceDescription } from "@navaramap/three";
 
 import { hostOf } from "../util/format";
@@ -31,15 +30,22 @@ function pathName(url: string | undefined): string {
   }
 }
 
-/** A human name for a layer from its description and source. */
-export function labelLayer(view: ThreeView, layer: Layer): LayerLabel {
+/**
+ * A human name for a layer from its description and source. `sourceOf`
+ * looks a source description up by id; callers cache it, since reading one
+ * from the engine serializes it across the WASM boundary.
+ */
+export function labelLayer(
+  layer: Layer,
+  sourceOf: (id: string) => SourceDescription | undefined,
+): LayerLabel {
   const desc = descriptionOf(layer) as unknown as Record<string, unknown> & {
     type: string;
     source?: string;
     sourceLayers?: string[];
   };
   const sourceId = typeof desc.source === "string" ? desc.source : undefined;
-  const source = sourceId ? view.getSourceDescription(sourceId) : undefined;
+  const source = sourceId ? sourceOf(sourceId) : undefined;
   const url = (source as { url?: string } | undefined)?.url;
   const origin = source
     ? `${describeSourceType(source.type ?? "")} · ${hostOf(url) || "inline data"}`

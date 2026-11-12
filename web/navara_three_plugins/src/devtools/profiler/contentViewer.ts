@@ -152,6 +152,8 @@ export class BufferViewer {
   private status: HtmlBlock | undefined;
   private brightnessBinding: { hidden: boolean } | undefined;
   private registered = false;
+  /** Between `enable()` and `disable()`: the controls may draw only then. */
+  private active = false;
   /** What the shown view resolved to at the last `apply`. */
   private shown: Texture | string | undefined;
 
@@ -193,6 +195,7 @@ export class BufferViewer {
     const shadowMaps = folder
       .addBinding(this.state, "shadowMaps", { label: "sun shadow maps" })
       .on("change", () => {
+        if (!this.active) return;
         this.view.shadowMapViewersEnabled = this.state.shadowMaps;
         this.view.forceUpdate();
       });
@@ -204,6 +207,7 @@ export class BufferViewer {
   }
 
   enable(): void {
+    this.active = true;
     if (!this.registered) {
       this.ctx.insertPassBefore("final", PASS_NAME, this.pass);
       this.registered = true;
@@ -214,8 +218,13 @@ export class BufferViewer {
   }
 
   disable(): void {
+    if (!this.active) return;
+    this.active = false;
+    const drawn = this.pass.enabled || this.state.shadowMaps;
     this.pass.enabled = false;
     if (this.state.shadowMaps) this.view.shadowMapViewersEnabled = false;
+    // Redraw so the inset does not stay in the last frame.
+    if (drawn) this.view.forceUpdate();
   }
 
   dispose(): void {
@@ -270,7 +279,7 @@ export class BufferViewer {
     this.pass.brightness = this.state.brightness;
     this.pass.corner = CORNERS[this.state.corner];
     this.pass.scale = this.state.size;
-    this.pass.enabled = this.state.show && texture !== undefined;
+    this.pass.enabled = this.active && this.state.show && texture !== undefined;
     if (this.brightnessBinding) {
       this.brightnessBinding.hidden =
         view.mode === "normal" || view.mode === "bitmask";
@@ -280,6 +289,6 @@ export class BufferViewer {
         ? `<span class="warn">Not available:</span> ${esc(resolved)}`
         : esc(view.description);
     this.status?.render(`<div class="note">${status}</div>`);
-    this.view.forceUpdate();
+    if (this.active) this.view.forceUpdate();
   }
 }

@@ -108,12 +108,20 @@ export class ProfilerPlugin extends DevtoolPlugin {
   private background!: HtmlBlock;
   private drawBlock!: HtmlBlock;
   private targets!: HtmlBlock;
+  /** Collapsible folders: a closed one's table is not rebuilt. */
+  private folders!: Record<
+    "breakdown" | "memory" | "downloads" | "background" | "draws" | "targets",
+    { expanded: boolean }
+  >;
 
   private readonly uiTicker = new Ticker(UI_INTERVAL_MS, () =>
     this.refreshUi(),
   );
   private readonly memoryTicker = new Ticker(MEMORY_INTERVAL_MS, () => {
-    void this.refreshMemory();
+    if (!this.shown) return;
+    this.refreshMemory().catch((error: unknown) => {
+      console.warn("Profiler: reading memory stats failed:", error);
+    });
   });
 
   constructor(options: ProfilerPluginOptions = {}) {
@@ -177,6 +185,8 @@ export class ProfilerPlugin extends DevtoolPlugin {
       "Render targets sized to the screen: the G-buffer and post-processing buffers. Their memory grows with the canvas size and pixel ratio.",
     );
     this.targets = addHtmlBlock(targets);
+
+    this.folders = { breakdown, memory, downloads, background, draws, targets };
 
     this.viewer.buildUi(ui);
 
@@ -309,17 +319,24 @@ export class ProfilerPlugin extends DevtoolPlugin {
     this.network.setMatchers(this.matchers);
   };
 
+  /**
+   * Rebuilds only what can be seen: nothing while the panel is hidden or
+   * another tab is shown, and no closed folder's table. The buffer viewer
+   * draws on the map, so it is checked either way.
+   */
   private refreshUi(): void {
+    this.viewer.refresh();
+    if (!this.shown) return;
     const now = performance.now();
+    const open = this.folders;
     for (const refresh of this.graphRefreshers) refresh();
     this.refreshSummary(now);
-    this.refreshBreakdown();
-    this.refreshMemoryBlock();
-    this.refreshDownloads(now);
-    this.refreshBackground();
-    this.refreshDraws(now);
-    this.refreshTargets();
-    this.viewer.refresh();
+    if (open.breakdown.expanded) this.refreshBreakdown();
+    if (open.memory.expanded) this.refreshMemoryBlock();
+    if (open.downloads.expanded) this.refreshDownloads(now);
+    if (open.background.expanded) this.refreshBackground();
+    if (open.draws.expanded) this.refreshDraws(now);
+    if (open.targets.expanded) this.refreshTargets();
   }
 
   private gpuTotal(): number | undefined {
@@ -698,7 +715,8 @@ ${rows.join("\n")}
     a.href = url;
     a.download = `navara-profile-${Date.now()}.json`;
     a.click();
-    URL.revokeObjectURL(url);
+    // Revoked later: some browsers read the blob after `click()` returns.
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
 }
 
