@@ -230,9 +230,12 @@ export class CustomRenderPass extends RenderPass {
     rt.setSize(old.width, old.height);
     rt.texture = old.texture;
     appendOptionalGBufferAttachments(rt, buffers);
-    rt.depthTexture = old.depthTexture;
-    // three disposes rt.depthTexture with the target; detach the reused one.
+    // Detach before re-attaching: three hands a depth texture's ownership only
+    // to a target when it is unowned, and only the owner reallocates it on
+    // setSize (an unowned one keeps its old size and breaks the framebuffer).
+    const depthTexture = old.depthTexture;
     old.depthTexture = null;
+    rt.depthTexture = depthTexture;
     this.gbufferRenderTarget = rt;
     old.dispose();
 
