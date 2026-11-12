@@ -7,12 +7,12 @@ use bevy_ecs::{
     component::Component,
     entity::Entity,
     message::MessageReader,
-    query::{Added, With, Without},
+    query::{Added, Or, With, Without},
     schedule::{IntoScheduleConfigs, SystemSet},
     system::{Commands, Query, Res, ResMut},
 };
 use navara_buffer_store::{BufferStore, BufferStoreFailedEvent, BufferStoreLoadedEvent, Handle};
-use navara_component::{Deleted, Ignored, Priority, Requested, Waiting};
+use navara_component::{Deleted, Ignored, Priority, Requested, Resumed, Waiting};
 use navara_event_store::EventStore;
 use navara_worker_component::WorkerLimits;
 use url::Url;
@@ -84,10 +84,8 @@ fn dispatch_fetch(
 }
 
 /// Mark a pending requester `Requested` and dispatch its fetch, unless
-/// another consumer of the same URL already did this frame. A pipeline that
-/// held a requester back with [`Waiting`] sends it through here when it
-/// releases it, because the senders only take newly added requesters.
-pub fn send_data_request(
+/// another consumer of the same URL already did this frame.
+fn send_data_request(
     commands: &mut Commands,
     events: &mut EventStore,
     data_manager: &mut DataManager,
@@ -418,7 +416,7 @@ pub fn send_data_request_events(
     requests: Query<
         (Entity, &DataRequester),
         (
-            Added<DataRequester>,
+            Or<(Added<DataRequester>, Added<Resumed>)>,
             Without<Priority>,
             Without<Deleted>,
             Without<Requested>,
@@ -453,7 +451,7 @@ pub fn send_data_request_events_with_priority(
     requests: Query<
         (Entity, &Priority, &DataRequester),
         (
-            Added<DataRequester>,
+            Or<(Added<DataRequester>, Added<Resumed>)>,
             Without<Deleted>,
             Without<Requested>,
             Without<Waiting>,
@@ -499,7 +497,7 @@ pub fn send_data_request_events_with_priority_and_sort<K: RequestOrderKey>(
     requests: Query<
         (Entity, &Priority, &RequestOrder<K>, &DataRequester),
         (
-            Added<DataRequester>,
+            Or<(Added<DataRequester>, Added<Resumed>)>,
             Without<Deleted>,
             Without<Requested>,
             Without<Waiting>,
@@ -899,9 +897,9 @@ mod tests {
     }
 
     /// A requester its pipeline holds back is not sent, whichever sender
-    /// runs; the pipeline sends it itself when it releases it.
+    /// runs, until the pipeline releases it.
     #[test]
-    fn senders_skip_a_waiting_requester() {
+    fn senders_send_a_waiting_requester_once_released() {
         let mut app = App::new();
         app.init_resource::<EventStore>();
         app.init_resource::<DataManager>();
@@ -923,14 +921,14 @@ mod tests {
         assert_eq!(order, vec![sent]);
         assert!(app.world().get::<Requested>(held).is_none());
 
-        app.world_mut().entity_mut(held).remove::<Waiting>();
+        app.world_mut()
+            .entity_mut(held)
+            .remove::<Waiting>()
+            .insert(Resumed);
         app.update();
         let order = app.world().resource::<EventStore>().data_requested.clone();
-        assert_eq!(
-            order,
-            vec![sent],
-            "a released requester is the pipeline's to send"
-        );
+        assert_eq!(order, vec![sent, held]);
+        assert!(app.world().get::<Requested>(held).is_some());
     }
 
     #[test]

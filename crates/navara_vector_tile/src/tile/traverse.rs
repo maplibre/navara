@@ -433,12 +433,10 @@ pub fn traverse_tile(
             let keeps_drawn_descendants = !hide_children
                 && !are_all_children_mesh_prepared
                 && !is_drawn
-                && queued_descendants.iter().enumerate().any(|(i, range)| {
-                    drawn_children[i]
-                        || activations.queued(range.clone()).iter().any(|d| {
-                            is_tile_drawn(tc, d, rendered_tiles, features, renderable_features)
-                        })
-                });
+                && queued_descendants
+                    .iter()
+                    .enumerate()
+                    .any(|(i, range)| drawn_children[i] || activations.any_drawn(range.clone()));
 
             let tile = qt.qt.get_mut(handle).unwrap();
             // The kept tiles are visited on a zoom-out like a complete group,
@@ -497,7 +495,11 @@ pub fn traverse_tile(
                     are_all_children_mesh_prepared && !hide_children
                 };
                 if draws_child {
-                    for descendant in activations.activate(*child, queued_descendants[i].clone()) {
+                    for descendant in activations.activate(
+                        *child,
+                        drawn_children[i],
+                        queued_descendants[i].clone(),
+                    ) {
                         write_activation(
                             tc,
                             &descendant,
@@ -659,7 +661,15 @@ pub fn activate_if_changed(mut feature: Mut<RenderableFeature>, active: bool) {
 /// beside it. The traversal is post-order, so everything a child's subtree
 /// queues sits in one contiguous run, which [`Self::activate`] drops.
 #[derive(Default)]
-pub struct PendingActivations(Vec<TileHandle>);
+pub struct PendingActivations(Vec<QueuedTile>);
+
+/// A tile queued active, and whether it was on screen when it was queued. A
+/// queued tile is not written until [`PendingActivations::apply`], so that
+/// stays true while it is queued.
+struct QueuedTile {
+    handle: TileHandle,
+    drawn: bool,
+}
 
 impl PendingActivations {
     /// Where the tiles queued from now on start.
@@ -667,20 +677,23 @@ impl PendingActivations {
         self.0.len()
     }
 
-    /// Queues `handle` active and takes back the tiles queued under it
-    /// (`descendants`, a run between two [`Self::mark`]s), to deactivate.
+    /// Queues `handle` active (`drawn`: whether it is on screen now) and takes
+    /// back the tiles queued under it (`descendants`, a run between two
+    /// [`Self::mark`]s), to deactivate.
     pub fn activate(
         &mut self,
         handle: TileHandle,
+        drawn: bool,
         descendants: Range<usize>,
-    ) -> std::vec::Drain<'_, TileHandle> {
-        self.0.push(handle);
-        self.0.drain(descendants)
+    ) -> impl Iterator<Item = TileHandle> + '_ {
+        self.0.push(QueuedTile { handle, drawn });
+        self.0.drain(descendants).map(|tile| tile.handle)
     }
 
-    /// The tiles queued in `range` (between two [`Self::mark`]s).
-    pub fn queued(&self, range: Range<usize>) -> &[TileHandle] {
-        &self.0[range]
+    /// Whether a tile queued in `range` (between two [`Self::mark`]s) is on
+    /// screen.
+    pub fn any_drawn(&self, range: Range<usize>) -> bool {
+        self.0[range].iter().any(|tile| tile.drawn)
     }
 
     /// Writes the tiles still queued: no ancestor took over from them.
@@ -691,10 +704,10 @@ impl PendingActivations {
         features: &Query<&FeatureId, With<VectorTileFeatureMarker>>,
         renderable_features: &mut Query<&mut RenderableFeature>,
     ) {
-        for handle in self.0 {
+        for tile in self.0 {
             write_activation(
                 tc,
-                &handle,
+                &tile.handle,
                 rendered_tiles,
                 features,
                 renderable_features,
@@ -764,24 +777,6 @@ fn request_tile_data(
         .or_insert(priority);
     let tile = qt.qt.get_mut(handle).unwrap();
     source.prepare_tile(command, tile, handle, tc, buf, data_requesters, priority);
-}
-
-/// Whether the tile is on screen: some of its features are active.
-fn is_tile_drawn(
-    tc: &TileCacheManager,
-    handle: &TileHandle,
-    rendered_tiles: &Query<&RenderedTile>,
-    features: &Query<&FeatureId, With<VectorTileFeatureMarker>>,
-    renderable_features: &Query<&mut RenderableFeature>,
-) -> bool {
-    get_renderable_feature_activation_state(
-        tc,
-        handle,
-        rendered_tiles,
-        features,
-        renderable_features,
-    )
-    .is_some_and(|state| state.any_active)
 }
 
 pub fn are_all_renderable_features_active(
@@ -1024,21 +1019,55 @@ mod test {
     /// A parent that falls back to drawing itself while a child's own loop
     /// queued the grandchildren under it: activating the parent drops them,
     /// and a sibling queued before keeps its target.
+    fn queued(handles: &[TileHandle]) -> PendingActivations {
+        PendingActivations(
+            handles
+                .iter()
+                .map(|&handle| QueuedTile {
+                    handle,
+                    drawn: false,
+                })
+                .collect(),
+        )
+    }
+
+    fn handles(pending: &PendingActivations) -> Vec<TileHandle> {
+        pending.0.iter().map(|tile| tile.handle).collect()
+    }
+
     #[test]
     fn it_should_drop_the_descendants_of_an_activated_tile() {
         let mut pending = PendingActivations::default();
-        assert_eq!(pending.activate(1, 0..0).count(), 0);
+        assert_eq!(pending.activate(1, false, 0..0).count(), 0);
 
         let start = pending.mark();
         for grandchild in 10..14 {
             let at = pending.mark();
-            assert_eq!(pending.activate(grandchild, at..at).count(), 0);
+            assert_eq!(pending.activate(grandchild, false, at..at).count(), 0);
         }
         let end = pending.mark();
 
-        let dropped: Vec<TileHandle> = pending.activate(2, start..end).collect();
+        let dropped: Vec<TileHandle> = pending.activate(2, false, start..end).collect();
         assert_eq!(dropped, vec![10, 11, 12, 13]);
-        assert_eq!(pending.0, vec![1, 2]);
+        assert_eq!(handles(&pending), vec![1, 2]);
+    }
+
+    /// A run is drawn while a tile still queued in it is: one taken back by
+    /// an ancestor no longer counts.
+    #[test]
+    fn it_should_tell_whether_a_tile_queued_in_a_run_is_drawn() {
+        let mut pending = PendingActivations::default();
+        let start = pending.mark();
+        let at = pending.mark();
+        assert_eq!(pending.activate(10, true, at..at).count(), 0);
+        let at = pending.mark();
+        assert_eq!(pending.activate(11, false, at..at).count(), 0);
+        assert!(pending.any_drawn(start..pending.mark()));
+        assert!(!pending.any_drawn(1..2));
+
+        let end = pending.mark();
+        assert_eq!(pending.activate(1, false, start..end).count(), 2);
+        assert!(!pending.any_drawn(0..pending.mark()));
     }
 
     /// Siblings are activated last to first, so taking a later child's
@@ -1046,16 +1075,16 @@ mod test {
     /// hands over keeps its descendants queued.
     #[test]
     fn it_should_keep_earlier_sibling_runs_when_activating_in_reverse() {
-        let mut pending = PendingActivations(vec![10, 11, 12]);
+        let mut pending = queued(&[10, 11, 12]);
         let (first, second) = (0..2, 2..3);
 
-        let dropped: Vec<TileHandle> = pending.activate(2, second).collect();
+        let dropped: Vec<TileHandle> = pending.activate(2, false, second).collect();
         assert_eq!(dropped, vec![12]);
-        assert_eq!(pending.0, vec![10, 11, 2]);
+        assert_eq!(handles(&pending), vec![10, 11, 2]);
 
-        let dropped: Vec<TileHandle> = pending.activate(1, first).collect();
+        let dropped: Vec<TileHandle> = pending.activate(1, false, first).collect();
         assert_eq!(dropped, vec![10, 11]);
-        assert_eq!(pending.0, vec![2, 1]);
+        assert_eq!(handles(&pending), vec![2, 1]);
     }
 
     #[test]

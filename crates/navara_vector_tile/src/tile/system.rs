@@ -224,7 +224,10 @@ pub fn update_tiles(
                         &frame,
                         zero_tile_handle,
                     );
-                    for handle in activations.activate(zero_tile_handle, 0..activations.mark()) {
+                    // Nothing above the root reads whether it is drawn.
+                    for handle in
+                        activations.activate(zero_tile_handle, false, 0..activations.mark())
+                    {
                         write_activation(
                             &mut tc,
                             &handle,
@@ -657,35 +660,16 @@ pub fn clear_caches(
         // Clean up requested tiles that are no longer visited
         let mut removed_handles = vec![];
         for handle in tc.requested_tile_caches.keys() {
-            let tile_handle = *handle;
-
-            // A retained tile keeps its `requested_tile_caches` entry; its
-            // quadtree node must stay alive until eviction.
-            if tc.retained.contains_key(&tile_handle) {
-                continue;
+            if remove_unvisited_tile(
+                &mut commands,
+                &mut qt,
+                &tc,
+                &mut tile_sources,
+                resources.source,
+                *handle,
+            ) {
+                removed_handles.push(*handle);
             }
-
-            let visited_at = {
-                let tile = qt.qt.get(tile_handle).unwrap();
-                tile.visited_at
-            };
-
-            if tc.last_rendered_frame <= visited_at {
-                continue;
-            }
-
-            // Rendered tiles are handled (retained or destroyed) by the loop
-            // above; destroying their quadtree node here would corrupt them.
-            if tc.rendered_tile_caches.contains_key(&tile_handle) {
-                continue;
-            }
-
-            qt.qt.remove(tile_handle).unwrap().destroy(&mut commands);
-            if let Ok(mut ts) = tile_sources.get_mut(resources.source) {
-                ts.0.evict_tile(tile_handle);
-            }
-
-            removed_handles.push(tile_handle);
         }
 
         for removed in removed_handles {
@@ -703,6 +687,38 @@ pub fn clear_caches(
             tc.is_updated_in_this_frame = false;
         }
     }
+}
+
+/// Removes the quadtree node of a requested tile that the last traversal did
+/// not visit, and evicts the tile from its source. Returns whether it did.
+///
+/// A retained tile's node stays alive until eviction, and a rendered tile's
+/// node is handled (retained or destroyed) with the rendered tile:
+/// destroying it here would corrupt them.
+pub(crate) fn remove_unvisited_tile(
+    commands: &mut Commands,
+    qt: &mut VectorTileQuadtree,
+    tc: &TileCacheManager,
+    tile_sources: &mut Query<&mut TileSource>,
+    source_entity: Entity,
+    handle: navara_tile_component::TileHandle,
+) -> bool {
+    if tc.retained.contains_key(&handle) || tc.rendered_tile_caches.contains_key(&handle) {
+        return false;
+    }
+    if qt
+        .qt
+        .get(handle)
+        .is_none_or(|tile| tc.last_rendered_frame <= tile.visited_at)
+    {
+        return false;
+    }
+
+    qt.qt.remove(handle).unwrap().destroy(commands);
+    if let Ok(mut ts) = tile_sources.get_mut(source_entity) {
+        ts.0.evict_tile(handle);
+    }
+    true
 }
 
 struct EvictionCandidate {
