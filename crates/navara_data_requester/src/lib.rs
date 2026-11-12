@@ -7,12 +7,12 @@ use bevy_ecs::{
     component::Component,
     entity::Entity,
     message::MessageReader,
-    query::{Added, With, Without},
+    query::{Added, Or, With, Without},
     schedule::{IntoScheduleConfigs, SystemSet},
     system::{Commands, Query, Res, ResMut},
 };
 use navara_buffer_store::{BufferStore, BufferStoreFailedEvent, BufferStoreLoadedEvent, Handle};
-use navara_component::{Deleted, Ignored, Priority, Requested};
+use navara_component::{Deleted, Ignored, Priority, Requested, Resumed, Waiting};
 use navara_event_store::EventStore;
 use navara_worker_component::WorkerLimits;
 use url::Url;
@@ -80,6 +80,25 @@ fn dispatch_fetch(
         commands.entity(e).insert(DeferredDataRequest);
     } else {
         events.data_requested.push(e);
+    }
+}
+
+/// Mark a pending requester `Requested` and dispatch its fetch, unless
+/// another consumer of the same URL already did this frame.
+fn send_data_request(
+    commands: &mut Commands,
+    events: &mut EventStore,
+    data_manager: &mut DataManager,
+    worker_limits: Option<&WorkerLimits>,
+    e: Entity,
+    data_req: &DataRequester,
+) {
+    if data_req.status != DataRequesterStatus::Pending {
+        return;
+    }
+    commands.entity(e).insert(Requested);
+    if data_manager.try_mark_fetch_enqueued(e) {
+        dispatch_fetch(commands, events, worker_limits, e, &data_req.extension);
     }
 }
 
@@ -397,33 +416,24 @@ pub fn send_data_request_events(
     requests: Query<
         (Entity, &DataRequester),
         (
-            Added<DataRequester>,
+            Or<(Added<DataRequester>, Added<Resumed>)>,
             Without<Priority>,
             Without<Deleted>,
             Without<Requested>,
+            Without<Waiting>,
         ),
     >,
     removed: Query<Entity, (With<DataRequester>, With<Deleted>, Without<Ignored>)>,
 ) {
-    // Only send events for Pending DataRequesters.
-    // Success DataRequesters already have their data and don't need fetching.
     for (e, data_req) in requests.iter() {
-        if data_req.status == DataRequesterStatus::Pending {
-            commands.entity(e).insert(Requested);
-
-            // Only push event if this is the first fetch for this URL.
-            // try_mark_fetch_enqueued returns true if we're the first, false if another
-            // consumer already enqueued a fetch for the same URL in this frame.
-            if data_manager.try_mark_fetch_enqueued(e) {
-                dispatch_fetch(
-                    &mut commands,
-                    &mut events,
-                    worker_limits.as_deref(),
-                    e,
-                    &data_req.extension,
-                );
-            }
-        }
+        send_data_request(
+            &mut commands,
+            &mut events,
+            &mut data_manager,
+            worker_limits.as_deref(),
+            e,
+            data_req,
+        );
     }
 
     for e in removed.iter() {
@@ -440,28 +450,23 @@ pub fn send_data_request_events_with_priority(
     worker_limits: Option<Res<WorkerLimits>>,
     requests: Query<
         (Entity, &Priority, &DataRequester),
-        (Added<DataRequester>, Without<Deleted>, Without<Requested>),
+        (
+            Or<(Added<DataRequester>, Added<Resumed>)>,
+            Without<Deleted>,
+            Without<Requested>,
+            Without<Waiting>,
+        ),
     >,
 ) {
-    // Only send events for Pending DataRequesters.
-    // Success DataRequesters already have their data and don't need fetching.
     for (e, _, data_req) in requests.iter().sort::<&Priority>() {
-        if data_req.status == DataRequesterStatus::Pending {
-            commands.entity(e).insert(Requested);
-
-            // Only push event if this is the first fetch for this URL.
-            // try_mark_fetch_enqueued returns true if we're the first, false if another
-            // consumer already enqueued a fetch for the same URL in this frame.
-            if data_manager.try_mark_fetch_enqueued(e) {
-                dispatch_fetch(
-                    &mut commands,
-                    &mut events,
-                    worker_limits.as_deref(),
-                    e,
-                    &data_req.extension,
-                );
-            }
-        }
+        send_data_request(
+            &mut commands,
+            &mut events,
+            &mut data_manager,
+            worker_limits.as_deref(),
+            e,
+            data_req,
+        );
     }
 }
 
@@ -491,28 +496,23 @@ pub fn send_data_request_events_with_priority_and_sort<K: RequestOrderKey>(
     worker_limits: Option<Res<WorkerLimits>>,
     requests: Query<
         (Entity, &Priority, &RequestOrder<K>, &DataRequester),
-        (Added<DataRequester>, Without<Deleted>, Without<Requested>),
+        (
+            Or<(Added<DataRequester>, Added<Resumed>)>,
+            Without<Deleted>,
+            Without<Requested>,
+            Without<Waiting>,
+        ),
     >,
 ) {
-    // Only send events for Pending DataRequesters.
-    // Success DataRequesters already have their data and don't need fetching.
     for (e, _, _, data_req) in requests.iter().sort::<(&Priority, &RequestOrder<K>)>() {
-        if data_req.status == DataRequesterStatus::Pending {
-            commands.entity(e).insert(Requested);
-
-            // Only push event if this is the first fetch for this URL.
-            // try_mark_fetch_enqueued returns true if we're the first, false if another
-            // consumer already enqueued a fetch for the same URL in this frame.
-            if data_manager.try_mark_fetch_enqueued(e) {
-                dispatch_fetch(
-                    &mut commands,
-                    &mut events,
-                    worker_limits.as_deref(),
-                    e,
-                    &data_req.extension,
-                );
-            }
-        }
+        send_data_request(
+            &mut commands,
+            &mut events,
+            &mut data_manager,
+            worker_limits.as_deref(),
+            e,
+            data_req,
+        );
     }
 }
 
@@ -894,6 +894,41 @@ mod tests {
                 RequestOrder(TestKey(key)),
             ))
             .id()
+    }
+
+    /// A requester its pipeline holds back is not sent, whichever sender
+    /// runs, until the pipeline releases it.
+    #[test]
+    fn senders_send_a_waiting_requester_once_released() {
+        let mut app = App::new();
+        app.init_resource::<EventStore>();
+        app.init_resource::<DataManager>();
+        app.add_systems(
+            bevy_app::Update,
+            (
+                send_data_request_events_with_priority_and_sort::<TestKey>,
+                send_data_request_events_with_priority,
+            )
+                .chain(),
+        );
+
+        let sent = spawn_requester(&mut app, Priority::High, 1);
+        let held = spawn_requester(&mut app, Priority::High, 2);
+        app.world_mut().entity_mut(held).insert(Waiting);
+        app.update();
+
+        let order = app.world().resource::<EventStore>().data_requested.clone();
+        assert_eq!(order, vec![sent]);
+        assert!(app.world().get::<Requested>(held).is_none());
+
+        app.world_mut()
+            .entity_mut(held)
+            .remove::<Waiting>()
+            .insert(Resumed);
+        app.update();
+        let order = app.world().resource::<EventStore>().data_requested.clone();
+        assert_eq!(order, vec![sent, held]);
+        assert!(app.world().get::<Requested>(held).is_some());
     }
 
     #[test]

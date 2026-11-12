@@ -1,4 +1,5 @@
 use bevy_ecs::{component::Component, entity::Entity};
+use navara_component::Priority;
 use navara_memory::RetainedEntry;
 use navara_tile_component::TileHandle;
 use rustc_hash::FxHashMap;
@@ -8,6 +9,10 @@ use rustc_hash::FxHashMap;
 pub struct TileCacheManager {
     pub rendered_tile_caches: FxHashMap<TileHandle, Entity>,
     pub requested_tile_caches: FxHashMap<TileHandle, Entity>,
+    /// The tiles the last traversal asked data for, with the priority it
+    /// asked at. A request still waiting for a slot is ranked by this, and is
+    /// dropped once its tile is no longer in it.
+    pub wanted_data: FxHashMap<TileHandle, Priority>,
     /// Tiles that left the view but are kept alive (deactivated) until the
     /// memory budget forces eviction. Keys are also present in
     /// `rendered_tile_caches`.
