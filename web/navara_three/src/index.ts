@@ -565,8 +565,8 @@ export type ViewEvents = {
   idle: () => void;
   /** Emitted when a source is registered through `addSource`, with its description. */
   sourceAdded: (source: Source, description: SourceDescription) => void;
-  /** Emitted when a resource layer is added through `addLayer`. */
-  layerAdded: (layer: Layer) => void;
+  /** Emitted when a resource layer is added through `addLayer`, with its description. */
+  layerAdded: (layer: Layer, description: LayerDescription) => void;
   /** Emitted when a resource layer is deleted, after its `deleted` event. */
   layerRemoved: (layer: Layer) => void;
 };
@@ -2413,7 +2413,6 @@ export default class ThreeView<
     const layer = new Layer(
       layerId,
       this._core,
-      normalized,
       this._convertColorsToNumbers.bind(this),
     );
     this.layersManager.add(layer);
@@ -2425,7 +2424,7 @@ export default class ThreeView<
       this._syncColorMap(layerId, undefined);
       this.emit("layerRemoved", layer);
     });
-    this.emit("layerAdded", layer);
+    this.emit("layerAdded", layer, l);
 
     return layer;
   }

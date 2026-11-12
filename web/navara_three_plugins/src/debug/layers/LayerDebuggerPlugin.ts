@@ -12,6 +12,7 @@ import { addHtmlBlock, esc, hint, type HtmlBlock } from "../util/html";
 import { Ticker } from "../util/ticker";
 
 import { collectLayerCosts, type LayerCost } from "./layerCost";
+import { descriptionOf, trackLayerDescriptions } from "./layerDescriptions";
 import { StyleEditor, describeLayerAsCode } from "./layerEditor";
 import { labelLayer } from "./layerNames";
 
@@ -79,6 +80,8 @@ export class LayerDebuggerPlugin extends DebugPlugin {
   private readonly removed: LayerDescription[] = [];
   private costs = new Map<string, LayerCost>();
   private readonly ticker = new Ticker(UI_INTERVAL_MS, () => this.refresh());
+  /** Stops recording layer descriptions; set from `onInit()`. */
+  private stopTracking: (() => void) | undefined;
 
   /**
    * Rebuilds the form after an update from elsewhere (the app, an action
@@ -97,6 +100,9 @@ export class LayerDebuggerPlugin extends DebugPlugin {
   }
 
   protected onInit(): void {
+    // Before anything else, and whether or not the tool is enabled: `init()`
+    // runs before the app can add a layer, so every layer is recorded.
+    this.stopTracking = trackLayerDescriptions(this.view);
     if (this.wireframeSupport) this.ctx.retainGeometryArrays = true;
     const ui = this.ui;
 
@@ -130,6 +136,7 @@ export class LayerDebuggerPlugin extends DebugPlugin {
   }
 
   protected onDispose(): void {
+    this.stopTracking?.();
     this.cancelLayersSync();
     if (this.editRebuild !== undefined) clearTimeout(this.editRebuild);
     this.editor?.dispose();
@@ -279,11 +286,11 @@ export class LayerDebuggerPlugin extends DebugPlugin {
 
   private syncToggles(): void {
     const layer = this.selected();
-    const type = layer?.description.type ?? "";
-    const desc = (layer?.description ?? {}) as unknown as Record<
+    const desc = (layer ? descriptionOf(layer) : {}) as unknown as Record<
       string,
       Record<string, unknown> | undefined
     >;
+    const type = (layer && descriptionOf(layer).type) ?? "";
     const polygon = type === "vector" && desc.polygon !== undefined;
     const globe = type === "terrain" || type === "raster";
     this.wireframeBinding.hidden =
@@ -349,7 +356,7 @@ export class LayerDebuggerPlugin extends DebugPlugin {
     const rows = this.layerList().map((layer) => {
       const label = labelLayer(this.view, layer);
       const cost = this.costs.get(layer.id);
-      const type = layer.description.type ?? "";
+      const type = descriptionOf(layer).type ?? "";
       const visible = !this.hidden.has(layer.id);
       const canHide = SHOWABLE[type] !== undefined;
       const net = label.sourceId ? network?.get(label.sourceId) : undefined;
@@ -394,15 +401,15 @@ ${bucket("(mesh descriptors, other)", "Other meshes", "Meshes added with view.ad
 
   private hide(layer: Layer): void {
     if (this.hidden.has(layer.id)) return;
-    const desc = layer.description as unknown as Record<
+    const desc = descriptionOf(layer) as unknown as Record<
       string,
       { show?: boolean } | undefined
     >;
     const saved: Record<string, boolean | undefined> = {};
     const patch: Record<string, { show: boolean }> = {};
-    for (const group of SHOWABLE[layer.description.type ?? ""] ?? []) {
+    for (const group of SHOWABLE[descriptionOf(layer).type ?? ""] ?? []) {
       // A vector style the layer does not have draws nothing anyway.
-      if (layer.description.type === "vector" && !desc[group]) continue;
+      if (descriptionOf(layer).type === "vector" && !desc[group]) continue;
       saved[group] = desc[group]?.show;
       patch[group] = { show: false };
     }
@@ -440,7 +447,7 @@ ${bucket("(mesh descriptors, other)", "Other meshes", "Meshes added with view.ad
   private setWireframe(on: boolean): void {
     const layer = this.selected();
     if (!layer) return;
-    if (layer.description.type === "vector") {
+    if (descriptionOf(layer).type === "vector") {
       update(layer, { polygon: { wireframe: on } });
     } else {
       this.view.globe.wireframe = on;
@@ -450,7 +457,7 @@ ${bucket("(mesh descriptors, other)", "Other meshes", "Meshes added with view.ad
 
   private setBoundingBoxes(on: boolean): void {
     const layer = this.selected();
-    const group = layer && BOX_GROUP[layer.description.type ?? ""];
+    const group = layer && BOX_GROUP[descriptionOf(layer).type ?? ""];
     if (!layer || !group) return;
     update(layer, { [group]: { showBoundingBox: on } });
   }
@@ -458,7 +465,7 @@ ${bucket("(mesh descriptors, other)", "Other meshes", "Meshes added with view.ad
   private deleteSelected(): void {
     const layer = this.selected();
     if (!layer) return;
-    this.removed.push(layer.description as LayerDescription);
+    this.removed.push(descriptionOf(layer) as LayerDescription);
     this.hidden.delete(layer.id);
     layer.delete();
   }
@@ -473,7 +480,7 @@ ${bucket("(mesh descriptors, other)", "Other meshes", "Meshes added with view.ad
 function update(layer: Layer, patch: Record<string, unknown>): void {
   if (Object.keys(patch).length === 0) return;
   layer.update({
-    type: layer.description.type,
+    type: descriptionOf(layer).type,
     ...patch,
   } as unknown as LayerDescription);
 }

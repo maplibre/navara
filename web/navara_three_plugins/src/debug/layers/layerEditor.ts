@@ -3,6 +3,7 @@ import type { BindingParams, FolderApi } from "tweakpane";
 
 import { hint } from "../util/html";
 
+import { descriptionOf } from "./layerDescriptions";
 import {
   MATERIAL_SCHEMA,
   type MaterialField,
@@ -158,7 +159,7 @@ function show(value: unknown): string {
 
 /** The material keys an editor shows for a layer. */
 export function materialKeys(layer: Layer): string[] {
-  const desc = layer.description as unknown as Record<string, unknown>;
+  const desc = descriptionOf(layer) as unknown as Record<string, unknown>;
   return (MATERIAL_KEYS[desc.type as string] ?? []).filter(
     (key) => isPlainObject(desc[key]) || ALWAYS_SHOWN.has(key),
   );
@@ -166,7 +167,7 @@ export function materialKeys(layer: Layer): string[] {
 
 /** Material keys a vector layer could add. */
 function missingKeys(layer: Layer): string[] {
-  const desc = layer.description as unknown as Record<string, unknown>;
+  const desc = descriptionOf(layer) as unknown as Record<string, unknown>;
   if (desc.type !== "vector") return [];
   return MATERIAL_KEYS.vector.filter((key) => !isPlainObject(desc[key]));
 }
@@ -247,7 +248,10 @@ export class StyleEditor {
   private addMaterial(key: string): void {
     const fields = MATERIAL_SCHEMA[key];
     if (!fields) return;
-    const desc = this.layer.description as unknown as Record<string, unknown>;
+    const desc = descriptionOf(this.layer) as unknown as Record<
+      string,
+      unknown
+    >;
     const values = (isPlainObject(desc[key]) ? desc[key] : {}) as Record<
       string,
       unknown
@@ -447,7 +451,7 @@ export class StyleEditor {
     this.applyingNow = true;
     try {
       this.layer.update({
-        type: this.layer.description.type,
+        type: descriptionOf(this.layer).type,
         ...patch,
       } as unknown as LayerDescription);
     } finally {
@@ -532,5 +536,5 @@ export function describeLayerAsCode(layer: Layer): string {
     }
     return JSON.stringify(value);
   };
-  return `view.addLayer(${write(layer.description, "")});`;
+  return `view.addLayer(${write(descriptionOf(layer), "")});`;
 }

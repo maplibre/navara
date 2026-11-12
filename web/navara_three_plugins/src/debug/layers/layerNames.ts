@@ -4,6 +4,8 @@ import type { Layer, SourceDescription } from "@navaramap/three";
 import { hostOf } from "../util/format";
 import { describeSourceType } from "../util/names";
 
+import { descriptionOf } from "./layerDescriptions";
+
 export type LayerLabel = {
   /** Short name for lists: what the layer draws. */
   name: string;
@@ -31,7 +33,7 @@ function pathName(url: string | undefined): string {
 
 /** A human name for a layer from its description and source. */
 export function labelLayer(view: ThreeView, layer: Layer): LayerLabel {
-  const desc = layer.description as unknown as Record<string, unknown> & {
+  const desc = descriptionOf(layer) as unknown as Record<string, unknown> & {
     type: string;
     source?: string;
     sourceLayers?: string[];

@@ -2,7 +2,6 @@ import { EventHandler, type FeatureSetId } from "@navaramap/core";
 import type { Core } from "@navaramap/engine";
 
 import { FeatureEvaluator } from "./evaluations";
-import { mergeLayerDescription } from "./layerDescriptionMerge";
 import { Source } from "./source";
 import type { LayerDescription } from "./type";
 
@@ -70,7 +69,6 @@ function withExplicitColorRampClears(l: LayerDescription): LayerDescription {
 
 /**
  * A handle to control a resource layer (e.g., imagery, terrain, GeoJSON, 3D Tiles) after it has been added to the scene.
-
  * Returned by `ThreeView.addLayer()` when adding resource layers (not mesh, light, or effect descriptors).
  *
  * Resource layers are data-driven layers that load and display geographic data from external sources.
@@ -111,31 +109,17 @@ export class Layer extends EventHandler<LayerEvent> {
   >();
   private needUpdate = false;
   private convertColors?: (obj: unknown) => unknown;
-  private _description: LayerDescription;
 
   constructor(
     id: string,
     core: Core,
-    description: LayerDescription,
     convertColors?: (obj: unknown) => unknown,
   ) {
     super();
 
     this.id = id;
     this.core = core;
-    this._description = description;
     this.convertColors = convertColors;
-  }
-
-  /**
-   * The configuration as this handle has seen it: the description passed to
-   * `addLayer` with every `update()` merged on top (see
-   * {@link mergeLayerDescription}). A `Source` reference is stored as its id.
-   * Fields never set are absent and take the engine's defaults; the engine's
-   * own resolved values are not read back.
-   */
-  get description(): Readonly<LayerDescription> {
-    return this._description;
   }
 
   /**
@@ -213,7 +197,6 @@ export class Layer extends EventHandler<LayerEvent> {
       ? (this.convertColors(normalized) as LayerDescription)
       : normalized;
     this.core.updateLayer(this.id, processedLayer);
-    this._description = mergeLayerDescription(this._description, normalized);
     this.emit("updated", l);
   }
 
