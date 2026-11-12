@@ -593,6 +593,11 @@ export const FONT_DATASETS = {
     attribution: "Borel - Google Fonts",
     attributionUrl: "https://fonts.google.com/specimen/Borel",
   },
+  Montserrat: {
+    url: withBase("fonts/montserrat/Montserrat-Bold.ttf"),
+    attribution: "Montserrat - Google Fonts",
+    attributionUrl: "https://fonts.google.com/specimen/Montserrat",
+  },
   SourceCodePro: {
     url: "https://raw.githubusercontent.com/adobe-fonts/source-code-pro/refs/heads/release/OTF/SourceCodePro-Bold.otf",
     attribution: "Source Code Pro - Adobe Fonts",
