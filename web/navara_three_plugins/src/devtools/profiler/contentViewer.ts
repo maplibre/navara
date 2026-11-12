@@ -2,7 +2,7 @@ import type ThreeView from "@navaramap/three";
 import type { ViewContext } from "@navaramap/three";
 import type { Texture } from "three";
 
-import type { DebugContainer } from "../DebugPlugin";
+import type { DevtoolContainer } from "../DevtoolPlugin";
 import { addHtmlBlock, esc, hint, type HtmlBlock } from "../util/html";
 
 import { DebugBlitPass, type BlitCorner, type BlitMode } from "./DebugBlitPass";
@@ -162,7 +162,7 @@ export class BufferViewer {
     this.pass.enabled = false;
   }
 
-  buildUi(ui: DebugContainer): void {
+  buildUi(ui: DevtoolContainer): void {
     const folder = ui.addFolder({ title: "Buffer viewer", expanded: false });
     hint(
       folder,

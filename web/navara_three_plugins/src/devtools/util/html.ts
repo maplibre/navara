@@ -1,6 +1,6 @@
-import type { DebugContainer } from "../DebugPlugin";
+import type { DevtoolContainer } from "../DevtoolPlugin";
 
-const STYLE_ID = "nvr-debug-styles";
+const STYLE_ID = "nvr-devtools-styles";
 
 /**
  * Styles for the HTML blocks, in tweakpane's own palette: its CSS variables
@@ -65,7 +65,7 @@ export type HtmlBlock = {
  * has no free-content blade, so a separator blade is emptied and used as the
  * host: tweakpane keeps placing and disposing it, the content is ours.
  */
-export function addHtmlBlock(container: DebugContainer): HtmlBlock {
+export function addHtmlBlock(container: DevtoolContainer): HtmlBlock {
   injectStyles();
   const blade = container.addBlade({ view: "separator" });
   const host = blade.element;

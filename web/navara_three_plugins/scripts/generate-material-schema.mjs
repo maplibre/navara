@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /* global console, process */
-// Generates src/debug/layers/materialSchema.generated.ts: every field a layer
+// Generates src/devtools/layers/materialSchema.generated.ts: every field a layer
 // material accepts, with its kind, description, engine default and options.
 //
 // Sources (re-run `pnpm run generate:schema` after changing either):
@@ -27,7 +27,7 @@ const internalSrc = readFileSync(
 );
 const outFile = resolve(
   here,
-  "../src/debug/layers/materialSchema.generated.ts",
+  "../src/devtools/layers/materialSchema.generated.ts",
 );
 
 /** Layer description key → [wasm struct, internal struct]. */

@@ -7,7 +7,7 @@ import type {
 } from "@navaramap/three";
 import type { WebGLRenderer } from "three";
 
-import { DebugPlugin, type DebugPluginOptions } from "../DebugPlugin";
+import { DevtoolPlugin, type DevtoolPluginOptions } from "../DevtoolPlugin";
 import { formatBytes, formatCount, formatMs, hostOf } from "../util/format";
 import { addGraph } from "../util/graph";
 import {
@@ -31,7 +31,7 @@ import {
 } from "./networkMeter";
 import { PassProfiler, type PassSample } from "./passProfiler";
 
-export type ProfilerPluginOptions = DebugPluginOptions;
+export type ProfilerPluginOptions = DevtoolPluginOptions;
 
 /** Tables are rebuilt at this cadence; graphs read their state directly. */
 const UI_INTERVAL_MS = 250;
@@ -77,7 +77,7 @@ function msClass(ms: number | undefined): string {
  * viewer. Everything is sampled only while enabled. Hover any row for what
  * it means.
  */
-export class ProfilerPlugin extends DebugPlugin {
+export class ProfilerPlugin extends DevtoolPlugin {
   readonly title = "Profiler";
 
   private renderer!: WebGLRenderer;

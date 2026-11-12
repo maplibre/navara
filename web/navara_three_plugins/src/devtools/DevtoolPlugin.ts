@@ -2,29 +2,29 @@ import type ThreeView from "@navaramap/three";
 import { Plugin, type ViewContext } from "@navaramap/three";
 import { Pane, type FolderApi, type TabPageApi } from "tweakpane";
 
-import type { DebugPanel } from "./DebugPanel";
+import type { DevtoolsPanel } from "./DevtoolsPanel";
 
-/** The tweakpane container a debug plugin builds its controls in. */
-export type DebugContainer = Pick<
+/** The tweakpane container a devtool builds its controls in. */
+export type DevtoolContainer = Pick<
   FolderApi,
   "addBinding" | "addFolder" | "addButton" | "addBlade"
 >;
 
-export type DebugPluginOptions = {
+export type DevtoolPluginOptions = {
   /** Shared panel to add this plugin's tab to; omitted = a pane of its own. */
-  panel?: DebugPanel;
+  panel?: DevtoolsPanel;
   /** Whether the tool starts enabled. @defaultValue `true` */
   enabled?: boolean;
 };
 
 /**
- * Base of the debug tools: a `Plugin` whose work can be switched on and off
+ * Base of the devtools: a `Plugin` whose work can be switched on and off
  * at runtime. `init` stores the view and context, builds the UI container
  * (a tab of the shared panel or an own pane) with an `enabled` toggle, calls
  * `onInit()`, then `onEnable()` when enabled. A disabled tool must hold no
  * listeners, pass wrappers or DOM beyond its controls.
  */
-export abstract class DebugPlugin<
+export abstract class DevtoolPlugin<
   V extends ThreeView = ThreeView,
 > extends Plugin<V, ViewContext> {
   /** Tab / pane title. */
@@ -33,9 +33,9 @@ export abstract class DebugPlugin<
   protected view!: V;
   protected ctx!: ViewContext;
   /** The container to add controls to; valid from `onInit()` on. */
-  protected ui!: DebugContainer;
+  protected ui!: DevtoolContainer;
 
-  private readonly panel: DebugPanel | undefined;
+  private readonly panel: DevtoolsPanel | undefined;
   private ownPane: Pane | undefined;
   /** This plugin's tab of the shared panel, when one was given. */
   private page: TabPageApi | undefined;
@@ -44,7 +44,7 @@ export abstract class DebugPlugin<
   private readonly state = { enabled: true };
   private enabledBinding: { refresh(): void } | undefined;
 
-  constructor(options: DebugPluginOptions = {}) {
+  constructor(options: DevtoolPluginOptions = {}) {
     super();
     this.panel = options.panel;
     this._enabled = options.enabled ?? true;

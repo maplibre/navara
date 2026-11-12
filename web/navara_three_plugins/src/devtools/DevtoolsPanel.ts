@@ -1,7 +1,7 @@
 import { Pane, type TabApi, type TabPageApi } from "tweakpane";
 
-export type DebugPanelOptions = {
-  /** Panel title. @defaultValue `"Navara debug"` */
+export type DevtoolsPanelOptions = {
+  /** Panel title. @defaultValue `"Navara devtools"` */
   title?: string;
   /** Element the panel is appended to. @defaultValue `document.body` */
   container?: HTMLElement;
@@ -17,11 +17,11 @@ export type DebugPanelOptions = {
 };
 
 /**
- * One tweakpane `Pane` shared by several debug plugins, each on its own tab.
+ * One tweakpane `Pane` shared by several devtools, each on its own tab.
  * Pass the same instance to every plugin's `panel` option; without it each
  * plugin opens a pane of its own.
  */
-export class DebugPanel {
+export class DevtoolsPanel {
   readonly pane: Pane;
   private tab: TabApi | undefined;
   private readonly hotkey: string | null;
@@ -39,9 +39,9 @@ export class DebugPanel {
     this.toggle();
   };
 
-  constructor(options: DebugPanelOptions = {}) {
+  constructor(options: DevtoolsPanelOptions = {}) {
     this.pane = new Pane({
-      title: options.title ?? "Navara debug",
+      title: options.title ?? "Navara devtools",
       container: options.container,
       expanded: true,
     });

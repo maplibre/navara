@@ -42,7 +42,7 @@ export {
 } from "./TileJsonPlugin";
 
 // Development-only tools (tweakpane panels); see the README.
-export * from "./debug";
+export * from "./devtools";
 export {
   StreetLightsPlugin,
   isRoadClass,

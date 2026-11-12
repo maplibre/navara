@@ -2,10 +2,10 @@ import type { Layer, LayerDescription } from "@navaramap/three";
 import type { FolderApi } from "tweakpane";
 
 import {
-  DebugPlugin,
-  type DebugContainer,
-  type DebugPluginOptions,
-} from "../DebugPlugin";
+  DevtoolPlugin,
+  type DevtoolContainer,
+  type DevtoolPluginOptions,
+} from "../DevtoolPlugin";
 import type { ProfilerPlugin } from "../profiler/ProfilerPlugin";
 import { formatBytes, formatCount } from "../util/format";
 import { addHtmlBlock, esc, hint, type HtmlBlock } from "../util/html";
@@ -16,7 +16,7 @@ import { descriptionOf, trackLayerDescriptions } from "./layerDescriptions";
 import { StyleEditor, describeLayerAsCode } from "./layerEditor";
 import { labelLayer } from "./layerNames";
 
-export type LayerDebuggerPluginOptions = DebugPluginOptions & {
+export type LayerInspectorPluginOptions = DevtoolPluginOptions & {
   /** When given, the layer list shows each layer's downloads from it. */
   profiler?: ProfilerPlugin;
   /**
@@ -52,7 +52,7 @@ type Hidden = Map<string, Record<string, boolean | undefined>>;
  * layer gets solo / wireframe / bounding-box toggles and a style form
  * generated from the engine's material schema.
  */
-export class LayerDebuggerPlugin extends DebugPlugin {
+export class LayerInspectorPlugin extends DevtoolPlugin {
   readonly title = "Layers";
 
   private readonly profiler: ProfilerPlugin | undefined;
@@ -93,7 +93,7 @@ export class LayerDebuggerPlugin extends DebugPlugin {
     this.scheduleEditorRebuild();
   };
 
-  constructor(options: LayerDebuggerPluginOptions = {}) {
+  constructor(options: LayerInspectorPluginOptions = {}) {
     super(options);
     this.profiler = options.profiler;
     this.wireframeSupport = options.wireframe ?? true;
@@ -160,7 +160,7 @@ export class LayerDebuggerPlugin extends DebugPlugin {
     return this.costs;
   }
 
-  private buildActions(folder: DebugContainer): void {
+  private buildActions(folder: DevtoolContainer): void {
     const buttons = [
       [
         "Solo",

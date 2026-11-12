@@ -6,7 +6,7 @@ Optional feature plugins for `@navaramap/three`. Each plugin packages a self-con
 - **`OverlayPlugin`**: anchors DOM elements to geographic positions and keeps them projected to screen space as the camera moves.
 - **`CesiumIonPlugin`**: resolves a Cesium Ion asset endpoint and registers the asset as a quantized-mesh terrain layer via `addTerrain()`.
 - **`TileJsonPlugin`**: fetches a TileJSON 3.0.0 document and registers it as a Navara source, surfacing its attribution through the view's built-in credit UI.
-- **`ProfilerPlugin`** and **`LayerDebuggerPlugin`**: development-only debug tools on a tweakpane panel (see [Debug tools](#debug-tools)).
+- **`DevtoolsPlugin`**: development-only tools on a tweakpane panel, a profiler and a layer inspector (see [Devtools](#devtools)).
 - **`StreetLightsPlugin`**: street lamps, roof beacons and moving traffic at night, streamed in around the camera from vector tiles, read through the caller's readers for any schema.
 
 ## Usage
@@ -49,52 +49,50 @@ overlay.onUpdate(({ projected }) => {
 });
 ```
 
-`@navaramap/three`, `@navaramap/three-default-plugin`, and `three` are peer dependencies (plus `postprocessing` for the debug tools).
+`@navaramap/three`, `@navaramap/three-default-plugin`, and `three` are peer dependencies (plus `postprocessing` for the devtools).
 
-## Debug tools
+## Devtools
 
-Plugins for inspecting a running view, each of which can be switched on
+Tools for inspecting a running view, each of which can be switched on
 and off at runtime. They are meant for development builds and example pages, not
 for shipping inside an application. Every row and setting explains itself on
 hover.
 
-- **`ProfilerPlugin`**: how fast the map draws and why. A summary (frame
+- **Profiler** (`ProfilerPlugin`): how fast the map draws and why. A summary (frame
   rate, frame time on CPU and GPU, draw calls, engine memory against its
   budget, downloads, workers), then where each frame's time goes step by step,
   memory by kind, downloads per source, background work, draw details, screen
   buffers, a buffer viewer, and frame recording to JSON.
-- **`LayerDebuggerPlugin`**: the view's layers with what each costs (meshes,
+- **Layers** (`LayerInspectorPlugin`): the view's layers with what each costs (meshes,
   memory, downloads), a visibility checkbox per layer, solo / wireframe /
   bounding-box toggles, and a style form for the selected layer with every
   setting its materials accept.
 
 ### Usage
 
-Add the plugins before `view.init()`. A `DebugPanel` hosts several tools on
-one tweakpane with a tab per tool; without it each tool opens its own pane.
+Add `DevtoolsPlugin` before `view.init()`. It puts every tool on one
+tweakpane, a tab per tool.
 
 ```typescript
 import ThreeView from "@navaramap/three";
 import { DefaultPlugin } from "@navaramap/three-default-plugin";
-import {
-  DebugPanel,
-  LayerDebuggerPlugin,
-  ProfilerPlugin,
-} from "@navaramap/three-plugins";
+import { DevtoolsPlugin } from "@navaramap/three-plugins";
 
 const view = new ThreeView();
 view.addPlugin(new DefaultPlugin());
 
-const panel = new DebugPanel(); // press ` to show / hide
-const profiler = new ProfilerPlugin({ panel });
-view.addPlugin(profiler);
-view.addPlugin(new LayerDebuggerPlugin({ panel, profiler }));
+const devtools = new DevtoolsPlugin(); // press ` to show / hide
+view.addPlugin(devtools);
 
 await view.init();
 
-profiler.enabled = false; // detaches every listener and pass wrapper
-profiler.enabled = true;
+devtools.profiler!.enabled = false; // detaches every listener and pass wrapper
+devtools.profiler!.enabled = true;
 ```
+
+`tools: ["profiler"]` picks the tools; `panel`, `profiler` and `layers` take
+each part's options. `ProfilerPlugin` and `LayerInspectorPlugin` are exported
+too: added alone, a tool opens a pane of its own.
 
 They also need `postprocessing` (a peer dependency) and bring `tweakpane`.
 

@@ -47,7 +47,7 @@ const PASSES: Record<string, Described> = {
   fogLight: { name: "Fog lights", hint: "Light scattered in fog." },
   debugBlit: {
     name: "Buffer viewer",
-    hint: "The debug tools' picture-in-picture buffer view.",
+    hint: "The devtools' picture-in-picture buffer view.",
   },
 };
 

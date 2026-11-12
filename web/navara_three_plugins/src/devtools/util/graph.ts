@@ -1,4 +1,4 @@
-import type { DebugContainer } from "../DebugPlugin";
+import type { DevtoolContainer } from "../DevtoolPlugin";
 
 /**
  * A graph monitor whose label carries the live value, as `label value unit`:
@@ -6,7 +6,7 @@ import type { DebugContainer } from "../DebugPlugin";
  * call at the UI cadence.
  */
 export function addGraph<O extends Record<K, number>, K extends string>(
-  container: DebugContainer,
+  container: DevtoolContainer,
   object: O,
   key: K,
   options: {

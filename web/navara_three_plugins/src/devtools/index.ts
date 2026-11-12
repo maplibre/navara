@@ -1,9 +1,14 @@
-export { DebugPanel, type DebugPanelOptions } from "./DebugPanel";
 export {
-  DebugPlugin,
-  type DebugContainer,
-  type DebugPluginOptions,
-} from "./DebugPlugin";
+  DevtoolsPlugin,
+  type DevtoolName,
+  type DevtoolsPluginOptions,
+} from "./DevtoolsPlugin";
+export { DevtoolsPanel, type DevtoolsPanelOptions } from "./DevtoolsPanel";
+export {
+  DevtoolPlugin,
+  type DevtoolContainer,
+  type DevtoolPluginOptions,
+} from "./DevtoolPlugin";
 export { BufferViewer } from "./profiler/contentViewer";
 export {
   ProfilerPlugin,
@@ -27,9 +32,9 @@ export {
   type BlitMode,
 } from "./profiler/DebugBlitPass";
 export {
-  LayerDebuggerPlugin,
-  type LayerDebuggerPluginOptions,
-} from "./layers/LayerDebuggerPlugin";
+  LayerInspectorPlugin,
+  type LayerInspectorPluginOptions,
+} from "./layers/LayerInspectorPlugin";
 export {
   StyleEditor,
   describeLayerAsCode,
