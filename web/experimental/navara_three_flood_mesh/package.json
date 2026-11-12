@@ -1,0 +1,91 @@
+{
+  "name": "@navaramap/three-flood-mesh",
+  "type": "module",
+  "version": "0.0.0",
+  "description": "Time-series flood water surfaces for @navaramap/three (nightly builds only)",
+  "module": "dist/index.js",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./convert": {
+      "types": "./dist/convert.d.ts",
+      "import": "./dist/convert.js"
+    }
+  },
+  "bin": {
+    "navara-flood-zarr": "./dist/cli.js"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "sideEffects": false,
+  "files": [
+    "src",
+    "dist",
+    "skills"
+  ],
+  "scripts": {
+    "type-check": "tsc && tsc -p tsconfig.convert.json && tsc -p tsconfig.node.json",
+    "build": "pnpm type-check && vite build --watch=false && vite build -c vite.config.convert.ts",
+    "dev": "vite example",
+    "build:example": "vite build example",
+    "test": "vitest --passWithNoTests --watch=false",
+    "lint": "eslint . --fix",
+    "lint:check": "eslint .",
+    "format": "prettier --write --ignore-path ../../../.gitignore .",
+    "format:check": "prettier --check --ignore-path ../../../.gitignore ."
+  },
+  "license": "MIT OR Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/maplibre/navara.git",
+    "directory": "web/experimental/navara_three_flood_mesh"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "peerDependencies": {
+    "@navaramap/three": "workspace:*",
+    "h5wasm": ">=0.10.0",
+    "sharp": ">=0.33.0",
+    "three": ">=0.183.0"
+  },
+  "peerDependenciesMeta": {
+    "@navaramap/three": {
+      "optional": true
+    },
+    "three": {
+      "optional": true
+    },
+    "h5wasm": {
+      "optional": true
+    },
+    "sharp": {
+      "optional": true
+    }
+  },
+  "dependencies": {
+    "@navaramap/engine-api": "workspace:*",
+    "@zarrita/storage": "0.2.0",
+    "delaunator": "5.1.0",
+    "earcut": "3.0.2",
+    "zarrita": "0.7.5"
+  },
+  "devDependencies": {
+    "@navaramap/three": "workspace:*",
+    "@navaramap/three-default-descs": "workspace:*",
+    "@navaramap/three-default-plugin": "workspace:*",
+    "@navaramap/three-plugins": "workspace:*",
+    "@types/earcut": "3.0.0",
+    "@types/node": "26.6.6",
+    "@types/three": "0.187.0",
+    "h5wasm": "0.10.3",
+    "postprocessing": "6.39.6",
+    "sharp": "0.35.5",
+    "three": "0.187.0"
+  }
+}

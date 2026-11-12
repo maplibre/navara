@@ -187,6 +187,7 @@ since: 0.3.2  # Optional, see "Unreleased Features" below
 - A whole new page: `since: 0.3.2` in the frontmatter (badges the title and the sidebar link). Repeat it in every translation.
 - A section or sentence in an existing page: `:since[0.3.2]` at the end of the heading or paragraph, e.g. `### shadowSoftness :since[0.3.2]`. It works in `.md` and `.mdx`, and the heading anchor stays the same after the release.
 - Write the version as `X.Y.Z` with no `v`. A malformed version fails the build.
+- A feature no release is planned to ship yet, such as a package under `web/experimental/` (published only in nightlies), takes `nightly` in place of the version: `since: nightly` or `:since[nightly]`. Its badge stays until the marker is changed to the version of the release that ships it. Being nightly-only is shown by this badge alone, not by an "Experimental" callout or title suffix.
 
 ### Callouts
 

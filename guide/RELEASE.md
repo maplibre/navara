@@ -87,7 +87,10 @@ ship. Such features carry the latest release + 0.0.1 at the time they land
 version under `latest`, and the docs and examples read it at build time: a
 feature whose `since` is newer renders a Nightly badge linking to the
 nightly install instructions. Any release reaching that version, followed
-by a redeploy, removes the badges, so the markers stay in the sources. Mechanism: [`site/release-status.ts`](../site/release-status.ts).
+by a redeploy, removes the badges, so the markers stay in the sources.
+`since` = `nightly` marks what no release is planned to ship yet
+([experimental packages](#experimental-packages)); its badge stays until the
+marker is changed to a version. Mechanism: [`site/release-status.ts`](../site/release-status.ts).
 The file is also served at `https://navara.world/released-version.json`.
 
 ## Experimental packages
@@ -104,8 +107,12 @@ published in nightlies only, at the nightly version.
   exist), with `--tag nightly`, then register `release.yml` / `npm-publish`
   as its trusted publisher and turn on "Require two-factor authentication and
   disallow tokens".
-- **Joining the release**: move the package to `web/`. Keeping its name lets
-  users upgrade from a nightly to the next release.
+- **Docs and examples** mark it `since: nightly` (`:since[nightly]` inline),
+  not "Experimental", so it shows the same Nightly badge as other
+  nightly-only features.
+- **Joining the release**: move the package to `web/`, and change its
+  `nightly` markers to the release version. Keeping its name lets users
+  upgrade from a nightly to the next release.
 
 ## Security design
 

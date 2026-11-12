@@ -1,6 +1,6 @@
 // Assembles the unified navara.world static-asset tree (site-dist/) from the
-// docs (Astro, built with base "/docs") and examples (Vite, base "/examples/")
-// build outputs:
+// docs (Astro, built with base "/docs") and examples (Vite, base "/examples/"
+// and "/navara-three-flood-mesh/") build outputs:
 //
 //   site-dist/
 //     index.html, ja/index.html      <- LP, relocated from docs/dist/lp/
@@ -10,6 +10,7 @@
 //     released-version.json          <- copied from site/
 //     docs/...                       <- docs/dist verbatim
 //     examples/...                   <- web/navara_three/dist-example verbatim
+//     navara-three-flood-mesh/...    <- web/experimental/navara_three_flood_mesh/dist-example verbatim
 //
 // The relocated LP keeps working at the site root because base "/docs" makes
 // every _astro asset URL root-absolute (/docs/_astro/...).
@@ -28,9 +29,13 @@ import { fileURLToPath } from "node:url";
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const docsDist = resolve(root, "docs/dist");
 const examplesDist = resolve(root, "web/navara_three/dist-example");
+const floodMeshDist = resolve(
+  root,
+  "web/experimental/navara_three_flood_mesh/dist-example",
+);
 const out = resolve(root, "site-dist");
 
-for (const dir of [docsDist, examplesDist]) {
+for (const dir of [docsDist, examplesDist, floodMeshDist]) {
   if (!existsSync(dir)) {
     throw new Error(
       `Missing build output: ${dir} — run \`pnpm build:docs\` and \`pnpm build:example\` first (or \`pnpm build:site\`).`,
@@ -95,6 +100,9 @@ cpSync(
 );
 
 cpSync(examplesDist, resolve(out, "examples"), { recursive: true });
+cpSync(floodMeshDist, resolve(out, "navara-three-flood-mesh"), {
+  recursive: true,
+});
 
 // The old LP URLs (parked under /lp pre-release) 301 to the site root, with
 // and without the trailing slash (_redirects matches paths exactly).
