@@ -125,7 +125,7 @@ view.addLight<SunLightDesc>({
 | **AmbientLightDesc**  | なし        | 手動     | 不要     | 基本的な環境光   | 非常に軽量       |
 | **LightProbeDesc**    | なし        | 手動     | 不要     | 静的IBL          | 軽量             |
 | **SkyLightProbeDesc** | なし        | 自動     | 必須     | 動的スカイライト | 中程度           |
-| **SunLightDesc**      | あり（CSM） | 自動     | 推奨     | 太陽光と影       | 重い（影使用時） |
+| **SunLightDesc**      | あり（CSM） | 自動     | デフォルトで必須 | 太陽光と影       | 重い（影使用時） |
 
 ## 一般的な使用パターン
 
@@ -196,9 +196,19 @@ view.atmosphere.on("sunChanged", () => {
 以下のライトは大気システムと連携します：
 
 - **SkyLightProbeDesc**: 大気の放射照度テクスチャを使用（必須）
-- **SunLightDesc**: 大気の透過テクスチャを使用（推奨）
+- **SunLightDesc**: 大気の透過テクスチャを使用（デフォルトで必須）
 
-大気システムを使用しない場合は、AmbientLightDescとLightProbeDescを使用してください。
+デフォルトの`applyColor: false`では、SunLightDescは大気の透過テクスチャから太陽の色を計算します。そのテクスチャが利用できない場合、太陽は黒くレンダリングされます。設定した色をそのまま使う場合は`applyColor: true`を指定してください。
+
+### 大気システムを使わないライティング
+
+SunLightDescは大気システムなしでも動作し、指向性のあるシェーディングとCSMの影を維持します。`applyColor: true`を指定すると設定した色がそのまま使われ、`intensity`に`Math.PI`を指定すると拡散BRDFの1/πの係数が打ち消されます。
+
+```typescript
+view.addLight({ sun: { applyColor: true, intensity: Math.PI } });
+```
+
+AmbientLightDescとLightProbeDescも大気システムなしで動作します。
 
 ## 関連リソース
 

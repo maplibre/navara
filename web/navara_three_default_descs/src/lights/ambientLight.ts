@@ -7,6 +7,15 @@ export type AmbientLightEvents = {
 
 export type AmbientLightOptions = {
   color?: Color;
+  /**
+   * Intensity of the ambient light.
+   *
+   * Diffuse shading divides the lit result by π (the Lambert BRDF), so
+   * without tone mapping an intensity of 1 renders a surface at about
+   * 32% of its albedo. Set this to `Math.PI` in that setup to render
+   * surfaces at their true albedo.
+   * @default 1
+   */
   intensity?: number;
 };
 

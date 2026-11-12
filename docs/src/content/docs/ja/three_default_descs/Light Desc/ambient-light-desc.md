@@ -58,7 +58,7 @@ import { Color } from "@navaramap/three";
 
 **Type:** `number | undefined`
 
-**Description:** 環境光の強度を指定します。数値が大きいほど明るくなります。
+**Description:** 環境光の強度を指定します。数値が大きいほど明るくなります。拡散シェーディングでは結果がπで除算される（Lambert BRDF）ため、トーンマッピングを使わない場合、強度1では面がアルベドの約32%の明るさでレンダリングされます。その構成では`Math.PI`を使うと、面を本来のアルベドでレンダリングできます。
 
 **Default:** `1`
 
