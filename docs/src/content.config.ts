@@ -9,10 +9,11 @@ export const collections = {
 		schema: docsSchema({
 			extend: z.object({
 				// For a page about features not in the latest release: that release
-				// + 0.0.1, e.g. "0.3.2". See src/components/NightlyBadge.astro.
+				// + 0.0.1, e.g. "0.3.2", or "nightly" while no release is planned to
+				// ship them. See src/components/NightlyBadge.astro.
 				since: z
 					.string()
-					.regex(/^\d+\.\d+\.\d+$/)
+					.regex(/^(\d+\.\d+\.\d+|nightly)$/)
 					.optional(),
 			}),
 		}),

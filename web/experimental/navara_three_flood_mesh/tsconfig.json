@@ -1,0 +1,29 @@
+{
+  "extends": "../../tsconfig.common.json",
+  "compilerOptions": {
+    "types": ["node", "vite/client"],
+    "paths": {
+      "@navaramap/three": ["../../navara_three/src"],
+      "@navaramap/three-default-descs": [
+        "../../navara_three_default_descs/src"
+      ],
+      "@navaramap/three-default-plugin": [
+        "../../navara_three_default_plugin/src"
+      ],
+      "@navaramap/three-plugins": ["../../navara_three_plugins/src"],
+      "@navaramap/three-api": ["../../navara_three_api/src"],
+      "@navaramap/three-csm": ["../../navara_three_csm/src"],
+      "@navaramap/core": ["../../navara_core/src"],
+      "@navaramap/font": ["../../navara_font/src"],
+      "@navaramap/worker": ["../../navara_worker/src"],
+      "@shaders/*": ["../../../shaders"]
+    }
+  },
+  "include": ["src", "example"],
+  "exclude": [
+    "./dist",
+    "./node_modules",
+    "./example/public",
+    "./example/vite.config.ts"
+  ]
+}

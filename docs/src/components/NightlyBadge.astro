@@ -1,8 +1,8 @@
 ---
-import { isNightlyOnly, NIGHTLY_DOCS_PATH, NIGHTLY_TOOLTIP } from '../../../site/release-status';
+import { isNightlyOnly, NIGHTLY_DOCS_PATH, nightlyTooltip } from '../../../site/release-status';
 
 interface Props {
-	/** The latest release + 0.0.1 when the feature landed, e.g. "0.3.2". */
+	/** The latest release + 0.0.1 when the feature landed, e.g. "0.3.2", or "nightly". */
 	since: string | undefined;
 }
 
@@ -13,7 +13,7 @@ const href = `${import.meta.env.BASE_URL.replace(/\/$/, '')}${lang === 'ja' ? '/
 
 {
 	since && isNightlyOnly(since) && (
-		<a href={href} title={NIGHTLY_TOOLTIP[lang]} class="nightly-link">
+		<a href={href} title={nightlyTooltip(since, lang)} class="nightly-link">
 			<span class="nvr-nightly" />
 		</a>
 	)

@@ -1,5 +1,6 @@
 // The unified navara.world site: LP at /, docs under /docs, examples under
-// /examples — one static-asset tree assembled by scripts/assemble-site.mjs.
+// /examples, the flood-mesh example under /navara-three-flood-mesh — one
+// static-asset tree assembled by scripts/assemble-site.mjs.
 // Deploys onto the existing "navara-docs" Workers project, whose custom
 // domain is navara.world; workers/site.js redirects the legacy
 // navara-docs.<account>.workers.dev host to the custom domain. Build +
