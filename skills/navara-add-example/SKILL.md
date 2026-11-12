@@ -41,7 +41,7 @@ export default {
 
 Provide both `en` and `ja` for title/description (a bare string is a fallback for all languages).
 
-When the example uses an API that the latest release (`site/released-version.json`) does not have yet, set `since` to that version + 0.0.1 (`X.Y.Z`, no `v`; `0.3.2` while `0.3.1` is the latest). The gallery card and detail page show a **Nightly** badge until a release reaches it, then the badge disappears by itself, so leave `since` in place.
+When the example uses an API that the latest release (`site/released-version.json`) does not have yet, set `since` to that version + 0.0.1 (`X.Y.Z`, no `v`; `0.3.2` while `0.3.1` is the latest). The gallery card and detail page show a **Nightly** badge until a release reaches it, then the badge disappears by itself, so leave `since` in place. For an API no release is planned to ship yet (a package under `web/experimental/`), set `since: "nightly"`, and change it to the version when the package joins a release.
 
 ## File structure convention
 

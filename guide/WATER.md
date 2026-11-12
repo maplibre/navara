@@ -170,8 +170,8 @@ recompiling any material.
   drift with the flow for one `WATER_FLOW_PERIOD` (8 s) cycle each, half a
   cycle apart, and crossfade with variance-preserving weights, so a varying
   flow never stretches the pattern without bound. It samples twice the taps.
-  Ref: Vlachos, "Water Flow in Portal 2", SIGGRAPH 2010. No built-in surface
-  calls it yet.
+  Ref: Vlachos, "Water Flow in Portal 2", SIGGRAPH 2010. Only the experimental
+  time-series flood mesh calls it.
 
 ## 5. Level of detail
 

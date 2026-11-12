@@ -14,20 +14,31 @@ export const NIGHTLY_DOCS_PATH = {
   ja: "three/introduction/install#nightly-ビルド",
 };
 
+/**
+ * `since` of a feature that no release is planned to ship yet, such as a
+ * package under web/experimental: nightly-only until it is replaced with a
+ * version.
+ */
+export const NIGHTLY_ONLY = "nightly";
+
 const parseVersion = (version: string): number[] => {
   const match = /^(\d+)\.(\d+)\.(\d+)$/.exec(version);
   if (!match) {
-    throw new Error(`Expected a version like "0.3.2", got "${version}"`);
+    throw new Error(
+      `Expected a version like "0.3.2" or "${NIGHTLY_ONLY}", got "${version}"`,
+    );
   }
   return match.slice(1).map(Number);
 };
 
 /**
  * Whether a feature marked `since` (the latest release + 0.0.1 when it
- * landed, e.g. "0.3.2") is newer than {@link RELEASED_VERSION}, i.e.
- * available only in nightly builds. Any later release counts as shipping it.
+ * landed, e.g. "0.3.2", or {@link NIGHTLY_ONLY}) is newer than
+ * {@link RELEASED_VERSION}, i.e. available only in nightly builds. Any later
+ * release counts as shipping it.
  */
 export const isNightlyOnly = (since: string): boolean => {
+  if (since === NIGHTLY_ONLY) return true;
   const planned = parseVersion(since);
   const latest = parseVersion(RELEASED_VERSION);
   for (let i = 0; i < 3; i++) {
@@ -36,8 +47,11 @@ export const isNightlyOnly = (since: string): boolean => {
   return false;
 };
 
-/** Tooltip of the "Nightly" badge, per docs language. */
-export const NIGHTLY_TOOLTIP = {
-  en: "Available only in nightly builds until the next release",
-  ja: "次のリリースまでは nightly ビルドでのみ利用できます",
-};
+/** Tooltip of the "Nightly" badge of a feature marked `since`. */
+export const nightlyTooltip = (since: string, lang: "en" | "ja"): string =>
+  since === NIGHTLY_ONLY
+    ? { en: "Available only in nightly builds", ja: "nightly ビルドでのみ利用できます" }[lang]
+    : {
+        en: "Available only in nightly builds until the next release",
+        ja: "次のリリースまでは nightly ビルドでのみ利用できます",
+      }[lang];

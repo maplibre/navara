@@ -93,7 +93,7 @@ For newly spawned `RenderedTile` entities (those without a `Rendered` marker):
 
 ### `filter_requestable_data_requester`
 
-Throttles concurrent data requests to a maximum of 10, discarding lower-priority tiles.
+Admits pending requests into the shared request slots (`RequestLimits::max_pendings`): priority first, then round-robin across sources (counting the requests each source already has in flight), then screen-space error. Requests that get no slot wait and are sent as slots free. A waiting request is ranked by the priority the last traversal asked for its tile at (`TileCacheManager::wanted_data`), and is dropped once the traversal stops asking.
 
 ### `clear_caches`
 

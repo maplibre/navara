@@ -45,6 +45,10 @@ self-contained present-tense fact a newcomer can verify against the code.
   add dead code and obscure the real contract. If an invariant is worth
   enforcing, assert it (e.g. `debug_assert!`/`unreachable!` in Rust, `throw`
   in TS) instead of silently handling it.
+- **A shader that branches on `gl_FrontFacing` on a transparent `DoubleSide`
+  material needs `forceSinglePass = true`.** Otherwise three draws a `BackSide`
+  and a `FrontSide` pass: the winding flips, so `gl_FrontFacing` is true from
+  both sides, `DOUBLE_SIDED` is not defined, and `needsUpdate` fires every frame.
 - **Frontend job handlers execute; the engine schedules.** JS never queues,
   caps, dedupes or prioritizes engine events; Rust decides admission and
   order (`RequestLimits`, `WorkerLimits`, `Priority`). Async work registers
