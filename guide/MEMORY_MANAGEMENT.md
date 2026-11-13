@@ -199,13 +199,13 @@ them). Until a key has 4 samples it returns the key's cold-start seed
 
 | Pipeline | `ReserveKey` | Cold-start seed | Landed cost recorded from |
 | --- | --- | --- | --- |
-| Vector (MVT) | per source-layer entity | 512 KB | finalized geometry bytes (`navara_vector_tile/src/tile/system.rs`) |
+| Vector (MVT) | per source entity (`VectorTileSourceResources`) | 512 KB | finalized geometry bytes (`navara_mvt/src/geometry/async_finalize.rs`; `navara_vector_tile/src/tile/system.rs` without the `delegated_worker` feature) |
 | 3D Tiles | per tileset (layer) entity | 2 MB | constructed content bytes (`construct_system.rs`) |
 | Hillshade DEM | single shared pool | `raster_tile_bytes + 1/64` edge-strip overhead | decoded payload + stored edge strips (`hillshade/system.rs`) |
 | Terrain (RasterDEM / quantized mesh) | single shared pool | `raster_tile_bytes + atlas_tile_bytes` | landed mesh geometry + `atlas_tile_bytes` at `attach_terrain_mesh_cost` |
 | Raster texture | — (no reservation) | — | — (`attach_texture_fragment_cost` charges the full `raster_tile_bytes` the moment the fragment spawns, pre-accounting the fetch even earlier than a reservation would) |
 
-Per-layer pooling matters because different MVT sources and tilesets have
+Per-source pooling matters because different MVT sources and tilesets have
 wildly different tile sizes; the fast EMA (α = 0.08, ≈ last 25 samples) matters
 because tile cost varies systematically with zoom band and a camera burst
 fetches from a narrow band — a recency-weighted mean tracks the band currently

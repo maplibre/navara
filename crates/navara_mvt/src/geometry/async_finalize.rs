@@ -135,7 +135,7 @@ pub(crate) fn finalize_parsed_mvt(
     >,
     mut tile_caches: Query<&mut TileCacheManager>,
     mut rendered_tiles: Query<&mut RenderedTile>,
-    layers: Query<(Entity, &navara_vector_tile::LayerResources)>,
+    sources: Query<(Entity, &navara_vector_tile::VectorTileSourceResources)>,
     mut estimates: ResMut<navara_memory::ReserveEstimates>,
 ) {
     for (delegator, mut result, ctx) in &mut completed {
@@ -247,23 +247,18 @@ pub(crate) fn finalize_parsed_mvt(
                 let cost = navara_vector_tile::estimate_vector_tile_cost(geometry_bytes);
                 commands.entity(ctx.rendered_tile).insert(cost);
 
-                // FIX 3: warm the per-layer reservation EMA with this landed
-                // cost. In the default delegated_worker build the only other
-                // record site (`transfer_mesh`) is dead code (construct_geometry
-                // returns None), so without this the `ReserveKey::VectorLayer` EMA
-                // never warms and vector reservations stay at the 512KB seed
-                // forever. The key must match the RESERVATION site's derivation
-                // (`data_requester/system.rs`): the first `LayerResources` entity
-                // whose `tile_cache_manager` holds this tile. Both sites reduce
-                // to the same first-matching layer for a shared manager.
-                let layer_entity = layers.iter().find_map(|(layer_entity, layer)| {
-                    let tc = tile_caches.get(layer.tile_cache_manager).ok()?;
+                // Warm the reservation EMA with this landed cost. The key must
+                // be the source entity `filter_requestable_data_requester`
+                // reserves with: the `VectorTileSourceResources` whose
+                // `tile_cache_manager` holds this tile.
+                let source_entity = sources.iter().find_map(|(source_entity, source)| {
+                    let tc = tile_caches.get(source.tile_cache_manager).ok()?;
                     (tc.rendered_tile_caches.get(&ctx.tile_handle) == Some(&ctx.rendered_tile))
-                        .then_some(layer_entity)
+                        .then_some(source_entity)
                 });
-                if let Some(layer_entity) = layer_entity {
+                if let Some(source_entity) = source_entity {
                     estimates.record(
-                        navara_memory::ReserveKey::VectorLayer(layer_entity),
+                        navara_memory::ReserveKey::VectorLayer(source_entity),
                         geometry_bytes,
                     );
                 }
@@ -458,18 +453,12 @@ mod test {
         assert!(world.resource::<BufferStore>().is_empty());
     }
 
-    /// FIX 1 (worker path): finalizing a worker-parsed MVT tile must charge the
-    /// built geometry to the ledger by inserting a `TileCost` on the *rendered
-    /// tile* entity — the same entity `clear_caches`/`enforce_memory_budget`
-    /// read the cost from. In the default `delegated_worker` build,
-    /// `construct_geometry` only spawns the parse task (returns `None`), so
-    /// `transfer_mesh` inserts nothing; without this, worker MVT tiles carried
-    /// zero GPU cost and the budget never saw vector geometry.
-    #[test]
-    fn it_should_charge_a_tile_cost_when_finalizing_worker_geometry() {
+    /// Spawns a completed worker parse of a two-point tile, packed exactly as
+    /// the worker hands it back, plus its `RenderedTile`. Returns the rendered
+    /// tile; the caller registers it in a `TileCacheManager` to make it current.
+    fn spawn_completed_point_parse(world: &mut World, handle: TileHandle) -> Entity {
         use std::sync::Arc;
 
-        use bevy_ecs::system::RunSystemOnce;
         use geozero::mvt::tile;
         use navara_material::{Appearance, PointMaterial};
         use navara_math::Vec3;
@@ -477,15 +466,13 @@ mod test {
         use navara_parser::mvt::{
             LayerParseKind, ParsedGeometry, ParsedLayerGroup, pack_parsed_mvt_groups,
         };
-        use navara_vector_tile::{RenderedTile, TileCacheManager};
+        use navara_vector_tile::RenderedTile;
         use navara_worker::{WorkerTaskCompleted, parse_mvt_tile::ParseMvtTileResult};
 
-        let mut world = World::new();
         world.init_resource::<BatchTable>();
         world.init_resource::<MemoryLedger>();
         world.init_resource::<navara_memory::ReserveEstimates>();
 
-        // A single point group, packed exactly as the worker would hand it back.
         let group = ParsedLayerGroup {
             layer_id: "poi".to_string(),
             kind: LayerParseKind::Point,
@@ -518,19 +505,12 @@ mod test {
         let pbf_handle = buf.new_u8(vec![0u8; 8]);
         world.insert_resource(buf);
 
-        let handle: TileHandle = 0;
         let rendered_tile = world
             .spawn(RenderedTile {
                 tile_handle: handle,
                 feature_ids: None,
             })
             .id();
-
-        // The tile must be the canonical rendered tile for its handle so the
-        // finalize path treats the result as current and builds geometry.
-        let mut tc = TileCacheManager::default();
-        tc.rendered_tile_caches.insert(handle, rendered_tile);
-        world.spawn(tc);
 
         world.spawn((
             result,
@@ -551,6 +531,28 @@ mod test {
             },
         ));
 
+        rendered_tile
+    }
+
+    /// Finalizing a worker-parsed MVT tile charges the built geometry to the
+    /// ledger by inserting a `TileCost` on the *rendered tile* entity, the
+    /// entity `clear_caches`/`enforce_memory_budget` read the cost from.
+    #[test]
+    fn it_should_charge_a_tile_cost_when_finalizing_worker_geometry() {
+        use bevy_ecs::system::RunSystemOnce;
+        use navara_memory::MemoryLedger;
+        use navara_vector_tile::TileCacheManager;
+
+        let mut world = World::new();
+        let handle: TileHandle = 0;
+        let rendered_tile = spawn_completed_point_parse(&mut world, handle);
+
+        // The tile must be the canonical rendered tile for its handle so the
+        // finalize path treats the result as current and builds geometry.
+        let mut tc = TileCacheManager::default();
+        tc.rendered_tile_caches.insert(handle, rendered_tile);
+        world.spawn(tc);
+
         world.run_system_once(finalize_parsed_mvt).unwrap();
 
         // A real, non-zero cost was charged on the rendered tile...
@@ -567,6 +569,61 @@ mod test {
             world.resource::<MemoryLedger>().gpu_bytes_est,
             cost.gpu_est,
             "the TileCost hook must have added the geometry to the ledger"
+        );
+    }
+
+    /// The landed cost is recorded under the key
+    /// `filter_requestable_data_requester` reserves with: the
+    /// `VectorTileSourceResources` entity owning the tile's cache manager.
+    #[test]
+    fn it_should_record_the_landed_cost_under_the_source_reserve_key() {
+        use bevy_ecs::system::RunSystemOnce;
+        use navara_memory::{
+            DEFAULT_VECTOR_TILE_RESERVE_BYTES, RESERVE_MIN_BYTES, RESERVE_MIN_SAMPLES,
+            ReserveEstimates, ReserveKey,
+        };
+        use navara_vector_tile::{
+            SourceId, TileCacheManager, TraversalConfig, VectorTileSourceResources,
+        };
+
+        let mut world = World::new();
+        let handle: TileHandle = 0;
+        let rendered_tile = spawn_completed_point_parse(&mut world, handle);
+
+        let mut tc = TileCacheManager::default();
+        tc.rendered_tile_caches.insert(handle, rendered_tile);
+        let tc = world.spawn(tc).id();
+        let quadtree = world.spawn_empty().id();
+        let source = world
+            .spawn(VectorTileSourceResources::new(
+                SourceId::new("mvt".to_string(), TraversalConfig::default()),
+                quadtree,
+                tc,
+                Vec::new(),
+            ))
+            .id();
+
+        // One sample short of warm: the finalize below must supply the last.
+        let key = ReserveKey::VectorLayer(source);
+        for _ in 1..RESERVE_MIN_SAMPLES {
+            world
+                .resource_mut::<ReserveEstimates>()
+                .record(key, RESERVE_MIN_BYTES);
+        }
+        assert_eq!(
+            world
+                .resource::<ReserveEstimates>()
+                .estimate(key, DEFAULT_VECTOR_TILE_RESERVE_BYTES),
+            DEFAULT_VECTOR_TILE_RESERVE_BYTES
+        );
+
+        world.run_system_once(finalize_parsed_mvt).unwrap();
+
+        assert_eq!(
+            world
+                .resource::<ReserveEstimates>()
+                .estimate(key, DEFAULT_VECTOR_TILE_RESERVE_BYTES),
+            RESERVE_MIN_BYTES
         );
     }
 

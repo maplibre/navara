@@ -229,7 +229,7 @@ pub fn filter_requestable_data_requester(
             continue;
         }
 
-        // Reserve the per-layer adaptive estimate (resolved by the `ReservedCost`
+        // Reserve the per-source adaptive estimate (resolved by the `ReservedCost`
         // on_insert hook — EMA of previously landed geometry costs, seeded by the
         // vector constant while cold) for each requester actually dispatched this
         // frame.
