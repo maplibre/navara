@@ -2279,6 +2279,10 @@ export default class ThreeView<
     this.renderPassOrchestrator.render();
     this._pickHelper?.renderDebugCanvas();
 
+    for (const tile of this._tileMapByHandle.values()) {
+      tile.releaseDrapeGpuMemoryUnlessDrawn();
+    }
+
     this.shadowMapViewers.render(this._renderer);
 
     this.emit("postRender", updatedAt);
