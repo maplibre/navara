@@ -1,14 +1,18 @@
-# Custom Descriptors — meshes, effects, depth/normal buffer access
+# Custom Descriptors — meshes, effects, lights
 
 For expression the built-ins can't produce, extend the descriptor base classes from `@navaramap/three`: `MeshDesc`, `InstancedMeshDesc`, `EffectDesc`, `LightDesc` (all extend `BaseDesc`). Register the class, then add instances declaratively — the config object's key selects the class.
+
+Reading and writing the depth/normal/shadow G-buffers from a descriptor: [gbuffer.md](gbuffer.md).
+
+- **`registerMesh()` / `registerEffect()` / `registerLight()` before `init()` throw** (e.g. "Cannot read properties of undefined (reading 'mesh')"): `view.init()` creates the registries. Register custom descriptors after it (or from a plugin), and type the view with a union so `addMesh` accepts their keys: `new ThreeView<DefaultDescriptions | { mesh: MyMeshConfig }>()`.
 
 ## Lifecycle hooks (all descriptor kinds)
 
 - `constructor(view, ctx, config)` — note: the base class stores only `id`/`visible`; declare and assign your own `config` field
-- Factory: `createMesh()` (mesh), `createGeometry()`+`createMaterial()` (instanced mesh only), `createPass()` (effect), `createLight()` (light)
+- Factory: `createMesh()` (mesh), `createGeometry()`+`createMaterial()` (instanced mesh only), `createPass()` (effect — returns a `postprocessing` `Pass`, or a wrapper object exposing it as `raw`; kept as `this._instance`), `createLight()` (light)
 - `onUpdateConfig(updates)` — partial updates from `handle.update()`
 - `update(time)` — optional per-frame hook; `onDestroy`; `onResize` (MeshDesc only)
-- `this.view` — high-level state (camera, atmosphere, globe). `this.ctx` (`ViewContext`, Tier 1) — rendering internals: scenes (opaque/transparent/mrt/skyEnvMap/light/draped), pass management (`getPass`/`addPass`/`insertPassBefore`/`insertPassAfter`/`removePass`), renderer, G-buffer textures, CSM shadow helpers.
+- `this.view` — high-level state (camera, atmosphere, globe). `this.ctx` (`ViewContext`, API stability Tier 1 — may break between minor versions) — rendering internals: scenes (opaque/transparent/mrt/skyEnvMap/light/draped), pass management (`getPass`/`addPass`/`insertPassBefore`/`insertPassAfter`/`removePass`), renderer, G-buffer textures, CSM shadow helpers.
 
 ## Custom effect (post-processing) with pipeline ordering
 
@@ -49,55 +53,15 @@ handle.update({ vignette: { darkness: 0.7 } }); // partial merge
 
 Ordering is declared statically via `key` / `insertAfter` / `insertBefore` relative to other effects' keys. Runnable reference: `example/pages/custom-effect/` (Navara repo).
 
-Placement rule: the built-in `transparent` pass renders overlay content that writes no depth/G-buffer data, so an effect that samples depth or G-buffer textures must use `insertBefore: ["transparent"]` (running after it paints over that content). Whole-frame screen effects (vignette, grading) insert after it via `insertBefore: ["smaa", "fxaa", "final"]`. Note that insertion resolves against passes that already exist at `addEffect` time — anchor to built-ins (`mrt`, `transparent`, `final`) when possible.
+- **How the position resolves:** each `insertAfter` key is tried in order and the first existing pass wins; only when none exists are the `insertBefore` keys tried; with no match the pass is appended to the end. So `insertBefore` is a fallback, not a second constraint. Insertion resolves against passes that already exist at `addEffect` time — anchor to built-ins when possible. Built-in order: `skyEnvMap` → `mrt` → … → `transparent` → `final`.
+- **Placement rule:** the built-in `transparent` pass renders overlay content that writes no depth/G-buffer data, so an effect that samples depth or G-buffer textures must run **before** it (running after it paints over that content). Either `static insertAfter = ["mrt"]` (right after MRT, which is already before `transparent`) or `static insertBefore = ["transparent"]` does it; the built-ins use `insertAfter = ["mrt"]` plus `insertBefore = ["transparent"]` as the fallback. Whole-frame screen effects (vignette, grading) go after it via `insertBefore: ["smaa", "fxaa", "final"]`.
+- **Registered name vs `static key`:** `view.registerEffect(name, cls)`'s `name` is the config key that selects the class in `addEffect({ [name]: … })`; `static key` is the pass identity that other effects' `insertAfter`/`insertBefore` and `find()` match. Keep the two identical, as every built-in does.
+- **Looking up other descriptors:** `this.find<T>(key)` and `this.ctx.findEffect<T>(key)` are the same lookup (by `static key`, `T | undefined`); `ctx.findLight(name)` / `ctx.findMesh(name)` match the registered name (`"sun"`, `"gltfModel"`).
 
-## Depth & normal buffer access
+## Reading scene state from a descriptor
 
-Navara renders into a multi-render-target (MRT) G-buffer, so custom work can both **write to** and **read from** it:
-
-- **Built-in materials are automatic.** Importing `@navaramap/three` monkey-patches every Three.js `ShaderLib` material (`MeshStandard/Basic/Lambert/Phong`, `Sprite`, `Points`) to write the G-buffer — nothing to do for `MeshStandardMaterial` et al.
-- **Custom `ShaderMaterial`/`LineMaterial` must opt in** — they bypass `ShaderLib`, so wire them in with one call:
-  ```typescript
-  import { setupMaterialForMRT } from "@navaramap/three";
-  const material = new ShaderMaterial({
-    uniforms,
-    vertexShader,
-    fragmentShader,
-  });
-  setupMaterialForMRT(material, { normal: "vNormal" }); // name your VIEW-SPACE normal varying (default "normal")
-  // LineMaterial (three-stdlib) is detected and routed automatically; the `normal` option is ignored for it:
-  setupMaterialForMRT(lineMaterial);
-  ```
-  `normal` must name a **view-space** normal (it's packed with `packNormalToVec2`). Skipping this makes the mesh write nothing to the normal/id/emissive buffers, so depth/normal-based effects (SSAO, SSR, outlines) and SelectiveEffect (Bloom/Outline) break on it. Idempotent. Reference: `example/pages/custom-shader/` (MarchingCubes), `example/pages/mesh-layers/custom-pickable/` (Navara repo).
-- **Read depth/normal in a custom effect** — the canonical pattern (used by the built-in aerial-perspective and clouds effects): find the MRT pass from inside your `EffectDesc` via `this.find()` and wire its buffers into your pass. `MRTPassEffectDesc` is exported from `@navaramap/three` and auto-registered by `ThreeView` under the key `"mrt"`:
-  ```typescript
-  import { EffectDesc, type MRTPassEffectDesc } from "@navaramap/three";
-
-  class MyDepthEffectDesc extends EffectDesc<Config, Update, MyPass> {
-    static key = "myDepthEffect";
-    static insertAfter = ["mrt"];             // must run after the MRT pass
-    createPass() {
-      const mrtPass = this.find<MRTPassEffectDesc>("mrt");   // find() looks up another effect by its static key
-      // find() returns T | undefined, and the buffers are Texture | undefined — guard before use:
-      if (!mrtPass?.normalBuffer || !mrtPass.depthBuffer) throw new Error("MRT pass not ready");
-      const pass = new MyPass(this.view.camera.raw, mrtPass.normalBuffer, { ... });
-      pass.raw.setCustomDepthTexture(mrtPass.depthBuffer, mrtPass.depthBufferPacking);
-      return pass;
-    }
-  }
-  ```
-  `find<T>(key)` works for any cross-effect communication, not just MRT.
-- **Inject a custom geometry buffer into SSR** — `SSREffectDesc` accepts `ssr: { geometryBuffer: Texture | null }` to control where SSR applies (e.g. app-drawn puddles); `null`/unset falls back to the MRT normal buffer. The texture must use the G-buffer encoding `vec4(packNormalToVec2(viewNormal), mask, roughness)` — `.z` is F0 (reflectance at normal incidence: 0.02 water, 1 mirror) — SSR skips pixels with `.z < 0.01` and cone tracing derives the reflection's Fresnel strength from it, so a mask of 1 makes a mirror while 0.02 only reflects strongly at grazing angles; `.w` drives the cone-tracing blur (default path) or multiplies `.z` for GGX jitter (cone tracing off). Texture _contents_ updates need no API call; swapping the texture _object_ goes through `handle.update({ ssr: { geometryBuffer } })`. Runnable reference: `example/pages/ssr-puddle/` (Navara repo). Effects built on the `postprocessing` library can alternatively declare `attributes: EffectAttribute.DEPTH` to receive composer depth in `mainImage` (see `SSREffect`). Real implementations to copy from (Navara repo): `navara_three_default_descs/src/effects/AerialPerspectiveEffectDesc.ts`, `CloudsEffectDesc.ts`, `ssr/SSREffect.ts`.
-- **Terrain and the globe do NOT write the main MRT normal buffer** — their normals live in the separate globe copies (`ctx.getGlobeNormalTexture()`, `MRTPassEffectDesc.globeNormalBuffer`). In the main normal buffer, terrain pixels keep packed normal `(0, 0)` (which `unpackVec2ToNormal` decodes as `(0, 0, 1)` — a bogus camera-facing normal). Shaders that classify pixels by G-buffer normal must treat `dot(g.xy, g.xy) ≈ 0` as "no normal written", not as a valid normal (verified in `example/pages/ssr-puddle/`).
-- **Optional buffers exist only when a descriptor requests them** — the `normal`/`selectiveEffect`/`emissive`/`shadow` attachments and the `globeNormal` copy are allocated from the union of every effect's and mesh's `getRequiredBuffers()`; an unrequested `globeNormal` stays a 1x1 texture, so a shader sampling it reads one stale texel with no error. Effects declare `static requiredBuffers`; meshes override `getRequiredBuffers()` (default: `["globeNormal"]` in the `draped` pass, else `[]`). The result must follow from the config alone (read before `onCreate()`); when an `update()` changes it, emit `this.ctx.emit("gbufferRequirementsChanged")` (moving into/out of the `draped` pass emits it for you).
-- **Read via `ViewContext` accessors** — `this.ctx` also exposes buffers directly (each throws before the render pass is initialized, so call from `createPass()`/`update()`, not the constructor):
-  - `ctx.getGlobeDepthTexture()` / `ctx.getGlobeNormalTexture()` — globe-only depth/normal copies for post-processing
-  - `ctx.getRenderTarget()` — the main G-buffer render target; `ctx.getNormalTexture()` / `ctx.getEffectIdsTexture()` / `ctx.getEmissiveTexture()` — its attachments 1–3
-  - `ctx.getInputBuffer()` — the effect composer's input buffer; `ctx.getRenderer()` — the `WebGLRenderer`
-- **Read the G-buffer back on the CPU** — `BufferView` (from `@navaramap/three`) reads MRT attachments off a render target, e.g. for debug visualization. Use `renderFromPixels()` for HalfFloat attachments (plain `render()` reads `Uint8Array` data only). Reference: `example/pages/debug/selective-effect/debugView.ts` (Navara repo).
-- Depth-position queries from app code (no custom descriptor needed): `view.pickDepthPosition(x, y)` returns the ECEF position under a pixel using the full depth buffer.
-
-Gotchas: some effects don't support `logarithmicDepthBuffer` (set it `false` when using them) and `hideUnderground: false` can break effect descriptors.
+- **A custom effect should inherit scene config, not re-declare it** — `ctx.findLight("sun")` / `findEffect` / `findMesh` resolve active descs (see the lookup rule above), so a lighting effect reads the sun's real intensity and `view.atmosphere.sunDirection` instead of growing its own options.
+- **`view.atmosphere.textures.scatteringTexture` / `higherOrderScatteringTexture` are GPU-only once rendered** — their CPU data (`image.data`) is dropped after the first upload, so they can't be read on the CPU or bound in a second `WebGLRenderer`. The 2D `transmittanceTexture` / `irradianceTexture` keep their data. Get them via `view.atmosphere.onTexturesReady(cb, needs)`, never by polling `textures`, which loads lazily.
 
 ## Custom mesh
 
