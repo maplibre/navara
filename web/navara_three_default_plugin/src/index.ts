@@ -20,6 +20,7 @@ import {
   PlaneMeshDesc,
   GLTFModelDesc,
   SplatMeshDesc,
+  Text3DMeshDesc,
   AxesHelperDesc,
   ArrowHelperDesc,
   ArclineMeshDesc,
@@ -41,6 +42,7 @@ import {
   type PlaneMeshConfig,
   type GLTFModelConfig,
   type SplatMeshConfig,
+  type Text3DMeshConfig,
   type AxesHelperConfig,
   type ArrowHelperConfig,
   type ArclineMeshConfig,
@@ -118,6 +120,7 @@ export class DefaultPlugin extends Plugin<
     view.registerMesh("plane", PlaneMeshDesc);
     view.registerMesh("gltfModel", GLTFModelDesc);
     view.registerMesh("splat", SplatMeshDesc);
+    view.registerMesh("text3D", Text3DMeshDesc);
     view.registerMesh("axesHelper", AxesHelperDesc);
     view.registerMesh("arrowHelper", ArrowHelperDesc);
     view.registerMesh("arcLines", ArclineMeshDesc);
@@ -293,6 +296,7 @@ export type DefaultMeshDescription =
   | PlaneMeshConfig
   | GLTFModelConfig
   | SplatMeshConfig
+  | Text3DMeshConfig
   | AxesHelperConfig
   | ArrowHelperConfig
   | ArclineMeshConfig

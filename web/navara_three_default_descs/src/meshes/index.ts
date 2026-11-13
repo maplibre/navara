@@ -56,6 +56,12 @@ export {
   type SplatMeshEvent,
 } from "./SplatMeshDesc";
 export {
+  Text3DMeshDesc,
+  type Text3DMeshConfig,
+  type Text3DMeshUpdate,
+  type Text3DMeshEvent,
+} from "./Text3DMeshDesc";
+export {
   TubeMeshDesc,
   type TubeMeshConfig,
   type TubeMeshUpdate,

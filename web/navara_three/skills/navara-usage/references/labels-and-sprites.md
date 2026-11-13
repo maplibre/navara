@@ -1,6 +1,6 @@
 # Labels and sprites — text, billboard, point
 
-The `text` / `billboard` / `point` materials of a `vector` layer follow MapLibre's symbol model. Sizes, `geometryTypes` and draping: [vector-styling.md](vector-styling.md). Returning values per feature: [feature-evaluator.md](feature-evaluator.md).
+The `text` / `billboard` / `point` materials of a `vector` layer follow MapLibre's symbol model. Sizes, `geometryTypes` and draping: [vector-styling.md](vector-styling.md). Returning values per feature: [feature-evaluator.md](feature-evaluator.md). Extruded 3D text as a mesh (`text3D`, a font file URL instead of a font family): [declarative-api.md](declarative-api.md#mesh--effect--light-descriptors-the-other-half-of-the-declarative-api).
 
 ## Text from feature properties, fonts
 

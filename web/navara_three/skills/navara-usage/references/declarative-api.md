@@ -103,6 +103,7 @@ box.delete();
 
 With `DefaultPlugin` all built-ins are pre-registered; call `addMesh`/`addEffect`/`addLight` directly.
 
-- **Handle events vs desc events:** mesh/light/effect handles (`BaseHandle`) only emit `deleted` — desc-specific events (`load` / `error` / `animationReady` on GLTF, instanced-GLTF and splat descs) live on the desc, so subscribe via `handle.ref.on("load", ...)`.
+- **Handle events vs desc events:** mesh/light/effect handles (`BaseHandle`) only emit `deleted` — desc-specific events (`load` / `error` / `animationReady` on GLTF, instanced-GLTF, splat and 3D text descs) live on the desc, so subscribe via `handle.ref.on("load", ...)`.
+- **3D text (`text3D`, `Text3DMeshDesc`) takes a font file URL, not a font family.** `font` is a TTF file or a three.js typeface.json hosted by the app (OTF loads, but its holes break with three.js before 0.185); WOFF2 and families registered with `addFontFamily` fail with an `error` event, unlike the `text` material. The mesh appears once the font has loaded; a `font` change through `update()` keeps the current font until the new one loads (last request wins). `size` is in meters, roughly the height of capital letters. The anchor is the bottom center of the text block, the text stands upright with its front facing `geodetic.heading`, and `heading: 180, pitch: 90` lays it flat reading north-up. It is a lit Lambert mesh, so add lights. Docs: `three_default_descs/mesh-desc/text-3d-mesh-desc`.
 
 Full reference: https://navara.world/docs/three/source/about/ · /three/layer/about/ · /three/material/about/
