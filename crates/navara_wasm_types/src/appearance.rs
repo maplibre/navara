@@ -2382,6 +2382,10 @@ impl RasterMaterial {
 #[wasm_bindgen]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RasterTileInternalMaterial {
+    /// Whether the tile mesh is drawn, from the terrain layer's `show`.
+    #[wasm_bindgen(js_name = showMesh)]
+    #[serde(rename = "showMesh")]
+    pub show_mesh: bool,
     #[wasm_bindgen(getter_with_clone)]
     pub shows: Vec<u8>,
     #[wasm_bindgen(getter_with_clone)]
@@ -2637,6 +2641,7 @@ impl<'a> From<&'a navara_material::RasterTileInternalMaterial> for RasterTileInt
     fn from(m: &'a navara_material::RasterTileInternalMaterial) -> Self {
         let heatmap = ElevationHeatmapSlots::new(&m.elevation_heatmap_layers);
         Self {
+            show_mesh: m.show_mesh,
             shows: m.shows.iter().map(|s| s.to_u8()).collect(),
             colors: m.colors.clone(),
             opacities: m.opacities.clone(),

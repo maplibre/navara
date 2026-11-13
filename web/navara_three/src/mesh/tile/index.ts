@@ -1072,8 +1072,7 @@ ${generateTileCommonInjection(maxTextures)}
 
     const maxTextures = textureOptions.maxTextures;
 
-    // TODO: Support hide entire globe.
-    this.visible = active;
+    this.visible = active && changedMaterial.showMesh;
 
     if (active) {
       this.ensureCorrectMaterialType(changedMaterial, globe);
