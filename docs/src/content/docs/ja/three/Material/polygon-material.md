@@ -256,7 +256,7 @@ import { Color } from "@navaramap/three";
 
 **Type:** `boolean | undefined`
 
-**Description:** アウトラインジオメトリを計算するかどうか。初回読み込み時のみ有効です。未設定の場合、`outlineShow` から推測されます。
+**Description:** `outlineShow` が `false` の間もアウトラインジオメトリを計算するかどうか。計算しておくと、後から更新で表示できます。アウトラインを表示する場合は常に計算されます。ジオメトリの構築時に読まれるため、読み込み済みのタイルは変わりません。
 
 **Default:** `undefined`
 

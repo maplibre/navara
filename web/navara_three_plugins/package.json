@@ -18,7 +18,8 @@
     "lint": "eslint . --fix",
     "lint:check": "eslint .",
     "format": "prettier --write --ignore-path ../../.gitignore .",
-    "format:check": "prettier --check --ignore-path ../../.gitignore ."
+    "format:check": "prettier --check --ignore-path ../../.gitignore .",
+    "generate:schema": "node scripts/generate-material-schema.mjs"
   },
   "license": "MIT OR Apache-2.0",
   "repository": {
@@ -33,18 +34,22 @@
     "@navaramap/three": "workspace:*",
     "@navaramap/three-default-descs": "workspace:*",
     "@navaramap/three-default-plugin": "workspace:*",
+    "postprocessing": ">=6.38.0",
     "three": ">=0.183.0"
   },
   "dependencies": {
     "@mapbox/vector-tile": "3.0.0",
-    "pbf": "5.1.2"
+    "pbf": "5.1.2",
+    "tweakpane": "4.0.5"
   },
   "devDependencies": {
     "@navaramap/three": "workspace:*",
     "@navaramap/three-default-descs": "workspace:*",
     "@navaramap/three-default-plugin": "workspace:*",
     "@types/geojson": "7946.0.16",
+    "@types/node": "26.6.6",
     "@types/three": "0.187.0",
+    "postprocessing": "6.39.6",
     "three": "0.187.0"
   }
 }

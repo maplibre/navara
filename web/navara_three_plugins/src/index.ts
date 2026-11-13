@@ -41,6 +41,8 @@ export {
   type TileJsonPluginEventMap,
 } from "./TileJsonPlugin";
 
+// Development-only tools (tweakpane panels); see the README.
+export * from "./devtools";
 export {
   StreetLightsPlugin,
   isRoadClass,

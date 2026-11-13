@@ -55,3 +55,29 @@ export function releaseGeometryArraysAfterUpload(
   }
   releaseAttributeAfterUpload(geometry.index);
 }
+
+let wireframeWarned = false;
+
+/**
+ * Whether `material.wireframe` may be set on a mesh of this geometry. three.js
+ * builds the wireframe from the CPU index (or position) array at draw time,
+ * and drawing one whose array was released throws inside the render pass. So
+ * a wireframe needs the geometry built while
+ * `ViewContext.retainGeometryArrays` was on (`retained`) and its array still
+ * present. Warns once when a wireframe is refused.
+ */
+export function canDrawWireframe(
+  geometry: BufferGeometry,
+  retained: boolean,
+): boolean {
+  const source = geometry.index ?? geometry.getAttribute("position");
+  const array = (source as { array?: unknown } | undefined)?.array;
+  if (retained && array) return true;
+  if (!wireframeWarned) {
+    wireframeWarned = true;
+    console.warn(
+      "Navara: wireframe needs geometry arrays kept on the CPU; set ViewContext.retainGeometryArrays before layers load (the debug tools do).",
+    );
+  }
+  return false;
+}

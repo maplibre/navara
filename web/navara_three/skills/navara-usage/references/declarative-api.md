@@ -78,6 +78,8 @@ layer.on("featureUpdated", ({ evaluator }) => {
 
 Layer events: `featureCreated` / `featureUpdated` / `featureVisibilityChanged` / `featureRemoved` / `deleted`. There is no per-layer "loaded" event — to know when everything has finished loading, use the view-level `idle` event (fires after `idleThreshold` ms without tile/data activity).
 
+**A `Layer` handle does not expose its description.** To know a layer's config, keep it yourself: `layerAdded` passes `(layer, description)` (as given to `addLayer`, a `Source` handle not yet turned into its id) and the layer's `updated` event passes each partial update, which the engine deep-merges into the current config (see "Updates are partial merges" above). `view.layers` iterates the resource layers in add order; `layerAdded` / `layerRemoved` / `sourceAdded` view events track them. A plugin that needs every layer subscribes in its `init()`, which runs before the app can add one.
+
 ## Mesh / Effect / Light descriptors (the other half of the declarative API)
 
 Layers need no registration, but mesh/effect/light **Descriptors must be registered before use** — the key of the config object selects the descriptor class:

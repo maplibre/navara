@@ -797,9 +797,11 @@ pub struct TextMaterial {
     /// Width over which the outline's outer edge fades out, centered on that
     /// edge, in the unit of `outline_width`. Default `0.0`.
     pub outline_blur: f32,
-    pub outline_color: u32, // outlineColor Defalut:black
+    /// Default black.
+    pub outline_color: u32,
     // pub outline_offset: Vec2, // outlineOffset Default: (0,0)
-    pub outline_opacity: f32, // outlineOpacity Default:1
+    /// From 0 to 1. Default `1.0`.
+    pub outline_opacity: f32,
     /// Outline thickness in 1/64 em: pixels of text drawn 64 pixels tall.
     /// Default `0.0`.
     pub outline_width: f32,
