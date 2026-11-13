@@ -4,40 +4,33 @@ import {
   DefaultPlugin,
   type DefaultDescriptions,
 } from "@navaramap/three-default-plugin";
+import { TileJsonPlugin } from "@navaramap/three-plugins";
 
 import { addButton, addCheckbox, addSwitch } from "../../../../helpers/button";
-import {
-  FONT_DATASETS,
-  TERRAIN_DATASETS,
-  TILES_3D_DATASETS,
-  TILE_DATASETS,
-} from "../../../../helpers/constants";
 import { initializeExample } from "../../../../helpers/initialize";
+
+const ASSETS = import.meta.env.BASE_URL; // "/examples/" on navara.world
 
 const view = new ThreeView<DefaultDescriptions>({ shadow: true });
 
 const defaultPlugin = new DefaultPlugin();
 view.addPlugin(defaultPlugin);
+const tilejson = new TileJsonPlugin();
+view.addPlugin(tilejson);
 
 await view.init();
 
-// `applyColor` keeps the sun white; its direction follows `atmosphere.date`.
-view.addLight({
-  sun: {
-    castShadow: true,
-    applyColor: true,
-    intensity: 2,
-    shadowIntensity: 0.6,
-  },
-});
 view.atmosphere.date = new Date("2024-11-01T03:00:00Z");
+view.addLight({ ambient: { intensity: 0.5 } });
+// `applyColor` keeps the sun white; its direction follows `atmosphere.date`.
+view.addLight({ sun: { intensity: 2, applyColor: true, castShadow: true } });
 
 view.setCamera({
   lng: 139.7488,
   lat: 35.6866,
   height: 1390,
-  heading: 47.5,
-  pitch: -28.6,
+  heading: 38,
+  pitch: -26,
   roll: 0,
 });
 view.camera.fov = 20;
@@ -45,7 +38,7 @@ view.camera.fov = 20;
 // The buildings sit on Re:Earth Terrain heights, so the terrain keeps their bases on the ground.
 const terrain = view.addSource({
   type: "quantized-mesh",
-  url: TERRAIN_DATASETS.reearthQuantizedMesh.url,
+  url: "https://terrain.reearth.land/cesium-mesh/ellipsoid/{z}/{x}/{y}.terrain",
   maxZoom: 18,
   requestVertexNormals: true,
 });
@@ -55,20 +48,19 @@ view.addLayer({
   terrain: { castShadow: true, receiveShadow: true },
 });
 
-const osm = view.addSource({
+const basemap = await tilejson.addSource({
   type: "raster-tile",
-  url: TILE_DATASETS.openstreetmap.url,
-  maxZoom: 18,
+  url: "https://papers.reearth.land/styles/papers-light/tilejson.json",
 });
-view.addLayer({ type: "raster", source: osm });
+view.addLayer({ type: "raster", source: basemap });
 
-const source = view.addSource({
+const buildings = view.addSource({
   type: "3d-tiles",
-  url: TILES_3D_DATASETS.reearthBuildings.url,
+  url: "https://buildings.reearth.land/tileset.json",
 });
 view.addLayer({
   type: "3d-tiles",
-  source,
+  source: buildings,
   model: {
     color: new Color().setStyle("#ffffff"),
     metalness: 0,
@@ -81,13 +73,10 @@ view.addLayer({
 const text = view.addMesh<Text3DMeshDesc>({
   text3D: {
     text: "東京 -TOKYO-",
-    font: FONT_DATASETS.LineSeedJP.url,
+    font: `${ASSETS}fonts/lineseedjp/LINESeedJP-Bold.ttf`,
     size: 107.5,
     depth: 75,
-    color: new Color().setStyle("#cc0000"),
-    // Keeps the faces turned away from the sun red instead of near black.
-    emissiveColor: new Color().setStyle("#ff0000"),
-    emissiveIntensity: 0.29,
+    color: new Color().setStyle("#0091ff"),
     // Bevel lengths are absolute, so they are set in proportion to `size`.
     bevelThickness: 10,
     bevelSize: 6,
@@ -105,43 +94,40 @@ const text = view.addMesh<Text3DMeshDesc>({
 });
 
 const fonts = [
-  { label: "LINE Seed JP", dataset: FONT_DATASETS.LineSeedJP },
-  { label: "Montserrat", dataset: FONT_DATASETS.Montserrat },
-  { label: "Roboto", dataset: FONT_DATASETS.Roboto },
-  { label: "Borel", dataset: FONT_DATASETS.Borel },
+  {
+    label: "LINE Seed JP",
+    url: `${ASSETS}fonts/lineseedjp/LINESeedJP-Bold.ttf`,
+  },
+  { label: "Montserrat", url: `${ASSETS}fonts/montserrat/Montserrat-Bold.ttf` },
+  { label: "Roboto", url: `${ASSETS}fonts/roboto/Roboto[wdth,wght].ttf` },
+  { label: "Borel", url: `${ASSETS}fonts/borel/Borel-Regular.ttf` },
 ];
 // The text keeps its current font until the new one has loaded.
 addSwitch(
   fonts.map((font) => font.label),
   0,
-  (index) => text.update({ text3D: { font: fonts[index].dataset.url } }),
+  (index) => text.update({ text3D: { font: fonts[index].url } }),
 );
 
 addCheckbox("Bevel", false, (bevelEnabled) =>
   text.update({ text3D: { bevelEnabled } }),
 );
 
-const colors = [
-  { color: "#cc0000", emissiveColor: "#ff0000" },
-  { color: "#0078d4", emissiveColor: "#0091ff" },
-];
-let colorIndex = 0;
+let color = "#0091ff";
 addButton("Color", () => {
-  colorIndex = (colorIndex + 1) % colors.length;
-  const { color, emissiveColor } = colors[colorIndex];
-  text.update({
-    text3D: {
-      color: new Color().setStyle(color),
-      emissiveColor: new Color().setStyle(emissiveColor),
-    },
-  });
+  color = color === "#0091ff" ? "#ff6b2c" : "#0091ff";
+  text.update({ text3D: { color: new Color().setStyle(color) } });
 });
 
 view.attribution?.add([
-  TERRAIN_DATASETS.reearthQuantizedMesh,
-  TILE_DATASETS.openstreetmap,
-  TILES_3D_DATASETS.reearthBuildings,
-  ...fonts.map((font) => font.dataset),
+  {
+    attribution: "© Re:Earth Terrain",
+    attributionUrl: "https://terrain.reearth.land/",
+  },
+  {
+    attributionHtml:
+      '<a href="https://buildings.reearth.land/">Re:Earth Buildings</a> — Buildings © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap contributors</a>, <a href="https://overturemaps.org/">Overture Maps Foundation</a> (ODbL)',
+  },
 ]);
 
 initializeExample(view, [text]);
