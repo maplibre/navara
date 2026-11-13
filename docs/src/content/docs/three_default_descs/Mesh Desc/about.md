@@ -36,6 +36,7 @@ The following MeshDescriptor types are available in navara_three:
 | [SplatMeshDesc](../splat-mesh-desc) | A Descriptor that renders 3D Gaussian Splat assets via SparkJS |
 | [InstancedSphereMeshDesc](../instanced-sphere-mesh-desc) | A GPU-instanced Descriptor that renders multiple spheres in a single draw call |
 | [StarsDesc](../stars-desc) | A Descriptor that draws a starry sky |
+| [Text3DMeshDesc](../text-3d-mesh-desc) | A Descriptor that draws extruded 3D text from a font file :since[0.3.2] |
 | [TubeMeshDesc](../tube-mesh-desc) | A Descriptor that draws tube geometry |
 | [AxesHelperDesc](../axes-helper-desc) | A debug helper Descriptor that visualizes the 3 axes |
 | [ArrowHelperDesc](../arrow-helper-desc) | A debug helper Descriptor that visualizes vector directions |

@@ -2266,12 +2266,22 @@ pub fn enforce_memory_budget(
     // revisit grace with the other layer caches (see `navara_memory::eviction`).
     let last_rendered_frame = tc.last_rendered_frame;
     let rendered_tile_caches = std::mem::take(&mut tc.rendered_tile_caches);
-    tc.retained.retain(|handle, _| {
+    tc.retained.retain(|handle, entry| {
         let Some(tile) = qt.qt.get(*handle) else {
             return false;
         };
-        rendered_tile_caches.contains_key(handle)
-            && navara_memory::eviction::survives_purge(tile.visited_at, last_rendered_frame)
+        let Some(cache) = rendered_tile_caches.get(handle) else {
+            return false;
+        };
+        if !navara_memory::eviction::survives_purge(tile.visited_at, last_rendered_frame) {
+            return false;
+        }
+        // A pooled tile's cost keeps changing (it frees its drape memory once
+        // it is no longer drawn), so the entry follows the mesh's `TileCost`.
+        if let Some(cost) = cache.mesh_entity.and_then(|e| tile_costs.get(e).ok()) {
+            entry.cost = *cost;
+        }
+        true
     });
     tc.rendered_tile_caches = rendered_tile_caches;
 
@@ -2584,6 +2594,37 @@ mod memory_budget_tests {
         assert!(app.world().get::<Deleted>(setup.mesh_entity).is_some());
         let tc = app.world().resource::<TileCacheManager>();
         assert!(tc.retained.is_empty());
+    }
+
+    #[test]
+    fn enforce_memory_budget_refreshes_a_retained_cost_from_the_mesh() {
+        let mut app = new_app(Some(u64::MAX));
+        let setup = setup(&mut app, 100);
+        app.world_mut()
+            .resource_mut::<TileCacheManager>()
+            .retained
+            .insert(
+                setup.handle,
+                RetainedEntry {
+                    retained_at: 0,
+                    cost: TileCost {
+                        cpu: 0,
+                        gpu_est: 100,
+                    },
+                },
+            );
+        app.world_mut()
+            .entity_mut(setup.mesh_entity)
+            .insert(TileCost {
+                cpu: 0,
+                gpu_est: 40,
+            });
+        app.add_systems(Update, enforce_memory_budget);
+
+        app.update();
+
+        let tc = app.world().resource::<TileCacheManager>();
+        assert_eq!(tc.retained[&setup.handle].cost.gpu_est, 40);
     }
 
     /// Prefetched (never-activated) meshes are evictable even though their

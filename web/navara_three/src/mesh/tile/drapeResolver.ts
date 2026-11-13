@@ -57,6 +57,12 @@ export type DrapeResolver = {
    */
   invalidate(): void;
 
+  /**
+   * Free the render targets of a tile that is not drawn. The next `update()`
+   * allocates and bakes them again.
+   */
+  release(): void;
+
   /** Live drape render targets, counted into the tile's GPU byte report. */
   liveRenderTargetCount(): number;
 

@@ -72,6 +72,10 @@ function makeTile({
       allocated = true;
       return true;
     }),
+    releaseAtlas: vi.fn(() => {
+      allocated = false;
+      return true;
+    }),
   };
   const getVectorTileStates = vi.fn().mockReturnValue([]);
   const reportDrapeGpuBytes = vi.fn();
@@ -407,6 +411,80 @@ describe("TileMesh drape render-target lazy allocation + accounting", () => {
     // the cost from the ledger instead.
     expect(renderTargetCount(tile)).toBe(0);
     expect(reportDrapeGpuBytes.mock.calls.length).toBe(callsBeforeDispose);
+  });
+});
+
+describe("TileMesh drape memory of an undrawn tile", () => {
+  function drapedTile() {
+    const made = makeTile({ atlasAllocated: true });
+    made.texturizedScenes.add(1n, "a", drapedMesh(), 0);
+    made.getVectorTileStates.mockReturnValue([state("a", 1n)]);
+    made.ctx.tileMapByHandle.set(1n, made.tile);
+    frame(made.tile);
+    return made;
+  }
+
+  it("keeps the render targets and the atlas of a tile the frame drew", () => {
+    const { tile, compositor } = drapedTile();
+
+    tile.releaseDrapeGpuMemoryUnlessDrawn();
+
+    expect(renderTargetCount(tile)).toBe(1);
+    expect(compositor.releaseAtlas).not.toHaveBeenCalled();
+  });
+
+  it("frees them once a frame leaves the tile out", () => {
+    const { tile, compositor, reportDrapeGpuBytes } = drapedTile();
+    tile.releaseDrapeGpuMemoryUnlessDrawn();
+
+    tile.releaseDrapeGpuMemoryUnlessDrawn();
+
+    expect(renderTargetCount(tile)).toBe(0);
+    expect(compositor.releaseAtlas).toHaveBeenCalledWith(1n);
+    expect(reportDrapeGpuBytes).toHaveBeenLastCalledWith(1n, 0);
+  });
+
+  it("bakes the render targets again on the next render", () => {
+    const { tile, renderVectorScenes, reportDrapeGpuBytes } = drapedTile();
+    tile.releaseDrapeGpuMemoryUnlessDrawn();
+    tile.releaseDrapeGpuMemoryUnlessDrawn();
+
+    frame(tile);
+
+    expect(renderTargetCount(tile)).toBe(1);
+    expect(renderVectorScenes).toHaveBeenCalledTimes(2);
+    expect(reportDrapeGpuBytes).toHaveBeenLastCalledWith(1n, RT_BYTES);
+  });
+
+  it("keeps the handed slots, so the next render fetches none", () => {
+    const { tile, getVectorTileStates } = drapedTile();
+    tile.releaseDrapeGpuMemoryUnlessDrawn();
+    tile.releaseDrapeGpuMemoryUnlessDrawn();
+
+    frame(tile);
+
+    expect(getVectorTileStates).toHaveBeenCalledTimes(1);
+  });
+
+  it("releases once, however many frames leave the tile out", () => {
+    const { tile, compositor } = drapedTile();
+    tile.releaseDrapeGpuMemoryUnlessDrawn();
+
+    tile.releaseDrapeGpuMemoryUnlessDrawn();
+    tile.releaseDrapeGpuMemoryUnlessDrawn();
+
+    expect(compositor.releaseAtlas).toHaveBeenCalledTimes(1);
+  });
+
+  it("asks for the atlas again while the mesh it replaces holds it", () => {
+    const { tile, compositor } = drapedTile();
+    compositor.releaseAtlas.mockReturnValueOnce(false);
+    tile.releaseDrapeGpuMemoryUnlessDrawn();
+
+    tile.releaseDrapeGpuMemoryUnlessDrawn();
+    tile.releaseDrapeGpuMemoryUnlessDrawn();
+
+    expect(compositor.releaseAtlas).toHaveBeenCalledTimes(2);
   });
 });
 
