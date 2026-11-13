@@ -19,6 +19,50 @@ use navara_window::Window;
 use super::request::request_raster_texture_fragment;
 use super::tile_cache_manager::RasterTileCacheManager;
 
+/// How many levels below its SSE depth a tile may be forced to subdivide to
+/// reach a layer's min zoom; bounds the extra work to ~16x.
+pub(crate) const MAX_FORCED_LEVELS_BELOW_MIN_ZOOM: usize = 2;
+
+/// Whether a tile at zoom `z` that already satisfies the screen-space error
+/// should still subdivide to reach a regular (non-hillshade) layer's min zoom.
+///
+/// Like MapLibre, which draws a raster source only when `round(view zoom)`
+/// reaches its min zoom, this forces only when some layer is below its min
+/// zoom at `z`, the view zoom reaches it, and it is within
+/// [`MAX_FORCED_LEVELS_BELOW_MIN_ZOOM`] levels. Without the view check, a
+/// zoomed-out view with a high min zoom (e.g. 17) subdivides every visible
+/// tile down to it in one frame and overflows the quadtree's hash map.
+///
+/// `view_zoom` is in 256 px tile terms; `None` forces nothing. Shared by the
+/// raster and terrain traversals.
+pub(crate) fn should_force_toward_min_zoom(
+    sorted_layers: &[(&TilesLayer, &Order)],
+    source_store: &SourceStore,
+    z: usize,
+    view_zoom: Option<f64>,
+) -> bool {
+    let Some(view_tile_zoom) = view_zoom
+        .map(f64::round)
+        .filter(|v| v.is_finite() && *v >= 0.0)
+        .map(|v| v as usize)
+    else {
+        return false;
+    };
+    let regular_sources = sorted_layers
+        .iter()
+        .filter(|(t, _)| t.hillshade_config.is_none())
+        .filter_map(|(t, _)| t.source_id.as_deref().and_then(|id| source_store.get(id)));
+    let mut any_forced = false;
+    for s in regular_sources {
+        if s.is_over_min_zoom(z) {
+            return false;
+        }
+        any_forced |= s.is_over_min_zoom(view_tile_zoom)
+            && s.is_over_min_zoom(z + MAX_FORCED_LEVELS_BELOW_MIN_ZOOM);
+    }
+    any_forced
+}
+
 /// Raster (texture) tile traversal in the WebMercator quadtree.
 ///
 /// Unlike the terrain traversal this is intentionally lenient and stateless:
@@ -31,6 +75,11 @@ use super::tile_cache_manager::RasterTileCacheManager;
 ///   2. request the texture fragments along the selected LOD path (idempotent),
 ///   3. stop descending once the screen-space error is satisfied or all layers
 ///      are beyond their max zoom.
+///
+/// Below every layer's min zoom there is nothing to fetch. A tile that
+/// satisfies the error there is still subdivided toward the min zoom when the
+/// view is zoomed in far enough to show the layer and the min zoom is within
+/// reach (see [`should_force_toward_min_zoom`]).
 #[allow(clippy::too_many_arguments)]
 pub fn traverse_raster(
     command: &mut Commands,
@@ -55,6 +104,9 @@ pub fn traverse_raster(
     max_sse: f64,
     degrade: SseDegrade,
     terrain_present: bool,
+    // The view's zoom level in 256 px tile terms, computed once per frame
+    // (see `should_force_toward_min_zoom`).
+    view_zoom: Option<f64>,
 ) {
     let coords = match qt.qt.get(handle) {
         Some(tile) => tile.coords,
@@ -122,8 +174,11 @@ pub fn traverse_raster(
         );
     }
 
-    let meets_sse =
-        sse <= degrade.effective_max_sse(max_sse, distance_from_camera) && is_over_min_z;
+    // Below min zoom the error alone may not stop the descent (see
+    // `should_force_toward_min_zoom`).
+    let meets_sse = sse <= degrade.effective_max_sse(max_sse, distance_from_camera)
+        && (is_over_min_z
+            || !should_force_toward_min_zoom(sorted_layers, source_store, coords_z, view_zoom));
 
     // Once the screen-space error is satisfied, stop: no need for finer tiles.
     // Beyond max zoom, the layer overscales (parent texture stretched), so we
@@ -165,6 +220,7 @@ pub fn traverse_raster(
                 max_sse,
                 degrade,
                 terrain_present,
+                view_zoom,
             );
         }
     }
@@ -219,6 +275,12 @@ mod tests {
         terrain_present: bool,
     }
 
+    /// The view zoom handed to the traversal, decoupled from the test camera so
+    /// tests can put the view above or below a layer's min zoom. Defaults to a
+    /// fully zoomed-in view (min-zoom forcing allowed).
+    #[derive(Resource)]
+    struct TestViewZoom(Option<f64>);
+
     /// Run `traverse_raster` from a Bevy system so its `Commands`/`Query`
     /// system-params are supplied. The camera sits at twice the Earth radius
     /// looking at the globe centre, which keeps the WebMercator root tile in view.
@@ -234,6 +296,7 @@ mod tests {
         window: Res<Window>,
         target: Res<TargetHandle>,
         config: Res<TraverseConfig>,
+        view_zoom: Res<TestViewZoom>,
         source_store: Res<SourceStore>,
     ) {
         let camera_ecef = Vec3::new(WGS84_A_64 * 2.0, 0.0, 0.0);
@@ -267,6 +330,7 @@ mod tests {
             config.max_sse,
             SseDegrade::NONE,
             config.terrain_present,
+            view_zoom.0,
         );
     }
 
@@ -296,6 +360,7 @@ mod tests {
             max_sse: 1e30,
             terrain_present: false,
         });
+        app.insert_resource(TestViewZoom(Some(30.0)));
         // Layers register their own sources via `spawn_layer`.
         app.insert_resource(SourceStore::new());
 
@@ -497,7 +562,9 @@ mod tests {
         app.insert_resource(TargetHandle(handle));
         // A layer that only exists from zoom 2 upward. The root (z=0) and z=1 are
         // below its min zoom, so requests must only appear once the traversal
-        // reaches z=2 (subdivision is forced to reach the layer's data).
+        // reaches z=2 (subdivision is forced to reach the layer's data: the
+        // default test view zoom is past min zoom, and 2 levels is within
+        // `MAX_FORCED_LEVELS_BELOW_MIN_ZOOM`).
         spawn_layer(&mut app, raster_layer("a", 2, 20), Order(0));
 
         app.add_systems(Update, run_traverse_system);
@@ -512,6 +579,155 @@ mod tests {
             urls.iter().all(|u| u.starts_with("https://example.com/2/")),
             "no fetch below min zoom; got {urls:?}"
         );
+    }
+
+    #[test]
+    fn traverse_raster_does_not_force_descent_to_out_of_reach_min_zoom() {
+        let (mut app, handle) = app_with_root(TerrainTileQuadtree::new_with_linear_qt());
+        app.insert_resource(TargetHandle(handle));
+        // Min zoom far beyond the SSE level (the root already satisfies the huge
+        // threshold). Forcing the descent to z=17 would visit every in-view tile
+        // down there in one frame and overflow the quadtree; the root must stay
+        // the leaf instead.
+        spawn_layer(&mut app, raster_layer("a", 17, 17), Order(0));
+
+        app.add_systems(Update, run_traverse_system);
+        app.update();
+
+        let qt = app.world().resource::<RasterTileQuadtree>();
+        assert!(
+            qt.qt.leaf((0, 0, 1)).is_none(),
+            "must not subdivide toward an out-of-reach min zoom"
+        );
+        let tc = app.world().resource::<RasterTileCacheManager>();
+        assert_eq!(tc.active_handles.len(), 1);
+        // Nothing is fetched: the root is below min zoom.
+        assert!(requested_urls(&mut app).is_empty());
+    }
+
+    #[test]
+    fn traverse_raster_does_not_force_descent_when_view_is_below_min_zoom() {
+        let (mut app, handle) = app_with_root(TerrainTileQuadtree::new_with_linear_qt());
+        app.insert_resource(TargetHandle(handle));
+        // Min zoom 2 is within reach of the root, but the view itself is only at
+        // zoom ~1: like MapLibre, the layer is not shown at all (no forcing, no
+        // fetch).
+        spawn_layer(&mut app, raster_layer("a", 2, 20), Order(0));
+        app.insert_resource(TestViewZoom(Some(1.4)));
+
+        app.add_systems(Update, run_traverse_system);
+        app.update();
+
+        let qt = app.world().resource::<RasterTileQuadtree>();
+        assert!(
+            qt.qt.leaf((0, 0, 1)).is_none(),
+            "must not subdivide while the view is below min zoom"
+        );
+        assert!(requested_urls(&mut app).is_empty());
+    }
+
+    // ----- should_force_toward_min_zoom ---------------------------------------
+
+    #[test]
+    fn should_force_toward_min_zoom_only_within_reach() {
+        let mut store = SourceStore::new();
+        let (far, far_src) = raster_layer("far", 17, 17);
+        store.add("far".to_string(), far_src);
+        let far_layers = [(&far, &Order(0))];
+        let zoomed_in = Some(17.0);
+
+        // z + MAX reaches 17 only from z = 15.
+        assert!(!should_force_toward_min_zoom(
+            &far_layers,
+            &store,
+            0,
+            zoomed_in
+        ));
+        assert!(!should_force_toward_min_zoom(
+            &far_layers,
+            &store,
+            14,
+            zoomed_in
+        ));
+        assert!(should_force_toward_min_zoom(
+            &far_layers,
+            &store,
+            15,
+            zoomed_in
+        ));
+        assert!(should_force_toward_min_zoom(
+            &far_layers,
+            &store,
+            16,
+            zoomed_in
+        ));
+        // At (or past) min zoom there is data: nothing to force.
+        assert!(!should_force_toward_min_zoom(
+            &far_layers,
+            &store,
+            17,
+            zoomed_in
+        ));
+
+        // Another layer already in range at this level disables the forcing.
+        let (near, near_src) = raster_layer("near", 0, 20);
+        store.add("near".to_string(), near_src);
+        let both = [(&near, &Order(0)), (&far, &Order(1))];
+        assert!(!should_force_toward_min_zoom(&both, &store, 16, zoomed_in));
+
+        // Hillshade layers never force raster descent.
+        let (hill, hill_src) = hillshade_layer("hill");
+        store.add("hill".to_string(), hill_src);
+        assert!(!should_force_toward_min_zoom(
+            &[(&hill, &Order(0))],
+            &store,
+            0,
+            zoomed_in
+        ));
+    }
+
+    #[test]
+    fn should_force_toward_min_zoom_only_when_the_view_reaches_min_zoom() {
+        let mut store = SourceStore::new();
+        let (layer, src) = raster_layer("a", 17, 17);
+        store.add("a".to_string(), src);
+        let layers = [(&layer, &Order(0))];
+
+        // MapLibre's raster tile zoom is `round(view zoom)` (256 px tiles):
+        // 16.1 + 1 (MapLibre zoom 16.1) rounds to 17 and shows the layer;
+        // 15 + 1 (MapLibre zoom 15) is 16 and shows nothing.
+        assert!(should_force_toward_min_zoom(
+            &layers,
+            &store,
+            16,
+            Some(17.1)
+        ));
+        assert!(should_force_toward_min_zoom(
+            &layers,
+            &store,
+            16,
+            Some(16.5)
+        ));
+        assert!(!should_force_toward_min_zoom(
+            &layers,
+            &store,
+            16,
+            Some(16.4)
+        ));
+        assert!(!should_force_toward_min_zoom(
+            &layers,
+            &store,
+            16,
+            Some(16.0)
+        ));
+        // No usable camera: never force.
+        assert!(!should_force_toward_min_zoom(&layers, &store, 16, None));
+        assert!(!should_force_toward_min_zoom(
+            &layers,
+            &store,
+            16,
+            Some(f64::NAN)
+        ));
     }
 
     // ----- screen-space error & max zoom subdivision --------------------------

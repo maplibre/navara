@@ -11,11 +11,11 @@ use navara_buffer_store::{BufferStore, Handle};
 use navara_camera::{
     CamDirType, CameraControlUpdateEvent, CameraController, CameraDirection, CameraEvent,
     CameraFrustum, CameraMarker, CameraOrientation, CameraStatus, FlightIdAllocator, FlyToEasing,
-    FrustumEvent, calc_camera_target_and_distance, get_heading, get_pitch, get_roll,
+    FrustumEvent, camera_view_zoom_level, get_heading, get_pitch, get_roll,
 };
 use navara_component::{Deleted, Rendered};
 use navara_core::{
-    CRS, ElevationDecoder, Extent, LLE, LngLat, Radians, WGS84_64, WGS84_A_64, camera_zoom_level,
+    CRS, ElevationDecoder, Extent, LLE, LngLat, Radians, WGS84_64, WGS84_A_64,
     zoom_level_to_camera_distance,
 };
 use navara_data_requester::DataRequester;
@@ -1101,51 +1101,11 @@ impl App {
     /// * `tile_size_px` - Optional tile size for zoom calculation. Defaults to 256.
     ///   Use 512 for MapLibre-compatible zoom values.
     pub fn get_zoom_level(&mut self, tile_size_px: Option<FloatType>) -> Option<FloatType> {
-        // Get camera transform and frustum
-        let (transform, fov_y) = {
-            let world = self.app.world_mut();
-            let mut query =
-                world.query_filtered::<(&Transform, &CameraFrustum), With<CameraMarker>>();
-            let (transform, frustum) = query.iter(world).next()?;
-            (*transform, frustum.fov)
-        };
-
-        // Get viewport height in CSS px
-        let viewport_height = self.app.world_mut().get_resource::<Window>()?.raw_height();
-
-        // Calculate camera-to-target distance and target latitude
-        // This matches MapLibre's behavior where zoom is based on the ground point being viewed
-        let (target_point, distance) = calc_camera_target_and_distance(&transform, WGS84_64)?;
-        let target_lle = CRS::Geocentric.to_lle(WGS84_64, target_point, 0.0);
-        let target_lat = target_lle.lat.val();
-
-        // Guard the inputs
-        if distance <= 0.0
-            || viewport_height <= 0.0
-            || !fov_y.is_finite()
-            || fov_y <= 0.0
-            || !target_lat.is_finite()
-        {
-            return None;
-        }
-
-        let tile_size = match tile_size_px {
-            Some(t) if t <= 0.0 => return None, // Invalid tile size provided
-            Some(t) => Some(t),                 // Valid tile size provided
-            None => None,                       // Use default (256)
-        };
-
-        // Use camera-to-target distance instead of camera altitude
-        // This ensures zoom level is consistent with the distance parameter used in setCamera
-        let zoom = camera_zoom_level(
-            distance,
-            fov_y,
-            viewport_height,
-            target_lat,
-            WGS84_A_64,
-            tile_size,
-        );
-        zoom.is_finite().then_some(zoom)
+        let world = self.app.world_mut();
+        let mut query = world.query_filtered::<(&Transform, &CameraFrustum), With<CameraMarker>>();
+        let (transform, frustum) = query.iter(world).next()?;
+        let window = world.get_resource::<Window>()?;
+        camera_view_zoom_level(transform, frustum, window, tile_size_px)
     }
 
     /// Inverse of [`Self::get_zoom_level`]: computes the camera viewing distance required to

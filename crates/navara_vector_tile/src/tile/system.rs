@@ -12,7 +12,7 @@ use navara_math::Transform;
 
 use navara_occluder::ellipsoidal_occluder::EllipsoidalOccluder;
 
-use navara_camera::{CameraFrustum, CameraMarker};
+use navara_camera::{CameraFrustum, CameraMarker, ViewZoom};
 use navara_layer::{LayerId, LayerStore, TerrainLayer};
 use navara_memory::{
     GPU_GEOMETRY_RESIDENCY_FACTOR, MemoryLedger, RetainedEntry, SseDegrade, SsePressure, TileCost,
@@ -34,7 +34,7 @@ use crate::{
 use super::render::{OwningVectorTile, RenderedTile, VectorTileGpuCost};
 use super::traverse::{
     PendingActivations, TraversalResult, activate_if_changed, are_all_renderable_features_active,
-    spawn_tile_entity, traverse_tile, write_activation,
+    is_view_below_min_zoom, spawn_tile_entity, traverse_tile, write_activation,
 };
 
 /// Generic tile update system that delegates to `TileSource::prepare_tile`.
@@ -85,9 +85,9 @@ pub fn update_tiles(
     )>,
     terrain_layer: Query<&TerrainLayer>,
     // Bundled to stay within Bevy's per-system parameter limit.
-    globe: (Res<Globe>, Res<SsePressure>),
+    globe: (Res<Globe>, Res<SsePressure>, Res<ViewZoom>),
 ) {
-    let (globe, pressure) = globe;
+    let (globe, pressure, view_zoom) = globe;
     let is_data_requester_changed = !data_requester.p1().is_empty();
     let are_features_changed = !features.p1().is_empty();
     let are_renderable_features_rendered = !renderable_features.p1().is_empty();
@@ -131,7 +131,9 @@ pub fn update_tiles(
                 || terrain.0.is_changed()
                 || terrain.3.is_changed()
                 || is_fog_changed
-                || pressure.is_changed();
+                || pressure.is_changed()
+                // Zoom in or out across a source's min zoom shows or hides it.
+                || view_zoom.is_changed();
             if !needs_update {
                 continue;
             }
@@ -186,36 +188,48 @@ pub fn update_tiles(
             qt.qt.get_mut(zero_tile_handle).unwrap().is_rendered = false;
 
             let mut activations = PendingActivations::default();
-            match traverse_tile(
-                &mut commands,
-                &source.source_id,
-                zero_tile_handle,
-                &mut qt,
-                &mut tc,
-                &frame,
-                &camera,
-                frustum,
-                &window,
-                &WGS84_64,
-                occluder,
-                &data_requester,
-                &rendered_tiles,
-                &features,
-                &mut renderable_features,
-                &mut activations,
-                &fog,
-                dynamic_sse,
-                degrade,
-                false,
-                false,
-                &terrain_layer,
-                &terrain.1,
-                &terrain.3,
-                is_rendered.then_some(zero_tile_handle),
-                &globe,
-                &mut *tile_source.0,
-                &mut buf,
+            // Zoomed out too far to show this source: like MapLibre, draw
+            // nothing (as if culled) rather than forcing the descent down to
+            // `min_zoom`, which would subdivide every visible tile to it in
+            // one frame and overflow the quadtree's hash map.
+            let traversal_result = if is_view_below_min_zoom(
+                view_zoom.0,
+                source.source_id.traversal_config().min_zoom,
             ) {
+                TraversalResult::Culled
+            } else {
+                traverse_tile(
+                    &mut commands,
+                    &source.source_id,
+                    zero_tile_handle,
+                    &mut qt,
+                    &mut tc,
+                    &frame,
+                    &camera,
+                    frustum,
+                    &window,
+                    &WGS84_64,
+                    occluder,
+                    &data_requester,
+                    &rendered_tiles,
+                    &features,
+                    &mut renderable_features,
+                    &mut activations,
+                    &fog,
+                    dynamic_sse,
+                    degrade,
+                    false,
+                    false,
+                    &terrain_layer,
+                    &terrain.1,
+                    &terrain.3,
+                    is_rendered.then_some(zero_tile_handle),
+                    &globe,
+                    &mut *tile_source.0,
+                    &mut buf,
+                )
+            };
+            match traversal_result {
                 TraversalResult::TileRendered => {
                     spawn_tile_entity(
                         &mut commands,
@@ -1441,6 +1455,7 @@ mod keep_drawn_descendants_tests {
         app.init_resource::<BufferStore>();
         app.init_resource::<Globe>();
         app.init_resource::<SsePressure>();
+        app.init_resource::<ViewZoom>();
         app.insert_resource(Window {
             width: 800.,
             height: 800.,

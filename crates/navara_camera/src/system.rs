@@ -1,7 +1,7 @@
 use std::f64::{self, consts::PI};
 
 use bevy_ecs::{
-    change_detection::DetectChanges,
+    change_detection::{DetectChanges, DetectChangesMut},
     entity::Entity,
     message::MessageReader,
     query::{Added, Changed, Or, With},
@@ -27,11 +27,12 @@ use crate::{
     CameraOrientation, CameraStatus, CameraStatusType, StartFlyResult,
     follow::handle_follow,
     helpers::{
-        get_heading, get_pick_ray_from_camera, get_pitch, get_roll, ray_ellipsoid_intersect,
+        camera_lod_zoom_level, get_heading, get_pick_ray_from_camera, get_pitch, get_roll,
+        ray_ellipsoid_intersect,
     },
 };
 
-use super::{CameraFrustum, CameraMarker, Orbit};
+use super::{CameraFrustum, CameraMarker, Orbit, ViewZoom};
 use navara_input::TouchControl;
 
 pub fn startup(mut commands: Commands) {
@@ -1256,6 +1257,31 @@ pub fn update_frustum(
     }
 }
 
+/// Keeps [`ViewZoom`] in step with the camera. The zoom depends on the camera
+/// transform, the FOV (frustum) and the viewport height (window), so it is
+/// recomputed only when one of them changed. Runs after `update_frustum` so a
+/// same-frame frustum update is visible.
+pub fn update_view_zoom(
+    mut view_zoom: ResMut<ViewZoom>,
+    camera: Query<(Ref<Transform>, Ref<CameraFrustum>), With<CameraMarker>>,
+    window: Option<Res<Window>>,
+) {
+    let Some(window) = window else {
+        view_zoom.set_if_neq(ViewZoom(None));
+        return;
+    };
+    let Ok((transform, frustum)) = camera.single() else {
+        view_zoom.set_if_neq(ViewZoom(None));
+        return;
+    };
+    if !(transform.is_changed() || frustum.is_changed() || window.is_changed()) {
+        return;
+    }
+    view_zoom.set_if_neq(ViewZoom(camera_lod_zoom_level(
+        &transform, &frustum, &window,
+    )));
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
@@ -1517,5 +1543,86 @@ mod test {
             ),
             vec![CameraStatusType::Rotate],
         );
+    }
+
+    // ----- update_view_zoom ---------------------------------------------------
+
+    /// An app with a camera above the equator looking straight down, an 800x600
+    /// window, and `update_view_zoom` as the only system.
+    fn view_zoom_app() -> bevy_app::App {
+        let mut app = bevy_app::App::new();
+        app.init_resource::<ViewZoom>();
+        app.insert_resource(Window {
+            width: 800.,
+            height: 600.,
+            pixel_ratio: 1.,
+        });
+        let mut transform =
+            Transform::from_translation(Vec3::new(navara_core::WGS84_A_64 + 1000.0, 0.0, 0.0));
+        transform.look_to(-Vec3::X, Vec3::Z);
+        let frustum = CameraFrustum::new(&transform, 0.1, 1e9, 1.0, 4. / 3.);
+        app.world_mut().spawn((CameraMarker, transform, frustum));
+        app.add_systems(bevy_app::Update, update_view_zoom);
+        app
+    }
+
+    #[test]
+    fn update_view_zoom_recomputes_only_when_an_input_changed() {
+        let mut app = view_zoom_app();
+        app.update();
+        assert!(app.world().resource::<ViewZoom>().0.is_some());
+
+        // Overwrite the value with a sentinel, apply `change`, run a frame, and
+        // report whether the system recomputed (replaced the sentinel).
+        let sentinel = ViewZoom(Some(123.0));
+        let recomputed = |app: &mut bevy_app::App, change: &dyn Fn(&mut bevy_app::App)| {
+            *app.world_mut().resource_mut::<ViewZoom>() = sentinel;
+            change(app);
+            app.update();
+            *app.world().resource::<ViewZoom>() != sentinel
+        };
+
+        assert!(!recomputed(&mut app, &|_| {}), "nothing changed");
+        assert!(
+            recomputed(&mut app, &|app| {
+                app.world_mut().resource_mut::<Window>().height = 1200.;
+            }),
+            "window changed"
+        );
+        assert!(
+            recomputed(&mut app, &|app| {
+                let mut q = app.world_mut().query::<&mut Transform>();
+                q.single_mut(app.world_mut()).unwrap().translation.x += 1000.;
+            }),
+            "transform changed"
+        );
+        assert!(
+            recomputed(&mut app, &|app| {
+                let mut q = app.world_mut().query::<&mut CameraFrustum>();
+                q.single_mut(app.world_mut()).unwrap().fov = 0.8;
+            }),
+            "frustum changed"
+        );
+    }
+
+    #[test]
+    fn update_view_zoom_is_none_without_a_camera_or_window() {
+        let mut app = view_zoom_app();
+        app.update();
+        assert!(app.world().resource::<ViewZoom>().0.is_some());
+
+        app.world_mut().remove_resource::<Window>();
+        app.update();
+        assert_eq!(app.world().resource::<ViewZoom>().0, None);
+
+        let mut app = view_zoom_app();
+        let camera = app
+            .world_mut()
+            .query_filtered::<Entity, With<CameraMarker>>()
+            .single(app.world())
+            .unwrap();
+        app.world_mut().despawn(camera);
+        app.update();
+        assert_eq!(app.world().resource::<ViewZoom>().0, None);
     }
 }

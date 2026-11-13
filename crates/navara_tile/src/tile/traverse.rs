@@ -23,6 +23,7 @@ use navara_tile_component::{
 use navara_window::Window;
 
 use crate::data_requester::request_terrain_data;
+use crate::raster::should_force_toward_min_zoom;
 use crate::texture_fragment::request_hillshade_data_requester;
 
 use super::{
@@ -98,6 +99,9 @@ pub fn traverse_terrain(
     // closed: its requests would be rejected anyway (churning requester
     // entities every frame) and its meshes are the first spend to cut.
     allow_occlusion_prefetch: bool,
+    // The view's zoom level in 256 px tile terms, computed once per frame
+    // (see `should_force_toward_min_zoom`).
+    view_zoom: Option<f64>,
 ) -> TraversalResult {
     let has_regular_tiles = sorted_layers
         .iter()
@@ -237,8 +241,16 @@ pub fn traverse_terrain(
         true
     };
 
-    let meets_sse =
-        sse <= degrade.effective_max_sse(max_sse, distance_from_camera) && is_over_min_z;
+    // Below the raster layers' min zoom the error alone may not stop the
+    // descent (see `should_force_toward_min_zoom`). That forcing must stay
+    // bounded here: ellipsoid tiles are always ready, so the
+    // unrenderable-chain bound below never stops it, and an unbounded forced
+    // descent to a high min zoom (e.g. 17) subdivides the whole view in one
+    // frame and overflows the quadtree.
+    let tile_z = tile.coords.z;
+    let meets_sse = sse <= degrade.effective_max_sse(max_sse, distance_from_camera)
+        && (is_over_min_z
+            || !should_force_toward_min_zoom(sorted_layers, source_store, tile_z, view_zoom));
 
     let is_renderable = is_rendered_last_frame || is_tile_ready;
 
@@ -465,6 +477,7 @@ pub fn traverse_terrain(
                 child_upsample_ancestors,
                 unrenderable_chain_len,
                 allow_occlusion_prefetch,
+                view_zoom,
             );
 
             if matches!(traversal_result, TraversalResult::NotFound) {
@@ -1432,6 +1445,12 @@ mod tests {
         fov: f64,
     }
 
+    /// The view zoom handed to the traversal, decoupled from the test camera so
+    /// tests can put the view above or below a layer's min zoom. Defaults to a
+    /// fully zoomed-in view (min-zoom forcing allowed).
+    #[derive(bevy_ecs::prelude::Resource)]
+    struct TestViewZoom(Option<f64>);
+
     #[derive(bevy_ecs::prelude::Resource, Default)]
     struct LastResult(String);
 
@@ -1463,7 +1482,8 @@ mod tests {
         data_requesters: Query<&navara_data_requester::DataRequester>,
         terrain_data_requester: TileTerrainDataRequesterQuery,
         mut meshes: Query<&mut Mesh, (With<TileMeshMarker>, Without<Deleted>)>,
-        target: Res<TargetHandle>,
+        // Tupled: Bevy systems take at most 16 parameters.
+        (target, view_zoom): (Res<TargetHandle>, Res<TestViewZoom>),
         config: Res<TraverseConfig>,
         source_store: Res<SourceStore>,
         mut out: ResMut<LastResult>,
@@ -1509,6 +1529,7 @@ mod tests {
             UpsampleAncestors::default(),
             0,
             true,
+            view_zoom.0,
         );
         out.0 = result_label(&result).to_string();
 
@@ -1593,6 +1614,7 @@ mod tests {
             max_sse: 1e30,
             fov: 60.0,
         });
+        app.insert_resource(TestViewZoom(Some(30.0)));
         app.insert_resource(SourceStore::default());
 
         (app, handle)
@@ -1646,6 +1668,68 @@ mod tests {
         // The tile's resource was requested while it renders.
         let tc = app.world().resource::<TileCacheManager>();
         assert!(tc.requested_tile_caches.contains(&handle));
+    }
+
+    #[test]
+    fn traverse_terrain_does_not_force_descent_to_out_of_reach_min_zoom() {
+        let (mut app, handle) = terrain_app_with_root();
+        app.insert_resource(TargetHandle(handle));
+        // The root satisfies the huge threshold, and the layer's min zoom (17) is
+        // far out of reach. Fresh tiles are always ready here (no terrain
+        // layer), so the unrenderable-chain bound never stops the descent:
+        // forcing it to z=17 would subdivide the whole view in one frame. The
+        // root must render as the SSE leaf instead.
+        spawn_layer(&mut app, raster_layer("a", 17, 17), Order(0));
+
+        app.add_systems(Update, run_terrain_traverse);
+        app.update();
+
+        assert_eq!(app.world().resource::<LastResult>().0, "rendered");
+        let qt = app.world().resource::<TerrainTileQuadtree>();
+        assert!(
+            qt.qt.leaf((0, 0, 1)).is_none(),
+            "must not subdivide toward an out-of-reach min zoom"
+        );
+    }
+
+    #[test]
+    fn traverse_terrain_forces_descent_to_min_zoom_within_reach() {
+        let (mut app, handle) = terrain_app_with_root();
+        app.insert_resource(TargetHandle(handle));
+        // Min zoom 2 is within `MAX_FORCED_LEVELS_BELOW_MIN_ZOOM` of the root and
+        // the (default) view zoom is past it, so the root keeps subdividing
+        // toward it despite satisfying the error.
+        spawn_layer(&mut app, raster_layer("a", 2, 20), Order(0));
+
+        app.add_systems(Update, run_terrain_traverse);
+        app.update();
+
+        let qt = app.world().resource::<TerrainTileQuadtree>();
+        assert!(
+            qt.qt.leaf((0, 0, 1)).is_some(),
+            "root should subdivide toward the reachable min zoom"
+        );
+    }
+
+    #[test]
+    fn traverse_terrain_does_not_force_descent_when_view_is_below_min_zoom() {
+        let (mut app, handle) = terrain_app_with_root();
+        app.insert_resource(TargetHandle(handle));
+        // Min zoom 2 is within reach of the root, but the view itself is only at
+        // zoom ~1: like MapLibre the layer is not shown, so the root renders as
+        // the SSE leaf.
+        spawn_layer(&mut app, raster_layer("a", 2, 20), Order(0));
+        app.insert_resource(TestViewZoom(Some(1.4)));
+
+        app.add_systems(Update, run_terrain_traverse);
+        app.update();
+
+        assert_eq!(app.world().resource::<LastResult>().0, "rendered");
+        let qt = app.world().resource::<TerrainTileQuadtree>();
+        assert!(
+            qt.qt.leaf((0, 0, 1)).is_none(),
+            "must not subdivide while the view is below min zoom"
+        );
     }
 
     #[test]

@@ -14,6 +14,13 @@ use crate::{
 #[derive(Component)]
 pub struct CameraMarker;
 
+/// The view's Web Mercator zoom level (256 px tiles) for level-of-detail
+/// decisions (see `camera_lod_zoom_level`), kept current by
+/// `update_view_zoom` so consumers need not redo the ray-ellipsoid math.
+/// `None` while there is no usable camera or window.
+#[derive(Resource, Debug, Default, Clone, Copy, PartialEq)]
+pub struct ViewZoom(pub Option<FloatType>);
+
 // TODO: Support orthogonal camera.
 /// Frustum for perspective camera.
 #[derive(Component, Debug)]

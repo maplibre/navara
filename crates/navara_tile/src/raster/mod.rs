@@ -11,6 +11,7 @@ pub use resolve::{
     resolve_raster_texture, resolve_raster_tile_states,
 };
 pub use tile_cache_manager::RasterTileCacheManager;
+pub(crate) use traverse::should_force_toward_min_zoom;
 pub use traverse::traverse_raster;
 
 /// Monotonic counter bumped whenever the raster drape resolution could have changed:
