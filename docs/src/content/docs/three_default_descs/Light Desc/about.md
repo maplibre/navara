@@ -125,7 +125,7 @@ view.addLight<SunLightDesc>({
 | **AmbientLightDesc**  | None        | Manual         | Not required           | Basic ambient light  | Very lightweight     |
 | **LightProbeDesc**    | None        | Manual         | Not required           | Static IBL           | Lightweight          |
 | **SkyLightProbeDesc** | None        | Automatic      | Required               | Dynamic sky lighting | Moderate             |
-| **SunLightDesc**      | Yes (CSM)   | Automatic      | Recommended            | Sunlight and shadows | Heavy (with shadows) |
+| **SunLightDesc**      | Yes (CSM)   | Automatic      | Required by default    | Sunlight and shadows | Heavy (with shadows) |
 
 ## Common Usage Patterns
 
@@ -196,9 +196,19 @@ view.atmosphere.on("sunChanged", () => {
 The following light Descriptors integrate with the atmosphere system:
 
 - **SkyLightProbeDesc**: Uses the atmosphere's irradiance texture (required)
-- **SunLightDesc**: Uses the atmosphere's transmittance texture (recommended)
+- **SunLightDesc**: Uses the atmosphere's transmittance texture (required by default)
 
-If you are not using the atmosphere system, use AmbientLightDesc and LightProbeDesc instead.
+With the default `applyColor: false`, SunLightDesc computes the sun color from the atmosphere transmittance texture. When that texture is not available, the sun renders black. Set `applyColor: true` to use the configured color instead.
+
+### Lighting without the atmosphere system
+
+SunLightDesc works without the atmosphere system and keeps directional shading and CSM shadows. Set `applyColor: true` so the configured color is used directly, and set `intensity` to `Math.PI` to cancel the 1/π factor of the diffuse BRDF:
+
+```typescript
+view.addLight({ sun: { applyColor: true, intensity: Math.PI } });
+```
+
+AmbientLightDesc and LightProbeDesc also work without the atmosphere system.
 
 ## Related Resources
 

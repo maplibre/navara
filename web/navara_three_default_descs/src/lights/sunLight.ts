@@ -23,11 +23,21 @@ export type SunLightOptions = {
   color?: Color;
   /**
    * Whether to apply the color directly or use atmospheric scattering calculations.
+   *
+   * When `false` (the default), the color is computed from the atmosphere
+   * transmittance texture, and the sun renders black while that texture is
+   * unavailable. Set this to `true` to use `color` directly without the
+   * atmosphere system.
    * @default false
    */
   applyColor?: boolean;
   /**
    * Intensity of the sun light.
+   *
+   * Diffuse shading divides the lit result by π (the Lambert BRDF), so
+   * without the atmosphere and tone mapping an intensity of 1 renders a
+   * fully lit surface at albedo / π, about 32% brightness. Set this to
+   * `Math.PI` in that setup to render surfaces at their true albedo.
    * @default 1
    */
   intensity?: number;
