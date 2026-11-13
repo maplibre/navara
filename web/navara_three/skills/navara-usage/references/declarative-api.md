@@ -51,7 +51,7 @@ view.addLayer({ type: "raster", source: imagery });
 
 Quantized-mesh terrain uses `type: "quantized-mesh"` sources (or `CesiumIonPlugin` for Cesium Ion assets). DEM sources can also feed `raster` layers with `hillshade` or `elevationHeatmap` materials.
 
-- **Toggling terrain on/off: delete/re-add the layer.** `terrainLayer.update({ terrain: { show: false } })` has no visible effect (verified 2026-07); `layer.delete()` drops the surface to the flat ellipsoid and draped raster layers re-drape automatically.
+- **`terrain: { show: false }` hides the globe surface, not the heights.** The tile meshes stop drawing, and with them the raster layers, hillshade and draped (`clampToGround`) polygons/polylines rendered onto them. Terrain data keeps loading, so `clampToGround` points/billboards/text and terrain sampling still follow the terrain. To flatten the surface instead, `layer.delete()`: it drops to the ellipsoid and draped raster layers re-drape automatically.
 
 ## Elevation heatmap
 
