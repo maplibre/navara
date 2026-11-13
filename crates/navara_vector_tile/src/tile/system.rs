@@ -372,7 +372,7 @@ pub fn transfer_mesh(
                     estimate_vector_tile_cost(geometry_bytes),
                     VectorTileGpuCost::new(geometry_bytes),
                 ));
-                // Feed the per-layer reservation estimator with the landed
+                // Feed the per-source reservation estimator with the landed
                 // actual cost — this is the finalize point the dispatch-time
                 // `ReservedCost` was protecting until. Failed fetches never
                 // reach here (no geometry is constructed), and an

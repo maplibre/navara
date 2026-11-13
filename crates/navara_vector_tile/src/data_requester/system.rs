@@ -14,7 +14,7 @@ use super::VectorTileDataRequesterMarker;
 #[allow(clippy::type_complexity, clippy::too_many_arguments)]
 pub fn filter_requestable_data_requester(
     mut commands: Commands,
-    layers: Query<(Entity, &VectorTileSourceResources)>,
+    sources: Query<(Entity, &VectorTileSourceResources)>,
     mut qts: Query<&mut VectorTileQuadtree>,
     mut tcs: Query<&mut TileCacheManager>,
     data_requesters: Query<
@@ -56,23 +56,23 @@ pub fn filter_requestable_data_requester(
         .sort::<(&Priority, &OrderByDistance)>()
         .collect();
 
-    // Reserve the per-layer adaptive estimate (resolved by the `ReservedCost`
+    // Reserve the per-source adaptive estimate (resolved by the `ReservedCost`
     // on_insert hook — EMA of previously landed geometry costs, seeded by the
     // vector constant while cold) for each requester actually dispatched this
     // frame. Only the admitted prefix — NOT the rejected ones below — gets a
-    // reservation. The owning layer is found through its cache manager's
+    // reservation. The owning source is found through its cache manager's
     // `requested_tile_caches` slot, the same link the reject loop uses.
     if ledger.enabled() {
         for (e, marker, _, _, _) in dispatched.iter().take(num_skip as usize) {
-            let layer_key = layers.iter().find_map(|(layer_entity, layer)| {
-                let tc = tcs.get(layer.tile_cache_manager).ok()?;
-                (tc.requested_tile_caches.get(&marker.0) == Some(e)).then_some(layer_entity)
+            let source_key = sources.iter().find_map(|(source_entity, source)| {
+                let tc = tcs.get(source.tile_cache_manager).ok()?;
+                (tc.requested_tile_caches.get(&marker.0) == Some(e)).then_some(source_entity)
             });
-            let reservation = match layer_key {
+            let reservation = match source_key {
                 Some(k) => {
                     navara_memory::ReservedCost::for_key(navara_memory::ReserveKey::VectorLayer(k))
                 }
-                // No resolvable layer → no EMA pool; reserve the flat seed.
+                // No resolvable source → no EMA pool; reserve the flat seed.
                 None => navara_memory::ReservedCost::fixed(
                     navara_memory::DEFAULT_VECTOR_TILE_RESERVE_BYTES,
                 ),
@@ -83,11 +83,11 @@ pub fn filter_requestable_data_requester(
 
     for (e, marker, _, _, _) in dispatched.into_iter().skip(num_skip as usize) {
         let handle = marker.0;
-        for (_, layer) in &layers {
-            let Ok(mut qt) = qts.get_mut(layer.quadtree) else {
+        for (_, source) in &sources {
+            let Ok(mut qt) = qts.get_mut(source.quadtree) else {
                 continue;
             };
-            let Ok(mut tc) = tcs.get_mut(layer.tile_cache_manager) else {
+            let Ok(mut tc) = tcs.get_mut(source.tile_cache_manager) else {
                 continue;
             };
 
