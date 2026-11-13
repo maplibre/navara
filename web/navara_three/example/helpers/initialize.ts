@@ -30,7 +30,7 @@ const NO_MESH_SETTLE_MS = 1000;
 /**
  * A mesh handle whose data loads asynchronously outside the engine's event
  * stream: its desc emits `load` / `error` events (GLTFModelDesc,
- * SplatMeshDesc).
+ * SplatMeshDesc, Text3DMeshDesc).
  */
 type AsyncLoadedMeshHandle = {
   ref: {
@@ -41,7 +41,7 @@ type AsyncLoadedMeshHandle = {
 /**
  * Hooks the demo page up to the example harness. Call at the end of the
  * page's setup, passing the handles of any async-loading meshes (GLTF
- * models, 3D Gaussian Splats): the loading overlay is dismissed once they
+ * models, 3D Gaussian Splats, 3D text): the loading overlay is dismissed once they
  * have all finished loading. With no meshes passed, it settles a short moment
  * after setup instead. Standalone `/demo/...` visits post the scene-loaded
  * message to the page's own window, which tooling (e.g. the screenshot script)
