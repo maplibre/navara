@@ -9,7 +9,7 @@ import { TileJsonPlugin } from "@navaramap/three-plugins";
 import { addCheckbox } from "../../../../helpers/button";
 import { initializeExample } from "../../../../helpers/initialize";
 
-const ASSETS = import.meta.env.BASE_URL; // "/examples/" on navara.world
+const ASSETS = import.meta.env.BASE_URL;
 
 const view = new ThreeView<DefaultDescriptions>({ shadow: true });
 
