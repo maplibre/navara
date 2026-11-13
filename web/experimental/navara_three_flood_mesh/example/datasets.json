@@ -1,0 +1,43 @@
+{
+  "saitama": {
+    "label": "Arakawa levee breach BP002 (Saitama)",
+    "url": "https://assets.cms.reearth.io/assets/86/a12032-5803-48c9-9f42-995d88323efe/saitama-flood-bp002.zarr",
+    "notes": "Built with navara-flood-zarr (\"type\": \"polygons\", with the Re:Earth Terrain raster-dem source as \"terrain\" for the depth) from https://assets.cms.plateau.reearth.io/assets/c3/2822c1-a99f-46d0-9d73-766b685e2126/11100_saitama-shi_city_2024_flood-simulation_saitama-BP002.czml. Starts a day after the breach, when the water is already spreading; the breach is the CZML's breach point packet.",
+    "attribution": "PLATEAU 3D Visualization of Time-Series Flood Simulation by Levee Break Point (Arakawa River System)",
+    "attributionUrl": "https://www.mlit.go.jp/plateau/use-case/uc22-026/",
+    "since": "after the levee breach",
+    "startStep": 24,
+    "breach": {
+      "lng": 139.59098,
+      "lat": 35.86657
+    },
+    "camera": {
+      "lng": 139.5988,
+      "lat": 35.8495,
+      "height": 600,
+      "heading": 0,
+      "pitch": -16
+    },
+    "weather": {
+      "rainStops": [6, 12],
+      "clears": [9, 36]
+    }
+  },
+  "minami": {
+    "label": "Tsunami SD07 (Minami, Tokushima)",
+    "url": "https://assets.cms.reearth.io/assets/e0/6c21fd-140e-461e-b696-3e83f2548947/minami-tsunami-sd07-flow.zarr",
+    "notes": "Built from the GMT grids of tsunami case SD07 (\"type\": \"rasters\"), timed as model steps of 0.02 s from the earthquake, with the levels and the ground (hwl) taken to count from the H.W.L., T.P. +0.917 m, the building cells left out, and the flow velocity from its vx and vy grids (vy counts south). Starts 30 min in, with the town flooded.",
+    "attribution": "Tsunami Simulation Data: Provided by the Earthquake Engineering Laboratory at Tokushima University",
+    "since": "after the earthquake",
+    "origin": "2026-01-01T00:00:00Z",
+    "startStep": 107,
+    "waterColor": "#0b3d4f",
+    "camera": {
+      "lng": 134.5405,
+      "lat": 33.7235,
+      "height": 380,
+      "heading": 318,
+      "pitch": -26
+    }
+  }
+}
