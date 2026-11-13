@@ -54,6 +54,9 @@ pub(crate) fn should_force_toward_min_zoom(
         .filter_map(|(t, _)| t.source_id.as_deref().and_then(|id| source_store.get(id)));
     let mut any_forced = false;
     for s in regular_sources {
+        if s.is_over_min_zoom(z) {
+            return false;
+        }
         any_forced |= s.is_over_min_zoom(view_tile_zoom)
             && s.is_over_min_zoom(z + MAX_FORCED_LEVELS_BELOW_MIN_ZOOM);
     }

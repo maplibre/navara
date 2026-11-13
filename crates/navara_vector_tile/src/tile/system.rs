@@ -1455,6 +1455,7 @@ mod keep_drawn_descendants_tests {
         app.init_resource::<BufferStore>();
         app.init_resource::<Globe>();
         app.init_resource::<SsePressure>();
+        app.init_resource::<ViewZoom>();
         app.insert_resource(Window {
             width: 800.,
             height: 800.,
