@@ -82,7 +82,7 @@ Register the plugin with `view.addPlugin()` **before** `view.init()`. The Layers
 
 **Type:** `LayerInspectorPlugin | undefined`
 
-**Description:** The Layers tool, or `undefined` when `tools` leaves it out. Set `enabled` to switch it on and off. `select(id)` selects a layer by id, and `selected()` returns the selected layer.
+**Description:** The Layers tool, or `undefined` when `tools` leaves it out. Set `enabled` to switch it on and off. `select(id)` selects a layer by id, and `selected()` returns the selected layer. `schema` is the [MaterialSchemaPlugin](../materialschemaplugin/) the tool reads layer styles from. :since[0.3.2]
 
 ## Methods
 
@@ -115,7 +115,7 @@ GPU times need the `EXT_disjoint_timer_query_webgl2` WebGL extension (Chrome on 
 
 Click a layer to select it. Its checkbox hides it by setting `show: false` on its materials.
 
-The style form lists every setting of the selected layer's materials. A setting the layer sets is marked `•`, and the others show the engine default. Changes apply as you edit, and "Undo my changes" puts the values back. The form shows the configuration the app passed to `addLayer()` with every `layer.update()` merged on top, not values the engine derives.
+The style form lists every setting of the selected layer's materials, from [MaterialSchemaPlugin](../materialschemaplugin/). A setting the layer sets is marked `•`, and the others show the engine default. `↻` marks a setting that applies to what is already drawn only after "Reload layer", and `∅` one with no effect on this layer type. Changes apply as you edit, and "Undo my changes" puts the values back. The form shows the configuration the app passed to `addLayer()` with every `layer.update()` merged on top, not values the engine derives.
 
 ### Wireframe and memory
 

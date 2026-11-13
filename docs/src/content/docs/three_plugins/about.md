@@ -21,7 +21,8 @@ navara_three (core: ThreeView, Plugin, addPlugin)
         ├── CesiumIonPlugin (Cesium Ion quantized-mesh terrain)
         ├── TileJsonPlugin (TileJSON 3.0.0 tile source registration)
         ├── StreetLightsPlugin (street lamps, roof beacons and traffic at night)
-        └── DevtoolsPlugin (development tools: profiler and layer inspector)
+        ├── DevtoolsPlugin (development tools: profiler and layer inspector)
+        └── MaterialSchemaPlugin (layer materials and styles as JSON for style UIs)
 ```
 
 `three_plugins` depends on `navara_three` for the `Plugin` base class and core APIs, and on `three_default_plugin` for the `DefaultDescriptions` type. Each plugin is independent. You can use one without the other.
@@ -37,6 +38,7 @@ import {
   TileJsonPlugin,
   StreetLightsPlugin,
   DevtoolsPlugin,
+  MaterialSchemaPlugin,
 } from "@navaramap/three-plugins";
 ```
 
@@ -65,6 +67,10 @@ Takes the roads and the buildings of a vector tile set, each with its source and
 ### DevtoolsPlugin :since[0.3.2]
 
 Development tools on one panel: a profiler (frame time, memory, downloads, render buffers) and a layer inspector (each layer's cost, visibility and a style form). For development builds only. See [DevtoolsPlugin](../devtoolsplugin/) for details.
+
+### MaterialSchemaPlugin :since[0.3.2]
+
+Describes every layer material the engine accepts as JSON: the materials of each layer type, and each field's kind, documentation, default, accepted values and whether a change applies at once or only after the layer is added again. `describeLayer()` adds a layer's own values, for building a style UI. See [MaterialSchemaPlugin](../materialschemaplugin/) for details.
 
 ## Usage
 

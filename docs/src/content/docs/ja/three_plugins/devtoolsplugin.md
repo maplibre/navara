@@ -82,7 +82,7 @@ new DevtoolsPlugin(options?: DevtoolsPluginOptions);
 
 **型:** `LayerInspectorPlugin | undefined`
 
-**説明:** Layers ツールです。`tools` に含まれないときは `undefined` です。`enabled` で有効・無効を切り替えます。`select(id)` は id でレイヤーを選択し、`selected()` は選択中のレイヤーを返します。
+**説明:** Layers ツールです。`tools` に含まれないときは `undefined` です。`enabled` で有効・無効を切り替えます。`select(id)` は id でレイヤーを選択し、`selected()` は選択中のレイヤーを返します。 `schema` は、このツールがレイヤーのスタイルを読み取る [MaterialSchemaPlugin](../materialschemaplugin/) です。:since[0.3.2]
 
 ## メソッド
 
@@ -115,7 +115,7 @@ GPU 時間には WebGL 拡張 `EXT_disjoint_timer_query_webgl2`（デスクト�
 
 レイヤーをクリックすると選択されます。チェックボックスは、そのマテリアルに `show: false` を設定してレイヤーを隠します。
 
-スタイルフォームは、選択したレイヤーのマテリアルのすべての設定を並べます。レイヤーが設定している項目には `•` が付き、それ以外はエンジンのデフォルト値を表示します。変更は編集と同時に反映され、「Undo my changes」で元の値に戻ります。フォームが表示するのは、アプリが `addLayer()` に渡した設定にすべての `layer.update()` を重ねたもので、エンジンが導出する値ではありません。
+スタイルフォームは、[MaterialSchemaPlugin](../materialschemaplugin/) をもとに、選択したレイヤーのマテリアルのすべての設定を並べます。レイヤーが設定している項目には `•` が付き、それ以外はエンジンのデフォルト値を表示します。`↻` は、すでに描画済みのものには「Reload layer」の後にだけ反映される設定を、`∅` はこのレイヤータイプでは効果のない設定を示します。変更は編集と同時に反映され、「Undo my changes」で元の値に戻ります。フォームが表示するのは、アプリが `addLayer()` に渡した設定にすべての `layer.update()` を重ねたもので、エンジンが導出する値ではありません。
 
 ### ワイヤーフレームとメモリ
 

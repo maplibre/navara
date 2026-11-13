@@ -28,7 +28,7 @@ export const MATERIAL_KEYS: Record<string, string[]> = {
 const ALWAYS_SHOWN = new Set(["raster", "terrain", "model"]);
 
 /** The fields most edited; the rest go under "More". Unknown names are skipped. */
-const COMMON: Record<string, string[]> = {
+export const COMMON: Record<string, string[]> = {
   point: [
     "show",
     "color",
@@ -118,14 +118,16 @@ const COMMON: Record<string, string[]> = {
 };
 
 /** Slider ranges for fields whose meaning bounds them. */
-const RANGES: Record<string, { min: number; max: number; step?: number }> = {
+export const RANGES: Record<
+  string,
+  { min: number; max: number; step?: number }
+> = {
   opacity: { min: 0, max: 1, step: 0.01 },
   outlineOpacity: { min: 0, max: 1, step: 0.01 },
   metalness: { min: 0, max: 1, step: 0.01 },
   roughness: { min: 0, max: 1, step: 0.01 },
   reflectivity: { min: 0, max: 1, step: 0.01 },
   borderWidth: { min: 0, max: 0.5, step: 0.01 },
-  cornerRadius: { min: 0, max: 0.5, step: 0.01 },
   rotation: { min: -180, max: 180, step: 1 },
   outlineWidth: { min: 0, max: 20, step: 0.5 },
   outlineBlur: { min: 0, max: 10, step: 0.5 },
