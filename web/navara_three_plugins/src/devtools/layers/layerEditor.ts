@@ -1,23 +1,23 @@
 import { Color, type Layer, type LayerDescription } from "@navaramap/three";
 import type { BindingParams, ButtonApi, FolderApi } from "tweakpane";
 
-import { hint } from "../util/html";
-
-import { descriptionOf } from "./layerDescriptions";
+import { descriptionOf } from "../../MaterialSchemaPlugin/layerDescriptions";
 import {
   MATERIAL_SCHEMA,
+  materialField,
   type MaterialField,
-} from "./materialSchema.generated";
-import {
-  NO_EFFECT_FIELDS,
-  NO_EFFECT_HINT,
-  RELOAD_FIELDS,
-  RELOAD_HINT,
-  isReloadField,
-} from "./reloadFields";
+} from "../../MaterialSchemaPlugin/materialSchema";
+import { hint } from "../util/html";
 
-/** Material keys each layer type can carry, in display order. */
-const MATERIAL_KEYS: Record<string, string[]> = {
+const RELOAD_HINT =
+  "↻ Applies to what is already drawn only after Reload layer: the engine reads it when it builds the layer. MVT and tiled layers also use it for tiles loaded later.";
+const NEVER_HINT = "∅ No effect: the engine does not read this field.";
+
+/**
+ * Material keys each layer type can carry (`MATERIAL_SCHEMA.layers`), in
+ * display order.
+ */
+export const MATERIAL_KEYS: Record<string, string[]> = {
   vector: ["polygon", "polyline", "point", "billboard", "text"],
   raster: ["raster", "hillshade", "elevationHeatmap"],
   terrain: ["terrain"],
@@ -202,10 +202,9 @@ type Patch = Record<string, Record<string, unknown>>;
  * A form for a layer's style, generated from the engine's material schema:
  * every field the material accepts, showing the layer's value or, when the
  * layer leaves it unset, the engine's default. A `•` after a name marks a
- * value set on the layer, `↻` one that applies only after a reload
- * ({@link RELOAD_FIELDS}), `∅` one the engine ignores
- * ({@link NO_EFFECT_FIELDS}). Changes apply as you edit, merged into at most
- * one `layer.update()` per frame.
+ * value set on the layer, `↻` one that applies only after a reload, `∅` one
+ * the engine ignores (`MaterialField.applies`). Changes apply as you edit,
+ * merged into at most one `layer.update()` per frame.
  */
 export class StyleEditor {
   /** Top-level controls this editor added to the container. */
@@ -280,7 +279,7 @@ export class StyleEditor {
   }
 
   private addMaterial(key: string): void {
-    const fields = MATERIAL_SCHEMA[key];
+    const fields = MATERIAL_SCHEMA.materials[key];
     if (!fields) return;
     const desc = descriptionOf(this.layer) as unknown as Record<
       string,
@@ -322,10 +321,8 @@ export class StyleEditor {
   ): void {
     const set = field.name in values && values[field.name] !== undefined;
     const value = set ? values[field.name] : field.default;
-    const reload = isReloadField(key, field.name);
-    const reloadNote = RELOAD_FIELDS[key]?.[field.name];
-    const noEffect = NO_EFFECT_FIELDS[key]?.includes(field.name) ?? false;
-    const mark = reload ? " ↻" : noEffect ? " ∅" : "";
+    const reload = field.applies === "reload";
+    const mark = reload ? " ↻" : field.applies === "never" ? " ∅" : "";
     const label = `${field.name}${set ? " •" : ""}${mark}`;
     const autoLabel = `${field.name} ${AUTO}${mark}`;
     const title = [
@@ -335,8 +332,8 @@ export class StyleEditor {
         ? "Set on this layer (•)."
         : "Not set on this layer: the default applies.",
       reload ? RELOAD_HINT : "",
-      reloadNote ?? "",
-      noEffect ? NO_EFFECT_HINT : "",
+      field.applies === "never" ? NEVER_HINT : "",
+      field.note ?? "",
     ]
       .filter(Boolean)
       .join("\n");
@@ -551,7 +548,7 @@ export class StyleEditor {
 function revertValue(path: string, original: unknown): unknown {
   if (original !== undefined) return original;
   const [key, name] = path.split(".");
-  return MATERIAL_SCHEMA[key]?.find((f) => f.name === name)?.default;
+  return materialField(key, name)?.default;
 }
 
 /**

@@ -41,6 +41,8 @@ export {
   type TileJsonPluginEventMap,
 } from "./TileJsonPlugin";
 
+export * from "./MaterialSchemaPlugin";
+
 // Development-only tools (tweakpane panels); see the README.
 export * from "./devtools";
 export {

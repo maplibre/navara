@@ -5,6 +5,9 @@ import type {
 } from "@navaramap/three";
 import type { FolderApi } from "tweakpane";
 
+import { MaterialSchemaPlugin } from "../../MaterialSchemaPlugin";
+import { descriptionOf } from "../../MaterialSchemaPlugin/layerDescriptions";
+import { materialField } from "../../MaterialSchemaPlugin/materialSchema";
 import {
   DevtoolPlugin,
   type DevtoolContainer,
@@ -16,14 +19,12 @@ import { addHtmlBlock, esc, hint, type HtmlBlock } from "../util/html";
 import { Ticker } from "../util/ticker";
 
 import { collectLayerCosts, type LayerCost } from "./layerCost";
-import { descriptionOf, trackLayerDescriptions } from "./layerDescriptions";
 import {
   StyleEditor,
   describeLayerAsCode,
   recordBuiltValue,
 } from "./layerEditor";
 import { labelLayer } from "./layerNames";
-import { isReloadField } from "./reloadFields";
 
 export type LayerInspectorPluginOptions = DevtoolPluginOptions & {
   /** When given, the layer list shows each layer's downloads from it. */
@@ -111,8 +112,11 @@ export class LayerInspectorPlugin extends DevtoolPlugin {
   });
   /** `retainGeometryArrays` before `onEnable()` turned it on. */
   private retainedBefore: boolean | undefined;
-  /** Stops recording layer descriptions; set from `onInit()`. */
-  private stopTracking: (() => void) | undefined;
+  /**
+   * Records the layer descriptions the panel reads and edits; a caller can
+   * read the selected layer's style as JSON from it.
+   */
+  readonly schema = new MaterialSchemaPlugin();
 
   /**
    * Rebuilds the form after an update from elsewhere (the app, an action
@@ -133,7 +137,7 @@ export class LayerInspectorPlugin extends DevtoolPlugin {
   protected onInit(): void {
     // Before anything else, and whether or not the tool is enabled: `init()`
     // runs before the app can add a layer, so every layer is recorded.
-    this.stopTracking = trackLayerDescriptions(this.view);
+    void this.schema.init(this.view);
     const ui = this.ui;
 
     const layers = ui.addFolder({ title: "Layers" });
@@ -178,7 +182,7 @@ export class LayerInspectorPlugin extends DevtoolPlugin {
   }
 
   protected onDispose(): void {
-    this.stopTracking?.();
+    this.schema.dispose();
     this.cancelLayersSync();
     if (this.editRebuild !== undefined) clearTimeout(this.editRebuild);
     this.editor?.dispose();
@@ -377,7 +381,7 @@ export class LayerInspectorPlugin extends DevtoolPlugin {
     hint(
       this.boxesBinding as unknown as { element: HTMLElement },
       "Draws each tile's or model's bounding box: the volume used for culling and level of detail." +
-        (boxGroup !== undefined && isReloadField(boxGroup, "showBoundingBox")
+        (boxGroup !== undefined && isReloadBox(boxGroup)
           ? "\nTiles already drawn change only after Reload layer (see Style)."
           : ""),
     );
@@ -560,7 +564,7 @@ ${bucket("(mesh descriptors, other)", "Other meshes", "Meshes added with view.ad
     const group = layer && BOX_GROUP[descriptionOf(layer).type ?? ""];
     if (!layer || !group) return;
     // The editor counts it toward Reload layer when its form is rebuilt.
-    if (isReloadField(group, "showBoundingBox")) {
+    if (isReloadBox(group)) {
       recordBuiltValue(
         getOrAdd(this.built, layer.id),
         layer,
@@ -613,6 +617,10 @@ ${bucket("(mesh descriptors, other)", "Other meshes", "Meshes added with view.ad
     if (!description) return;
     this.select(this.view.addLayer(description).id);
   }
+}
+
+function isReloadBox(group: string): boolean {
+  return materialField(group, "showBoundingBox")?.applies === "reload";
 }
 
 function moveEntry<V>(map: Map<string, V>, from: string, to: string): void {
