@@ -1618,7 +1618,7 @@ mod test {
         let mut app = view_zoom_app();
         let camera = app
             .world_mut()
-            .query::<Entity>()
+            .query_filtered::<Entity, With<CameraMarker>>()
             .single(app.world())
             .unwrap();
         app.world_mut().despawn(camera);
