@@ -1319,6 +1319,9 @@ impl Default for RasterMaterial {
 /// This is used to handle each tile's style in uniforms.
 #[derive(Debug, Clone, PartialEq, Component, Default)]
 pub struct RasterTileInternalMaterial {
+    /// Whether the tile mesh is drawn, from the terrain layer's `show`. The
+    /// tile and its terrain data stay loaded either way.
+    pub show_mesh: bool,
     pub shows: Vec<bool>,
     pub colors: Vec<u32>,
     pub opacities: Vec<f32>,

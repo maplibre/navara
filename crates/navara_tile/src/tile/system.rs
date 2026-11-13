@@ -638,6 +638,7 @@ pub fn transfer_mesh(
 
         // Extract shared elevation heatmap configuration (or use defaults)
         let (
+            show_mesh,
             cast_shadow,
             receive_shadow,
             lit,
@@ -649,6 +650,7 @@ pub fn transfer_mesh(
             flow_speed,
         ) = terrain_layer.and_then(|l| l.appearance.as_ref()).map_or(
             (
+                true,
                 false,
                 false,
                 None,
@@ -661,6 +663,7 @@ pub fn transfer_mesh(
             ),
             |appearance| {
                 (
+                    appearance.show,
                     appearance.cast_shadow,
                     appearance.receive_shadow,
                     appearance.lit,
@@ -683,6 +686,7 @@ pub fn transfer_mesh(
         let layer_reproject = vec![false; shows.len()];
 
         let appearance = RasterTileInternalMaterial {
+            show_mesh,
             shows,
             opacities,
             colors,
@@ -1396,7 +1400,7 @@ pub fn delete_layer(
 /// Applies a terrain layer appearance update to the live scene.
 ///
 /// Terrain has no per-layer geometry: the tile meshes are the shared globe and
-/// the terrain material fields (`cast_shadow`/`receive_shadow`/`show_bounding_box`)
+/// the terrain material fields (`show`/`cast_shadow`/`receive_shadow`/`show_bounding_box`)
 /// are baked once into each tile's [`RasterTileInternalMaterial`] in
 /// [`transfer_mesh`]. `force_update` re-traversal does not re-bake existing tiles
 /// (its gate is `Added<RenderedTile> || Without<Rendered>`), so a material-only
@@ -1430,6 +1434,7 @@ pub fn update_terrain_layer(
         // otherwise a no-op update marks every tile `Changed` and forces a
         // whole-globe redraw that buys nothing.
         if matched {
+            let show_mesh = u.material.show;
             let cast_shadow = Some(u.material.cast_shadow);
             let receive_shadow = Some(u.material.receive_shadow);
             let lit = u.material.lit;
@@ -1440,7 +1445,8 @@ pub fn update_terrain_layer(
             let wave_direction = u.material.wave_direction;
             let flow_speed = u.material.flow_speed;
             for mut material in &mut tile_materials {
-                if material.cast_shadow != cast_shadow
+                if material.show_mesh != show_mesh
+                    || material.cast_shadow != cast_shadow
                     || material.receive_shadow != receive_shadow
                     || material.lit != lit
                     || material.show_bounding_box != show_bounding_box
@@ -1450,6 +1456,7 @@ pub fn update_terrain_layer(
                     || material.wave_direction != wave_direction
                     || material.flow_speed != flow_speed
                 {
+                    material.show_mesh = show_mesh;
                     material.cast_shadow = cast_shadow;
                     material.receive_shadow = receive_shadow;
                     material.lit = lit;
@@ -3299,6 +3306,62 @@ mod delete_layer_tests {
 
         // Exactly one slot (A) removed; B and C remain intact and in order.
         assert_eq!(tex, &vec![Some(eb), Some(ec)]);
+    }
+
+    #[test]
+    fn update_terrain_layer_applies_show_to_live_tile_meshes() {
+        use navara_material::TerrainMaterial;
+
+        let mut app = App::new();
+        app.add_systems(Update, update_terrain_layer);
+
+        let mut qt = TerrainTileQuadtree::new_with_linear_qt();
+        qt.qt
+            .initialize_zero(&|(x, y, z)| TerrainTile::new(TileXYZ { x, y, z }, 0., 0.));
+        let handle = qt.qt.zero().unwrap().handle();
+
+        let layer_entity = app
+            .world_mut()
+            .spawn(TerrainLayer {
+                layer_id: "terrain".into(),
+                appearance: Some(TerrainMaterial::default()),
+                ..Default::default()
+            })
+            .id();
+        let mesh_entity = app
+            .world_mut()
+            .spawn((
+                TileMeshMarker {
+                    handle,
+                    ready_parent_tile_handle: None,
+                },
+                RasterTileInternalMaterial {
+                    show_mesh: true,
+                    ..Default::default()
+                },
+            ))
+            .id();
+        let marker_entity = app
+            .world_mut()
+            .spawn(UpdateTerrainLayerMarker {
+                layer_id: "terrain".into(),
+                material: TerrainMaterial {
+                    show: false,
+                    ..Default::default()
+                },
+            })
+            .id();
+
+        app.update();
+
+        let material = app
+            .world()
+            .get::<RasterTileInternalMaterial>(mesh_entity)
+            .unwrap();
+        assert!(!material.show_mesh);
+        let layer = app.world().get::<TerrainLayer>(layer_entity).unwrap();
+        assert!(!layer.appearance.as_ref().unwrap().show);
+        assert!(app.world().get_entity(marker_entity).is_err());
     }
 
     /// Deleting the terrain layer must reset every rendered tile so the forced
