@@ -19,9 +19,10 @@ export const SVG_ICON_HTML = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0
 
 export const STYLE_TEXT = `
 .navara-attr-dock {
-  position: fixed;
+  position: absolute;
   right: 8px;
   bottom: 8px;
+  max-width: calc(100% - 16px);
   z-index: 1000;
   display: flex;
   flex-direction: column;
@@ -35,7 +36,7 @@ export const STYLE_TEXT = `
   align-items: flex-start;
 }
 .navara-attr-logoframe {
-  position: fixed;
+  position: absolute;
   left: 8px;
   bottom: 8px;
   z-index: 1000;
@@ -47,6 +48,11 @@ export const STYLE_TEXT = `
    logo frame starts to its right, keeping the two in a single row. */
 .navara-attr-logoframe--left {
   left: 40px;
+}
+/* Mounted on <body>: anchor to the viewport instead of the page. */
+.navara-attr-dock--fixed,
+.navara-attr-logoframe--fixed {
+  position: fixed;
 }
 .navara-attr-logo {
   height: 24px;
@@ -76,7 +82,7 @@ export const STYLE_TEXT = `
 }
 .navara-attr-card {
   width: 280px;
-  max-width: calc(100vw - 16px);
+  max-width: 100%;
   max-height: 340px;
   overflow-y: auto;
   background: var(--nvr-attr-bg, rgba(252, 253, 254, 0.96));

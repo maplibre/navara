@@ -9,6 +9,8 @@ sidebar:
 
 `AttributionPlugin` shows an attribution (credit) UI for your map's data sources. **`ThreeView` creates the attribution UI by default and exposes it as `view.attribution`** (pass `defaultAttribution: false` to opt out and build your own UI). A built-in **"Navara" credit is always shown first**, so the UI is visible even before you add any source. The popover lists the active sources and is **collapsed by default**. A small ⓘ button (in a bottom corner, bottom-right by default) toggles it (`show()` opens it and `hide()` closes it). It is non-modal: the map stays interactive (pan / zoom / rotate) while the popover is open.
 
+The UI is placed inside the element that holds the view's canvas (the `container` option, or the parent element of `canvas`) and is anchored to its bottom corners. If that element has `position: static`, the plugin sets it to `position: relative` until the plugin is disposed. When the canvas sits directly in `<body>`, the UI is anchored to the viewport.
+
 It covers the three things map attributions usually need:
 
 - **Zoom-aware credits**: a source can carry child credits that apply only within a zoom range, so only the relevant ones are shown and they switch as the user zooms.

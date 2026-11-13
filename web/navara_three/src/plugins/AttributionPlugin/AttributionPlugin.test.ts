@@ -32,9 +32,15 @@ function makeLayer(id: string) {
 }
 type FakeLayer = ReturnType<typeof makeLayer>;
 
-function makeView(layers: Record<string, FakeLayer> = {}) {
+function makeView(
+  layers: Record<string, FakeLayer> = {},
+  container: HTMLElement = document.body.appendChild(
+    document.createElement("div"),
+  ),
+) {
   const handlers = new Map<string, Set<Handler>>();
   return {
+    canvas: container.appendChild(document.createElement("canvas")),
     camera: { zoom: 10 },
     on: vi.fn((e: string, cb: Handler) => {
       const set = handlers.get(e) ?? new Set<Handler>();
@@ -189,6 +195,28 @@ describe("AttributionPlugin lifecycle", () => {
     plugin.dispose();
     expect(q(".navara-attr-dock")).toBeNull();
     expect(q(".navara-attr-logoframe")).toBeNull();
+  });
+
+  it("mounts in the canvas container and positions against it until disposed", async () => {
+    const { plugin, view } = await setup();
+    const container = view.canvas.parentElement;
+    expect(q(".navara-attr-dock")?.parentElement).toBe(container);
+    expect(q(".navara-attr-logoframe")?.parentElement).toBe(container);
+    expect(container?.style.position).toBe("relative");
+
+    plugin.dispose();
+    expect(container?.style.position).toBe("");
+  });
+
+  it("anchors to the viewport when the canvas sits directly in <body>", async () => {
+    const plugin = new AttributionPlugin();
+    created.push(plugin);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await plugin.init(makeView({}, document.body) as any, {} as any);
+    expect(
+      q(".navara-attr-dock")?.classList.contains("navara-attr-dock--fixed"),
+    ).toBe(true);
+    expect(document.body.style.position).toBe("");
   });
 });
 
