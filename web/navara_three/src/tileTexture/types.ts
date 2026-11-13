@@ -87,7 +87,8 @@ export type CompositeFeatures = {
 /** A handle's cache entry. Public surface is via TileTextureCache methods. */
 export type CacheEntry = {
   readonly handle: TileHandle;
-  /** Null until the first composite pass. three allocates a render target on
+  /** Null until the first composite pass, and again once `releaseAtlas` takes
+   * it from an undrawn tile. three allocates a render target on
    * its first render, which follows right after the atlas is picked, so a
    * non-null atlas holds GPU memory. */
   atlas: CompositeAtlas | null;
