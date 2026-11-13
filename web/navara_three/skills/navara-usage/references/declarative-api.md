@@ -35,13 +35,7 @@ view.addLayer({
 
 Layer material `color` fields take the `Color` class from `@navaramap/three` (`new Color().setHex(...)` / `.setStyle("#00aaff")`), not raw hex numbers — raw numbers only work in mesh Descriptor configs. For one-off inline data, a `geojson` **source** accepts a `data` field (a GeoJSON object) instead of a URL; layers themselves always reference a source.
 
-Vector material gotchas (verified):
-
-- `point` / `billboard` `size` is in **meters** by default (`sizeInMeters ?? true`) — a 24 m dot is invisible from a high camera. For constant on-screen size markers set `sizeInMeters: false` (size becomes pixels).
-- `clampToGround` vectors are **baked into globe surface tiles**, so they only render where some tile-producing layer exists (raster or terrain). With no basemap at all, add a plain ellipsoid surface to drape onto: `view.addLayer({ type: "terrain", ellipsoid: {} })`, and color the bare globe via `view.globe.color = new Color().setStyle(...)`.
-- `polygon.outline` is not rendered when `clampToGround: true` (outlines only exist on the non-draped 3D path).
-- `text` labels sourced from feature properties are set via the evaluator, and the evaluate callback must return **both** `text` and `show: true` — returning only `text` leaves every label hidden. Register a Google Font first: `view.addFontFamily(await fetchFontFamilyFromCss("Arsenal", "https://fonts.googleapis.com/css2?family=Arsenal:wght@700"))`, then reference it as `text: { font: "Arsenal", ... }`.
-- **Along-line placement** (`text` / `billboard` / `point` with `geometryTypes: ["line"]` + `placement: "line" | "line-center"`): `spacing` is **screen pixels** for `vector-tile` and `geojson` alike, resolved per anchor as the camera moves (anchors thin out / fill in without moving; the on-screen gap stays within 1–2× `spacing`, even across a pitched view). MapLibre's `symbol-spacing` rules apply on top: a symbol longer than ¾ `spacing` spreads repeats to its length + ¼ `spacing` (not dropped), a same-text label within `spacing / 2` of an earlier one in the tile is dropped, and vector tiles place anchors only inside their own bounds — so on vector tiles repeats are at most ~one tile (512–1024 px) apart however large `spacing` is. Very close in (GeoJSON street level, or vector tiles overscaled far past their zoom) anchors stop filling in and sit further apart than asked. `placement`, `spacing` and `rotateToLine` are baked when features are built: `layer.update()` cannot change them, delete and re-add the layer. Along a line, facing and `rotateWithCamera` default to flat + `false` (MapLibre's `auto`), so text lies on the road and follows it word by word (letters within a word stay straight); `spreadGlyphs: true` places each glyph on its own (MapLibre's default street name) and is live-updatable, and the evaluator can override it per feature (`spreadGlyphs`), e.g. to keep cursive scripts or fonts word by word. The four layouts: flat + `rotateWithCamera: false` lies on the ground along the line; `"upright"` + `false` stays on screen at constant size, turned to the line as it runs on screen (MapLibre `map` rotation, `viewport` pitch); `rotateWithCamera: true` + `spreadGlyphs` turns each glyph to the camera (`viewport-glyph`); `rotateWithCamera: true` without `spreadGlyphs` draws the label **straight** at each anchor like a point label (`viewport`: no bend, no flip, no `maxAngle` test, background drawn, `lineOffset` ignored). `rotation` spins each glyph of a bent label about its own centre (MapLibre `text-rotate`), or a straight label as a whole. Sprites follow the line by default (flat, map-aligned; the tangent bearing is added to `rotation` with `rotateToLine`). References: `example/pages/styling/line-placement` (GeoJSON), `styling/mvt-line-labels` (MVT).
+Vector material options and gotchas (sizes, `clampToGround`, `geometryTypes`, dashes): [vector-styling.md](vector-styling.md). Labels and icons: [labels-and-sprites.md](labels-and-sprites.md).
 
 ## Terrain
 
@@ -57,13 +51,20 @@ view.addLayer({ type: "raster", source: imagery });
 
 Quantized-mesh terrain uses `type: "quantized-mesh"` sources (or `CesiumIonPlugin` for Cesium Ion assets). DEM sources can also feed `raster` layers with `hillshade` or `elevationHeatmap` materials.
 
+- **Toggling terrain on/off: delete/re-add the layer.** `terrainLayer.update({ terrain: { show: false } })` has no visible effect (verified 2026-07); `layer.delete()` drops the surface to the flat ellipsoid and draped raster layers re-drape automatically.
+
+## Elevation heatmap
+
+- **`elevationHeatmap`: colors come from a per-layer RGBA `colorMap`.** The material itself is unlit and needs no terrain layer or lights; each layer's `colorMap` property supplies the colors as a flattened RGBA Float32Array (`ColorMap.flatten()` produces it with alpha 1; a length that is not a multiple of 4, e.g. an old flattened RGB array, is rejected with a warning and the layer falls back to grayscale, but an RGB array whose length happens to be a multiple of 4 is silently misread). Entries are evenly spaced over `minHeight`..`maxHeight`; for unevenly spaced stops (e.g. a MapLibre-style color ramp) pass `colorStops` (ascending meters, one per entry), which places each color exactly and makes min/max/logarithmic irrelevant to the colors. `layer.update()` and `view.updateLayerById()` both update a colorMap; an update that omits `colorMap`/`colorStops` keeps the current values, and an explicit `colorMap: undefined` switches back to grayscale.
+
 ## Update / delete semantics (easy to get wrong)
 
-- `layer.update(config)` — **partial merge**: pass only what changes (e.g. `layer.update({ point: { color } })`); omitted materials and omitted fields within a material are preserved.
+- **Updates are partial merges:** `Layer.update()`, `Source.update()` and mesh/effect/light handle `.update()` all merge into the current config — omitted materials and omitted fields within a material are preserved (verified: `layer.update({ point: { color } })` keeps `size`/`clampToGround`). Note: `Layer.update()`'s JSDoc says "the entire configuration is replaced" — that text is outdated; trust the merge behavior shown in its own `@example`.
 - `source.update(config)` — **partial merge**: omitted fields are preserved. Updating a source **resets and reloads every layer** referencing it (terrain re-meshes).
 - `source.delete()` — reference-counted: returns `false` and removes nothing while any layer references the source. Delete referencing layers first, or `update()` the source to swap data in place.
 - Handles expose `id`; `view.deleteLayerById(id)` / `updateLayerById` variants exist for id-based management.
 - Render order = the order layers were added.
+- **Inline GeoJSON `data` does not reload via `source.update()`** (verified 2026-08: readouts driven from the same code ran, but the rendered features never changed; URL-based sources do reload). Re-pointing the existing layer at a fresh source also failed to render. The working pattern for dynamic inline data is rebuild both: `layer.delete(); source.delete(); source = view.addSource({ type: "geojson", data }); layer = view.addLayer({...})`. For measurement-style dynamic overlays (a handful of markers + a line), mesh descs are the simpler tool: add/delete `SphereMeshDesc` markers and a `TubeMeshDesc` arc via handles — see `example/pages/examples/api/measure-geodesic`.
 
 ## Layer data hierarchy & events
 
@@ -71,11 +72,13 @@ Layer → FeatureSet → Feature → Batch (each batch has a 24-bit `batchId`). 
 
 ```typescript
 layer.on("featureUpdated", ({ evaluator }) => {
-  /* see imperative-api.md */
+  /* see feature-evaluator.md */
 });
 ```
 
 Layer events: `featureCreated` / `featureUpdated` / `featureVisibilityChanged` / `featureRemoved` / `deleted`. There is no per-layer "loaded" event — to know when everything has finished loading, use the view-level `idle` event (fires after `idleThreshold` ms without tile/data activity).
+
+**A `Layer` handle does not expose its description.** To know a layer's config, keep it yourself: `layerAdded` passes `(layer, description)` (as given to `addLayer`, a `Source` handle not yet turned into its id) and the layer's `updated` event passes each partial update, which the engine deep-merges into the current config (see "Updates are partial merges" above). `view.layers` iterates the resource layers in add order; `layerAdded` / `layerRemoved` / `sourceAdded` view events track them. A plugin that needs every layer subscribes in its `init()`, which runs before the app can add one.
 
 ## Mesh / Effect / Light descriptors (the other half of the declarative API)
 
@@ -102,22 +105,7 @@ box.delete();
 
 With `DefaultPlugin` all built-ins are pre-registered; call `addMesh`/`addEffect`/`addLight` directly.
 
-## Camera
-
-```typescript
-view.setCamera({ lng, lat, height, heading, pitch, roll }); // instant; `distance` option = frame a target; cancels a flight
-const ok = await view.flyTo(
-  { lng, lat, height },
-  { duration, maxHeight, easing: "quinticInOut" },
-);
-// animated arc; resolves true on completion, false when interrupted by
-// another camera operation (a newer flyTo, setCamera, etc.). duration
-// defaults to 2–3 s derived from flight distance; easing defaults to
-// quinticInOut (cubicOut when descending from high altitude).
-view.lookAt(target, offsetENU);
-view.camera.on("moveend", () => console.log(view.camera.positionGeographic));
-view.camera.fov = 50; // use setters, never camera.raw.fov
-view.camera.fov; // degrees; vertical fov
-```
+- **Handle events vs desc events:** mesh/light/effect handles (`BaseHandle`) only emit `deleted` — desc-specific events (`load` / `error` / `animationReady` on GLTF, instanced-GLTF, splat and 3D text descs) live on the desc, so subscribe via `handle.ref.on("load", ...)`.
+- **3D text (`text3D`, `Text3DMeshDesc`) takes a font file URL, not a font family.** `font` is a TTF file or a three.js typeface.json hosted by the app (OTF loads, but its holes break with three.js before 0.185); WOFF2 and families registered with `addFontFamily` fail with an `error` event, unlike the `text` material. The mesh appears once the font has loaded; a `font` change through `update()` keeps the current font until the new one loads (last request wins). `size` is in meters, roughly the height of capital letters. The anchor is the bottom center of the text block, the text stands upright with its front facing `geodetic.heading`, and `heading: 180, pitch: 90` lays it flat reading north-up. It is a lit Lambert mesh, so add lights. Docs: `three_default_descs/mesh-desc/text-3d-mesh-desc`.
 
 Full reference: https://navara.world/docs/three/source/about/ · /three/layer/about/ · /three/material/about/

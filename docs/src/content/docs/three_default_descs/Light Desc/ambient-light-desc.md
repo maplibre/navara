@@ -58,7 +58,7 @@ import { Color } from "@navaramap/three";
 
 **Type:** `number | undefined`
 
-**Description:** Specifies the intensity of the ambient light. Higher values result in brighter light.
+**Description:** Specifies the intensity of the ambient light. Higher values result in brighter light. Diffuse shading divides the result by π (the Lambert BRDF), so without tone mapping, intensity 1 renders a surface at about 32% of its albedo. Use `Math.PI` in that setup to render surfaces at their true albedo.
 
 **Default:** `1`
 

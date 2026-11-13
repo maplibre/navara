@@ -177,7 +177,12 @@ import {
   type SourceRef,
 } from "./type";
 import type { CommonUniforms } from "./uniforms";
-import { isWorker, convertScreenPos, type TextureSlot } from "./utils";
+import {
+  isWorker,
+  convertScreenPos,
+  positionIfStatic,
+  type TextureSlot,
+} from "./utils";
 import { WaterState } from "./water/waterState";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 /** @ts-ignore ignore: https://v3.vitejs.dev/guide/features.html#import-with-query-suffixes  */
@@ -351,7 +356,11 @@ export type WorkerMemoryStats = {
  * Configuration options for initializing ThreeView.
  */
 export type Options = {
-  /** Container element to append the canvas to. */
+  /**
+   * Container element to append the canvas to. The view follows its size, so
+   * it needs a size of its own. A statically positioned container is set to
+   * `position: relative` until the view is disposed.
+   */
   container?: HTMLElement;
   /** Canvas element for rendering. If not provided, a new canvas is created. */
   canvas?: HTMLCanvasElement | OffscreenCanvas;
@@ -360,7 +369,7 @@ export type Options = {
    * render targets grow quadratically with pixel ratio and dominate mobile
    * GPU memory. An explicit value bypasses the caps. */
   pixelRatio?: number;
-  /** Disables automatic resize handling on window resize events. */
+  /** Disables automatically resizing the view when its container changes size. */
   disableAutoResize?: boolean;
   /** Enables debug mode with performance stats overlay. */
   debug?: boolean;
@@ -965,7 +974,11 @@ export default class ThreeView<
       return this._core?.getLayerIndex(layerId);
     },
   };
-  private _ownedRootElement: HTMLElement | undefined;
+  /** The element the view created itself; removed on dispose. */
+  private _ownedElement: HTMLElement | undefined;
+  private _restoreContainer: (() => void) | undefined;
+  private _resizeObserver: ResizeObserver | undefined;
+  private _resizePending = false;
   private _dispatcher = new JobDispatcher({
     // A job landed something new on screen (tile mesh, feature, texture).
     onSettled: () => {
@@ -1050,20 +1063,31 @@ export default class ThreeView<
     this._buffers = resolveGBufferOptions();
 
     if (!options.canvas) {
-      const div = document.createElement("div");
-      div.id = "navara-root";
-      div.style.width = "100vw";
-      div.style.height = "100vh";
-
       options.canvas = document.createElement("canvas");
       options.canvas.id = "navara-canvas";
+      // Out of flow: the canvas is sized in px to match its container, so in
+      // flow it would keep the container from shrinking.
+      options.canvas.style.position = "absolute";
+      options.canvas.style.top = "0";
+      options.canvas.style.left = "0";
       options.canvas.style.width = "100%";
       options.canvas.style.height = "100%";
 
-      div.appendChild(options.canvas);
+      if (options.container) {
+        this._restoreContainer = positionIfStatic(options.container);
+        this._ownedElement = options.canvas;
+      } else {
+        const div = document.createElement("div");
+        div.id = "navara-root";
+        div.style.position = "relative";
+        div.style.width = "100vw";
+        div.style.height = "100vh";
 
-      document.body.appendChild(div);
-      this._ownedRootElement = div;
+        div.appendChild(options.canvas);
+
+        document.body.appendChild(div);
+        this._ownedElement = div;
+      }
     }
 
     this._options = options;
@@ -1180,7 +1204,13 @@ export default class ThreeView<
     this._renderer.setClearColor(bgColor);
 
     if (!options.disableAutoResize && !isWorker()) {
-      window.addEventListener("resize", this._handleResize);
+      // Observers are notified after the frame has rendered and resizing
+      // clears the canvas, so the main loop applies the new size right before
+      // it renders.
+      this._resizeObserver = new ResizeObserver(() => {
+        this._resizePending = true;
+      });
+      this._resizeObserver.observe(this._getSizeElement());
       // Observe a change in devicePixelRatio.
       this.pixelRatioMatchedMedia = window.matchMedia(
         `(resolution: ${window.devicePixelRatio}dppx)`,
@@ -1752,6 +1782,7 @@ export default class ThreeView<
         this._core,
         this._renderer.domElement,
         () => terrainDistance.get(),
+        () => this._camera._isZoomEnabled(),
       );
       this._pickHelper = new PickHelper(
         this._renderer.domElement,
@@ -1915,7 +1946,8 @@ export default class ThreeView<
     this._attribution?.dispose();
     this._attribution = undefined;
     if (!isWorker()) {
-      window.removeEventListener("resize", this._handleResize);
+      this._resizeObserver?.disconnect();
+      this._resizeObserver = undefined;
       this.pixelRatioMatchedMedia?.removeEventListener(
         "change",
         this._handleResize,
@@ -2010,9 +2042,11 @@ export default class ThreeView<
       this._renderer.dispose();
     }
 
-    // Remove auto-created DOM container so a new ThreeView can append its own
-    this._ownedRootElement?.remove();
-    this._ownedRootElement = undefined;
+    // Remove the auto-created DOM so a new ThreeView can append its own
+    this._ownedElement?.remove();
+    this._ownedElement = undefined;
+    this._restoreContainer?.();
+    this._restoreContainer = undefined;
   }
 
   /**
@@ -2352,6 +2386,10 @@ export default class ThreeView<
 
     this.renderPassOrchestrator.render();
     this._pickHelper?.renderDebugCanvas();
+
+    for (const tile of this._tileMapByHandle.values()) {
+      tile.releaseDrapeGpuMemoryUnlessDrawn();
+    }
 
     this.shadowMapViewers.render(this._renderer);
 
@@ -3441,6 +3479,11 @@ export default class ThreeView<
       const t0 = timing ? performance.now() : 0;
       this._stats?.begin();
 
+      if (this._resizePending) {
+        this._resizePending = false;
+        this._handleResize();
+      }
+
       this._forceFeatureUpdates(time);
 
       const updated = this._update(time);
@@ -3494,11 +3537,17 @@ export default class ThreeView<
     this._renderer.setAnimationLoop(loop);
   }
 
-  private _getCanvasSize(): { width: number; height: number } | undefined {
-    const element =
+  /** The element whose size the view fills. */
+  private _getSizeElement(): HTMLElement {
+    return (
       this._options.container ??
       this._renderer.domElement?.parentElement ??
-      this._renderer.domElement;
+      this._renderer.domElement
+    );
+  }
+
+  private _getCanvasSize(): { width: number; height: number } | undefined {
+    const element = this._getSizeElement();
     if (!element) return;
 
     const width = element.offsetWidth;
@@ -3522,6 +3571,14 @@ export default class ThreeView<
           override: this._options.pixelRatio,
           mobileOptimization: this._options.mobileOptimization,
         });
+    const size = this._renderer.getSize(new Vector2());
+    if (
+      size.x === width &&
+      size.y === height &&
+      this._renderer.getPixelRatio() === pixelRatio
+    ) {
+      return;
+    }
     this.resize(width, height, pixelRatio);
   };
 

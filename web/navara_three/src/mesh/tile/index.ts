@@ -151,6 +151,10 @@ export class TileMesh
   // only crosses the WASM boundary when it actually changes. Starts at 0 to
   // match the drape term Rust seeds at mesh-attach time.
   private reportedDrapeGpuBytes = 0;
+  // Whether the frame being rendered drew this tile.
+  private drawnInFrame = false;
+  // Whether the tile gave its drape memory back since it was last drawn.
+  private drapeGpuMemoryReleased = false;
   private _waterMaskWaves: WaterWavesRef | undefined;
 
   readonly ctx: EventContext;
@@ -250,8 +254,8 @@ export class TileMesh
 
   /**
    * Report the tile's drape GPU footprint (composite atlas + vector and baked-raster
-   * drape render targets) to the memory ledger when it changed. The atlas counts once
-   * it is allocated and stays counted for the tile's lifetime regardless of draping;
+   * drape render targets) to the memory ledger when it changed. The atlas counts while
+   * it is allocated, regardless of draping;
    * it grows by the normal attachment while the tile has hillshade.
    * The render targets on top of it scale with terrain subdivision past the layers'
    * maxZoom — a cost per-source-tile accounting cannot see.
@@ -283,8 +287,27 @@ export class TileMesh
     this.tileHandler.reportDrapeGpuBytes(this.handle, bytes);
   }
 
+  /**
+   * Called after each rendered frame. A tile the frame did not draw (hidden,
+   * or outside every camera) frees its drape render targets and composite
+   * atlas; its next render bakes them again.
+   */
+  releaseDrapeGpuMemoryUnlessDrawn() {
+    if (this.drawnInFrame) {
+      this.drawnInFrame = false;
+      this.drapeGpuMemoryReleased = false;
+      return;
+    }
+    if (this.drapeGpuMemoryReleased) return;
+    this.vectorDrape.release();
+    this.rasterDrape.release();
+    this.drapeGpuMemoryReleased = this.compositor.releaseAtlas(this.handle);
+    this.reportDrapeGpuBytesIfChanged();
+  }
+
   private _onBeforeRender = () => {
     if (!this.visible) return;
+    this.drawnInFrame = true;
 
     // Drape resolvers (see `drapeResolver.ts`): each refreshes its Rust-resolved
     // slots on a revision bump and re-bakes on a slot/content signature change.

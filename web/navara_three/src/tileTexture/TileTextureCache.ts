@@ -118,6 +118,23 @@ export class TileTextureCache {
   }
 
   /**
+   * Take the atlas away from a handle that is not drawn. The entry goes back
+   * to its initial state, so the next composite pass picks an atlas and
+   * repaints it. Returns false while a second holder shares the entry: the
+   * mesh being replaced may still draw with the atlas, so it stays.
+   */
+  releaseAtlas(handle: TileHandle): boolean {
+    const entry = this.entries.get(handle);
+    if (!entry) return true;
+    if (entry.refCount > 1) return false;
+    if (!entry.atlas) return true;
+    this.recycle(entry.atlas);
+    entry.atlas = null;
+    for (const reason of INITIAL_DIRTY_REASONS) entry.dirty.add(reason);
+    return true;
+  }
+
+  /**
    * Pool a rendered atlas no tile uses any more. A full pool disposes its
    * oldest atlas, so the pool follows the shape tiles currently release.
    */
@@ -204,6 +221,14 @@ export class TileTextureCache {
   }
 }
 
+const INITIAL_DIRTY_REASONS: readonly DirtyReason[] = [
+  "material",
+  "texture-binding",
+  "vector-revision",
+  "raster-revision",
+  "hillshade",
+];
+
 /** A fresh entry with no atlas, dirty in every category. Its outputs read the
  * entry's current atlas, so they follow every `prepareAtlasForBake` swap. */
 function createEntry(handle: TileHandle): CacheEntry {
@@ -222,13 +247,7 @@ function createEntry(handle: TileHandle): CacheEntry {
       },
     },
     refCount: 0,
-    dirty: new Set<DirtyReason>([
-      "material",
-      "texture-binding",
-      "vector-revision",
-      "raster-revision",
-      "hillshade",
-    ]),
+    dirty: new Set(INITIAL_DIRTY_REASONS),
   };
   return entry;
 }

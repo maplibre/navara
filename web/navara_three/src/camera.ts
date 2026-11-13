@@ -29,6 +29,7 @@ export class ThreeViewCamera extends EventHandler<CameraEvent> {
 
   private _core: Core | undefined;
   private _status: CameraStatus | undefined;
+  private _zoomEnabled = true;
 
   constructor(cam?: PerspectiveCamera) {
     super();
@@ -220,6 +221,18 @@ export class ThreeViewCamera extends EventHandler<CameraEvent> {
     if (options.enableTilt !== undefined) {
       event.enableTilt = options.enableTilt;
     }
-    this._core?.setCameraControl(event);
+    if (!this._core) return;
+    this._core.setCameraControl(event);
+    if (options.enableZoom !== undefined) {
+      this._zoomEnabled = options.enableZoom;
+    }
+  }
+
+  /**
+   * Whether the engine consumes wheel input as zoom.
+   * @internal
+   */
+  _isZoomEnabled(): boolean {
+    return this._zoomEnabled;
   }
 }

@@ -132,6 +132,9 @@ export class VectorDrapeResolver implements DrapeResolver {
     if (this.sourcesChanged) {
       this.sourcesChanged = false;
       this.refreshSlots();
+    } else if (this.renderTargets.length < this.vectorSlots.length) {
+      // `release` freed the targets; the handed slots still stand.
+      this.syncRenderTargets();
     }
 
     // Re-bake the offscreen vector scenes only when the resolved slots or their
@@ -182,6 +185,14 @@ export class VectorDrapeResolver implements DrapeResolver {
   }
 
   invalidate(): void {
+    this.prevSignature = "";
+  }
+
+  release(): void {
+    if (this.renderTargets.length === 0) return;
+    this.dispose();
+    // The slots pointed at the disposed targets.
+    this.bindSlots();
     this.prevSignature = "";
   }
 

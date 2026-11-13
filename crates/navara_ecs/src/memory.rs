@@ -1,15 +1,13 @@
 use bevy_ecs::{
     entity::Entity,
     prelude::{Query, Res, ResMut},
-    query::Without,
 };
 use navara_buffer_store::BufferStore;
 use navara_cesium3dtiles::ModelContentIndex;
-use navara_component::Deleted;
 use navara_feature_component::render::RenderableFeature;
 use navara_fog::{DynamicSse, DynamicSseConfig, Fog, LodFogConfig};
 use navara_memory::{MemoryLedger, TileCost};
-use navara_tile_component::{TerrainTileGpuCost, TileHandle, TileMeshMarker};
+use navara_tile_component::{TerrainTileGpuCost, TileHandle};
 use navara_vector_tile::{OwningVectorTile, VectorTileGpuCost};
 
 use crate::App;
@@ -138,16 +136,13 @@ impl App {
     /// evicted before the report arrived.
     pub fn report_terrain_drape_gpu_bytes(&mut self, handle: TileHandle, gpu_bytes: u64) {
         let world = self.app.world_mut();
-        // Exclude meshes marked `Deleted` (deferred despawn): during a mesh
-        // replacement the old entity survives a frame while a new mesh reuses
-        // the same position-stable handle. Landing the report on the doomed
-        // entity would drop the drape cost from the ledger when it despawns,
-        // leaving the live tile's drape memory uncounted.
-        let mut query = world.query_filtered::<(Entity, &TileMeshMarker), Without<Deleted>>();
-        let Some(entity) = query
-            .iter(world)
-            .find(|(_, marker)| marker.handle == handle)
-            .map(|(e, _)| e)
+        // Resolved through the tile cache: a destroyed tile's entry is gone,
+        // so the report never lands on a mesh marked `Deleted` (deferred
+        // despawn) while a new mesh reuses the same position-stable handle.
+        let Some(entity) = world
+            .get_resource::<navara_tile::tile::tile_cache_manager::TileCacheManager>()
+            .and_then(|tc| tc.rendered_tile_caches.get(&handle))
+            .and_then(|cache| cache.mesh_entity)
         else {
             return;
         };
@@ -652,6 +647,29 @@ mod report_billboard_atlas_bytes_tests {
 #[cfg(test)]
 mod report_terrain_drape_gpu_bytes_tests {
     use super::*;
+    use navara_component::Deleted;
+    use navara_tile::tile::tile_cache_manager::{RenderedTileCache, TileCacheManager};
+    use navara_tile_component::TileMeshMarker;
+
+    /// Makes `mesh_entity` the mesh the terrain tile cache holds for `handle`.
+    fn register_mesh(world: &mut bevy_ecs::world::World, handle: TileHandle, mesh_entity: Entity) {
+        let rendered_tile_entity = world.spawn_empty().id();
+        world
+            .resource_mut::<TileCacheManager>()
+            .rendered_tile_caches
+            .insert(
+                handle,
+                RenderedTileCache {
+                    mesh_entity: Some(mesh_entity),
+                    ready_parent_tile_handle: None,
+                    layer_parents: None,
+                    rendered_tile_entity,
+                    mesh_prepared: true,
+                    needs_material_update: false,
+                    prefetched: false,
+                },
+            );
+    }
 
     #[test]
     fn adds_drape_to_geometry_and_corrects_ledger() {
@@ -661,20 +679,23 @@ mod report_terrain_drape_gpu_bytes_tests {
 
         // A terrain mesh tile with a geometry-only cost, keyed by its handle.
         let handle: TileHandle = 42;
-        world.spawn((
-            TileMeshMarker {
-                handle,
-                ready_parent_tile_handle: None,
-            },
-            TerrainTileGpuCost {
-                geometry: 1000,
-                drape: 0,
-            },
-            TileCost {
-                cpu: 0,
-                gpu_est: 1000,
-            },
-        ));
+        let mesh = world
+            .spawn((
+                TileMeshMarker {
+                    handle,
+                    ready_parent_tile_handle: None,
+                },
+                TerrainTileGpuCost {
+                    geometry: 1000,
+                    drape: 0,
+                },
+                TileCost {
+                    cpu: 0,
+                    gpu_est: 1000,
+                },
+            ))
+            .id();
+        register_mesh(world, handle, mesh);
         assert_eq!(
             app.app.world().resource::<MemoryLedger>().gpu_bytes_est,
             1000
@@ -756,6 +777,7 @@ mod report_terrain_drape_gpu_bytes_tests {
                 },
             ))
             .id();
+        register_mesh(world, handle, live_mesh);
 
         app.report_terrain_drape_gpu_bytes(handle, 500);
 

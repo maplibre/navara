@@ -526,7 +526,23 @@ Dirty reasons are coalesced per tile (`DirtyReason`: `material`,
 changes, and the atlas Textures persist across passes — only `needsUpdate` flips
 when a new bake overwrites them, except when the main material gains or loses
 hillshade and the atlas is swapped (see
-[What the bake produces](#what-the-bake-produces)).
+[What the bake produces](#what-the-bake-produces)), or when the tile stops
+being drawn and gives the atlas back (see
+[Undrawn tiles hold no drape memory](#undrawn-tiles-hold-no-drape-memory)).
+
+### Undrawn tiles hold no drape memory
+
+After each rendered frame the view calls
+`TileMesh.releaseDrapeGpuMemoryUnlessDrawn()` on every tile. A tile the frame
+did not draw (hidden, or outside every camera) disposes its resolvers' render
+targets (`DrapeResolver.release`), returns its atlas to the pool
+(`TileTextureCache.releaseAtlas`), and reports the smaller footprint to the
+memory ledger. The atlas stays while the mesh being replaced still holds the
+handle's cache entry, since that mesh may still draw with it. A released tile
+keeps its Rust-resolved slots: its next `onBeforeRender` allocates the render
+targets again, bakes them and repaints the atlas before the draw. Rust's
+`active` flag cannot stand in for "drawn": a tile outside the frustum stays
+active.
 
 ## Quantized-mesh and watermask
 

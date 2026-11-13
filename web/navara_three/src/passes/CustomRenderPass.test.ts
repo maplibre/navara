@@ -254,3 +254,18 @@ describe("globe-normal copy target", () => {
     expect(size(pass).height).toBe(1);
   });
 });
+
+// Regression: three reallocates a depth texture on resize only through its
+// owning target, so an unowned one kept its old size and left the G-buffer
+// framebuffer incomplete.
+describe("setBuffers", () => {
+  it("hands the depth texture's ownership to the rebuilt G-buffer target", () => {
+    const pass = createPass(createScenes(), true);
+    const depthTexture = pass.gbufferRenderTarget.depthTexture;
+
+    pass.setBuffers(resolveGBufferOptions({ shadow: false }));
+
+    expect(pass.gbufferRenderTarget.depthTexture).toBe(depthTexture);
+    expect(depthTexture?.renderTarget).toBe(pass.gbufferRenderTarget);
+  });
+});

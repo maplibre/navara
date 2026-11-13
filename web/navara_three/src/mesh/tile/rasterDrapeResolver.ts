@@ -70,6 +70,7 @@ export class DirectRasterDrapeResolver implements DrapeResolver {
     return undefined;
   }
   invalidate(): void {}
+  release(): void {}
   liveRenderTargetCount(): number {
     return 0;
   }
@@ -120,12 +121,16 @@ export class BakedRasterDrapeResolver implements DrapeResolver {
   // signature can then only change via a slot refresh (revision bump / material
   // slot change), so the per-frame signature hashing is skipped until one.
   private signatureSettled = false;
+  // Set by `release`: no render target is allocated until the next `update()`.
+  private released = false;
 
   constructor(private readonly host: RasterDrapeHost) {}
 
   update(): void {
     if (this.bakedSlotIndices.length === 0) return;
 
+    const wasReleased = this.released;
+    this.released = false;
     // Gated exactly like the vector drape: refresh on the raster resolve
     // revision, re-bake on a slot/texture signature change.
     const revision = this.host.tileHandler.rasterRevision();
@@ -133,6 +138,9 @@ export class BakedRasterDrapeResolver implements DrapeResolver {
       this.lastRevision = revision;
       this.refreshSlots();
       this.signatureSettled = false;
+    } else if (wasReleased) {
+      // The resolved slots still stand; only their targets are gone.
+      this.syncRenderTargets();
     }
     if (!this.signatureSettled) {
       const signature = this.signature();
@@ -210,6 +218,15 @@ export class BakedRasterDrapeResolver implements DrapeResolver {
     this.signatureSettled = false;
   }
 
+  release(): void {
+    if (this.liveRenderTargetCount() === 0) return;
+    this.dispose();
+    // The slots pointed at the disposed targets.
+    this.bindSlots();
+    this.released = true;
+    this.invalidate();
+  }
+
   liveRenderTargetCount(): number {
     let count = 0;
     for (const rt of this.renderTargets) {
@@ -285,7 +302,8 @@ export class BakedRasterDrapeResolver implements DrapeResolver {
     const kinds = this.renderTargetIsHeatmap;
     const count = this.bakedSlotIndices.length;
     for (let ordinal = 0; ordinal < count; ordinal++) {
-      const active = !!this.rasterSlots[ordinal]?.sources.length;
+      const active =
+        !this.released && !!this.rasterSlots[ordinal]?.sources.length;
       const isHeatmap = this.bakedSlotIsHeatmap[ordinal];
       // A layer that flipped kinds (color ↔ heatmap via updateLayer) must not
       // reuse the old target: its color space is baked into the GL allocation,

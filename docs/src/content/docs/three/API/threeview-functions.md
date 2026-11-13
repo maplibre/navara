@@ -406,7 +406,7 @@ view.dispose();
 
 ### resize()
 
-Changes the renderer size and updates the camera aspect ratio. Automatically called on window resize unless `disableAutoResize` is `true`.
+Changes the renderer size and updates the camera aspect ratio. Automatically called when the container changes size unless `disableAutoResize` is `true`.
 
 **Syntax:**
 

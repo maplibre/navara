@@ -117,6 +117,56 @@ describe("TileTextureCache.release", () => {
   });
 });
 
+describe("TileTextureCache.releaseAtlas", () => {
+  it("pools the atlas and leaves the entry dirty for the next pass", () => {
+    const { cache } = makeCache(2);
+    const out = cache.acquire(1n);
+    const atlas = bake(cache, 1n);
+    cache.consumeDirty(1n);
+
+    cache.releaseAtlas(1n);
+
+    expect(cache.getEntry(1n)?.atlas).toBeNull();
+    expect(out.color).toBeNull();
+    expect(atlas.dispose).not.toHaveBeenCalled();
+    expect(cache.pooledCount).toBe(1);
+    expect(cache.isDirty(1n)).toBe(true);
+
+    // The next pass takes the atlas back.
+    expect(bake(cache, 1n)).toBe(atlas);
+  });
+
+  it("keeps the atlas while a second holder shares the entry", () => {
+    const { cache } = makeCache(2);
+    cache.acquire(1n);
+    cache.acquire(1n);
+    const atlas = bake(cache, 1n);
+    cache.consumeDirty(1n);
+
+    expect(cache.releaseAtlas(1n)).toBe(false);
+
+    expect(cache.getEntry(1n)?.atlas).toBe(atlas);
+    expect(cache.isDirty(1n)).toBe(false);
+
+    // The replaced mesh is gone: the atlas goes back to the pool.
+    cache.release(1n);
+    expect(cache.releaseAtlas(1n)).toBe(true);
+    expect(cache.getEntry(1n)?.atlas).toBeNull();
+    expect(cache.pooledCount).toBe(1);
+  });
+
+  it("leaves an entry without an atlas clean", () => {
+    const { cache } = makeCache(2);
+    cache.acquire(1n);
+    cache.consumeDirty(1n);
+
+    cache.releaseAtlas(1n);
+
+    expect(cache.isDirty(1n)).toBe(false);
+    expect(cache.pooledCount).toBe(0);
+  });
+});
+
 describe("TileTextureCache atlas pooling", () => {
   it("pools a fully-released atlas and reuses it for the next bake", () => {
     const { cache, factory } = makeCache(2);

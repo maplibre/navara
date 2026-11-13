@@ -336,6 +336,10 @@ export class TileTextureCompositor {
     this.cache.markDirty(handle, reason);
   }
 
+  releaseAtlas(handle: TileHandle): boolean {
+    return this.cache.releaseAtlas(handle);
+  }
+
   /** GPU bytes the handle's atlas holds: one size² RGBA8 texture per
    * attachment, 0 before the first composite pass picks the atlas (see
    * `CacheEntry.atlas`). */
