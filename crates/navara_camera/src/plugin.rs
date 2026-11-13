@@ -5,7 +5,7 @@ use navara_window::WindowResizeEvent;
 
 use crate::{
     CameraControlUpdateEvent, CameraController, CameraEvent, CameraFrustum, FlightIdAllocator,
-    FrustumEvent,
+    FrustumEvent, ViewZoom,
 };
 
 use super::CameraMarker;
@@ -25,6 +25,7 @@ impl bevy_app::Plugin for CameraPlugin {
     fn build(&self, app: &mut bevy_app::App) {
         app.add_systems(Startup, super::system::startup)
             .init_resource::<FlightIdAllocator>()
+            .init_resource::<ViewZoom>()
             .add_message::<CameraEvent>()
             .add_message::<FrustumEvent>()
             .add_message::<CameraControlUpdateEvent>()
@@ -37,6 +38,7 @@ impl bevy_app::Plugin for CameraPlugin {
                     super::system::update,
                     super::system::sync_flight_events,
                     super::system::update_frustum,
+                    super::system::update_view_zoom,
                 )
                     .chain(),
             )

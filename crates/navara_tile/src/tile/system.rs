@@ -163,6 +163,7 @@ pub fn update_terrain(
         Res<navara_globe::Globe>,
         Res<navara_memory::SsePressure>,
         Res<TerrainExaggeration>,
+        Res<navara_camera::ViewZoom>,
     ),
     source_store: Res<navara_source::SourceStore>,
     mut tiles_set: ParamSet<(Query<(&TilesLayer, &Order)>, Query<(), Changed<TilesLayer>>)>,
@@ -227,7 +228,7 @@ pub fn update_terrain(
             fog.is_changed() || dynamic_sse.is_changed(),
         )
     };
-    let (globe, pressure, exaggeration) = globe;
+    let (globe, pressure, exaggeration, view_zoom) = globe;
     let camera = camera_set.p0();
     let (camera, frustum) = camera.single().unwrap();
 
@@ -257,7 +258,9 @@ pub fn update_terrain(
         || is_forced
         || is_fog_changed
         || pressure.is_changed()
-        || exaggeration.is_changed();
+        || exaggeration.is_changed()
+        // Zooming across a layer's min zoom changes the forced descent.
+        || view_zoom.is_changed();
     if !needs_update {
         return;
     }
@@ -338,6 +341,7 @@ pub fn update_terrain(
             UpsampleAncestors::default(),
             0,
             !(pressure.load_gate_closed || pressure.prefetch_gate_closed),
+            view_zoom.0,
         );
 
         match traversal_result {

@@ -907,6 +907,18 @@ fn record_drape_source(
     }
 }
 
+/// Whether the view is zoomed out too far to show a source with `min_zoom`.
+/// Like MapLibre, which covers a vector source with 512 px tiles at
+/// `floor(zoom)` and draws nothing below its min zoom; `view_zoom` is in
+/// 256 px terms (one level above MapLibre's zoom). An unknown view zoom
+/// counts as below, since forcing the descent toward `min_zoom` then can
+/// overflow the quadtree; a source without a min zoom is never gated.
+pub(crate) fn is_view_below_min_zoom(view_zoom: Option<f64>, min_zoom: usize) -> bool {
+    // The epsilon keeps an exact integer zoom (e.g. a style's `zoom: 16`
+    // round-tripped through the camera) from flooring a level down.
+    min_zoom > 0 && !view_zoom.is_some_and(|v| (v - 1.0 + 1e-6).floor() >= min_zoom as f64)
+}
+
 fn begin_traverse_tile(
     ellipsoid: &Ellipsoid<FloatType>,
     occluder: &EllipsoidalOccluder,
@@ -969,6 +981,24 @@ mod test {
         let changed: Vec<Entity> = changed.iter(&world).collect();
         assert_eq!(changed, vec![flipped]);
         assert!(!world.get::<RenderableFeature>(flipped).unwrap().is_active());
+    }
+
+    #[test]
+    fn view_is_below_min_zoom_by_maplibre_vector_tile_zoom() {
+        // View zoom is in 256 px terms: MapLibre zoom + 1. A min-zoom-17
+        // source shows from MapLibre zoom 17 (floor), not 16.1 or 16.5.
+        assert!(is_view_below_min_zoom(Some(17.1), 17));
+        assert!(is_view_below_min_zoom(Some(17.9), 17));
+        assert!(!is_view_below_min_zoom(Some(18.0), 17));
+        assert!(!is_view_below_min_zoom(Some(18.0 - 1e-9), 17));
+        assert!(!is_view_below_min_zoom(Some(18.4), 17));
+        assert!(is_view_below_min_zoom(Some(2.0), 17));
+        // A source without a min zoom is always shown.
+        assert!(!is_view_below_min_zoom(Some(0.0), 0));
+        assert!(!is_view_below_min_zoom(None, 0));
+        // Unknown view zoom: gated, so it cannot force a descent.
+        assert!(is_view_below_min_zoom(None, 17));
+        assert!(is_view_below_min_zoom(Some(f64::NAN), 17));
     }
 
     fn polygon(texturized: bool, outlined: bool) -> RenderableFeature {

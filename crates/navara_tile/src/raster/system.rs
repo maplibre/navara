@@ -1,6 +1,6 @@
 use bevy_ecs::prelude::*;
 
-use navara_camera::{CameraFrustum, CameraMarker};
+use navara_camera::{CameraFrustum, CameraMarker, ViewZoom};
 use navara_component::{Deleted, Ignored, Order, OrderByDistance, Priority, Requested};
 use navara_core::{TileXYZ, TilingScheme, WGS84_64};
 use navara_fog::{DynamicSse, Fog};
@@ -134,7 +134,11 @@ pub fn update_raster_tiles(
     mut qt: ResMut<RasterTileQuadtree>,
     mut tc: ResMut<RasterTileCacheManager>,
     // Bundled to stay within Bevy's per-system parameter limit.
-    (terrain_qt, terrain_exaggeration): (Res<TerrainTileQuadtree>, Res<TerrainExaggeration>),
+    (terrain_qt, terrain_exaggeration, view_zoom): (
+        Res<TerrainTileQuadtree>,
+        Res<TerrainExaggeration>,
+        Res<ViewZoom>,
+    ),
     frame: Res<FrameManager>,
     window: Res<Window>,
     globe: Res<navara_globe::Globe>,
@@ -224,7 +228,9 @@ pub fn update_raster_tiles(
         || occluder.is_changed()
         || is_layers_changed
         || is_fog_changed
-        || pressure.is_changed();
+        || pressure.is_changed()
+        // Zooming across a layer's min zoom changes the forced descent.
+        || view_zoom.is_changed();
     if !needs_update {
         return;
     }
@@ -309,6 +315,7 @@ pub fn update_raster_tiles(
             globe.max_sse as f64,
             degrade,
             terrain_present,
+            view_zoom.0,
         );
     }
 }

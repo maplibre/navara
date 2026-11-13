@@ -1,4 +1,7 @@
-use navara_core::{Ellipsoid, Ray, WGS84_64, east_north_up_to_fixed_frame, ray_ellipsoid};
+use navara_core::{
+    CRS, Ellipsoid, Ray, WGS84_64, WGS84_A_64, camera_zoom_level, east_north_up_to_fixed_frame,
+    ray_ellipsoid,
+};
 use navara_math::{
     EPSILON3, EPSILON10, EqualEpsilon, FloatType, PI_OVER_TWO, Quat, TWO_PI, Transform, Vec2, Vec3,
     zero_to_two_pi,
@@ -160,16 +163,111 @@ pub fn calc_camera_target_and_distance(
     None
 }
 
+/// Web Mercator zoom level of the current view, measured at the point the
+/// camera looks at on the ellipsoid (as MapLibre does). `tile_size_px`
+/// defaults to 256; pass 512 for MapLibre-compatible values.
+///
+/// Returns `None` when the camera looks away from the ellipsoid or the inputs
+/// (viewport, FOV, tile size) are degenerate.
+pub fn camera_view_zoom_level(
+    transform: &Transform,
+    frustum: &CameraFrustum,
+    window: &Window,
+    tile_size_px: Option<f64>,
+) -> Option<f64> {
+    if matches!(tile_size_px, Some(t) if t <= 0.0) {
+        return None;
+    }
+    let viewport_height = window.raw_height();
+    let fov_y = frustum.fov;
+
+    // Use the camera-to-target distance rather than the altitude, so the zoom
+    // matches the distance `setCamera` takes.
+    let (target_point, distance) = calc_camera_target_and_distance(transform, WGS84_64)?;
+    let target_lat = CRS::Geocentric
+        .to_lle(WGS84_64, target_point, 0.0)
+        .lat
+        .val();
+
+    zoom_at(distance, target_lat, viewport_height, fov_y, tile_size_px)
+}
+
+/// MapLibre's maximum camera pitch, in degrees from straight down.
+const MAPLIBRE_MAX_PITCH_DEG: f64 = 85.0;
+
+/// [`camera_view_zoom_level`] (256 px tiles) for level-of-detail decisions,
+/// defined for every camera pose. MapLibre caps the pitch at 85°, so its
+/// viewing distance never exceeds `height / cos(85°)`; Navara does not, so a
+/// pitched camera's centre ray can hit the globe far away (a much lower zoom)
+/// or miss it entirely (`None`), hiding min-zoom layers even though nearby
+/// tiles fill the screen. Here the distance is clamped to what MapLibre's
+/// maximum pitch allows from the camera's height, and a missed ray uses that
+/// clamped distance at the camera's latitude.
+///
+/// Returns `None` only for a degenerate viewport or FOV.
+pub fn camera_lod_zoom_level(
+    transform: &Transform,
+    frustum: &CameraFrustum,
+    window: &Window,
+) -> Option<f64> {
+    let camera_lle = CRS::Geocentric.to_lle(WGS84_64, transform.translation, 0.0);
+    // At least 1 m: a camera below the ellipsoid still gets a finite bound.
+    let height = camera_lle.height.val().max(1.0);
+    let max_distance = height / MAPLIBRE_MAX_PITCH_DEG.to_radians().cos();
+
+    let (distance, lat) = match calc_camera_target_and_distance(transform, WGS84_64) {
+        Some((target, distance)) if distance <= max_distance => (
+            distance,
+            CRS::Geocentric.to_lle(WGS84_64, target, 0.0).lat.val(),
+        ),
+        _ => (max_distance, camera_lle.lat.val()),
+    };
+
+    zoom_at(distance, lat, window.raw_height(), frustum.fov, None)
+}
+
+/// Web Mercator zoom for a viewing `distance` at latitude `lat_rad`, or `None`
+/// for degenerate inputs.
+fn zoom_at(
+    distance: f64,
+    lat_rad: f64,
+    viewport_height: f64,
+    fov_y: f64,
+    tile_size_px: Option<f64>,
+) -> Option<f64> {
+    if distance <= 0.0
+        || viewport_height <= 0.0
+        || !fov_y.is_finite()
+        || fov_y <= 0.0
+        || !lat_rad.is_finite()
+    {
+        return None;
+    }
+
+    let zoom = camera_zoom_level(
+        distance,
+        fov_y,
+        viewport_height,
+        lat_rad,
+        WGS84_A_64,
+        tile_size_px,
+    );
+    zoom.is_finite().then_some(zoom)
+}
+
 #[cfg(test)]
 mod test {
     use approx::assert_abs_diff_eq;
-    use navara_core::{Angle, WGS84_64};
+    use navara_core::{Angle, WGS84_64, WGS84_A_64, camera_zoom_level};
     use navara_math::{AbsDiffEqVec3, Transform, Vec2, Vec3};
     use navara_window::Window;
 
     use crate::CameraFrustum;
 
-    use super::{calc_camera_target_and_distance, get_pick_ray_from_camera};
+    use super::{
+        calc_camera_target_and_distance, camera_lod_zoom_level, camera_view_zoom_level,
+        get_pick_ray_from_camera,
+    };
 
     #[test]
     fn it_should_pick_ray_perspective() {
@@ -234,6 +332,93 @@ mod test {
         assert!(result.is_some(), "Forward ray should hit");
         let (_target, distance) = result.unwrap();
         assert!(distance > 0.0 && distance < 2_000_000.0);
+    }
+
+    #[test]
+    fn camera_view_zoom_level_measures_at_the_looked_at_point() {
+        // 1000 m above the equator, looking straight down.
+        let mut transform = Transform::from_translation(Vec3::new(WGS84_A_64 + 1000.0, 0.0, 0.0));
+        transform.look_to(-Vec3::X, Vec3::Z);
+        let fov = Angle::new(60.0).rad().val();
+        let frustum = CameraFrustum::new(&transform, 0.1, 1e9, fov, 800.0 / 600.0);
+        let window = Window {
+            width: 1600.,
+            height: 1200.,
+            pixel_ratio: 2.,
+        };
+
+        let zoom = camera_view_zoom_level(&transform, &frustum, &window, None).unwrap();
+        // CSS-pixel viewport height (1200 / 2), latitude 0.
+        let expected = camera_zoom_level(1000.0, frustum.fov, 600.0, 0.0, WGS84_A_64, None);
+        assert_abs_diff_eq!(zoom, expected, epsilon = 1e-6);
+
+        // 512 px tiles (MapLibre zoom) are exactly one level lower.
+        let zoom_512 = camera_view_zoom_level(&transform, &frustum, &window, Some(512.0)).unwrap();
+        assert_abs_diff_eq!(zoom_512, zoom - 1.0, epsilon = 1e-9);
+
+        // Degenerate tile size.
+        assert!(camera_view_zoom_level(&transform, &frustum, &window, Some(0.0)).is_none());
+    }
+
+    #[test]
+    fn camera_view_zoom_level_is_none_when_looking_away() {
+        let mut transform = Transform::from_translation(Vec3::new(WGS84_A_64 + 1000.0, 0.0, 0.0));
+        transform.look_to(Vec3::X, Vec3::Z);
+        let frustum = CameraFrustum::new(&transform, 0.1, 1e9, 1.0, 1.0);
+        let window = Window {
+            width: 800.,
+            height: 600.,
+            pixel_ratio: 1.,
+        };
+        assert!(camera_view_zoom_level(&transform, &frustum, &window, None).is_none());
+    }
+
+    #[test]
+    fn camera_lod_zoom_level_matches_the_view_zoom_below_maplibre_max_pitch() {
+        // Looking straight down: the clamp does not apply.
+        let mut transform = Transform::from_translation(Vec3::new(WGS84_A_64 + 1000.0, 0.0, 0.0));
+        transform.look_to(-Vec3::X, Vec3::Z);
+        let frustum = CameraFrustum::new(&transform, 0.1, 1e9, 1.0, 4. / 3.);
+        let window = Window {
+            width: 800.,
+            height: 600.,
+            pixel_ratio: 1.,
+        };
+        let lod = camera_lod_zoom_level(&transform, &frustum, &window).unwrap();
+        let view = camera_view_zoom_level(&transform, &frustum, &window, None).unwrap();
+        assert_abs_diff_eq!(lod, view, epsilon = 1e-9);
+    }
+
+    #[test]
+    fn camera_lod_zoom_level_clamps_to_maplibre_max_pitch() {
+        let frustum_for = |t: &Transform| CameraFrustum::new(t, 0.1, 1e9, 1.0, 4. / 3.);
+        let window = Window {
+            width: 800.,
+            height: 600.,
+            pixel_ratio: 1.,
+        };
+        // 1000 m above the equator: the clamped distance is 1000 / cos(85°).
+        let expected = camera_zoom_level(
+            1000.0 / 85f64.to_radians().cos(),
+            1.0,
+            600.0,
+            0.0,
+            WGS84_A_64,
+            None,
+        );
+        let position = Vec3::new(WGS84_A_64 + 1000.0, 0.0, 0.0);
+
+        // Looking at the sky (the centre ray misses): still defined.
+        let mut sky = Transform::from_translation(position);
+        sky.look_to(Vec3::X, Vec3::Z);
+        let zoom = camera_lod_zoom_level(&sky, &frustum_for(&sky), &window).unwrap();
+        assert_abs_diff_eq!(zoom, expected, epsilon = 1e-6);
+
+        // Nearly horizontal (hits the globe ~100 km away): clamped too.
+        let mut grazing = Transform::from_translation(position);
+        grazing.look_to(Vec3::new(-0.01, 1.0, 0.0), Vec3::X);
+        let zoom = camera_lod_zoom_level(&grazing, &frustum_for(&grazing), &window).unwrap();
+        assert_abs_diff_eq!(zoom, expected, epsilon = 1e-3);
     }
 
     #[test]
