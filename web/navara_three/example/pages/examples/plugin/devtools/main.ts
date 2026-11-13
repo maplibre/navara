@@ -13,7 +13,6 @@ const defaultPlugin = new DefaultPlugin();
 view.addPlugin(defaultPlugin);
 const tilejson = new TileJsonPlugin();
 view.addPlugin(tilejson);
-// Devtools must be added before init() so they see every layer. Press ` to hide the panel.
 view.addPlugin(new DevtoolsPlugin());
 
 await view.init();
@@ -59,7 +58,6 @@ view.addLayer({
   },
 });
 
-// Re:Earth Buildings are modeled on Re:Earth Terrain, so their bases meet the ground.
 const buildings = view.addSource({
   type: "3d-tiles",
   url: "https://buildings.reearth.land/tileset.json",
