@@ -309,11 +309,11 @@ importers:
       '@navaramap/worker':
         specifier: workspace:*
         version: link:../navara_worker
-      three:
-        specifier: 0.187.0
-        version: 0.187.0
     devDependencies:
       '@types/three':
+        specifier: 0.187.0
+        version: 0.187.0
+      three:
         specifier: 0.187.0
         version: 0.187.0
 
