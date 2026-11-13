@@ -1,4 +1,5 @@
 export * from "./arraysEqual";
+export * from "./dom";
 export * from "./geometry";
 export * from "./worker";
 export * from "./replacer";

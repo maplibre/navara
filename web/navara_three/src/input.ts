@@ -5,6 +5,7 @@ export function registerInputEvents(
   core: Core,
   element: HTMLElement,
   getTerrainDistance?: () => number | null,
+  isZoomEnabled?: () => boolean,
 ): () => void {
   let mouseEvent:
     | {
@@ -100,6 +101,9 @@ export function registerInputEvents(
   };
 
   const wheel = (event: WheelEvent) => {
+    // The wheel zooms the map, so keep the page from scrolling with it.
+    if (isZoomEnabled?.() ?? true) event.preventDefault();
+
     lastTerrainDistance = getTerrainDistance?.() ?? undefined;
     core.input({
       type: "wheel",
@@ -153,7 +157,7 @@ export function registerInputEvents(
   // treat them as ended so no stale touch stays in the engine.
   element.addEventListener("touchcancel", touchend);
   element.addEventListener("touchmove", touchmove);
-  element.addEventListener("wheel", wheel);
+  element.addEventListener("wheel", wheel, { passive: false });
   document.addEventListener("keydown", keydown);
   document.addEventListener("keyup", keyup);
   window.addEventListener("blur", releaseInputs);
