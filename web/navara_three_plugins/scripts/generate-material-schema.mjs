@@ -73,7 +73,7 @@ function parseFields(body) {
       if (line.endsWith("]")) attrs.push(line);
       else openAttr = line;
     } else if (line.startsWith("pub ")) {
-      const m = /^pub (\w+): (.+),$/.exec(line);
+      const m = /^pub (\w+): (.+?),(?:\s*\/\/.*)?$/.exec(line);
       if (m) fields.push({ name: m[1], type: m[2], doc: doc.join(" "), attrs });
       doc = [];
       attrs = [];

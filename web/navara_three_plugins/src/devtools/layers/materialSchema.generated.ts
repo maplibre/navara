@@ -631,6 +631,18 @@ export const MATERIAL_SCHEMA: Record<string, MaterialField[]> = {
       default: 0,
     },
     {
+      name: "outlineColor",
+      kind: "color",
+      doc: "Outline color. Defaults to black.",
+      default: 0,
+    },
+    {
+      name: "outlineOpacity",
+      kind: "number",
+      doc: "Outline opacity, from 0 to 1. Defaults to `1.0`.",
+      default: 1,
+    },
+    {
       name: "outlineWidth",
       kind: "number",
       doc: "Outline thickness in 1/64 em: pixels of text drawn 64 pixels tall, so the outline keeps its proportion to the glyphs at any size. Defaults to `0.0`.",
@@ -957,7 +969,7 @@ export const MATERIAL_SCHEMA: Record<string, MaterialField[]> = {
     {
       name: "outline",
       kind: "boolean",
-      doc: "Whether to compute outline geometry. Only effective at initial load time. When not set, inferred from `outlineShow`.",
+      doc: "Whether to compute outline geometry even while `outlineShow` is `false`, so an update can show it later. Showing the outline always computes it. Read when geometry is built: tiles already loaded keep what they have.",
       default: false,
     },
     {

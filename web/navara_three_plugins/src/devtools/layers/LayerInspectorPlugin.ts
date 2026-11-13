@@ -17,8 +17,13 @@ import { Ticker } from "../util/ticker";
 
 import { collectLayerCosts, type LayerCost } from "./layerCost";
 import { descriptionOf, trackLayerDescriptions } from "./layerDescriptions";
-import { StyleEditor, describeLayerAsCode } from "./layerEditor";
+import {
+  StyleEditor,
+  describeLayerAsCode,
+  recordBuiltValue,
+} from "./layerEditor";
 import { labelLayer } from "./layerNames";
+import { isReloadField } from "./reloadFields";
 
 export type LayerInspectorPluginOptions = DevtoolPluginOptions & {
   /** When given, the layer list shows each layer's downloads from it. */
@@ -79,7 +84,10 @@ export class LayerInspectorPlugin extends DevtoolPlugin {
   private editRebuild: ReturnType<typeof setTimeout> | undefined;
   /** Per layer: values before this session changed them, for "undo". */
   private readonly originals = new Map<string, Map<string, unknown>>();
-  private readonly expanded = new Map<string, boolean>();
+  /** Per layer: reload fields changed here, with the values it was built with. */
+  private readonly built = new Map<string, Map<string, unknown>>();
+  /** Per layer: its style folders' open / closed state. */
+  private readonly expanded = new Map<string, Map<string, boolean>>();
   /** Per layer, the `show` each material had before it was hidden. */
   private readonly hidden: Hidden = new Map();
   /** Descriptions of layers deleted here, newest last, for restoring. */
@@ -134,7 +142,7 @@ export class LayerInspectorPlugin extends DevtoolPlugin {
     this.styleFolder = ui.addFolder({ title: "Style" });
     hint(
       this.styleFolder,
-      "Every style setting of the selected layer. Values marked • are set on the layer; the others show the engine default. Hover a setting for what it does.",
+      "Every style setting of the selected layer. Values marked • are set on the layer; the others show the engine default. ↻ applies only after Reload layer; ∅ has no effect. Hover a setting for what it does.",
     );
   }
 
@@ -250,10 +258,6 @@ export class LayerInspectorPlugin extends DevtoolPlugin {
       .on("change", (ev) => {
         if (!this.syncingToggles) this.setBoundingBoxes(ev.value);
       });
-    hint(
-      this.boxesBinding as unknown as { element: HTMLElement },
-      "Draws each tile's or model's bounding box: the volume used for culling and level of detail.",
-    );
   }
 
   /**
@@ -267,6 +271,7 @@ export class LayerInspectorPlugin extends DevtoolPlugin {
       this.layersSync = undefined;
       // A removed layer may have taken its source with it.
       this.sources.clear();
+      this.pruneLayerState();
       if (!this.selected()) this.selectedId = this.layerList()[0]?.id ?? "";
       this.syncSelection();
     }, 0);
@@ -307,6 +312,19 @@ export class LayerInspectorPlugin extends DevtoolPlugin {
 
   private layerList(): Layer[] {
     return Array.from(this.view.layers);
+  }
+
+  /** Drops the panel's state for layers that no longer exist. */
+  private pruneLayerState(): void {
+    const live = new Set(this.layerList().map((l) => l.id));
+    for (const map of [
+      this.originals,
+      this.built,
+      this.hidden,
+      this.expanded,
+    ]) {
+      for (const id of map.keys()) if (!live.has(id)) map.delete(id);
+    }
   }
 
   /**
@@ -351,6 +369,13 @@ export class LayerInspectorPlugin extends DevtoolPlugin {
     );
     const boxGroup = BOX_GROUP[type];
     this.boxesBinding.hidden = boxGroup === undefined;
+    hint(
+      this.boxesBinding as unknown as { element: HTMLElement },
+      "Draws each tile's or model's bounding box: the volume used for culling and level of detail." +
+        (boxGroup !== undefined && isReloadField(boxGroup, "showBoundingBox")
+          ? "\nTiles already drawn change only after Reload layer (see Style)."
+          : ""),
+    );
     this.toggles.boxes =
       boxGroup !== undefined && desc[boxGroup]?.showBoundingBox === true;
     this.syncingToggles = true;
@@ -379,15 +404,13 @@ export class LayerInspectorPlugin extends DevtoolPlugin {
       ? `Style: ${labelLayer(layer, this.sourceOf).name}`
       : "Style";
     if (!layer) return;
-    let originals = this.originals.get(layer.id);
-    if (!originals) {
-      originals = new Map();
-      this.originals.set(layer.id, originals);
-    }
+    const originals = getOrAdd(this.originals, layer.id);
     this.editor = new StyleEditor(this.styleFolder, layer, {
       originals,
-      expanded: this.expanded,
+      expanded: getOrAdd(this.expanded, layer.id),
       onStructureChange: () => this.scheduleEditorRebuild(),
+      built: getOrAdd(this.built, layer.id),
+      onReload: () => this.reloadSelected(),
     });
   }
 
@@ -504,15 +527,53 @@ ${bucket("(mesh descriptors, other)", "Other meshes", "Meshes added with view.ad
     const layer = this.selected();
     const group = layer && BOX_GROUP[descriptionOf(layer).type ?? ""];
     if (!layer || !group) return;
+    // The editor counts it toward Reload layer when its form is rebuilt.
+    if (isReloadField(group, "showBoundingBox")) {
+      recordBuiltValue(
+        getOrAdd(this.built, layer.id),
+        layer,
+        group,
+        "showBoundingBox",
+      );
+    }
     update(layer, { [group]: { showBoundingBox: on } });
   }
 
   private deleteSelected(): void {
     const layer = this.selected();
     if (!layer) return;
-    this.removed.push(descriptionOf(layer) as LayerDescription);
+    // Without a recorded description there is nothing to restore.
+    if (descriptionOf(layer).type) {
+      this.removed.push(descriptionOf(layer) as LayerDescription);
+    }
     this.hidden.delete(layer.id);
     layer.delete();
+  }
+
+  /**
+   * Re-adds the selected layer with its current description, so fields the
+   * engine reads only when it builds a layer apply. The new layer is added
+   * before the old one is deleted: deleting the last layer of an implicit
+   * source removes the source. The panel's state for it moves to the new id.
+   */
+  private reloadSelected(): void {
+    const layer = this.selected();
+    // A layer added before tracking began has no description: re-adding `{}`
+    // would only delete it.
+    if (!layer || !descriptionOf(layer).type) return;
+    // Applies the edit still queued for this frame. The editor stays until
+    // the new layer is selected, so a failed add leaves the form in place.
+    this.editor?.flush();
+    const added = this.view.addLayer(descriptionOf(layer) as LayerDescription);
+    layer.delete();
+    const from = layer.id;
+    const to = added.id;
+    moveEntry(this.originals, from, to);
+    moveEntry(this.hidden, from, to);
+    moveEntry(this.expanded, from, to);
+    // The new layer is built from the current values.
+    this.built.delete(from);
+    this.select(to);
   }
 
   private restore(): void {
@@ -520,6 +581,21 @@ ${bucket("(mesh descriptors, other)", "Other meshes", "Meshes added with view.ad
     if (!description) return;
     this.select(this.view.addLayer(description).id);
   }
+}
+
+function moveEntry<V>(map: Map<string, V>, from: string, to: string): void {
+  const value = map.get(from);
+  map.delete(from);
+  if (value !== undefined) map.set(to, value);
+}
+
+function getOrAdd<V>(map: Map<string, Map<string, V>>, id: string) {
+  let value = map.get(id);
+  if (!value) {
+    value = new Map();
+    map.set(id, value);
+  }
+  return value;
 }
 
 function update(layer: Layer, patch: Record<string, unknown>): void {

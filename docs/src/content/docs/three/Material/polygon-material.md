@@ -256,7 +256,7 @@ The option applies to the whole layer: its tiled `polygon` and `polyline` share 
 
 **Type:** `boolean | undefined`
 
-**Description:** Whether to compute outline geometry. Only effective at initial load time. When not set, inferred from `outlineShow`.
+**Description:** Whether to compute outline geometry even while `outlineShow` is `false`, so an update can show it later. Showing the outline always computes it. Read when geometry is built: tiles already loaded keep what they have.
 
 **Default:** `undefined`
 

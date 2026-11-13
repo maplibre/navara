@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
 import { MATERIAL_SCHEMA } from "./materialSchema.generated";
+import { NO_EFFECT_FIELDS, RELOAD_FIELDS } from "./reloadFields";
 
 const field = (key: string, name: string) =>
   MATERIAL_SCHEMA[key]?.find((f) => f.name === name);
@@ -35,5 +36,18 @@ describe("MATERIAL_SCHEMA", () => {
       default: ["point"],
     });
     expect(field("terrain", "waterMaskColor")?.kind).toBe("color");
+  });
+
+  it("has every field the reload and no-effect lists name", () => {
+    const named = [
+      ...Object.entries(RELOAD_FIELDS).flatMap(([key, fields]) =>
+        Object.keys(fields).map((name) => [key, name]),
+      ),
+      ...Object.entries(NO_EFFECT_FIELDS).flatMap(([key, names]) =>
+        names.map((name) => [key, name]),
+      ),
+    ];
+    const missing = named.filter(([key, name]) => !field(key, name));
+    expect(missing).toEqual([]);
   });
 });

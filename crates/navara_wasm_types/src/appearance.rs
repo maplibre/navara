@@ -957,17 +957,19 @@ pub struct TextMaterial {
     #[wasm_bindgen(js_name = outlineBlur)]
     #[serde(rename = "outlineBlur")]
     pub outline_blur: Option<f32>,
+    /// Outline color. Defaults to black.
     #[wasm_bindgen(js_name = outlineColor)]
     #[serde(rename = "outlineColor")]
-    pub outline_color: Option<u32>, // outlineColor Defalut:black
+    pub outline_color: Option<u32>,
     // TODO: support outlineOffset later.
-    /// Pixel offset `[x, y]` in CSS pixels. Defaults to `(0.0, 0.0)`.
+    // Pixel offset `[x, y]` in CSS pixels. Defaults to `(0.0, 0.0)`.
     // #[wasm_bindgen(js_name = outlineOffset)]
     // #[serde(rename = "outlineOffset")]
     // pub outline_offset: Option<Vec2>,
+    /// Outline opacity, from 0 to 1. Defaults to `1.0`.
     #[wasm_bindgen(js_name = outlineOpacity)]
     #[serde(rename = "outlineOpacity")]
-    pub outline_opacity: Option<f32>, // outlineOpacity Default:1
+    pub outline_opacity: Option<f32>,
     /// Outline thickness in 1/64 em: pixels of text drawn 64 pixels tall, so
     /// the outline keeps its proportion to the glyphs at any size. Defaults
     /// to `0.0`.
@@ -1636,8 +1638,10 @@ pub struct PolygonMaterial {
     #[wasm_bindgen(js_name = surfaceShow)]
     #[serde(rename = "surfaceShow")]
     pub surface_show: Option<bool>,
-    /// Whether to compute outline geometry. Only effective at initial load time.
-    /// When not set, inferred from `outlineShow`.
+    /// Whether to compute outline geometry even while `outlineShow` is
+    /// `false`, so an update can show it later. Showing the outline always
+    /// computes it. Read when geometry is built: tiles already loaded keep
+    /// what they have.
     pub outline: Option<bool>,
     /// Currently, this property is supported only in GeoJSON.
     #[wasm_bindgen(js_name = outlineShow)]
@@ -1808,7 +1812,10 @@ impl PolygonMaterial {
             transparent: self.transparent.unwrap_or(other.transparent),
 
             surface_show: self.surface_show.unwrap_or(other.surface_show),
-            outline: self.outline.unwrap_or(other.outline),
+            // As in `From`: showing the outline asks for its geometry. Hiding
+            // it keeps the geometry, so it can be shown again.
+            outline: self.outline.unwrap_or(other.outline)
+                || self.outline_show.unwrap_or(other.outline_show),
             outline_show: self.outline_show.unwrap_or(other.outline_show),
             outline_color: self.outline_color.unwrap_or(other.outline_color),
             outline_width: self.outline_width.unwrap_or(other.outline_width),
@@ -1859,9 +1866,8 @@ impl From<PolygonMaterial> for navara_material::PolygonMaterial {
             transparent: val.transparent.unwrap_or(default.transparent),
 
             surface_show: val.surface_show.unwrap_or(default.surface_show),
-            outline: val
-                .outline
-                .unwrap_or_else(|| val.outline_show.unwrap_or(default.outline)),
+            outline: val.outline.unwrap_or(default.outline)
+                || val.outline_show.unwrap_or(default.outline_show),
             outline_show: val.outline_show.unwrap_or(default.outline_show),
             outline_color: val.outline_color.unwrap_or(default.outline_color),
             outline_width: val.outline_width.unwrap_or(default.outline_width),
@@ -3104,5 +3110,46 @@ mod test {
         unset.geodesic = None;
         assert!(!unset.merge(&off).geodesic);
         assert!(navara_material::PolylineMaterial::from(unset).geodesic);
+    }
+
+    /// An update that shows the outline asks for its geometry, as an add does;
+    /// hiding it keeps the geometry so it can be shown again. Update and add
+    /// agree: showing the outline builds it even with `outline: false`.
+    #[test]
+    fn merge_outline_show_requests_outline_geometry() {
+        let patch = |json: &str| serde_json::from_str::<PolygonMaterial>(json).unwrap();
+        let without = navara_material::PolygonMaterial {
+            outline: false,
+            ..Default::default()
+        };
+        let with = navara_material::PolygonMaterial {
+            outline: true,
+            outline_show: true,
+            ..Default::default()
+        };
+
+        let merged = patch(r#"{ "outlineShow": true }"#).merge(&without);
+        assert!(merged.outline);
+        assert!(merged.outline_show);
+
+        assert!(patch(r#"{ "outlineShow": false }"#).merge(&with).outline);
+        assert!(!patch(r#"{ "color": 255 }"#).merge(&without).outline);
+        assert!(
+            patch(r#"{ "outline": false, "outlineShow": true }"#)
+                .merge(&without)
+                .outline
+        );
+        assert!(
+            !patch(r#"{ "outline": false, "outlineShow": false }"#)
+                .merge(&with)
+                .outline
+        );
+
+        // An add with the same description builds the same geometry.
+        let add = |json: &str| navara_material::PolygonMaterial::from(patch(json)).outline;
+        assert!(add(r#"{ "outlineShow": true }"#));
+        assert!(add(r#"{ "outline": false, "outlineShow": true }"#));
+        assert!(add(r#"{ "outline": true, "outlineShow": false }"#));
+        assert!(!add(r#"{ "outlineShow": false }"#));
     }
 }

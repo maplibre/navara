@@ -1,5 +1,5 @@
 import { Color, type Layer, type LayerDescription } from "@navaramap/three";
-import type { BindingParams, FolderApi } from "tweakpane";
+import type { BindingParams, ButtonApi, FolderApi } from "tweakpane";
 
 import { hint } from "../util/html";
 
@@ -8,6 +8,13 @@ import {
   MATERIAL_SCHEMA,
   type MaterialField,
 } from "./materialSchema.generated";
+import {
+  NO_EFFECT_FIELDS,
+  NO_EFFECT_HINT,
+  RELOAD_FIELDS,
+  RELOAD_HINT,
+  isReloadField,
+} from "./reloadFields";
 
 /** Material keys each layer type can carry, in display order. */
 const MATERIAL_KEYS: Record<string, string[]> = {
@@ -175,10 +182,18 @@ function missingKeys(layer: Layer): string[] {
 export type StyleEditorOptions = {
   /** Values of fields before this session first changed them, by `key.field`. */
   originals: Map<string, unknown>;
-  /** Folder open / closed state, kept across rebuilds. */
+  /** This layer's folder open / closed state, kept across rebuilds. */
   expanded: Map<string, boolean>;
   /** Called after a change that adds a material (the form must be rebuilt). */
   onStructureChange: () => void;
+  /**
+   * Reload fields this session changed, by `key.field`, with the value the
+   * layer was built with (see {@link recordBuiltValue}). Those whose value
+   * now differs need a reload.
+   */
+  built: Map<string, unknown>;
+  /** Re-adds the layer so every field applies. */
+  onReload: () => void;
 };
 
 type Patch = Record<string, Record<string, unknown>>;
@@ -187,8 +202,10 @@ type Patch = Record<string, Record<string, unknown>>;
  * A form for a layer's style, generated from the engine's material schema:
  * every field the material accepts, showing the layer's value or, when the
  * layer leaves it unset, the engine's default. A `•` after a name marks a
- * value set on the layer. Changes apply as you edit, merged into at most one
- * `layer.update()` per frame.
+ * value set on the layer, `↻` one that applies only after a reload
+ * ({@link RELOAD_FIELDS}), `∅` one the engine ignores
+ * ({@link NO_EFFECT_FIELDS}). Changes apply as you edit, merged into at most
+ * one `layer.update()` per frame.
  */
 export class StyleEditor {
   /** Top-level controls this editor added to the container. */
@@ -196,10 +213,8 @@ export class StyleEditor {
   private pending: Patch | undefined;
   private frame: number | undefined;
   private applyingNow = false;
-  private undoButton: { title: string; disabled: boolean } & {
-    element: HTMLElement;
-    dispose(): void;
-  };
+  private undoButton: ButtonApi;
+  private reloadButton: ButtonApi;
 
   constructor(
     private readonly container: FolderApi,
@@ -231,12 +246,31 @@ export class StyleEditor {
       .addButton({ title: "Undo my changes" })
       .on("click", () => this.undo());
     this.controls.push(this.undoButton);
+    this.reloadButton = this.container
+      .addButton({ title: "Reload layer" })
+      .on("click", () => this.options.onReload());
+    // A layer added before descriptions were tracked has none to re-add.
+    this.reloadButton.disabled = !descriptionOf(layer).type;
+    this.reloadButton.element.title = this.reloadButton.disabled
+      ? "Cannot reload: the layer was added before this panel started recording layer descriptions."
+      : "Deletes the layer and adds it back with its current settings, so settings marked ↻ apply to everything. It comes back as a new layer (new id, drawn on top), as with Delete + Restore.";
+    this.controls.push(this.reloadButton);
     this.syncUndo();
+    this.syncReload();
   }
 
   /** True while this editor's own `layer.update()` runs. */
   isApplying(): boolean {
     return this.applyingNow;
+  }
+
+  /** Applies the change still queued for this frame. */
+  flush(): void {
+    if (this.frame !== undefined) cancelAnimationFrame(this.frame);
+    this.frame = undefined;
+    const patch = this.pending;
+    this.pending = undefined;
+    if (patch) this.applyNow(patch);
   }
 
   dispose(): void {
@@ -256,12 +290,11 @@ export class StyleEditor {
       string,
       unknown
     >;
-    const id = `${this.layer.id}:${key}`;
     const folder = this.container.addFolder({
       title: key,
-      expanded: this.options.expanded.get(id) ?? true,
+      expanded: this.options.expanded.get(key) ?? true,
     });
-    folder.on("fold", (ev) => this.options.expanded.set(id, ev.expanded));
+    folder.on("fold", (ev) => this.options.expanded.set(key, ev.expanded));
     this.controls.push(folder);
 
     const common = new Set(COMMON[key] ?? []);
@@ -271,7 +304,7 @@ export class StyleEditor {
     const otherFields = fields.filter((f) => !common.has(f.name));
     for (const field of commonFields) this.addField(folder, key, field, values);
     if (otherFields.length > 0) {
-      const moreId = `${id}:more`;
+      const moreId = `${key}:more`;
       const more = folder.addFolder({
         title: `More (${otherFields.length})`,
         expanded: this.options.expanded.get(moreId) ?? false,
@@ -289,18 +322,29 @@ export class StyleEditor {
   ): void {
     const set = field.name in values && values[field.name] !== undefined;
     const value = set ? values[field.name] : field.default;
-    const label = `${field.name}${set ? " •" : ""}`;
+    const reload = isReloadField(key, field.name);
+    const reloadNote = RELOAD_FIELDS[key]?.[field.name];
+    const noEffect = NO_EFFECT_FIELDS[key]?.includes(field.name) ?? false;
+    const mark = reload ? " ↻" : noEffect ? " ∅" : "";
+    const label = `${field.name}${set ? " •" : ""}${mark}`;
+    const autoLabel = `${field.name} ${AUTO}${mark}`;
     const title = [
       field.doc ?? "",
       `Default: ${show(field.default, field.kind)}.`,
       set
         ? "Set on this layer (•)."
         : "Not set on this layer: the default applies.",
+      reload ? RELOAD_HINT : "",
+      reloadNote ?? "",
+      noEffect ? NO_EFFECT_HINT : "",
     ]
       .filter(Boolean)
       .join("\n");
     const state: Record<string, unknown> = {};
     const change = (v: unknown, live: boolean) => {
+      if (reload) {
+        recordBuiltValue(this.options.built, this.layer, key, field.name);
+      }
       if (live) this.apply(key, field.name, v, values);
       else this.applyNow(this.patchFor(key, field.name, v, values));
     };
@@ -320,7 +364,7 @@ export class StyleEditor {
           .addBinding(state, "v", params)
           .on("change", (ev) => change(ev.value, !ev.last));
         if (value === undefined) {
-          (api as { label?: string }).label = `${field.name} ${AUTO}`;
+          (api as { label?: string }).label = autoLabel;
         }
         break;
       }
@@ -328,7 +372,7 @@ export class StyleEditor {
         state.v = toHex(value) ?? "#ffffff";
         api = folder
           .addBinding(state, "v", {
-            label: value === undefined ? `${field.name} ${AUTO}` : label,
+            label: value === undefined ? autoLabel : label,
           })
           .on("change", (ev) =>
             change(new Color().setStyle(ev.value as string), !ev.last),
@@ -439,14 +483,6 @@ export class StyleEditor {
     this.frame ??= requestAnimationFrame(() => this.flush());
   }
 
-  private flush(): void {
-    if (this.frame !== undefined) cancelAnimationFrame(this.frame);
-    this.frame = undefined;
-    const patch = this.pending;
-    this.pending = undefined;
-    if (patch) this.applyNow(patch);
-  }
-
   private applyNow(patch: Patch): void {
     this.applyingNow = true;
     try {
@@ -457,6 +493,7 @@ export class StyleEditor {
     } finally {
       this.applyingNow = false;
     }
+    this.syncReload();
   }
 
   private syncUndo(): void {
@@ -474,6 +511,22 @@ export class StyleEditor {
       (stuck.length > 0
         ? `\nCannot unset again (the engine derives them): ${stuck.join(", ")}. Delete and restore the layer to reset those.`
         : "");
+  }
+
+  private syncReload(): void {
+    const desc = descriptionOf(this.layer) as unknown as Record<
+      string,
+      unknown
+    >;
+    let n = 0;
+    for (const [path, built] of this.options.built) {
+      const [key, name] = path.split(".");
+      const group = desc[key];
+      const now = isPlainObject(group) ? group[name] : undefined;
+      if (!sameValue(revertValue(path, now), revertValue(path, built))) n++;
+    }
+    this.reloadButton.title =
+      n > 0 ? `↻ Reload layer to apply (${n})` : "Reload layer";
   }
 
   private undo(): void {
@@ -499,6 +552,34 @@ function revertValue(path: string, original: unknown): unknown {
   if (original !== undefined) return original;
   const [key, name] = path.split(".");
   return MATERIAL_SCHEMA[key]?.find((f) => f.name === name)?.default;
+}
+
+/**
+ * Records the value `key.name` has on `layer` as the one it was built with,
+ * unless one is recorded already. Call it before changing a reload field.
+ */
+export function recordBuiltValue(
+  built: Map<string, unknown>,
+  layer: Layer,
+  key: string,
+  name: string,
+): void {
+  const path = `${key}.${name}`;
+  if (built.has(path)) return;
+  const group = (descriptionOf(layer) as unknown as Record<string, unknown>)[
+    key
+  ];
+  built.set(path, isPlainObject(group) ? group[name] : undefined);
+}
+
+/** Equal field values: `Color`s by hex, lists item by item. */
+function sameValue(a: unknown, b: unknown): boolean {
+  if (a === b) return true;
+  if (a instanceof Color && b instanceof Color) return a.toHex() === b.toHex();
+  if (Array.isArray(a) && Array.isArray(b)) {
+    return a.length === b.length && a.every((v, i) => sameValue(v, b[i]));
+  }
+  return false;
 }
 
 /** Typed arrays as plain arrays, for display. */
