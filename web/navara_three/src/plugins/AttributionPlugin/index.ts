@@ -3,8 +3,10 @@
  *
  * Renders a non-modal popover (ⓘ button, bottom-right by default) listing data-source
  * attributions, with a separate always-visible logo frame in the bottom-left
- * corner. Each source can carry zoom-banded child credits that switch as the
- * camera zooms, and per-layer feature credits are tracked dynamically.
+ * corner. The UI is mounted in the element that holds the view's canvas and is
+ * positioned against it. Each source can carry zoom-banded child credits that
+ * switch as the camera zooms, and per-layer feature credits are tracked
+ * dynamically.
  *
  * `ThreeView` creates one by default and exposes it as `view.attribution`
  * (pass `defaultAttribution: false` to opt out).
@@ -64,6 +66,7 @@ import type {
   FeatureRemovedParams,
   FeatureVisibilityChangedParams,
 } from "../../layer";
+import { positionIfStatic } from "../../utils/dom";
 
 import {
   aggregateCredits,
@@ -147,6 +150,8 @@ export class AttributionPlugin extends Plugin<View, ViewContext> {
   private listEl?: HTMLUListElement;
   private logosEl?: HTMLDivElement;
   private toggle?: HTMLButtonElement;
+  /** Undoes the positioning applied to the element the UI is mounted in. */
+  private restoreMount?: () => void;
   // Collapsed by default; users open it with the toggle.
   private isOpen = false;
 
@@ -328,7 +333,7 @@ export class AttributionPlugin extends Plugin<View, ViewContext> {
    */
   private render(): void {
     if (!this.view) return;
-    this.ensureDom();
+    this.ensureDom(this.view);
     const items = this.displayedItems();
     this.hasZoomBands = items.some(
       (item) =>
@@ -351,7 +356,7 @@ export class AttributionPlugin extends Plugin<View, ViewContext> {
   }
 
   /** Create the dock DOM and inject (or reuse) the shared styles. */
-  private ensureDom(): void {
+  private ensureDom(view: View): void {
     if (!this.styleEl) {
       // Reuse a shared style element if another instance already injected it,
       // and count this instance as an owner (removed on the last teardown).
@@ -369,11 +374,18 @@ export class AttributionPlugin extends Plugin<View, ViewContext> {
     }
     if (this.dock) return;
 
+    // Mount next to the canvas so the UI stays inside the map; a canvas placed
+    // directly in <body> fills the page, so the UI anchors to the viewport.
+    const mount = view.canvas.parentElement ?? document.body;
+    const fixed = mount === document.body;
+    if (!fixed) this.restoreMount = positionIfStatic(mount);
+
     const dock = document.createElement("div");
     dock.className = "navara-attr-dock";
     if (this.position === "bottom-left") {
       dock.classList.add("navara-attr-dock--left");
     }
+    if (fixed) dock.classList.add("navara-attr-dock--fixed");
 
     const card = document.createElement("div");
     card.className = "navara-attr-card";
@@ -412,7 +424,7 @@ export class AttributionPlugin extends Plugin<View, ViewContext> {
 
     dock.appendChild(card);
     dock.appendChild(toggle);
-    document.body.appendChild(dock);
+    mount.appendChild(dock);
 
     // Always-visible logo frame in the separate bottom-left corner, so
     // contractually-mandated marks stay visible independent of the popover.
@@ -423,7 +435,8 @@ export class AttributionPlugin extends Plugin<View, ViewContext> {
     if (this.position === "bottom-left") {
       logoFrame.classList.add("navara-attr-logoframe--left");
     }
-    document.body.appendChild(logoFrame);
+    if (fixed) logoFrame.classList.add("navara-attr-logoframe--fixed");
+    mount.appendChild(logoFrame);
 
     document.addEventListener("keydown", this.boundKeydown);
 
@@ -616,6 +629,8 @@ export class AttributionPlugin extends Plugin<View, ViewContext> {
       this.dock.remove();
     }
     this.logosEl?.remove();
+    this.restoreMount?.();
+    this.restoreMount = undefined;
     if (this.styleEl) {
       // Only remove the shared style when the last owning instance tears down.
       styleRefCount = Math.max(0, styleRefCount - 1);

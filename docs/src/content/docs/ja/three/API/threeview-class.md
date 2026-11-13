@@ -110,7 +110,7 @@ await Promise.all([left.init(), right.init()]);
 
 **Type:** `HTMLElement | undefined`
 
-**Description:** ビューをレンダリングする HTML コンテナ要素。指定された場合、ThreeView はこのコンテナ内に canvas を追加します。
+**Description:** ビューをレンダリングする HTML コンテナ要素。指定された場合、ThreeView はこのコンテナ内に canvas を追加し、ビューをコンテナのサイズに合わせます。canvas は絶対配置されるため、コンテナ自体にサイズを指定してください。`position: static` のコンテナには、ビューが破棄されるまで `position: relative` が設定されます。`container` と `canvas` のどちらも指定しない場合、ThreeView はビューポートサイズの要素を `document.body` に追加します。
 
 **Example:**
 
@@ -124,7 +124,7 @@ const view = new ThreeView({
 
 **Type:** `HTMLCanvasElement | OffscreenCanvas | undefined`
 
-**Description:** レンダリングに使用する canvas 要素。指定された場合、この canvas を使用します。指定しない場合は新しい canvas が作成されます。
+**Description:** レンダリングに使用する canvas 要素。指定された場合、この canvas を使用します。指定しない場合は新しい canvas が作成されます。ビューは canvas の親要素のサイズに合わせられ、canvas にはそのサイズがピクセル単位で設定されます。このため flex や grid レイアウトでは、親要素が縮小できるように `min-width: 0` と `min-height: 0`（または `overflow: hidden`）を指定してください。
 
 **Example:**
 
@@ -152,7 +152,7 @@ const view = new ThreeView({
 
 **Type:** `boolean | undefined`
 
-**Description:** ウィンドウリサイズイベント時の自動リサイズ処理を無効にするかどうか。`true` の場合、ウィンドウサイズの変更時に自動的にリサイズされません。
+**Description:** 自動リサイズを無効にするかどうか。デフォルトでは、ビューはコンテナ（`container`、または `canvas` の親要素）のサイズに追従します。ウィンドウのリサイズを伴わないサイズ変更にも追従します。`true` の場合は、[`resize()`](../../../three/api/threeview-functions/#resize) を自分で呼び出してください。
 
 **Default:** `false`
 

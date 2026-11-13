@@ -110,7 +110,7 @@ Everything else belongs to each view: the WebGL context, the tile cache (`cacheB
 
 **Type:** `HTMLElement | undefined`
 
-**Description:** The HTML container element for rendering the view. When specified, ThreeView adds a canvas within this container.
+**Description:** The HTML container element for rendering the view. When specified, ThreeView adds a canvas within this container and sizes the view to it. The canvas is absolutely positioned, so give the container its own size. A container with `position: static` is set to `position: relative` until the view is disposed. Without `container` and `canvas`, ThreeView appends a viewport-sized element to `document.body`.
 
 **Example:**
 
@@ -124,7 +124,7 @@ const view = new ThreeView({
 
 **Type:** `HTMLCanvasElement | OffscreenCanvas | undefined`
 
-**Description:** The canvas element used for rendering. When specified, this canvas is used. When not specified, a new canvas is created.
+**Description:** The canvas element used for rendering. When specified, this canvas is used. When not specified, a new canvas is created. The view is sized to the parent element of the canvas, and the canvas is given that size in pixels. In a flex or grid layout the parent therefore needs `min-width: 0` and `min-height: 0` (or `overflow: hidden`) to be able to shrink.
 
 **Example:**
 
@@ -152,7 +152,7 @@ const view = new ThreeView({
 
 **Type:** `boolean | undefined`
 
-**Description:** Whether to disable automatic resize handling on window resize events. When `true`, the view is not automatically resized when the window size changes.
+**Description:** Whether to disable automatic resizing. By default the view follows the size of its container (`container`, or the parent element of `canvas`), including size changes that happen without a window resize. When `true`, call [`resize()`](../../../three/api/threeview-functions/#resize) yourself.
 
 **Default:** `false`
 
