@@ -44,7 +44,6 @@ export const NO_EFFECT_FIELDS: Record<string, string[]> = {
     "animationActiveClip",
     "animationSpeed",
   ],
-  terrain: ["show"],
 };
 
 export const RELOAD_HINT =

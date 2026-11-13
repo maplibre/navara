@@ -44,7 +44,12 @@ const SHOWABLE: Record<string, string[]> = {
   vector: ["point", "billboard", "text", "polyline", "polygon"],
   raster: ["raster"],
   "3d-tiles": ["model"],
+  // Hides the globe surface and everything drawn onto it; heights still load.
+  terrain: ["terrain"],
 };
+
+/** Layer types drawn onto the terrain tiles: hiding the terrain hides them. */
+const ON_TERRAIN = new Set(["raster", "vector"]);
 
 /** The material carrying `showBoundingBox`, per layer type. */
 const BOX_GROUP: Record<string, string> = {
@@ -204,7 +209,7 @@ export class LayerInspectorPlugin extends DevtoolPlugin {
     const buttons = [
       [
         "Solo",
-        "Hide every other layer. Show all brings them back.",
+        "Hide every other layer. Show all brings them back. The terrain stays for imagery and vector layers, which are drawn onto it.",
         () => this.solo(),
       ],
       [
@@ -421,6 +426,10 @@ export class LayerInspectorPlugin extends DevtoolPlugin {
 
   private renderList(): string {
     const network = this.profiler?.networkBySource();
+    const terrainHidden = this.layerList().some(
+      (layer) =>
+        descriptionOf(layer).type === "terrain" && !this.isShown(layer),
+    );
     const rows = this.layerList().map((layer) => {
       const label = labelLayer(layer, this.sourceOf);
       const cost = this.costs.get(layer.id);
@@ -429,6 +438,8 @@ export class LayerInspectorPlugin extends DevtoolPlugin {
       const canHide = SHOWABLE[type] !== undefined;
       const net = label.sourceId ? network?.get(label.sourceId) : undefined;
       const onGlobe = type === "terrain" || type === "raster";
+      // Imagery is drawn onto the terrain tiles, so it goes with them.
+      const covered = visible && type === "raster" && terrainHidden;
       const objects = cost?.objects
         ? `<span title="${formatCount(cost.triangles)} triangles">${cost.objects}</span>`
         : `<span class="muted" title="${
@@ -445,11 +456,15 @@ export class LayerInspectorPlugin extends DevtoolPlugin {
           ? `<span class="muted">–</span>`
           : "";
       const checkbox = canHide
-        ? `<input type="checkbox" ${visible ? "checked" : ""} title="Show / hide (sets show on its styles)">`
-        : `<input type="checkbox" checked disabled title="The engine cannot hide a terrain layer (terrain.show has no effect); delete it instead.">`;
+        ? `<input type="checkbox" ${visible ? "checked" : ""} title="${
+            type === "terrain"
+              ? "Show / hide the globe surface (terrain.show). Hiding it also hides the imagery, hillshade and ground-clamped polygons and lines drawn onto it; terrain heights keep loading."
+              : "Show / hide (sets show on its styles)"
+          }">`
+        : `<input type="checkbox" checked disabled title="This panel cannot hide this layer type; delete it instead.">`;
       return `<tr class="click${layer.id === this.selectedId ? " selected" : ""}" data-layer="${esc(layer.id)}" title="${esc(`${label.name}\n${label.origin}\nlayer ${layer.id}`)}">
 <td>${checkbox}</td>
-<td class="name"><span${visible ? "" : ' class="muted"'}>${esc(label.name)}</span><br><span class="muted">${esc(label.origin)}</span></td>
+<td class="name"><span${visible && !covered ? "" : ' class="muted"'}${covered ? ' title="Not drawn: the terrain is hidden, and imagery is drawn onto it."' : ""}>${esc(label.name)}</span><br><span class="muted">${esc(label.origin)}</span></td>
 <td class="num">${objects}</td><td class="num">${memory}</td>${network ? `<td class="num">${downloads}</td>` : ""}
 </tr>`;
     });
@@ -461,7 +476,7 @@ export class LayerInspectorPlugin extends DevtoolPlugin {
     return `<table>
 <tr><th></th><th>Layer</th><th class="num" title="Meshes in the scene (hover a number for its triangles)">Objects</th><th class="num" title="Geometry and texture memory of its meshes (an estimate)">Memory</th>${network ? '<th class="num" title="Bytes downloaded from its source (hover for requests)">Download</th>' : ""}</tr>
 ${rows.join("\n") || `<tr><td colspan="5" class="muted">No layers</td></tr>`}
-${bucket("(terrain tiles)", "Globe tiles", "Terrain tiles, shared by the terrain layer, imagery and everything draped on them. Their textures hold the draped layers.")}
+${bucket("(terrain tiles)", "Globe tiles", "Terrain tiles, shared by the terrain layer, imagery and everything draped on them. Their textures (a composite atlas plus one target per draped layer) hold the draped layers. A tile that was not drawn in the last frame frees them, so texture memory follows the view.")}
 ${bucket("(mesh descriptors, other)", "Other meshes", "Meshes added with view.addMesh and other objects that belong to no layer.")}
 </table>
 <div class="note">Click a layer to select it. Hover for details.</div>`;
@@ -499,11 +514,28 @@ ${bucket("(mesh descriptors, other)", "Other meshes", "Meshes added with view.ad
   private solo(): void {
     const target = this.selected();
     if (!target) return;
+    const keepTerrain = ON_TERRAIN.has(descriptionOf(target).type ?? "");
     for (const layer of this.layerList()) {
-      if (layer === target) this.show(layer);
+      const terrain = descriptionOf(layer).type === "terrain";
+      if (layer === target || (keepTerrain && terrain)) this.show(layer);
       else this.hide(layer);
     }
     this.refresh();
+  }
+
+  /** False when this panel hid the layer, or the app set its `show` false. */
+  private isShown(layer: Layer): boolean {
+    if (this.hidden.has(layer.id)) return false;
+    const desc = descriptionOf(layer) as unknown as Record<
+      string,
+      { show?: boolean } | undefined
+    >;
+    const groups = SHOWABLE[descriptionOf(layer).type ?? ""] ?? [];
+    const present = groups.filter((group) => desc[group]);
+    return (
+      present.length === 0 ||
+      present.some((group) => desc[group]?.show !== false)
+    );
   }
 
   private showAll(): void {

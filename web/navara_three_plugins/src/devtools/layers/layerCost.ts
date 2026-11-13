@@ -72,6 +72,10 @@ function textureBytes(texture: Texture): number {
   return bytes;
 }
 
+/**
+ * Textures in uniform values, including texture arrays: a terrain tile's
+ * `textures` holds one drape render target per draped layer.
+ */
 function collectUniformTextures(
   uniforms: Record<string, unknown> | undefined,
   out: Set<Texture>,
@@ -80,13 +84,17 @@ function collectUniformTextures(
   for (const uniform of Object.values(uniforms)) {
     const value = (uniform as { value?: unknown } | null)?.value;
     if (value instanceof Texture) out.add(value);
+    else if (Array.isArray(value)) {
+      for (const item of value) if (item instanceof Texture) out.add(item);
+    }
   }
 }
 
 /**
  * Textures a material samples: its map properties, `ShaderMaterial`
  * uniforms, and the uniforms the built-in materials attach through
- * `userData` for `onBeforeCompile` (the tile atlases, the batch textures).
+ * `userData` for `onBeforeCompile` (the tile atlases and drape targets, the
+ * batch textures).
  */
 function materialTextures(material: Material, out: Set<Texture>): void {
   for (const value of Object.values(material)) {
@@ -105,6 +113,9 @@ function materialTextures(material: Material, out: Set<Texture>): void {
  * Terrain tiles (the `globe` scene) and untagged roots fall into their own
  * buckets. Geometries and textures shared between objects count once per
  * group. Draped layers bake into tile textures and own no objects here.
+ * A tile the last frame did not draw has freed its atlas and drape targets
+ * (`TileMesh.releaseDrapeGpuMemoryUnlessDrawn`), so they count only for the
+ * tiles in view. Atlases waiting in the compositor's reuse pool count nowhere.
  */
 export function collectLayerCosts(ctx: ViewContext): Map<string, LayerCost> {
   const costs = new Map<string, LayerCost>();

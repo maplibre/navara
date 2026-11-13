@@ -115,7 +115,9 @@ drawn frames; the summary says "idle" while the map is still.
 ### Layers
 
 Click a layer to select it; its checkbox hides it by setting `show: false` on
-its styles. The style form is generated from the engine's material
+its styles. Hiding the terrain hides the globe surface and the imagery and
+ground-clamped vectors drawn onto it, so Solo keeps the terrain for those
+layers. The style form is generated from the engine's material
 definitions (`MATERIAL_SCHEMA`, from `pnpm run generate:schema`): a field set
 on the layer is marked `•`, the others show the engine default, and hovering
 one shows its documentation. Changes apply as you edit; "Undo my changes"
