@@ -104,10 +104,10 @@ A value is the one the app set with `addLayer()` and `layer.update()`, else the 
 ### description()
 
 ```typescript
-description(layer: Layer): Readonly<LayerDescription>
+description(layer: Layer): LayerDescription
 ```
 
-Returns the layer's configuration as the app set it: the description passed to `addLayer()` with every `layer.update()` merged on top. Fields never set are absent. A `Source` is stored as its id.
+Returns the layer's configuration as the app set it: the description passed to `addLayer()` with every `layer.update()` merged on top. Fields never set are absent. A `Source` is stored as its id, and a terrain layer's `ellipsoid` as `terrain`. The result is a copy: changing it does not change the layer, so call `layer.update()` for that.
 
 ### dispose()
 

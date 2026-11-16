@@ -9,12 +9,15 @@ import { COMMON, MATERIAL_KEYS, RANGES } from "./layerEditor";
 vi.mock("@navaramap/three", () => ({ Color: class Color {} }));
 
 describe("MATERIAL_KEYS", () => {
-  it("orders exactly the materials of each layer type", () => {
-    const sorted = (record: Record<string, string[]>) =>
-      Object.fromEntries(
-        Object.entries(record).map(([type, keys]) => [type, [...keys].sort()]),
-      );
-    expect(sorted(MATERIAL_KEYS)).toEqual(sorted(MATERIAL_SCHEMA.layers));
+  it("shows polygon and polyline first, the rest in schema order", () => {
+    expect(MATERIAL_KEYS.vector).toEqual([
+      "polygon",
+      "polyline",
+      "point",
+      "billboard",
+      "text",
+    ]);
+    expect(MATERIAL_KEYS.raster).toEqual(MATERIAL_SCHEMA.layers.raster);
   });
 });
 

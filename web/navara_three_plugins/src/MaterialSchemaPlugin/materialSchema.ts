@@ -56,7 +56,17 @@ export type MaterialSchema = {
   materials: Record<string, MaterialField[]>;
 };
 
-export const MATERIAL_SCHEMA = schemaJson as MaterialSchema;
+/** Freezes `value` and everything in it. */
+function deepFreeze<T>(value: T): T {
+  if (typeof value === "object" && value !== null) {
+    for (const v of Object.values(value)) deepFreeze(v);
+    Object.freeze(value);
+  }
+  return value;
+}
+
+/** Frozen: shared by every caller, so it cannot be changed in place. */
+export const MATERIAL_SCHEMA = deepFreeze(schemaJson as MaterialSchema);
 
 /** The field `name` of material `key`. */
 export function materialField(

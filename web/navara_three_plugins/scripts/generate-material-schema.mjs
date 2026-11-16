@@ -217,6 +217,12 @@ function fail(message) {
 const wasmToKey = Object.fromEntries(
   Object.entries(MATERIALS).map(([key, [wasmName]]) => [wasmName, key]),
 );
+const known = new Set(Object.values(LAYERS));
+for (const [, struct] of layerSrc.matchAll(
+  /^pub struct (\w+LayerDescription) \{/gm,
+)) {
+  if (!known.has(struct)) fail(`${struct} is missing from LAYERS`);
+}
 const layers = {};
 for (const [type, struct] of Object.entries(LAYERS)) {
   const body = structBody(layerSrc, struct);
@@ -268,6 +274,13 @@ for (const [key, [wasmName, internalName]] of Object.entries(MATERIALS)) {
   materials[key] = fields;
 }
 
+for (const [key, names] of Object.entries(RELOAD)) {
+  for (const name of Object.keys(names)) {
+    if (NEVER[key]?.[name] !== undefined) {
+      fail(`material-applies.mjs has ${key}.${name} in both RELOAD and NEVER`);
+    }
+  }
+}
 for (const [table, entries] of Object.entries({ RELOAD, NEVER })) {
   for (const [key, names] of Object.entries(entries)) {
     for (const name of Object.keys(names)) {

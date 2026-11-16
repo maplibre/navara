@@ -7,7 +7,12 @@ import {
   type ViewContext,
 } from "@navaramap/three";
 
-import { descriptionOf, trackLayerDescriptions } from "./layerDescriptions";
+import {
+  cloneDescription,
+  descriptionOf,
+  isPlainObject,
+  trackLayerDescriptions,
+} from "./layerDescriptions";
 import {
   MATERIAL_SCHEMA,
   type MaterialField,
@@ -45,14 +50,6 @@ export type LayerStyle = {
   materials: MaterialState[];
 };
 
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    Object.getPrototypeOf(value) === Object.prototype
-  );
-}
-
 /** A description value as JSON: a `Color` as its hex number, typed arrays as arrays. */
 function toJson(value: unknown): unknown {
   if (value instanceof Color) return value.toHex();
@@ -86,7 +83,9 @@ export class MaterialSchemaPlugin extends Plugin<ThreeView, ViewContext> {
   private readonly onViewDisposed = (): void => this.dispose();
 
   async init(view: ThreeView): Promise<void> {
-    if (this.disposed) return;
+    if (this.disposed || this.view === view) return;
+    // Added to another view: stop tracking the previous one.
+    this.release();
     this.view = view;
     this.stopTracking = trackLayerDescriptions(view);
     view.on("disposed", this.onViewDisposed);
@@ -95,13 +94,17 @@ export class MaterialSchemaPlugin extends Plugin<ThreeView, ViewContext> {
   /**
    * The layer's configuration as the app set it: the description passed to
    * `addLayer` with every `update()` merged on top. Fields never set are
-   * absent. Empty for a layer added before the plugin started.
+   * absent. Empty for a layer added before the plugin started. A copy:
+   * changing it does not change the layer; call `layer.update()` for that.
    */
-  description(layer: Layer): Readonly<LayerDescription> {
-    return descriptionOf(layer);
+  description(layer: Layer): LayerDescription {
+    return cloneDescription(descriptionOf(layer) as LayerDescription);
   }
 
-  /** The layer's materials with their fields and current values, as JSON. */
+  /**
+   * The layer's materials with their fields and current values, as JSON.
+   * A new object on every call, safe to change.
+   */
   describeLayer(layer: Layer): LayerStyle {
     const desc = descriptionOf(layer) as unknown as Record<string, unknown>;
     const type = (desc.type as string | undefined) ?? "";
@@ -109,11 +112,12 @@ export class MaterialSchemaPlugin extends Plugin<ThreeView, ViewContext> {
       const group = desc[key];
       const values = isPlainObject(group) ? group : {};
       const fields = this.schema.materials[key].map((field): FieldState => {
+        // A copy, so a UI that edits `value` or `options` in place cannot
+        // change the shared schema.
+        const copy = toJson(field) as MaterialField;
         const set = values[field.name] !== undefined;
-        const value = set ? toJson(values[field.name]) : field.default;
-        return value === undefined
-          ? { ...field, set }
-          : { ...field, set, value };
+        const value = set ? toJson(values[field.name]) : copy.default;
+        return value === undefined ? { ...copy, set } : { ...copy, set, value };
       });
       return { key, present: isPlainObject(group), fields };
     });
@@ -124,7 +128,13 @@ export class MaterialSchemaPlugin extends Plugin<ThreeView, ViewContext> {
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
+    this.release();
+  }
+
+  private release(): void {
     this.view?.off("disposed", this.onViewDisposed);
     this.stopTracking?.();
+    this.view = undefined;
+    this.stopTracking = undefined;
   }
 }

@@ -1,7 +1,10 @@
 import { Color, type Layer, type LayerDescription } from "@navaramap/three";
 import type { BindingParams, ButtonApi, FolderApi } from "tweakpane";
 
-import { descriptionOf } from "../../MaterialSchemaPlugin/layerDescriptions";
+import {
+  descriptionOf,
+  isPlainObject,
+} from "../../MaterialSchemaPlugin/layerDescriptions";
 import {
   MATERIAL_SCHEMA,
   materialField,
@@ -13,16 +16,24 @@ const RELOAD_HINT =
   "↻ Applies to what is already drawn only after Reload layer: the engine reads it when it builds the layer. MVT and tiled layers also use it for tiles loaded later.";
 const NEVER_HINT = "∅ No effect: the engine does not read this field.";
 
+/** Materials shown first, in this order; the others follow in schema order. */
+const DISPLAY_FIRST = ["polygon", "polyline"];
+
+const displayRank = (key: string): number => {
+  const i = DISPLAY_FIRST.indexOf(key);
+  return i < 0 ? DISPLAY_FIRST.length : i;
+};
+
 /**
  * Material keys each layer type can carry (`MATERIAL_SCHEMA.layers`), in
  * display order.
  */
-export const MATERIAL_KEYS: Record<string, string[]> = {
-  vector: ["polygon", "polyline", "point", "billboard", "text"],
-  raster: ["raster", "hillshade", "elevationHeatmap"],
-  terrain: ["terrain"],
-  "3d-tiles": ["model"],
-};
+export const MATERIAL_KEYS: Record<string, string[]> = Object.fromEntries(
+  Object.entries(MATERIAL_SCHEMA.layers).map(([type, keys]) => [
+    type,
+    [...keys].sort((a, b) => displayRank(a) - displayRank(b)),
+  ]),
+);
 
 /** Keys shown even when the description does not carry them. */
 const ALWAYS_SHOWN = new Set(["raster", "terrain", "model"]);
@@ -140,14 +151,6 @@ export const RANGES: Record<
 };
 
 const AUTO = "(auto)";
-
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    Object.getPrototypeOf(value) === Object.prototype
-  );
-}
 
 function toHex(value: unknown): string | undefined {
   if (value instanceof Color) {

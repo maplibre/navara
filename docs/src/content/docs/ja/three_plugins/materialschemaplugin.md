@@ -104,10 +104,10 @@ describeLayer(layer: Layer): LayerStyle
 ### description()
 
 ```typescript
-description(layer: Layer): Readonly<LayerDescription>
+description(layer: Layer): LayerDescription
 ```
 
-アプリが設定したとおりのレイヤーの設定を返します。`addLayer()` に渡した description に、すべての `layer.update()` を重ねたものです。一度も設定されていないフィールドは含まれません。`Source` は id として保存されます。
+アプリが設定したとおりのレイヤーの設定を返します。`addLayer()` に渡した description に、すべての `layer.update()` を重ねたものです。一度も設定されていないフィールドは含まれません。`Source` は id として、terrain レイヤーの `ellipsoid` は `terrain` として保存されます。戻り値はコピーです。変更してもレイヤーは変わらないため、変更するには `layer.update()` を呼んでください。
 
 ### dispose()
 

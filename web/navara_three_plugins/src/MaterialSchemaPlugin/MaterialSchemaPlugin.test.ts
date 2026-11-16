@@ -122,4 +122,64 @@ describe("MaterialSchemaPlugin.describeLayer", () => {
     expect(layer.count("updated")).toBe(0);
     plugin.dispose();
   });
+
+  it("reads a terrain layer's ellipsoid as its terrain material", async () => {
+    const { plugin, add } = await setup();
+    const layer = add({
+      type: "terrain",
+      ellipsoid: { waterMaskColor: new Color().setHex(0x336699) },
+    });
+    const style = plugin.describeLayer(layer);
+    expect(material(style, "terrain")?.present).toBe(true);
+    expect(field(style, "terrain", "waterMaskColor")).toMatchObject({
+      set: true,
+      value: 0x336699,
+    });
+  });
+
+  it("returns values a caller can change without changing the schema", async () => {
+    const { plugin, add } = await setup();
+    const layer = add({ type: "vector", source: "s", point: {} });
+    const types = field(plugin.describeLayer(layer), "point", "geometryTypes");
+    (types?.value as string[]).push("line");
+    (types?.options as string[]).push("x");
+    const again = field(plugin.describeLayer(layer), "point", "geometryTypes");
+    expect(again?.value).toEqual(again?.default);
+    expect(again?.options).not.toContain("x");
+    expect(Object.isFrozen(plugin.schema.materials.point)).toBe(true);
+  });
+
+  it("returns a copy from description()", async () => {
+    const { plugin, add } = await setup();
+    const layer = add({ type: "vector", source: "s", polygon: { opacity: 1 } });
+    const desc = plugin.description(layer) as unknown as {
+      polygon: { opacity: number };
+    };
+    desc.polygon.opacity = 0.2;
+    expect(
+      field(plugin.describeLayer(layer), "polygon", "opacity"),
+    ).toMatchObject({ value: 1 });
+  });
+
+  it("moves to a new view when initialized again", async () => {
+    const { view: first, plugin } = await setup();
+    const second = emitter();
+    await plugin.init(second as unknown as ThreeView);
+    expect(first.count("layerAdded")).toBe(0);
+    expect(first.count("disposed")).toBe(0);
+    expect(second.count("layerAdded")).toBe(1);
+    plugin.dispose();
+    expect(second.count("layerAdded")).toBe(0);
+  });
+
+  it("shares one tracker between plugins on the same view", async () => {
+    const { view, add } = await setup();
+    const other = new MaterialSchemaPlugin();
+    await other.init(view as unknown as ThreeView);
+    expect(view.count("layerAdded")).toBe(1);
+    const layer = add({ type: "vector", source: "s" });
+    expect(layer.count("updated")).toBe(1);
+    other.dispose();
+    expect(view.count("layerAdded")).toBe(1);
+  });
 });

@@ -29,8 +29,9 @@ src/MaterialSchemaPlugin/materialSchema.json ──► MaterialSchemaPlugin (pub
 1. Change the Rust material.
 2. Run `pnpm -C web/navara_three_plugins run generate:schema`. It fails, naming
    the cause, when a layer struct has a material missing from `MATERIALS`, a
-   `MATERIALS` entry is on no layer, or `material-applies.mjs` names a field
-   that does not exist (a rename or removal: update the table).
+   `MATERIALS` entry is on no layer, a `*LayerDescription` struct is missing
+   from `LAYERS`, or `material-applies.mjs` names a field that does not exist
+   (a rename or removal: update the table) or is in both `RELOAD` and `NEVER`.
 3. Read `git diff` of the JSON. Each changed field should show the `kind`,
    `default` and `options` you intended. See [Parser limits](#parser-limits)
    when one is missing or wrong.
@@ -92,13 +93,13 @@ only for a form many fields use, and cover it in
 | Change | Also update |
 | --- | --- |
 | New `FieldKind` | `FieldKind` in `materialSchema.ts`, a `case` in `StyleEditor.addField` (`layerEditor.ts`, no control otherwise), the kinds in `docs/…/three_plugins/materialschemaplugin.md` (en and ja) |
-| New / renamed material or layer type | `MATERIAL_KEYS` (display order) and `COMMON` in `layerEditor.ts`; `SHOWABLE`, `ON_TERRAIN`, `BOX_GROUP` in `LayerInspectorPlugin.ts` |
+| New / renamed material or layer type | `COMMON` (and `DISPLAY_FIRST` to show it first) in `layerEditor.ts`; `SHOWABLE`, `ON_TERRAIN`, `BOX_GROUP` in `LayerInspectorPlugin.ts` |
 | Renamed / removed field | `COMMON` and `RANGES` in `layerEditor.ts` |
 | New number field with a fixed range (0–1 etc.) | `RANGES` in `layerEditor.ts` |
 
-`layerEditor.test.ts` fails when `MATERIAL_KEYS` and `MATERIAL_SCHEMA.layers`
-differ, a `COMMON` name is not a field, or a `RANGES` name is not a number
-field. `SHOWABLE`, `ON_TERRAIN`, `BOX_GROUP` and `StyleEditor.addField` have
+`MATERIAL_KEYS` is built from `MATERIAL_SCHEMA.layers`, so it needs no edit.
+`layerEditor.test.ts` fails when a `COMMON` name is not a field or a
+`RANGES` name is not a number field. `SHOWABLE`, `ON_TERRAIN`, `BOX_GROUP` and `StyleEditor.addField` have
 no test: check them by reading.
 
 Field-level docs on the docs site are not hand-written (the schema is the
