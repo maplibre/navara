@@ -98,7 +98,8 @@ const EMPTY = {} as LayerDescription;
  * `addLayer` with every `update()` merged on top. A `Source` reference is
  * stored as its id. Fields never set are absent and take the engine's
  * defaults; the engine's own resolved values are not read back. Empty for a
- * layer added while no {@link trackLayerDescriptions} was running.
+ * layer added while no {@link trackLayerDescriptions} was running, and after
+ * the tracker that recorded it stopped.
  */
 export function descriptionOf(layer: Layer): Readonly<LayerDescription> {
   return descriptions.get(layer) ?? EMPTY;
@@ -155,7 +156,12 @@ function listen(view: ThreeView): () => void {
   return () => {
     view.off("layerAdded", onAdded);
     view.off("layerRemoved", onRemoved);
-    for (const [layer, onUpdated] of listeners) layer.off("updated", onUpdated);
+    // Forget the descriptions too: a tracker started later on this view
+    // never sees these layers' updates, so it must not read old values.
+    for (const [layer, onUpdated] of listeners) {
+      layer.off("updated", onUpdated);
+      descriptions.delete(layer);
+    }
     listeners.clear();
   };
 }

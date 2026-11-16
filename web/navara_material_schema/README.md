@@ -23,8 +23,8 @@ materialField("polygon", "clampToGround");
 
 Navara packages are released together with one version number. Use the same
 version of this package as of `@navaramap/three`: a field added in a newer
-engine is not in an older schema. When `@navaramap/three` is installed too,
-the package manager warns if the two versions differ.
+engine is not in an older schema. `MATERIAL_SCHEMA.version` names the version
+a schema describes.
 
 ## Development
 

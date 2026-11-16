@@ -82,7 +82,7 @@ Register the plugin with `view.addPlugin()` **before** `view.init()`. The Layers
 
 **Type:** `LayerInspectorPlugin | undefined`
 
-**Description:** The Layers tool, or `undefined` when `tools` leaves it out. Set `enabled` to switch it on and off. `select(id)` selects a layer by id, and `selected()` returns the selected layer. `schema` is the [MaterialSchemaPlugin](../materialschemaplugin/) the tool reads layer styles from. :since[0.3.2]
+**Description:** The Layers tool, or `undefined` when `tools` leaves it out. Set `enabled` to switch it on and off. `select(id)` selects a layer by id, and `selected()` returns the selected layer.
 
 ## Methods
 

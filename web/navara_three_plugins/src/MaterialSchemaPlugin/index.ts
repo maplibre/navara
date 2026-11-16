@@ -6,4 +6,8 @@ export {
   type LayerStyle,
   type MaterialState,
 } from "./MaterialSchemaPlugin";
-export { descriptionOf, isPlainObject } from "./layerDescriptions";
+export {
+  descriptionOf,
+  isPlainObject,
+  trackLayerDescriptions,
+} from "./layerDescriptions";

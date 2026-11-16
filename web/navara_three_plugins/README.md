@@ -122,9 +122,8 @@ layers. The style form is generated from the
 [material schema](#material-schema): a field set on the layer is marked `•`,
 the others show the engine default, `↻` marks a field that applies after
 Reload layer and `∅` one with no effect, and hovering one shows its
-documentation. `devtools.layers.schema` is the `MaterialSchemaPlugin` the
-panel reads. Changes apply as you edit; "Undo my changes"
-puts the values back.
+documentation. Changes apply as you edit; "Undo my changes" puts the values
+back.
 
 The wireframe toggle needs geometry arrays kept on the CPU
 (`ViewContext.retainGeometryArrays`), which the plugin turns on before layers

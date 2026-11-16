@@ -150,6 +150,18 @@ describe("trackLayerDescriptions", () => {
     expect(view.count("layerRemoved")).toBe(0);
   });
 
+  it("forgets the descriptions when stopped", () => {
+    const { view, layer, stop } = added({ type: "vector", source: "s" });
+    stop();
+    expect(of(layer)).toEqual({});
+    // A later tracker never sees this layer's updates: it must stay empty,
+    // not show the first tracker's last values.
+    const again = trackLayerDescriptions(view as unknown as ThreeView);
+    layer.emit("updated", { type: "vector", point: { size: 3 } });
+    expect(of(layer)).toEqual({});
+    again();
+  });
+
   it("is empty for a layer it never saw", () => {
     expect(of(emitter())).toEqual({});
   });

@@ -1,7 +1,9 @@
-import schemaJson from "./materialSchema.json";
+// Read from package.json, not a build-time define: bundlers that compile
+// this package from `src` (the workspace examples) know no such define.
+// scripts/set-version.mjs stamps the version before a release build.
+import { version } from "../package.json";
 
-/** Replaced at build time with this package's version (vite.config.ts). */
-declare const __MATERIAL_SCHEMA_VERSION__: string;
+import schemaJson from "./materialSchema.json";
 
 /** The value type of a field, which decides how a UI edits it. */
 export type FieldKind =
@@ -75,7 +77,7 @@ function deepFreeze<T>(value: T): T {
 
 /** Frozen: shared by every caller, so it cannot be changed in place. */
 export const MATERIAL_SCHEMA: MaterialSchema = deepFreeze({
-  version: __MATERIAL_SCHEMA_VERSION__,
+  version,
   ...(schemaJson as Omit<MaterialSchema, "version">),
 });
 

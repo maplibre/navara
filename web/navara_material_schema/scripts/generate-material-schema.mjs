@@ -224,10 +224,12 @@ const layers = {};
 for (const [type, struct] of Object.entries(LAYERS)) {
   const body = structBody(layerSrc, struct);
   if (!body) fail(`no struct ${struct} in source_types.rs`);
+  // Every struct-typed field is a material, whatever its name ends with
+  // (`Option<ContourConfig>` too); only `String` and lists are not.
   layers[type] = parseFields(body)
-    .filter((f) => /^Option<\w+Material>$/.test(f.type))
-    .map((f) => {
-      const name = /^Option<(\w+)>$/.exec(f.type)[1];
+    .map((f) => ({ f, name: /^Option<([A-Z]\w*)>$/.exec(f.type)?.[1] }))
+    .filter(({ name }) => name !== undefined && name !== "String")
+    .map(({ f, name }) => {
       const key = wasmToKey[name];
       if (!key) fail(`${struct} has ${name}, missing from MATERIALS`);
       if (jsName(f) !== key) fail(`${struct}.${f.name} is not named ${key}`);

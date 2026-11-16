@@ -8,7 +8,7 @@ import type { FolderApi } from "tweakpane";
 
 import {
   descriptionOf,
-  MaterialSchemaPlugin,
+  trackLayerDescriptions,
 } from "../../MaterialSchemaPlugin";
 import {
   DevtoolPlugin,
@@ -114,11 +114,8 @@ export class LayerInspectorPlugin extends DevtoolPlugin {
   });
   /** `retainGeometryArrays` before `onEnable()` turned it on. */
   private retainedBefore: boolean | undefined;
-  /**
-   * Records the layer descriptions the panel reads and edits; a caller can
-   * read the selected layer's style as JSON from it.
-   */
-  readonly schema = new MaterialSchemaPlugin();
+  /** Stops recording the layer descriptions the panel reads and edits. */
+  private stopTracking: (() => void) | undefined;
 
   /**
    * Rebuilds the form after an update from elsewhere (the app, an action
@@ -139,7 +136,7 @@ export class LayerInspectorPlugin extends DevtoolPlugin {
   protected onInit(): void {
     // Before anything else, and whether or not the tool is enabled: `init()`
     // runs before the app can add a layer, so every layer is recorded.
-    void this.schema.init(this.view);
+    this.stopTracking = trackLayerDescriptions(this.view);
     const ui = this.ui;
 
     const layers = ui.addFolder({ title: "Layers" });
@@ -184,7 +181,8 @@ export class LayerInspectorPlugin extends DevtoolPlugin {
   }
 
   protected onDispose(): void {
-    this.schema.dispose();
+    this.stopTracking?.();
+    this.stopTracking = undefined;
     this.cancelLayersSync();
     if (this.editRebuild !== undefined) clearTimeout(this.editRebuild);
     this.editor?.dispose();

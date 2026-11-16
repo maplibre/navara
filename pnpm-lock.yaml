@@ -389,10 +389,6 @@ importers:
         version: 4.23.15
 
   web/navara_material_schema:
-    dependencies:
-      '@navaramap/three':
-        specifier: workspace:*
-        version: link:../navara_three
     devDependencies:
       '@types/node':
         specifier: 26.6.6

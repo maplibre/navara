@@ -82,7 +82,7 @@ new DevtoolsPlugin(options?: DevtoolsPluginOptions);
 
 **型:** `LayerInspectorPlugin | undefined`
 
-**説明:** Layers ツールです。`tools` に含まれないときは `undefined` です。`enabled` で有効・無効を切り替えます。`select(id)` は id でレイヤーを選択し、`selected()` は選択中のレイヤーを返します。 `schema` は、このツールがレイヤーのスタイルを読み取る [MaterialSchemaPlugin](../materialschemaplugin/) です。:since[0.3.2]
+**説明:** Layers ツールです。`tools` に含まれないときは `undefined` です。`enabled` で有効・無効を切り替えます。`select(id)` は id でレイヤーを選択し、`selected()` は選択中のレイヤーを返します。
 
 ## メソッド
 

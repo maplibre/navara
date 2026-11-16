@@ -96,6 +96,24 @@ describe("MaterialSchemaPlugin.describeLayer", () => {
     expect(JSON.parse(JSON.stringify(style))).toEqual(style);
   });
 
+  it("reads a Color from another copy of the package as its hex", async () => {
+    const { plugin, add } = await setup();
+    // Not the mocked `Color`: an app may load a second `@navaramap/three`.
+    class OtherColor {
+      toHex(): number {
+        return 0x00ff00;
+      }
+    }
+    const layer = add({
+      type: "vector",
+      source: "s",
+      polygon: { color: new OtherColor() },
+    });
+    expect(field(plugin.describeLayer(layer), "polygon", "color")?.value).toBe(
+      0x00ff00,
+    );
+  });
+
   it("follows updates", async () => {
     const { plugin, add } = await setup();
     const layer = add({ type: "vector", source: "s", polygon: {} });

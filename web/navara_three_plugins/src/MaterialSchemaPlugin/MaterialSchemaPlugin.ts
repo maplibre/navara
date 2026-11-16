@@ -5,7 +5,6 @@ import {
 } from "@navaramap/material-schema";
 import type ThreeView from "@navaramap/three";
 import {
-  Color,
   Plugin,
   type Layer,
   type LayerDescription,
@@ -52,7 +51,10 @@ export type LayerStyle = {
 
 /** A description value as JSON: a `Color` as its hex number, typed arrays as arrays. */
 function toJson(value: unknown): unknown {
-  if (value instanceof Color) return value.toHex();
+  // Duck-typed, not `instanceof Color`: the app's `Color` may come from
+  // another copy of `@navaramap/three`.
+  const toHex = (value as { toHex?: unknown } | null)?.toHex;
+  if (typeof toHex === "function") return toHex.call(value) as number;
   if (ArrayBuffer.isView(value)) {
     return Array.from(value as unknown as Iterable<number>);
   }
@@ -112,9 +114,14 @@ export class MaterialSchemaPlugin extends Plugin<ThreeView, ViewContext> {
       const group = desc[key];
       const values = isPlainObject(group) ? group : {};
       const fields = this.schema.materials[key].map((field): FieldState => {
-        // A copy, so a UI that edits `value` or `options` in place cannot
-        // change the shared schema.
-        const copy = toJson(field) as MaterialField;
+        // Copies of the only frozen parts a caller could change in place
+        // (`options`, a list or object `default`), so a UI that edits them
+        // cannot change the shared schema. The rest are strings and numbers.
+        const copy: MaterialField = { ...field };
+        if (field.options) copy.options = [...field.options];
+        if (typeof field.default === "object" && field.default !== null) {
+          copy.default = toJson(field.default);
+        }
         const set = values[field.name] !== undefined;
         const value = set ? toJson(values[field.name]) : copy.default;
         return value === undefined ? { ...copy, set } : { ...copy, set, value };

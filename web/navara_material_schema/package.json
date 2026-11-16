@@ -30,14 +30,6 @@
   "publishConfig": {
     "access": "public"
   },
-  "peerDependencies": {
-    "@navaramap/three": "workspace:*"
-  },
-  "peerDependenciesMeta": {
-    "@navaramap/three": {
-      "optional": true
-    }
-  },
   "devDependencies": {
     "@types/node": "26.6.6"
   }

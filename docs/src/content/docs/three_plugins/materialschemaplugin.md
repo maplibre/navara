@@ -15,7 +15,7 @@ since: 0.3.2
 
 The schema is generated from the engine sources, so it lists exactly the fields the installed version accepts. The Layers tool of [DevtoolsPlugin](../devtoolsplugin/) builds its style form from it.
 
-The schema itself is the package `@navaramap/material-schema`. It has no dependencies, so a server or an app without a map can use it too. Use the same version of it as of `@navaramap/three`: Navara packages are released together, and a field added in a newer engine is not in an older schema. When both are installed, the package manager warns if the versions differ.
+The schema itself is the package `@navaramap/material-schema`. It has no dependencies, so a server or an app without a map can use it too. Use the same version of it as of `@navaramap/three`: Navara packages are released together, and a field added in a newer engine is not in an older schema. `MATERIAL_SCHEMA.version` names the version a schema describes.
 
 ## Usage
 
