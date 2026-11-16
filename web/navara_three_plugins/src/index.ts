@@ -41,16 +41,11 @@ export {
   type TileJsonPluginEventMap,
 } from "./TileJsonPlugin";
 
+// The schema itself is @navaramap/material-schema.
 export {
   MaterialSchemaPlugin,
-  MATERIAL_SCHEMA,
-  materialField,
-  type FieldApplies,
-  type FieldKind,
   type FieldState,
   type LayerStyle,
-  type MaterialField,
-  type MaterialSchema,
   type MaterialState,
 } from "./MaterialSchemaPlugin";
 

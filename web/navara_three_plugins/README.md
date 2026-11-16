@@ -134,8 +134,9 @@ load. That costs a JS-heap copy of every terrain and polygon geometry; pass
 ## Material schema
 
 `MaterialSchemaPlugin` describes the layer materials as plain JSON, so an app
-can build its own style editor. `schema` (also exported as `MATERIAL_SCHEMA`)
-lists the materials of each layer type and every field: its `kind`
+can build its own style editor. `schema` (`MATERIAL_SCHEMA` from
+[`@navaramap/material-schema`](../navara_material_schema), which needs no
+engine) lists the materials of each layer type and every field: its `kind`
 (`boolean`, `number`, `color` as a hex number, `enum`, …), `doc`, engine
 `default`, enum `options`, and `applies`: `"live"` on `layer.update()`,
 `"reload"` only when the layer is built again, or `"never"`.
@@ -155,10 +156,9 @@ for (const { key, present, fields } of materials.describeLayer(layer)
 }
 ```
 
-The schema is generated from the engine's Rust sources and
-`scripts/material-applies.mjs` into
-`src/MaterialSchemaPlugin/materialSchema.json`; run
-`pnpm run generate:schema` after changing a material.
+The schema is generated from the engine's Rust sources in
+`@navaramap/material-schema`; run `pnpm run generate:schema` there after
+changing a material.
 
 ## Documentation
 

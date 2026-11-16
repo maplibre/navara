@@ -15,6 +15,8 @@ since: 0.3.2
 
 The schema is generated from the engine sources, so it lists exactly the fields the installed version accepts. The Layers tool of [DevtoolsPlugin](../devtoolsplugin/) builds its style form from it.
 
+The schema itself is the package `@navaramap/material-schema`. It has no dependencies, so a server or an app without a map can use it too. Use the same version of it as of `@navaramap/three`: Navara packages are released together, and a field added in a newer engine is not in an older schema. When both are installed, the package manager warns if the versions differ.
+
 ## Usage
 
 ```typescript
@@ -64,11 +66,12 @@ layer.update({
 });
 ```
 
-The schema alone needs no view. It is also exported as `MATERIAL_SCHEMA`:
+The schema alone needs no view or engine. Import it as `MATERIAL_SCHEMA` from `@navaramap/material-schema`:
 
 ```typescript
-import { MATERIAL_SCHEMA, materialField } from "@navaramap/three-plugins";
+import { MATERIAL_SCHEMA, materialField } from "@navaramap/material-schema";
 
+MATERIAL_SCHEMA.version; // the Navara version it describes, e.g. "0.3.2"
 MATERIAL_SCHEMA.layers.raster; // ["raster", "hillshade", "elevationHeatmap"]
 materialField("polygon", "clampToGround")?.applies; // "reload"
 ```
@@ -87,7 +90,7 @@ Register the plugin with `view.addPlugin()` **before** `view.init()`. It records
 
 **Type:** [`MaterialSchema`](#materialschema)
 
-**Description:** Every layer material, generated from the engine sources. The same object as the `MATERIAL_SCHEMA` export.
+**Description:** Every layer material, generated from the engine sources. The same object as `MATERIAL_SCHEMA` from `@navaramap/material-schema`.
 
 ## Methods
 
@@ -119,6 +122,8 @@ Stops recording layer descriptions. `view.dispose()` calls it too. Calling it mo
 
 ## Functions
 
+Exported by `@navaramap/material-schema`.
+
 ### materialField()
 
 ```typescript
@@ -129,10 +134,13 @@ Returns the field `name` of the material `key` (e.g. `"polygon"`, `"opacity"`).
 
 ## Types
 
+`MaterialSchema`, `MaterialField`, `FieldKind` and `FieldApplies` are exported by `@navaramap/material-schema`, and `LayerStyle` by `@navaramap/three-plugins`.
+
 ### MaterialSchema
 
 ```typescript
 type MaterialSchema = {
+  version: string;
   layers: Record<string, string[]>;
   materials: Record<string, MaterialField[]>;
 };
@@ -140,6 +148,7 @@ type MaterialSchema = {
 
 | Property    | Type                              | Description                                                                                                                        |
 | ----------- | --------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `version`   | `string`                          | The Navara version the schema describes, the same as the `@navaramap/three` version it matches.                                    |
 | `layers`    | `Record<string, string[]>`        | Layer `type` to the material keys its description takes, e.g. `vector` to `["point", "billboard", "text", "polyline", "polygon"]`. |
 | `materials` | `Record<string, MaterialField[]>` | Material key to its fields, in source order.                                                                                       |
 

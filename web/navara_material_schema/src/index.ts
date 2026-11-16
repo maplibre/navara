@@ -1,5 +1,8 @@
 import schemaJson from "./materialSchema.json";
 
+/** Replaced at build time with this package's version (vite.config.ts). */
+declare const __MATERIAL_SCHEMA_VERSION__: string;
+
 /** The value type of a field, which decides how a UI edits it. */
 export type FieldKind =
   | "boolean"
@@ -50,6 +53,11 @@ export type MaterialField = {
  * by `scripts/generate-material-schema.mjs`. Plain JSON.
  */
 export type MaterialSchema = {
+  /**
+   * The Navara version this schema describes. Navara packages are released
+   * together, so it is also the `@navaramap/three` version it matches.
+   */
+  version: string;
   /** Layer `type` → the material keys its description carries. */
   layers: Record<string, string[]>;
   /** Material key → its fields, in source order. */
@@ -66,7 +74,10 @@ function deepFreeze<T>(value: T): T {
 }
 
 /** Frozen: shared by every caller, so it cannot be changed in place. */
-export const MATERIAL_SCHEMA = deepFreeze(schemaJson as MaterialSchema);
+export const MATERIAL_SCHEMA: MaterialSchema = deepFreeze({
+  version: __MATERIAL_SCHEMA_VERSION__,
+  ...(schemaJson as Omit<MaterialSchema, "version">),
+});
 
 /** The field `name` of material `key`. */
 export function materialField(

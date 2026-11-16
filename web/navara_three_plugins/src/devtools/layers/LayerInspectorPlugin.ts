@@ -1,3 +1,4 @@
+import { materialField } from "@navaramap/material-schema";
 import type {
   Layer,
   LayerDescription,
@@ -8,7 +9,6 @@ import type { FolderApi } from "tweakpane";
 import {
   descriptionOf,
   MaterialSchemaPlugin,
-  materialField,
 } from "../../MaterialSchemaPlugin";
 import {
   DevtoolPlugin,

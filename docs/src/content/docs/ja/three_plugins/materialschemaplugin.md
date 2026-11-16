@@ -15,6 +15,8 @@ since: 0.3.2
 
 スキーマはエンジンのソースから生成されるため、インストールしたバージョンが受け付けるフィールドをそのまま並べます。[DevtoolsPlugin](../devtoolsplugin/) の Layers ツールは、このスキーマからスタイルフォームを作ります。
 
+スキーマ自体は `@navaramap/material-schema` パッケージです。依存関係がないため、サーバーや地図のないアプリからも使えます。`@navaramap/three` と同じバージョンを使ってください。Navara のパッケージは同じバージョンでそろってリリースされ、新しいエンジンで追加されたフィールドは古いスキーマにはありません。両方をインストールしている場合、バージョンが異なるとパッケージマネージャーが警告します。
+
 ## 使い方
 
 ```typescript
@@ -64,11 +66,12 @@ layer.update({
 });
 ```
 
-スキーマだけならビューは不要です。`MATERIAL_SCHEMA` としてもエクスポートされています。
+スキーマだけならビューもエンジンも不要です。`@navaramap/material-schema` から `MATERIAL_SCHEMA` としてインポートします。
 
 ```typescript
-import { MATERIAL_SCHEMA, materialField } from "@navaramap/three-plugins";
+import { MATERIAL_SCHEMA, materialField } from "@navaramap/material-schema";
 
+MATERIAL_SCHEMA.version; // 記述している Navara のバージョン（例: "0.3.2"）
 MATERIAL_SCHEMA.layers.raster; // ["raster", "hillshade", "elevationHeatmap"]
 materialField("polygon", "clampToGround")?.applies; // "reload"
 ```
@@ -87,7 +90,7 @@ new MaterialSchemaPlugin();
 
 **型:** [`MaterialSchema`](#materialschema)
 
-**説明:** エンジンのソースから生成された、すべてのレイヤーマテリアルです。`MATERIAL_SCHEMA` エクスポートと同じオブジェクトです。
+**説明:** エンジンのソースから生成された、すべてのレイヤーマテリアルです。`@navaramap/material-schema` の `MATERIAL_SCHEMA` と同じオブジェクトです。
 
 ## メソッド
 
@@ -119,6 +122,8 @@ dispose(): void
 
 ## 関数
 
+`@navaramap/material-schema` がエクスポートします。
+
 ### materialField()
 
 ```typescript
@@ -129,10 +134,13 @@ materialField(key: string, name: string): MaterialField | undefined
 
 ## 型
 
+`MaterialSchema`、`MaterialField`、`FieldKind`、`FieldApplies` は `@navaramap/material-schema` が、`LayerStyle` は `@navaramap/three-plugins` がエクスポートします。
+
 ### MaterialSchema
 
 ```typescript
 type MaterialSchema = {
+  version: string;
   layers: Record<string, string[]>;
   materials: Record<string, MaterialField[]>;
 };
@@ -140,6 +148,7 @@ type MaterialSchema = {
 
 | プロパティ  | 型                                | 説明                                                                                                                                                         |
 | ----------- | --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `version`   | `string`                          | スキーマが記述している Navara のバージョンです。対応する `@navaramap/three` のバージョンと同じです。                                                         |
 | `layers`    | `Record<string, string[]>`        | レイヤーの `type` から、その description が受け付けるマテリアルのキーへの対応です。例: `vector` は `["point", "billboard", "text", "polyline", "polygon"]`。 |
 | `materials` | `Record<string, MaterialField[]>` | マテリアルのキーから、そのフィールドへの対応です。ソースの順に並びます。                                                                                     |
 

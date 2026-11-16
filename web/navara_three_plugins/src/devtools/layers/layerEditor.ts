@@ -1,13 +1,12 @@
-import { Color, type Layer, type LayerDescription } from "@navaramap/three";
-import type { BindingParams, ButtonApi, FolderApi } from "tweakpane";
-
 import {
-  descriptionOf,
-  isPlainObject,
   MATERIAL_SCHEMA,
   materialField,
   type MaterialField,
-} from "../../MaterialSchemaPlugin";
+} from "@navaramap/material-schema";
+import { Color, type Layer, type LayerDescription } from "@navaramap/three";
+import type { BindingParams, ButtonApi, FolderApi } from "tweakpane";
+
+import { descriptionOf, isPlainObject } from "../../MaterialSchemaPlugin";
 import { hint } from "../util/html";
 
 const RELOAD_HINT =

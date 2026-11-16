@@ -18,8 +18,7 @@
     "lint": "eslint . --fix",
     "lint:check": "eslint .",
     "format": "prettier --write --ignore-path ../../.gitignore .",
-    "format:check": "prettier --check --ignore-path ../../.gitignore .",
-    "generate:schema": "node scripts/generate-material-schema.mjs"
+    "format:check": "prettier --check --ignore-path ../../.gitignore ."
   },
   "license": "MIT OR Apache-2.0",
   "repository": {
@@ -38,6 +37,7 @@
     "three": ">=0.183.0"
   },
   "dependencies": {
+    "@navaramap/material-schema": "workspace:*",
     "@mapbox/vector-tile": "3.0.0",
     "pbf": "5.1.2",
     "tweakpane": "4.0.5"

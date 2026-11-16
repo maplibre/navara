@@ -1,7 +1,7 @@
 ---
 name: navara-material-schema-sync
 description: >
-  Keep the layer material schema (web/navara_three_plugins/src/MaterialSchemaPlugin/materialSchema.json,
+  Keep the layer material schema (@navaramap/material-schema, web/navara_material_schema/src/materialSchema.json,
   read by MaterialSchemaPlugin and the devtools Layers tool) in sync with the engine.
   Use after adding, renaming or removing a material field, changing a material default or enum,
   adding a material or layer type, or changing when the engine reads a field (on update vs.
@@ -17,17 +17,23 @@ description: >
 crates/navara_wasm/src/source_types.rs        *LayerDescription structs → "layers"
 crates/navara_wasm_types/src/appearance.rs    JS-facing fields, types, docs   ┐
 crates/navara_material/src/appearance.rs      defaults, enum strings, docs    ├→ "materials"
-web/navara_three_plugins/scripts/material-applies.mjs   RELOAD / NEVER        ┘  (applies, note)
-        │  pnpm -C web/navara_three_plugins run generate:schema
+web/navara_material_schema/scripts/material-applies.mjs  RELOAD / NEVER        ┘  (applies, note)
+        │  pnpm -C web/navara_material_schema run generate:schema
         ▼
-src/MaterialSchemaPlugin/materialSchema.json ──► MaterialSchemaPlugin (public API)
-                                             └─► src/devtools/layers/* (Layers tool UI)
+web/navara_material_schema/src/materialSchema.json   @navaramap/material-schema (public, no engine dependency)
+        │
+        ├─► navara_three_plugins/src/MaterialSchemaPlugin/  describeLayer() (public API)
+        └─► navara_three_plugins/src/devtools/layers/*      Layers tool UI
 ```
+
+`MATERIAL_SCHEMA.version` is not in the JSON: the build inlines the package
+version (`vite.config.ts`), which the release stamps in lockstep with
+`@navaramap/three`.
 
 ## Flow
 
 1. Change the Rust material.
-2. Run `pnpm -C web/navara_three_plugins run generate:schema`. It fails, naming
+2. Run `pnpm -C web/navara_material_schema run generate:schema`. It fails, naming
    the cause, when a layer struct has a material missing from `MATERIALS`, a
    `MATERIALS` entry is on no layer, a `*LayerDescription` struct is missing
    from `LAYERS`, or `material-applies.mjs` names a field that does not exist
@@ -37,7 +43,8 @@ src/MaterialSchemaPlugin/materialSchema.json ──► MaterialSchemaPlugin (pub
    when one is missing or wrong.
 4. Set `applies` for each new or changed field (next section).
 5. Update the hand-kept lists ([Hand-kept lists](#hand-kept-lists)).
-6. Run `pnpm -C web/navara_three_plugins test`, then check the field in the
+6. Run `pnpm -C web/navara_material_schema test` and
+   `pnpm -C web/navara_three_plugins test`, then check the field in the
    Devtools example (`/examples/demo/plugin/devtools`, Layers tab).
 
 ## Deciding `applies`
@@ -86,14 +93,14 @@ write it as a plain sentence.
 
 Prefer making the Rust fit these forms over adding a parser case. Add a case
 only for a form many fields use, and cover it in
-`src/MaterialSchemaPlugin/materialSchema.test.ts`.
+`web/navara_material_schema/src/index.test.ts`.
 
 ## Hand-kept lists
 
 | Change | Also update |
 | --- | --- |
-| New `FieldKind` | `FieldKind` in `materialSchema.ts`, a `case` in `StyleEditor.addField` (`layerEditor.ts`, no control otherwise), the kinds in `docs/…/three_plugins/materialschemaplugin.md` (en and ja) |
-| New / renamed material or layer type | `COMMON` (and `DISPLAY_FIRST` to show it first) in `layerEditor.ts`; `SHOWABLE`, `ON_TERRAIN`, `BOX_GROUP` in `LayerInspectorPlugin.ts` |
+| New `FieldKind` | `FieldKind` in `navara_material_schema/src/index.ts`, a `case` in `StyleEditor.addField` (`layerEditor.ts`, no control otherwise), the kinds in `docs/…/three_plugins/materialschemaplugin.md` (en and ja) |
+| New / renamed material or layer type | `COMMON` (and `DISPLAY_FIRST` to show it first) in `navara_three_plugins/src/devtools/layers/layerEditor.ts`; `SHOWABLE`, `ON_TERRAIN`, `BOX_GROUP` in `LayerInspectorPlugin.ts` |
 | Renamed / removed field | `COMMON` and `RANGES` in `layerEditor.ts` |
 | New number field with a fixed range (0–1 etc.) | `RANGES` in `layerEditor.ts` |
 

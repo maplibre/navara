@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /* global console, process */
-// Generates src/MaterialSchemaPlugin/materialSchema.json: the materials each
+// Generates src/materialSchema.json: the materials each
 // layer type carries, and every field a material accepts with its kind,
 // description, engine default, options and when it takes effect.
 //
@@ -27,10 +27,7 @@ const read = (path) => readFileSync(resolve(root, path), "utf8");
 const layerSrc = read("crates/navara_wasm/src/source_types.rs");
 const wasmSrc = read("crates/navara_wasm_types/src/appearance.rs");
 const internalSrc = read("crates/navara_material/src/appearance.rs");
-const outFile = resolve(
-  here,
-  "../src/MaterialSchemaPlugin/materialSchema.json",
-);
+const outFile = resolve(here, "../src/materialSchema.json");
 
 /** Layer `type` → its description struct in source_types.rs. */
 const LAYERS = {

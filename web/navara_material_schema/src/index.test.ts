@@ -1,16 +1,17 @@
 // @vitest-environment node
 /// <reference types="node" />
 import { execFileSync } from "node:child_process";
+import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 import { describe, expect, it } from "vitest";
 
-import { MATERIAL_SCHEMA, materialField } from "./materialSchema";
+import { MATERIAL_SCHEMA, materialField } from "./index";
 
 describe("MATERIAL_SCHEMA", () => {
   it("is up to date with the engine sources", () => {
     const script = fileURLToPath(
-      new URL("../../scripts/generate-material-schema.mjs", import.meta.url),
+      new URL("../scripts/generate-material-schema.mjs", import.meta.url),
     );
     expect(() =>
       execFileSync("node", [script, "--check"], { stdio: "pipe" }),
@@ -52,6 +53,13 @@ describe("MATERIAL_SCHEMA", () => {
       note: "Applies at once when the layer was added with an outline.",
     });
     expect(materialField("text", "lang")?.applies).toBe("never");
+  });
+
+  it("names the package version it was built with", () => {
+    const pkg = JSON.parse(
+      readFileSync(new URL("../package.json", import.meta.url), "utf8"),
+    ) as { version: string };
+    expect(MATERIAL_SCHEMA.version).toBe(pkg.version);
   });
 
   it("is plain JSON", () => {

@@ -1,6 +1,5 @@
+import { MATERIAL_SCHEMA } from "@navaramap/material-schema";
 import { describe, expect, it, vi } from "vitest";
-
-import { MATERIAL_SCHEMA } from "../../MaterialSchemaPlugin";
 
 import { COMMON, MATERIAL_KEYS, RANGES } from "./layerEditor";
 

@@ -1,3 +1,8 @@
+import {
+  MATERIAL_SCHEMA,
+  type MaterialField,
+  type MaterialSchema,
+} from "@navaramap/material-schema";
 import type ThreeView from "@navaramap/three";
 import {
   Color,
@@ -13,11 +18,6 @@ import {
   isPlainObject,
   trackLayerDescriptions,
 } from "./layerDescriptions";
-import {
-  MATERIAL_SCHEMA,
-  type MaterialField,
-  type MaterialSchema,
-} from "./materialSchema";
 
 /** A material field with the value a layer gives it. */
 export type FieldState = MaterialField & {

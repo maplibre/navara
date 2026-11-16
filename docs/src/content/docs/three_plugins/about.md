@@ -22,7 +22,8 @@ navara_three (core: ThreeView, Plugin, addPlugin)
         ├── TileJsonPlugin (TileJSON 3.0.0 tile source registration)
         ├── StreetLightsPlugin (street lamps, roof beacons and traffic at night)
         ├── DevtoolsPlugin (development tools: profiler and layer inspector)
-        └── MaterialSchemaPlugin (layer materials and styles as JSON for style UIs)
+        └── MaterialSchemaPlugin (layer materials and styles as JSON for style UIs;
+                                  the schema itself is @navaramap/material-schema)
 ```
 
 `three_plugins` depends on `navara_three` for the `Plugin` base class and core APIs, and on `three_default_plugin` for the `DefaultDescriptions` type. Each plugin is independent. You can use one without the other.

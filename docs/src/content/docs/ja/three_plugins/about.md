@@ -22,7 +22,8 @@ navara_three（コア: ThreeView, Plugin, addPlugin）
         ├── TileJsonPlugin（TileJSON 3.0.0 タイルソースの登録）
         ├── StreetLightsPlugin（夜の街灯・屋上灯・車）
         ├── DevtoolsPlugin（開発用ツール：プロファイラーとレイヤーインスペクター）
-        └── MaterialSchemaPlugin（スタイル UI 向けに、レイヤーのマテリアルとスタイルを JSON で提供）
+        └── MaterialSchemaPlugin（スタイル UI 向けに、レイヤーのマテリアルとスタイルを JSON で提供。
+                                  スキーマ自体は @navaramap/material-schema）
 ```
 
 `three_plugins` は `Plugin` 基底クラスとコア API のために `navara_three` に依存し、`DefaultDescriptions` 型のために `three_default_plugin` に依存しています。各プラグインは独立しており、片方だけを使うこともできます。

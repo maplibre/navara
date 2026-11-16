@@ -1,0 +1,44 @@
+{
+  "name": "@navaramap/material-schema",
+  "type": "module",
+  "version": "0.0.0",
+  "main": "dist/index.umd.cjs",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "src",
+    "dist"
+  ],
+  "scripts": {
+    "type-check": "tsc && tsc -p tsconfig.node.json",
+    "build": "pnpm type-check && vite build --watch=false",
+    "build:dev": "vite build --mode development",
+    "build:dev:watch": "pnpm build:dev --watch",
+    "test": "vitest --passWithNoTests --watch=false",
+    "lint": "eslint . --fix",
+    "lint:check": "eslint .",
+    "format": "prettier --write --ignore-path ../../.gitignore .",
+    "format:check": "prettier --check --ignore-path ../../.gitignore .",
+    "generate:schema": "node scripts/generate-material-schema.mjs"
+  },
+  "license": "MIT OR Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/maplibre/navara.git",
+    "directory": "web/navara_material_schema"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "peerDependencies": {
+    "@navaramap/three": "workspace:*"
+  },
+  "peerDependenciesMeta": {
+    "@navaramap/three": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@types/node": "26.6.6"
+  }
+}
