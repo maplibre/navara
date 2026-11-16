@@ -224,6 +224,37 @@ describe("toEvaluatedValue", () => {
     expect(result.show).toBe(true);
   });
 
+  it("leaves the material's default color to apply when fill-color is unset, and overrides it when set", () => {
+    const engine = new JsStyleEngine();
+    const evaluate = (paint?: Record<string, unknown>) => {
+      const layer = {
+        id: "test",
+        type: "fill",
+        source: "test",
+        ...(paint && { paint }),
+      } as StyleLayer;
+      const paintValues = Object.fromEntries(
+        Object.entries(createPaintEvaluators(layer, engine, "Polygon")).map(
+          ([key, fn]) => [key, fn({ properties: {}, zoom: 0 })],
+        ),
+      );
+      return toEvaluatedValue(layer, paintValues);
+    };
+
+    // `toLayerDescription` puts the spec's black on the material; an unset
+    // color must not set one per feature, or it would hide that default.
+    expect(evaluate().color).toBeUndefined();
+
+    const color = evaluate({ "fill-color": "#ff0000" }).color as unknown as {
+      r: number;
+      g: number;
+      b: number;
+    };
+    expect(color.r).toBeCloseTo(1);
+    expect(color.g).toBeCloseTo(0);
+    expect(color.b).toBeCloseTo(0);
+  });
+
   it("should handle undefined color values", () => {
     const layer: StyleLayer = {
       id: "test",

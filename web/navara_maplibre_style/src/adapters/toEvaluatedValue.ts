@@ -353,8 +353,8 @@ function processFillExtrusionLayer(
 ): void {
   applyColorAndOpacity(
     result,
-    paintValues["fill-extrusion-color"] ?? paintValues["fill-color"],
-    paintValues["fill-extrusion-opacity"] ?? paintValues["fill-opacity"],
+    paintValues["fill-extrusion-color"],
+    paintValues["fill-extrusion-opacity"],
   );
 
   // Extract base and height values

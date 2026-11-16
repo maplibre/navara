@@ -3,6 +3,7 @@
  */
 
 import {
+  type Color,
   type LayerDescription,
   type Overlap,
   type Source,
@@ -353,6 +354,39 @@ function getSourceLayersField(styleLayer: StyleLayer): {
 }
 
 /**
+ * The paint property that colors each layer type's material. Checked against
+ * the spec, so a misspelled name fails to compile instead of silently leaving
+ * the layer white.
+ */
+const COLOR_PROPERTIES = {
+  fill: "fill-color",
+  "fill-extrusion": "fill-extrusion-color",
+  line: "line-color",
+  circle: "circle-color",
+  symbol: "text-color",
+} as const satisfies {
+  [
+    K in keyof typeof PAINT_SPECS_BY_TYPE
+  ]?: keyof (typeof PAINT_SPECS_BY_TYPE)[K];
+};
+
+/**
+ * The spec default of a layer type's color property, for the layer's
+ * material. Unset paint properties are not evaluated per feature, so without
+ * it an unset color would be the material's own default, white, instead of
+ * the spec's black. Only the RGB is taken: every such default is opaque.
+ */
+function defaultColorField(layerType: keyof typeof COLOR_PROPERTIES): {
+  color?: Color;
+} {
+  const spec = (
+    PAINT_SPECS_BY_TYPE[layerType] as Record<string, { default?: unknown }>
+  )[COLOR_PROPERTIES[layerType]];
+  const color = toNavaraColor(spec?.default);
+  return color ? { color: color.color } : {};
+}
+
+/**
  * Create layer description for fill layer.
  */
 function createFillLayer(
@@ -365,6 +399,7 @@ function createFillLayer(
     ...getSourceLayersField(styleLayer),
     polygon: {
       clampToGround: true,
+      ...defaultColorField("fill"),
       // MapLibre draws edges straight in Web Mercator and keeps longitudes
       // past ±180° as given.
       geodesic: false,
@@ -379,12 +414,18 @@ function createFillExtrusionLayer(
   source: Source,
   styleLayer: StyleLayer,
 ): LayerDescription {
+  const opacity = (styleLayer.paint as Record<string, unknown> | undefined)?.[
+    "fill-extrusion-opacity"
+  ];
   return {
     type: "vector",
     source,
     ...getSourceLayersField(styleLayer),
     polygon: {
       clampToGround: false,
+      ...defaultColorField("fill-extrusion"),
+      ...(opacity !== undefined &&
+        opacity !== 1 && { transparent: true, depthPrePass: true }),
     },
   };
 }
@@ -403,6 +444,7 @@ function createLineLayer(
     ...getSourceLayersField(styleLayer),
     polyline: {
       clampToGround: true,
+      ...defaultColorField("line"),
       // See createFillLayer.
       geodesic: false,
       // Support deriving polylines from both line and polygon geometries
@@ -421,17 +463,13 @@ function createCircleLayer(
 ): LayerDescription {
   const geometryTypes = getAllGeometryTypesUnlessFiltered(styleLayer);
   const circleSpec = PAINT_SPECS_BY_TYPE.circle;
-  // Unset paint properties are not evaluated per feature, so the material
-  // carries the spec defaults; otherwise an unset `circle-color` would be the
-  // point material's own default, white.
-  const defaultColor = toNavaraColor(circleSpec["circle-color"].default);
   return {
     type: "vector",
     source,
     ...getSourceLayersField(styleLayer),
     point: {
       clampToGround: true,
-      ...(defaultColor && { color: defaultColor.color }),
+      ...defaultColorField("circle"),
       // `circle-radius` is in screen pixels, and circles are centered on
       // their point, as in MapLibre. `size` is the full width, so twice the
       // radius.
@@ -740,6 +778,7 @@ function createSymbolLayer(
     layerDesc.text = {
       clampToGround: true,
       font: fontFamily, // Use the font family name registered via addFontFamily
+      ...defaultColorField("symbol"),
       text: "",
       size: 1.0,
       sizeInMeters: false,

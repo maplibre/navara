@@ -251,6 +251,46 @@ describe("toLayerDescription", () => {
       });
     });
 
+    it("blends a fill-extrusion layer only when its opacity may be below 1", () => {
+      const polygon = (paint?: Record<string, unknown>) =>
+        (
+          toLayerDescription(mockSource, {
+            id: "test-layer",
+            type: "fill-extrusion",
+            source: "test",
+            ...(paint && { paint }),
+          } as StyleLayer) as VectorLayer
+        ).polygon;
+
+      expect(polygon()).not.toHaveProperty("transparent");
+      expect(polygon({ "fill-extrusion-opacity": 1 })).not.toHaveProperty(
+        "transparent",
+      );
+      for (const opacity of [
+        0.75,
+        ["interpolate", ["linear"], ["zoom"], 0, 0, 10, 1],
+      ]) {
+        expect(polygon({ "fill-extrusion-opacity": opacity })).toMatchObject({
+          transparent: true,
+          depthPrePass: true,
+        });
+      }
+    });
+
+    it("gives fill, line and fill-extrusion layers the spec default color, black", () => {
+      const black = expect.objectContaining({ r: 0, g: 0, b: 0 });
+      const toVector = (type: "fill" | "line" | "fill-extrusion") =>
+        toLayerDescription(mockSource, {
+          id: "test-layer",
+          type,
+          source: "test",
+        } as StyleLayer) as VectorLayer;
+
+      expect(toVector("fill").polygon?.color).toEqual(black);
+      expect(toVector("line").polyline?.color).toEqual(black);
+      expect(toVector("fill-extrusion").polygon?.color).toEqual(black);
+    });
+
     it("keeps a circle layer filtering on geometry type to points", () => {
       for (const filter of [
         ["==", "$type", "Point"],
@@ -825,6 +865,20 @@ describe("toLayerDescription", () => {
         declutter: true,
       });
       expect(billboard?.geometryTypes).toEqual(["point", "line", "polygon"]);
+    });
+
+    it("gives text the spec default text-color, black, and icons no tint", () => {
+      const { text, billboard } = buildSymbol({
+        "text-field": "{name}",
+        "icon-image": "marker",
+      });
+
+      expect(text?.color).toEqual(
+        expect.objectContaining({ r: 0, g: 0, b: 0 }),
+      );
+      // `icon-color` only recolors SDF icons, so a default one would blacken
+      // every plain icon.
+      expect(billboard).not.toHaveProperty("color");
     });
 
     it("passes text-line-height through in ems", () => {

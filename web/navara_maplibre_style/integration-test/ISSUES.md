@@ -36,15 +36,6 @@ order.
 - `combinations/circle-translucent--fill-opaque`: the blue fill should cover
   the inner quarter of each red circle; Navara draws whole circles over it.
 
-### Unset paint colors render white instead of the spec default (black)
-
-- `fill-opacity/default`: the fill sets no `fill-color` and is drawn white;
-  MapLibre draws it black.
-- `line-join/default`, `line-width/*`, `line-pitch/*`: the lines set no
-  `line-color` and are drawn white, invisible over the white background.
-- `fill-extrusion-color/default`: the extrusion sets no color and is drawn
-  white.
-
 ### Translucent colors are blended in linear space
 
 - `combinations/background-opaque--fill-translucent`: a 50% blue fill over red
@@ -53,6 +44,9 @@ order.
   matches Navara's value.
 - Also visible in `fill-opacity/*`, `line-opacity/*`, `combinations/*`, and
   `regressions/mapbox-gl-native#7714`.
+- Also in `fill-extrusion-opacity/*`: a 75% black extrusion over white is ≈137
+  in Navara and 64 in MapLibre. Those cases still differ by about 66%, since
+  the extrusion's sides are shaded differently too (see "Lighting").
 
 ### Draped features inherit a translucent background's opacity
 
@@ -62,18 +56,15 @@ order.
 - Fills and lines appear to be baked into the globe texture, which is then
   drawn with the background opacity.
 
-### fill-extrusion ignores opacity and draws above later 2D layers
+### fill-extrusion draws above later 2D layers
 
 The extrusions render once the scene has lights, which the harness adds
 (see "Lighting" below); without them every extrusion is black.
 
-- `fill-extrusion-opacity/*`: extrusions stay opaque; MapLibre blends them.
 - `combinations/fill-extrusion--fill-opaque` and
   `combinations/fill-extrusion-translucent--background-opaque`: a height-0
   extrusion listed below a fill or background still shows on top. MapLibre
   follows the layer order and shows only the upper layer.
-- `fill-extrusion-color/default`, `fill-extrusion-height/*`,
-  `fill-extrusion-base/*`: the unset color is drawn white (see "Unset paint colors").
 
 ### `interpolate-hcl` (legacy `colorSpace: "hcl"`) yields a different color
 
