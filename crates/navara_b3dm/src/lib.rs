@@ -6,10 +6,13 @@ mod types;
 
 pub use navara_bin::*;
 
+use alloc::borrow::Cow;
 use alloc::vec::Vec;
 use binrw::BinRead;
+use core::fmt;
 use navara_glb::Glb;
 use navara_property::{PropertyValue, json_value_to_property_value};
+use serde::de::{DeserializeSeed, Deserializer, IgnoredAny, MapAccess, Visitor};
 use serde::{Deserialize, Serialize};
 use types::{ComponentType, DataType};
 
@@ -80,25 +83,50 @@ pub struct BatchTable {
     pub binary_data: Vec<u8>,
 }
 
+/// Deserializes a JSON object into only its entries named in the keys.
+struct FilteredKeys<'a>(&'a [String]);
+
+impl<'de> DeserializeSeed<'de> for FilteredKeys<'_> {
+    type Value = serde_json::Map<String, serde_json::Value>;
+
+    fn deserialize<D: Deserializer<'de>>(self, deserializer: D) -> Result<Self::Value, D::Error> {
+        deserializer.deserialize_map(self)
+    }
+}
+
+impl<'de> Visitor<'de> for FilteredKeys<'_> {
+    type Value = serde_json::Map<String, serde_json::Value>;
+
+    fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        formatter.write_str("a batch table JSON object")
+    }
+
+    fn visit_map<A: MapAccess<'de>>(self, mut map: A) -> Result<Self::Value, A::Error> {
+        let mut filtered = serde_json::Map::new();
+        while let Some(key) = map.next_key::<Cow<str>>()? {
+            if self.0.iter().any(|requested| requested == key.as_ref()) {
+                filtered.insert(key.into_owned(), map.next_value()?);
+            } else {
+                map.next_value::<IgnoredAny>()?;
+            }
+        }
+        Ok(filtered)
+    }
+}
+
 impl BatchTable {
     pub fn json(&self) -> Result<serde_json::Value, serde_json::Error> {
         parse_json_to_struct(&self.json_data)
     }
 
     /// Parse the batch table JSON, retaining only the specified top-level keys.
-    /// This avoids keeping large array-valued properties in memory for keys that
-    /// are not needed.
+    /// The other properties are skipped without being built.
     pub fn json_filtered(&self, keys: &[String]) -> Result<serde_json::Value, serde_json::Error> {
-        let value: serde_json::Value = parse_json_to_struct(&self.json_data)?;
-        if let serde_json::Value::Object(map) = value {
-            let filtered: serde_json::Map<String, serde_json::Value> = map
-                .into_iter()
-                .filter(|(k, _)| keys.iter().any(|requested| requested == k))
-                .collect();
-            Ok(serde_json::Value::Object(filtered))
-        } else {
-            Ok(value)
-        }
+        let mut deserializer =
+            serde_json::Deserializer::from_slice(trim_json_padding(&self.json_data));
+        let filtered = FilteredKeys(keys).deserialize(&mut deserializer)?;
+        deserializer.end()?;
+        Ok(serde_json::Value::Object(filtered))
     }
 
     /// Get all properties for a batch index as a single PropertyValue map.
@@ -547,6 +575,25 @@ mod tests {
         );
         assert!(result[1].is_none());
         assert_eq!(result[2], Some(json!(1)));
+    }
+
+    #[test]
+    fn it_should_parse_only_requested_keys() {
+        let data = create_mock_b3dm_data();
+        let b3dm = B3dm::from_data(&data).unwrap();
+        let full = b3dm.batch_table.json().unwrap();
+
+        let keys = vec![
+            "test_property_vec3".to_string(),
+            "nonexistent".to_string(),
+            "some_property".to_string(),
+        ];
+        let filtered = b3dm.batch_table.json_filtered(&keys).unwrap();
+
+        let map = filtered.as_object().unwrap();
+        assert_eq!(map.len(), 2);
+        assert_eq!(map["test_property_vec3"], full["test_property_vec3"]);
+        assert_eq!(map["some_property"], full["some_property"]);
     }
 
     #[test]

@@ -7,6 +7,7 @@ import {
 import {
   BufferAttribute,
   BufferGeometry,
+  Box3Helper,
   Color,
   Group,
   Mesh,
@@ -166,6 +167,43 @@ export class ModelMesh
     });
 
     this.visible = meshMaterial.show ?? true;
+    this._syncBoundingBoxes(!!meshMaterial.showBoundingBox);
+  }
+
+  /** One per mesh / point node while `showBoundingBox` is on. */
+  private _boxHelpers: Box3Helper[] = [];
+
+  /**
+   * Adds or removes a bounding-box helper on every mesh (blue) and point
+   * (red) node so they match `show`. Runs at init and on every material
+   * change, so toggling `showBoundingBox` reaches models already loaded.
+   */
+  private _syncBoundingBoxes(show: boolean) {
+    if (!show) {
+      for (const helper of this._boxHelpers) {
+        helper.removeFromParent();
+        helper.dispose();
+      }
+      this._boxHelpers = [];
+      return;
+    }
+    if (this._boxHelpers.length > 0) return;
+    const nodes: (Mesh | Points)[] = [];
+    this.traverse((object) => {
+      if (object instanceof Mesh || object instanceof Points) {
+        nodes.push(object);
+      }
+    });
+    for (const node of nodes) {
+      const box = (node.geometry as BufferGeometry).boundingBox;
+      if (!box) continue;
+      const helper = new Box3Helper(
+        box,
+        node instanceof Points ? 0xff0000 : 0x0000ff,
+      );
+      node.add(helper);
+      this._boxHelpers.push(helper);
+    }
   }
 
   /**
@@ -336,6 +374,7 @@ export class ModelMesh
 
   _update(material: NavaraModelMaterial, active: boolean) {
     this.visible = (material.show ?? true) && active;
+    this._syncBoundingBoxes(!!material.showBoundingBox);
 
     // Each enhancer map is populated only for its node type, so empty maps
     // iterate trivially. Running both lets mixed-mode glTFs (POINTS + TRIANGLES)

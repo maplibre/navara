@@ -20,7 +20,8 @@ navara_three (core: ThreeView, Plugin, addPlugin)
         ├── OverlayPlugin (world-to-screen HTML overlay projection)
         ├── CesiumIonPlugin (Cesium Ion quantized-mesh terrain)
         ├── TileJsonPlugin (TileJSON 3.0.0 tile source registration)
-        └── StreetLightsPlugin (street lamps, roof beacons and traffic at night)
+        ├── StreetLightsPlugin (street lamps, roof beacons and traffic at night)
+        └── DevtoolsPlugin (development tools: profiler and layer inspector)
 ```
 
 `three_plugins` depends on `navara_three` for the `Plugin` base class and core APIs, and on `three_default_plugin` for the `DefaultDescriptions` type. Each plugin is independent. You can use one without the other.
@@ -35,6 +36,7 @@ import {
   CesiumIonPlugin,
   TileJsonPlugin,
   StreetLightsPlugin,
+  DevtoolsPlugin,
 } from "@navaramap/three-plugins";
 ```
 
@@ -59,6 +61,10 @@ Fetches a TileJSON 3.0.0 document and registers it as a single raster, vector, o
 ### StreetLightsPlugin :since[0.3.2]
 
 Takes the roads and the buildings of a vector tile set, each with its source and a reader for its properties, draws the road surfaces, and streams the zoom 14 tiles in around a position to place street lamps along the roads, red beacons on the roofs the reader picks and cars that drive the road segments. The lamps and beacons take part in the selective effects given to `start()`, such as the built-in bloom. See [StreetLightsPlugin](../streetlightsplugin/) for details.
+
+### DevtoolsPlugin :since[0.3.2]
+
+Development tools on one panel: a profiler (frame time, memory, downloads, render buffers) and a layer inspector (each layer's cost, visibility and a style form). For development builds only. See [DevtoolsPlugin](../devtoolsplugin/) for details.
 
 ## Usage
 

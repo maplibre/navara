@@ -1,7 +1,6 @@
 import Stats from "stats.js";
 
 type Renderer = {
-  beginRender: () => void;
   endRender: () => {
     calls?: number;
     triangles?: number;
@@ -58,7 +57,6 @@ export class RendererStats {
   }
 
   begin() {
-    this.renderer.beginRender();
     this.stats.begin();
   }
 

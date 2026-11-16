@@ -3,7 +3,6 @@
 extern crate alloc;
 
 use alloc::boxed::Box;
-use alloc::vec::Vec;
 use binrw::io::Cursor;
 use binrw::{BinRead, BinReaderExt};
 
@@ -27,15 +26,14 @@ pub fn parse_json_to_struct_from_reader<T: serde::de::DeserializeOwned>(
     })
 }
 
-pub fn parse_json_to_struct<T: serde::de::DeserializeOwned>(buf: &[u8]) -> serde_json::Result<T> {
-    // Trim padding
-    let buf = buf
-        .iter()
-        .take_while(|&&b| b != 0)
-        .cloned()
-        .collect::<Vec<u8>>();
+/// The JSON part of `buf`, without its trailing NUL padding.
+pub fn trim_json_padding(buf: &[u8]) -> &[u8] {
+    let end = buf.iter().position(|&b| b == 0).unwrap_or(buf.len());
+    &buf[..end]
+}
 
-    serde_json::from_slice(&buf)
+pub fn parse_json_to_struct<T: serde::de::DeserializeOwned>(buf: &[u8]) -> serde_json::Result<T> {
+    serde_json::from_slice(trim_json_padding(buf))
 }
 
 pub trait BinaryReader<B: BinRead> {

@@ -34,7 +34,10 @@ import {
 } from "./batchedFeature";
 import { GEOMETRY_TYPES } from "./constants";
 import { DepthPrePassMesh } from "./depthPrePass";
-import { releaseGeometryArraysAfterUpload } from "./releaseGeometryArrays";
+import {
+  canDrawWireframe,
+  releaseGeometryArraysAfterUpload,
+} from "./releaseGeometryArrays";
 import { setupRTECallback } from "./rtcRteHelper";
 
 /** Set to true to render bounding spheres as wireframe spheres for debugging. */
@@ -240,7 +243,9 @@ export class PolygonMesh
     // Drop the JS-heap copies to keep a single resident (GPU) copy — see
     // releaseGeometryArraysAfterUpload for the context-loss trade-off.
     geometry.computeBoundingSphere();
-    releaseGeometryArraysAfterUpload(geometry);
+    if (!this.ctx.viewContext.retainGeometryArrays) {
+      releaseGeometryArraysAfterUpload(geometry);
+    }
 
     return { success: true, useRTE };
   }
@@ -290,7 +295,12 @@ export class PolygonMesh
         color: mcolor,
         opacity: meshMaterial.opacity,
         transparent: meshMaterial.transparent,
-        wireframe: meshMaterial.wireframe,
+        wireframe:
+          !!meshMaterial.wireframe &&
+          canDrawWireframe(
+            this.geometry,
+            this.ctx.viewContext.retainGeometryArrays,
+          ),
         minMaxHeight,
         shadeSidesAsSurface: meshMaterial.shadeSidesAsSurface,
         clampToGround: meshMaterial.clampToGround,
@@ -388,7 +398,12 @@ export class PolygonMesh
         color: base.batchColorEnabled ? undefined : material.color,
         opacity: material.opacity,
         transparent: !!material.transparent,
-        wireframe: !!material.wireframe,
+        wireframe:
+          !!material.wireframe &&
+          canDrawWireframe(
+            this.geometry,
+            this.ctx.viewContext.retainGeometryArrays,
+          ),
         minMaxHeight:
           minMaxHeights !== undefined
             ? [minMaxHeights[0], minMaxHeights[1]]

@@ -15,10 +15,10 @@ sidebar:
 
 **Default:** `true`
 
-**Description:** Whether to show the terrain.
+**Description:** Whether to draw the terrain mesh. With `false` the globe surface is not drawn, and neither is anything rendered onto it: raster layers, hillshade and draped vector features. The terrain data keeps loading, so everything that reads terrain heights keeps working, such as points, billboards and text with `clampToGround: true` and terrain height sampling.
 
 ```typescript
-{ terrain: { show: true } }
+{ terrain: { show: false } }
 ```
 
 ### castShadow

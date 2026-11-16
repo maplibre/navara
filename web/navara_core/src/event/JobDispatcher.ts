@@ -173,6 +173,15 @@ export class JobDispatcher {
     return this.inFlightJobs;
   }
 
+  /** Per-kind job counts, for debug tooling. `name` is the handler's name. */
+  stats(): { name: string; jobs: number; inFlight: number }[] {
+    return this.registered.map((r) => ({
+      name: r.handler.name,
+      jobs: r.jobs.size,
+      inFlight: r.inFlight,
+    }));
+  }
+
   tick(events: Events | undefined) {
     if (!events || this.disposed) return;
 

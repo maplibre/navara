@@ -41,6 +41,18 @@ Cesium Ion assets (quantized-mesh terrain)
 
 Render a MapLibre style JSON: `new MapLibreStylePlugin(styleJson)`
 
+### `DevtoolsPlugin` — `@navaramap/three-plugins`
+
+Development-only tools on one tweakpane panel (the `` ` `` key toggles it), a tab per tool: `new DevtoolsPlugin({ tools?, panel?, profiler?, layers? })` before `init()`; `devtools.profiler` / `devtools.layers` are the tool instances (or `undefined` when left out of `tools`), `dispose()` removes all. The tools below are also exported; added alone, one opens its own pane.
+
+### `ProfilerPlugin` — `@navaramap/three-plugins`
+
+Development-only tweakpane profiler with hover explanations: summary (frame rate and CPU/GPU frame time of drawn frames, draw calls, engine memory vs budget, downloads, workers), per-step frame breakdown (WASM update, loading, each render pass with CPU/GPU/draws), memory by kind, downloads per source, background jobs, a buffer viewer (normals, depth as distance, roughness, …), frame recording. `profiler.enabled = false` detaches everything. GPU timings need `EXT_disjoint_timer_query_webgl2` (Chrome). Not for production bundles
+
+### `LayerInspectorPlugin` — `@navaramap/three-plugins`
+
+Development-only layer inspector: `view.layers` with meshes, memory and per-source downloads (with `{ profiler }`), a hide checkbox per layer, solo, wireframe (polygon layers, or `view.globe.wireframe` for terrain/imagery), bounding boxes, and a live style form generated from the engine's material schema (every field, defaults shown, `•` = set on the layer, undo). Turns on `ViewContext.retainGeometryArrays` for wireframes (a JS-heap copy of terrain/polygon geometry; `wireframe: false` opts out). `new LayerInspectorPlugin({ panel, profiler })` before `init()`
+
 ## addDefaultPhotorealScene()
 
 ```typescript

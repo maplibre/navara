@@ -2,11 +2,14 @@ import type { EffectComposer, Pass } from "postprocessing";
 import { DepthTexture, HalfFloatType, WebGLRenderTarget } from "three";
 import { describe, expect, it } from "vitest";
 
-import { estimateFixedGpuBytes } from "./fixedGpuFootprint";
+import { estimateFixedGpuBytes, listRenderTargets } from "./fixedGpuFootprint";
 
 const W = 100;
 const H = 10;
 const PX = W * H;
+
+const named = (passes: Pass[]) =>
+  passes.map((pass, i) => ({ name: `pass${i}`, pass }));
 
 function composerWith(
   input: WebGLRenderTarget,
@@ -39,8 +42,9 @@ describe("estimateFixedGpuBytes", () => {
     ];
     const bytes = estimateFixedGpuBytes(
       composerWith(rgba8Target(), rgba8Target()),
-      passes,
+      named(passes),
     );
+
     expect(bytes).toBe(PX * 4 * 3);
   });
 
@@ -51,7 +55,7 @@ describe("estimateFixedGpuBytes", () => {
     } as unknown as Pass;
     const bytes = estimateFixedGpuBytes(
       composerWith(rgba8Target(), rgba8Target()),
-      [nested, inArray],
+      named([nested, inArray]),
     );
     expect(bytes).toBe(PX * 4 * 4);
   });
@@ -103,8 +107,26 @@ describe("estimateFixedGpuBytes", () => {
     } as unknown as Pass;
     const bytes = estimateFixedGpuBytes(
       composerWith(rgba8Target(), rgba8Target()),
-      [pass],
+      named([pass]),
     );
     expect(bytes).toBe(PX * 4 * 3);
+  });
+
+  it("lists targets with their owning pass and allocation state", () => {
+    const shared = rgba8Target();
+    const own = rgba8Target();
+    const input = rgba8Target();
+    const output = rgba8Target();
+    const entries = listRenderTargets(composerWith(input, output), [
+      { name: "a", pass: { renderTarget: shared } as unknown as Pass },
+      { name: "b", pass: { shared, own } as unknown as Pass },
+    ]);
+    const owner = (t: WebGLRenderTarget) =>
+      entries.find((e) => e.target === t)?.owner;
+    expect(entries).toHaveLength(4);
+    expect(owner(input)).toBe("composer");
+    expect(owner(shared)).toBe("a");
+    expect(owner(own)).toBe("b");
+    expect(entries.every((e) => e.bytes === PX * 4 && e.allocated)).toBe(true);
   });
 });

@@ -32,6 +32,7 @@ const contextWith = (): EventContext => {
     stub,
     meshes,
     stub,
+    stub,
   );
   return {
     meshes,

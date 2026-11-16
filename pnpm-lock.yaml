@@ -649,6 +649,9 @@ importers:
       pbf:
         specifier: 5.1.2
         version: 5.1.2
+      tweakpane:
+        specifier: 4.0.5
+        version: 4.0.5
     devDependencies:
       '@navaramap/three':
         specifier: workspace:*
@@ -662,9 +665,15 @@ importers:
       '@types/geojson':
         specifier: 7946.0.16
         version: 7946.0.16
+      '@types/node':
+        specifier: 26.6.6
+        version: 26.6.6
       '@types/three':
         specifier: 0.187.0
         version: 0.187.0
+      postprocessing:
+        specifier: 6.39.6
+        version: 6.39.6(three@0.187.0)
       three:
         specifier: 0.187.0
         version: 0.187.0
