@@ -41,7 +41,18 @@ export {
   type TileJsonPluginEventMap,
 } from "./TileJsonPlugin";
 
-export * from "./MaterialSchemaPlugin";
+export {
+  MaterialSchemaPlugin,
+  MATERIAL_SCHEMA,
+  materialField,
+  type FieldApplies,
+  type FieldKind,
+  type FieldState,
+  type LayerStyle,
+  type MaterialField,
+  type MaterialSchema,
+  type MaterialState,
+} from "./MaterialSchemaPlugin";
 
 // Development-only tools (tweakpane panels); see the README.
 export * from "./devtools";

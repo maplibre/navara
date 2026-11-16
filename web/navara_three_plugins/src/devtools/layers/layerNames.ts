@@ -1,6 +1,6 @@
 import type { Layer, SourceDescription } from "@navaramap/three";
 
-import { descriptionOf } from "../../MaterialSchemaPlugin/layerDescriptions";
+import { descriptionOf } from "../../MaterialSchemaPlugin";
 import { hostOf } from "../util/format";
 import { describeSourceType } from "../util/names";
 

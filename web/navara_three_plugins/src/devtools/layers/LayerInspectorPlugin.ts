@@ -5,9 +5,11 @@ import type {
 } from "@navaramap/three";
 import type { FolderApi } from "tweakpane";
 
-import { MaterialSchemaPlugin } from "../../MaterialSchemaPlugin";
-import { descriptionOf } from "../../MaterialSchemaPlugin/layerDescriptions";
-import { materialField } from "../../MaterialSchemaPlugin/materialSchema";
+import {
+  descriptionOf,
+  MaterialSchemaPlugin,
+  materialField,
+} from "../../MaterialSchemaPlugin";
 import {
   DevtoolPlugin,
   type DevtoolContainer,

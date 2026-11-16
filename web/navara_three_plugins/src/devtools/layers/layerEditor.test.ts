@@ -1,12 +1,16 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { MATERIAL_SCHEMA } from "../../MaterialSchemaPlugin/materialSchema";
+import { MATERIAL_SCHEMA } from "../../MaterialSchemaPlugin";
 
 import { COMMON, MATERIAL_KEYS, RANGES } from "./layerEditor";
 
 // Importing `@navaramap/three` at runtime loads the worker pool.
-// eslint-disable-next-line @typescript-eslint/no-extraneous-class
-vi.mock("@navaramap/three", () => ({ Color: class Color {} }));
+/* eslint-disable @typescript-eslint/no-extraneous-class */
+vi.mock("@navaramap/three", () => ({
+  Color: class Color {},
+  Plugin: class Plugin {},
+}));
+/* eslint-enable @typescript-eslint/no-extraneous-class */
 
 describe("MATERIAL_KEYS", () => {
   it("shows polygon and polyline first, the rest in schema order", () => {

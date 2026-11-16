@@ -4,12 +4,10 @@ import type { BindingParams, ButtonApi, FolderApi } from "tweakpane";
 import {
   descriptionOf,
   isPlainObject,
-} from "../../MaterialSchemaPlugin/layerDescriptions";
-import {
   MATERIAL_SCHEMA,
   materialField,
   type MaterialField,
-} from "../../MaterialSchemaPlugin/materialSchema";
+} from "../../MaterialSchemaPlugin";
 import { hint } from "../util/html";
 
 const RELOAD_HINT =
