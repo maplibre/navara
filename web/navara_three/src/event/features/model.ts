@@ -7,6 +7,7 @@ import {
   BufferGeometry,
   Points,
   Group,
+  LoadingManager,
   Float32BufferAttribute,
   PointsMaterial,
   Box3,
@@ -15,7 +16,7 @@ import {
   Sphere,
 } from "three";
 
-import { createGltfLoader } from "../../loaders";
+import { createGltfLoader, mergeQuery } from "../../loaders";
 import type { DracoDecodeConfig } from "../../loaders/dracoGeometry";
 import { ModelMesh } from "../../mesh/model";
 import { decodeDracoAsync } from "../../tasks/decodeDracoAsync";
@@ -138,10 +139,22 @@ export async function renderModel(ctx: EventContext, m: NavaraModelMesh) {
         return { rawScene: group };
       }
 
-      const model = await createGltfLoader().parseAsync(
-        bin.buffer as ArrayBuffer,
-        "",
-      );
+      const loader = createGltfLoader();
+      const query = m.resource_query;
+      if (query) {
+        loader.manager = new LoadingManager().setURLModifier(mergeQuery(query));
+      }
+      const resourcePath = m.resource_path ?? "";
+      let model;
+      try {
+        model = await loader.parseAsync(
+          bin.buffer as ArrayBuffer,
+          resourcePath,
+        );
+      } catch (e) {
+        console.warn(`Failed to load model: ${resourcePath}`, e);
+        return {};
+      }
 
       return {
         rawScene: model.scene,

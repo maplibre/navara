@@ -81,6 +81,9 @@ pub trait TileContentParser: 'static + Send + Sync {
     type RenderedMarker: Component;
     /// Marker component on the `DataRequester` entity
     type RequesterMarker: Component;
+    /// Whether `ParsedTileContent::model_bin_handle` holds a glTF, whose
+    /// relative URIs resolve against the tile URL.
+    const BIN_IS_GLTF: bool;
 
     /// Parse raw tile data and produce components for the model entity.
     ///

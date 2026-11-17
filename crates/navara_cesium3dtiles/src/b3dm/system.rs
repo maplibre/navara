@@ -26,6 +26,7 @@ use navara_math::{PI_OVER_TWO, Quat, Transform};
 
 use super::parser::{generate_global_batch_ids, get_geometry_info_from_b3dm};
 use super::requester::B3dmLayerDataRequesterMarker;
+use crate::gltf_resource_base;
 
 /// Spawns data requesters for standalone B3DM layers (not part of 3D Tiles).
 pub fn request_model_by_b3dm_layer(
@@ -117,7 +118,10 @@ pub fn construct_model_by_b3dm_layer(
                 crs: CRS::Geocentric,
             },
             appearance,
-            ModelBin(glb_bin_handle),
+            ModelBin {
+                handle: glb_bin_handle,
+                gltf_resource: gltf_resource_base(&req.url),
+            },
             // TODO: Check asset property in tileset.json.
             // TODO: Clamp the height to terrain height.
             Transform::from_rotation(Quat::from_rotation_x(PI_OVER_TWO)),
@@ -193,7 +197,7 @@ pub fn delete_model_by_b3dm_layer(
 
                 if let Ok((modebin, feature_batch_id, ..)) = features.get(*feature_id) {
                     batch_table_res.remove(&feature_batch_id.0);
-                    buf.remove(&modebin.0);
+                    buf.remove(&modebin.handle);
                 }
                 commands.entity(*feature_id).despawn();
             }
