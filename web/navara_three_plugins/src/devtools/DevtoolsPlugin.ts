@@ -1,6 +1,10 @@
 import type ThreeView from "@navaramap/three";
 import { Plugin, type ViewContext } from "@navaramap/three";
 
+import {
+  CameraInspectorPlugin,
+  type CameraInspectorPluginOptions,
+} from "./camera/CameraInspectorPlugin";
 import type { DevtoolPlugin } from "./DevtoolPlugin";
 import { DevtoolsPanel, type DevtoolsPanelOptions } from "./DevtoolsPanel";
 import {
@@ -13,12 +17,12 @@ import {
 } from "./profiler/ProfilerPlugin";
 
 /** A tool `DevtoolsPlugin` can add, named by its tab. */
-export type DevtoolName = "profiler" | "layers";
+export type DevtoolName = "profiler" | "layers" | "camera";
 
 export type DevtoolsPluginOptions = {
   /**
    * The tools to add, as tabs in this order.
-   * @defaultValue `["profiler", "layers"]`
+   * @defaultValue `["profiler", "layers", "camera"]`
    */
   tools?: DevtoolName[];
   /** Options of the panel that hosts the tools. */
@@ -27,12 +31,15 @@ export type DevtoolsPluginOptions = {
   profiler?: Omit<ProfilerPluginOptions, "panel">;
   /** Options of the `"layers"` tool. */
   layers?: Omit<LayerInspectorPluginOptions, "panel" | "profiler">;
+  /** Options of the `"camera"` tool. */
+  camera?: Omit<CameraInspectorPluginOptions, "panel">;
 };
 
 /**
  * Development tools for a running view on one panel: the profiler (frame
- * time, memory, downloads, render buffers) and the layer inspector (layer
- * costs, visibility, a style editor). Add it before `view.init()`; press
+ * time, memory, downloads, render buffers), the layer inspector (layer
+ * costs, visibility, a style editor) and the camera inspector (position,
+ * orientation, field of view, copy / paste). Add it before `view.init()`; press
  * `` ` `` to show or hide the panel.
  */
 export class DevtoolsPlugin extends Plugin<ThreeView, ViewContext> {
@@ -42,6 +49,8 @@ export class DevtoolsPlugin extends Plugin<ThreeView, ViewContext> {
   readonly profiler: ProfilerPlugin | undefined;
   /** The `"layers"` tool, when added. */
   readonly layers: LayerInspectorPlugin | undefined;
+  /** The `"camera"` tool, when added. */
+  readonly camera: CameraInspectorPlugin | undefined;
 
   private readonly tools: DevtoolPlugin[] = [];
   private view: ThreeView | undefined;
@@ -50,7 +59,7 @@ export class DevtoolsPlugin extends Plugin<ThreeView, ViewContext> {
 
   constructor(options: DevtoolsPluginOptions = {}) {
     super();
-    const names = options.tools ?? ["profiler", "layers"];
+    const names = options.tools ?? ["profiler", "layers", "camera"];
     const panel = new DevtoolsPanel(options.panel);
     this.panel = panel;
     // The profiler is created first so the layer inspector can read its
@@ -65,8 +74,11 @@ export class DevtoolsPlugin extends Plugin<ThreeView, ViewContext> {
         profiler: this.profiler,
       });
     }
+    if (names.includes("camera")) {
+      this.camera = new CameraInspectorPlugin({ ...options.camera, panel });
+    }
     for (const name of names) {
-      const tool = name === "profiler" ? this.profiler : this.layers;
+      const tool = this[name];
       if (tool && !this.tools.includes(tool)) this.tools.push(tool);
     }
   }

@@ -1,6 +1,6 @@
 ---
 title: DevtoolsPlugin
-description: 動作中のビューを調べる開発用ツールを 1 つのパネルにまとめたプラグイン。プロファイラーとレイヤーインスペクターを備えます。
+description: 動作中のビューを調べる開発用ツールを 1 つのパネルにまとめたプラグイン。プロファイラー、レイヤーインスペクター、カメラインスペクターを備えます。
 sidebar:
   order: 7
 since: 0.3.2
@@ -12,6 +12,7 @@ since: 0.3.2
 
 - **Profiler**: 地図の描画速度とその理由を示します。フレームレート、CPU と GPU のフレーム時間、ドローコール、予算に対するエンジンのメモリ、ソースごとのダウンロード、バックグラウンド処理、そしてレンダラーの画像（法線、深度、影など）を地図の隅に表示します。
 - **Layers**: ビューのレイヤーと、それぞれのコスト（メッシュ、メモリ、ダウンロード）を一覧します。レイヤーごとの非表示チェックボックス、solo・ワイヤーフレーム・バウンディングボックスの切り替え、そして選択したレイヤーのマテリアルが受け付けるすべての設定を並べたスタイルフォームを備えます。
+- **Camera**: カメラの位置、向き、視野角を表示し、カメラの移動に合わせて更新します。値を編集するとカメラが動き、カメラを JS オブジェクトとしてコピー・ペーストできます。
 
 各行と各設定は、マウスを重ねると説明を表示します。各ツールには `enabled` の切り替えがあり、無効にしたツールはすべての処理を止めます。
 
@@ -59,10 +60,11 @@ new DevtoolsPlugin(options?: DevtoolsPluginOptions);
 
 | プロパティ | 型                                           | デフォルト               | 説明                                                                                                  |
 | ---------- | -------------------------------------------- | ------------------------ | ----------------------------------------------------------------------------------------------------- |
-| `tools`    | `DevtoolName[]`                              | `["profiler", "layers"]` | 追加するツール。この順にタブが並びます。[`DevtoolName`](#devtoolname) を参照してください。              |
+| `tools`    | `DevtoolName[]`                              | `["profiler", "layers", "camera"]` | 追加するツール。この順にタブが並びます。[`DevtoolName`](#devtoolname) を参照してください。              |
 | `panel`    | `DevtoolsPanelOptions`                       | `{}`                     | パネルのタイトル、サイズ、ホットキー、初期表示。[`DevtoolsPanelOptions`](#devtoolspaneloptions) を参照してください。 |
 | `profiler` | `{ enabled?: boolean }`                      | `{}`                     | Profiler の設定。`enabled` は有効な状態で始めるかどうかです（デフォルト `true`）。                      |
 | `layers`   | `{ enabled?: boolean; wireframe?: boolean }` | `{}`                     | Layers ツールの設定。[ワイヤーフレームとメモリ](#ワイヤーフレームとメモリ) を参照してください。          |
+| `camera`   | `{ enabled?: boolean }`                      | `{}`                     | Camera ツールの設定。`enabled` は有効な状態で始めるかどうかです（デフォルト `true`）。                  |
 
 ## プロパティ
 
@@ -83,6 +85,12 @@ new DevtoolsPlugin(options?: DevtoolsPluginOptions);
 **型:** `LayerInspectorPlugin | undefined`
 
 **説明:** Layers ツールです。`tools` に含まれないときは `undefined` です。`enabled` で有効・無効を切り替えます。`select(id)` は id でレイヤーを選択し、`selected()` は選択中のレイヤーを返します。
+
+### camera
+
+**型:** `CameraInspectorPlugin | undefined`
+
+**説明:** Camera ツールです。`tools` に含まれないときは `undefined` です。`enabled` で有効・無効を切り替えます。`snapshot()` はカメラを `CameraSnapshot` として返し、`apply(camera)` は渡したキーだけを設定して残りはそのままにします。
 
 ## メソッド
 
@@ -121,12 +129,32 @@ GPU 時間には WebGL 拡張 `EXT_disjoint_timer_query_webgl2`（デスクト�
 
 ワイヤーフレームの切り替えには各ジオメトリの頂点配列を JS メモリに残す必要があります。Layers ツールは有効な間、その間に作られたすべての地形とポリゴンのジオメトリについてそれを保持します。Profiler の JS ヒープにはそのコピーが含まれます。ツールを無効にすると保持をやめますが、ツールを有効にする前に作られたジオメトリはワイヤーフレームを表示できません。コピーを除いてメモリを測るには `layers: { wireframe: false }` を渡してください。このときワイヤーフレームの切り替えは非表示になります。
 
+## Camera
+
+`lng`、`lat`、`height`（楕円体からの高さ、メートル）、`heading`、`pitch`、`roll`（度）、`fov`（垂直方向の視野角、度）を表示します。ツールが無効な間、これらの操作はグレーアウトします。
+
+「Copy as JS object」はカメラをコピーします。
+
+```typescript
+{
+  lng: 139.7454,
+  lat: 35.6586,
+  height: 600,
+  heading: 0,
+  pitch: -15,
+  roll: 0,
+  fov: 50,
+}
+```
+
+「Paste JS object」はクリップボードから `key: number` の組を読み取るため、JS オブジェクト、JSON、`view.setCamera({ ... })` の呼び出しのいずれも使えます。`lng`、`lat`、`height` は必須で、省略したキーは現在の値のままです。
+
 ## 型
 
 ### DevtoolName
 
 ```typescript
-type DevtoolName = "profiler" | "layers";
+type DevtoolName = "profiler" | "layers" | "camera";
 ```
 
 `DevtoolsPlugin` が追加できるツール。タブの名前で表します。
@@ -139,6 +167,7 @@ type DevtoolsPluginOptions = {
   panel?: DevtoolsPanelOptions;
   profiler?: { enabled?: boolean };
   layers?: { enabled?: boolean; wireframe?: boolean };
+  camera?: { enabled?: boolean };
 };
 ```
 
@@ -167,7 +196,7 @@ type DevtoolsPanelOptions = {
 ## 補足
 
 - **開発専用です。** Profiler は有効な間 `fetch` と各レンダーパスをラップし、Layers ツールは有効な間、ワイヤーフレームのためにジオメトリ配列を保持します。どちらもアプリケーションには不要な時間とメモリを使います。
-- **ツールを 1 つだけ使う。** `ProfilerPlugin` と `LayerInspectorPlugin` もエクスポートされています。どちらかを単独で `view.addPlugin()` に渡すと、そのツールだけが専用のパネルに表示されます。
+- **ツールを 1 つだけ使う。** `ProfilerPlugin`、`LayerInspectorPlugin`、`CameraInspectorPlugin` もエクスポートされています。いずれかを単独で `view.addPlugin()` に渡すと、そのツールだけが専用のパネルに表示されます。
 
 ## 関連リソース
 

@@ -1,6 +1,6 @@
 ---
 title: DevtoolsPlugin
-description: Development tools for a running view on one panel, with a profiler and a layer inspector.
+description: Development tools for a running view on one panel, with a profiler, a layer inspector and a camera inspector.
 sidebar:
   order: 7
 since: 0.3.2
@@ -12,6 +12,7 @@ since: 0.3.2
 
 - **Profiler**: how fast the map draws and why. Frame rate, frame time on the CPU and the GPU, draw calls, engine memory against its budget, downloads per source, background work, and the renderer's images (normals, depth, shadows and more) in a corner of the map.
 - **Layers**: the view's layers with what each one costs (meshes, memory, downloads), a checkbox to hide each layer, solo, wireframe and bounding-box toggles, and a style form with every setting the selected layer's materials accept.
+- **Camera**: the camera's position, orientation and field of view, updated as the camera moves. Edit a value to move the camera, and copy or paste the camera as a JS object.
 
 Every row and setting explains itself when you hover it. Each tool has an `enabled` toggle: a disabled tool stops all its work.
 
@@ -59,10 +60,11 @@ Register the plugin with `view.addPlugin()` **before** `view.init()`. The Layers
 
 | Property   | Type                                | Default                  | Description                                                                                    |
 | ---------- | ----------------------------------- | ------------------------ | ---------------------------------------------------------------------------------------------- |
-| `tools`    | `DevtoolName[]`                     | `["profiler", "layers"]` | The tools to add, as tabs in this order. See [`DevtoolName`](#devtoolname).                     |
+| `tools`    | `DevtoolName[]`                     | `["profiler", "layers", "camera"]` | The tools to add, as tabs in this order. See [`DevtoolName`](#devtoolname).                     |
 | `panel`    | `DevtoolsPanelOptions`              | `{}`                     | Title, size, hotkey and start visibility of the panel. See [`DevtoolsPanelOptions`](#devtoolspaneloptions). |
 | `profiler` | `{ enabled?: boolean }`             | `{}`                     | Options of the Profiler. `enabled` sets whether it starts enabled (default `true`).            |
 | `layers`   | `{ enabled?: boolean; wireframe?: boolean }` | `{}`            | Options of the Layers tool. See [Wireframe and memory](#wireframe-and-memory).                  |
+| `camera`   | `{ enabled?: boolean }`             | `{}`                     | Options of the Camera tool. `enabled` sets whether it starts enabled (default `true`).         |
 
 ## Properties
 
@@ -83,6 +85,12 @@ Register the plugin with `view.addPlugin()` **before** `view.init()`. The Layers
 **Type:** `LayerInspectorPlugin | undefined`
 
 **Description:** The Layers tool, or `undefined` when `tools` leaves it out. Set `enabled` to switch it on and off. `select(id)` selects a layer by id, and `selected()` returns the selected layer.
+
+### camera
+
+**Type:** `CameraInspectorPlugin | undefined`
+
+**Description:** The Camera tool, or `undefined` when `tools` leaves it out. Set `enabled` to switch it on and off. `snapshot()` returns the camera as a `CameraSnapshot`, and `apply(camera)` sets the keys given and keeps the others.
 
 ## Methods
 
@@ -121,12 +129,32 @@ The style form lists every setting of the selected layer's materials, from [Mate
 
 The wireframe toggle needs each geometry's vertex arrays kept in JS memory. While the Layers tool is enabled, it keeps them for every terrain and polygon geometry built in that time. The Profiler's JS heap includes that copy. Disabling the tool stops this, but geometries built before the tool was enabled cannot show a wireframe. Pass `layers: { wireframe: false }` to measure memory without the copy. The wireframe toggle is then hidden.
 
+## Camera
+
+The tool shows `lng`, `lat` and `height` (meters above the ellipsoid), `heading`, `pitch` and `roll` (degrees), and `fov` (vertical field of view in degrees). While the tool is disabled, these controls are greyed out.
+
+"Copy as JS object" copies the camera:
+
+```typescript
+{
+  lng: 139.7454,
+  lat: 35.6586,
+  height: 600,
+  heading: 0,
+  pitch: -15,
+  roll: 0,
+  fov: 50,
+}
+```
+
+"Paste JS object" reads `key: number` pairs from the clipboard, so a JS object, JSON or a `view.setCamera({ ... })` call all work. `lng`, `lat` and `height` are required; a key left out keeps its current value.
+
 ## Types
 
 ### DevtoolName
 
 ```typescript
-type DevtoolName = "profiler" | "layers";
+type DevtoolName = "profiler" | "layers" | "camera";
 ```
 
 A tool `DevtoolsPlugin` can add, named by its tab.
@@ -139,6 +167,7 @@ type DevtoolsPluginOptions = {
   panel?: DevtoolsPanelOptions;
   profiler?: { enabled?: boolean };
   layers?: { enabled?: boolean; wireframe?: boolean };
+  camera?: { enabled?: boolean };
 };
 ```
 
@@ -167,7 +196,7 @@ type DevtoolsPanelOptions = {
 ## Notes
 
 - **Development only.** The Profiler wraps `fetch` and each render pass while it is enabled, and the Layers tool keeps geometry arrays for wireframes while it is enabled. Both cost time and memory that an application does not need.
-- **One tool at a time.** `ProfilerPlugin` and `LayerInspectorPlugin` are also exported. Add one of them alone with `view.addPlugin()` to get that tool in a panel of its own.
+- **One tool at a time.** `ProfilerPlugin`, `LayerInspectorPlugin` and `CameraInspectorPlugin` are also exported. Add one of them alone with `view.addPlugin()` to get that tool in a panel of its own.
 
 ## Related Resources
 
