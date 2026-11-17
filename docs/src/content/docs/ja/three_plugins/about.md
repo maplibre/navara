@@ -21,7 +21,7 @@ navara_three（コア: ThreeView, Plugin, addPlugin）
         ├── CesiumIonPlugin（Cesium Ion quantized-mesh 地形）
         ├── TileJsonPlugin（TileJSON 3.0.0 タイルソースの登録）
         ├── StreetLightsPlugin（夜の街灯・屋上灯・車）
-        ├── DevtoolsPlugin（開発用ツール：プロファイラーとレイヤーインスペクター）
+        ├── DevtoolsPlugin（開発用ツール：プロファイラー、レイヤーとカメラのインスペクター）
         └── MaterialSchemaPlugin（スタイル UI 向けに、レイヤーのマテリアルとスタイルを JSON で提供。
                                   スキーマ自体は @navaramap/material-schema）
 ```
@@ -67,7 +67,7 @@ TileJSON 3.0.0 ドキュメントを取得し、`addSource()` を通じて単一
 
 ### DevtoolsPlugin :since[0.3.2]
 
-1 つのパネルにまとめた開発用ツールです。プロファイラー（フレーム時間、メモリ、ダウンロード、描画バッファ）とレイヤーインスペクター（各レイヤーのコスト、表示切り替え、スタイルフォーム）を備えます。開発ビルド専用です。詳細は [DevtoolsPlugin](../devtoolsplugin/) を参照してください。
+1 つのパネルにまとめた開発用ツールです。プロファイラー（フレーム時間、メモリ、ダウンロード、描画バッファ）、レイヤーインスペクター（各レイヤーのコスト、表示切り替え、スタイルフォーム）、カメラインスペクター（位置、向き、視野角とそのコピー・貼り付け）を備えます。開発ビルド専用です。詳細は [DevtoolsPlugin](../devtoolsplugin/) を参照してください。
 
 ### MaterialSchemaPlugin :since[0.3.2]
 

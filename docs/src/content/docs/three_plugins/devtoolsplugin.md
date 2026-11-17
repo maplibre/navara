@@ -58,13 +58,13 @@ new DevtoolsPlugin(options?: DevtoolsPluginOptions);
 
 Register the plugin with `view.addPlugin()` **before** `view.init()`. The Layers tool starts recording each layer's configuration during `init()`, so it only knows layers added after that.
 
-| Property   | Type                                | Default                  | Description                                                                                    |
-| ---------- | ----------------------------------- | ------------------------ | ---------------------------------------------------------------------------------------------- |
-| `tools`    | `DevtoolName[]`                     | `["profiler", "layers", "camera"]` | The tools to add, as tabs in this order. See [`DevtoolName`](#devtoolname).                     |
-| `panel`    | `DevtoolsPanelOptions`              | `{}`                     | Title, size, hotkey and start visibility of the panel. See [`DevtoolsPanelOptions`](#devtoolspaneloptions). |
-| `profiler` | `{ enabled?: boolean }`             | `{}`                     | Options of the Profiler. `enabled` sets whether it starts enabled (default `true`).            |
-| `layers`   | `{ enabled?: boolean; wireframe?: boolean }` | `{}`            | Options of the Layers tool. See [Wireframe and memory](#wireframe-and-memory).                  |
-| `camera`   | `{ enabled?: boolean }`             | `{}`                     | Options of the Camera tool. `enabled` sets whether it starts enabled (default `true`).         |
+| Property   | Type                                         | Default                            | Description                                                                                                 |
+| ---------- | -------------------------------------------- | ---------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| `tools`    | `DevtoolName[]`                              | `["profiler", "layers", "camera"]` | The tools to add, as tabs in this order. See [`DevtoolName`](#devtoolname).                                 |
+| `panel`    | `DevtoolsPanelOptions`                       | `{}`                               | Title, size, hotkey and start visibility of the panel. See [`DevtoolsPanelOptions`](#devtoolspaneloptions). |
+| `profiler` | `{ enabled?: boolean }`                      | `{}`                               | Options of the Profiler. `enabled` sets whether it starts enabled (default `true`).                         |
+| `layers`   | `{ enabled?: boolean; wireframe?: boolean }` | `{}`                               | Options of the Layers tool. See [Wireframe and memory](#wireframe-and-memory).                              |
+| `camera`   | `{ enabled?: boolean }`                      | `{}`                               | Options of the Camera tool. `enabled` sets whether it starts enabled (default `true`).                      |
 
 ## Properties
 
@@ -90,7 +90,7 @@ Register the plugin with `view.addPlugin()` **before** `view.init()`. The Layers
 
 **Type:** `CameraInspectorPlugin | undefined`
 
-**Description:** The Camera tool, or `undefined` when `tools` leaves it out. Set `enabled` to switch it on and off. `snapshot()` returns the camera as a `CameraSnapshot`, and `apply(camera)` sets the keys given and keeps the others.
+**Description:** The Camera tool, or `undefined` when `tools` leaves it out. Set `enabled` to switch it on and off. `snapshot()` returns the camera as a `CameraSnapshot`, or `undefined` before the first engine update, and `apply(camera)` sets the keys given and keeps the others. `fov` changes only when it is given.
 
 ## Methods
 
@@ -106,16 +106,16 @@ Disables every tool and removes the panel from the page. `view.dispose()` calls 
 
 Navara draws only when something changes, so the frame rate and frame time cover drawn frames. The summary says "idle" while the map is still.
 
-| Section                   | What it shows                                                                                                                                                                  |
-| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Where the frame time goes | The latest drawn frame: the engine update, loading and building, each render pass (CPU time, GPU time, draw calls), and the rest.                                               |
-| Memory                    | Engine memory by kind against its budget, the cache of tiles kept for reuse, and whether detail is being reduced. Worker, font and JS heaps are listed outside the budget.       |
-| Downloads                 | Requests and bytes per source.                                                                                                                                                 |
-| Background work           | Pending work per kind (terrain tiles, worker tasks, features, imagery textures, downloads) and worker threads.                                                                 |
+| Section                   | What it shows                                                                                                                                                                              |
+| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Where the frame time goes | The latest drawn frame: the engine update, loading and building, each render pass (CPU time, GPU time, draw calls), and the rest.                                                          |
+| Memory                    | Engine memory by kind against its budget, the cache of tiles kept for reuse, and whether detail is being reduced. Worker, font and JS heaps are listed outside the budget.                 |
+| Downloads                 | Requests and bytes per source.                                                                                                                                                             |
+| Background work           | Pending work per kind (terrain tiles, worker tasks, features, imagery textures, downloads) and worker threads.                                                                             |
 | Draw details              | Draw calls, triangles, geometries and textures of the latest drawn frame, and shader programs compiled in the last 5 s. A count that never settles means something recompiles every frame. |
-| Screen buffers            | Render targets sized to the screen, by the pass that owns them.                                                                                                                |
+| Screen buffers            | Render targets sized to the screen, by the pass that owns them.                                                                                                                            |
 | Buffer viewer             | One of the renderer's images in a corner of the map: scene color, normals, roughness, reflectance, depth (as distance), shadows, selective effects, emissive. Unavailable buffers say why. |
-| Record frames             | The next N drawn frames' timings and per-pass costs, downloaded as JSON.                                                                                                        |
+| Record frames             | The next N drawn frames' timings and per-pass costs, downloaded as JSON.                                                                                                                   |
 
 GPU times need the `EXT_disjoint_timer_query_webgl2` WebGL extension (Chrome on desktop). Without it, the GPU columns are empty.
 
@@ -131,7 +131,7 @@ The wireframe toggle needs each geometry's vertex arrays kept in JS memory. Whil
 
 ## Camera
 
-The tool shows `lng`, `lat` and `height` (meters above the ellipsoid), `heading`, `pitch` and `roll` (degrees), and `fov` (vertical field of view in degrees). While the tool is disabled, these controls are greyed out.
+The tool shows `lng`, `lat` and `height` (meters above the ellipsoid), `heading`, `pitch` and `roll` (degrees), and `fov` (vertical field of view in degrees). They follow the camera only while the tab is shown. The controls are greyed out while the tool is disabled and until the engine camera exists (the first engine update).
 
 "Copy as JS object" copies the camera:
 
@@ -147,7 +147,9 @@ The tool shows `lng`, `lat` and `height` (meters above the ellipsoid), `heading`
 }
 ```
 
-"Paste JS object" reads `key: number` pairs from the clipboard, so a JS object, JSON or a `view.setCamera({ ... })` call all work. `lng`, `lat` and `height` are required; a key left out keeps its current value.
+"Paste JS object" reads `key: number` pairs from the clipboard, so a JS object, JSON or a `view.setCamera({ ... })` call all work. It reads the outermost object that has `lng`, `lat` and `height`, and skips nested objects and comments. A key left out keeps its current value. A value out of range (for example `lat` beyond ±90 or `fov` outside 1–179) is not applied, and the button says which key.
+
+The clipboard works only on `https://` pages and `localhost`. On a dev server opened by its LAN address, the buttons say "Clipboard needs HTTPS".
 
 ## Types
 
@@ -185,13 +187,13 @@ type DevtoolsPanelOptions = {
 };
 ```
 
-| Property    | Type             | Default             | Description                                                                                                     |
-| ----------- | ---------------- | ------------------- | --------------------------------------------------------------------------------------------------------------- |
-| `title`     | `string`         | `"Navara devtools"` | Panel title.                                                                                                    |
-| `container` | `HTMLElement`    | `document.body`     | Element the panel is appended to.                                                                               |
-| `hotkey`    | `string \| null` | `` "`" ``           | Key that shows or hides the panel, as `KeyboardEvent.key`. Ignored while a text field has focus. `null` turns it off. |
-| `width`     | `number`         | `440`               | Panel width in CSS pixels.                                                                                      |
-| `visible`   | `boolean`        | `true`              | Whether the panel starts visible.                                                                               |
+| Property    | Type             | Default             | Description                                                                                                           |
+| ----------- | ---------------- | ------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| `title`     | `string`         | `"Navara devtools"` | Panel title.                                                                                                          |
+| `container` | `HTMLElement`    | `document.body`     | Element the panel is appended to.                                                                                     |
+| `hotkey`    | `string \| null` | ``"`"``             | Key that shows or hides the panel, as `KeyboardEvent.key`. Ignored while a text field has focus. `null` turns it off. |
+| `width`     | `number`         | `440`               | Panel width in CSS pixels.                                                                                            |
+| `visible`   | `boolean`        | `true`              | Whether the panel starts visible.                                                                                     |
 
 ## Notes
 

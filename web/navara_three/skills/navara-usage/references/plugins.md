@@ -55,7 +55,7 @@ Development-only layer inspector: `view.layers` with meshes, memory and per-sour
 
 ### `CameraInspectorPlugin` — `@navaramap/three-plugins`
 
-Development-only camera panel: `lng` / `lat` / `height` / `heading` / `pitch` / `roll` / `fov` follow the camera's `move` events and set it when edited; copy / paste the camera as a JS object (paste reads `key: number` pairs, so a `setCamera({ … })` call works; `lng`, `lat`, `height` required). `snapshot()` / `apply(partial)` from code after `init()`
+Development-only camera panel: `lng` / `lat` / `height` / `heading` / `pitch` / `roll` / `fov` follow the camera (`move`, `frustumChanged`) while the tab is shown and set it when edited; copy / paste the camera as a JS object (paste reads the outermost object's `key: number` pairs, so a `setCamera({ … })` call works; `lng`, `lat`, `height` required; out-of-range values rejected; clipboard needs https or localhost). `snapshot()` (`undefined` before the first engine update) / `apply(partial)` (`fov` only when given) from code after `init()`
 
 ### `MaterialSchemaPlugin` — `@navaramap/three-plugins`
 
