@@ -197,7 +197,7 @@ pub fn remove_batched_feature(
             batch_table_res.remove(&feature_batch_id.0);
         }
 
-        buf.remove(&model_bin.0);
+        buf.remove(&model_bin.handle);
         commands.entity(feature_id).despawn();
     }
 }

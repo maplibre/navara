@@ -103,7 +103,10 @@ pub fn construct_model_by_pnts_layer(
                 crs: CRS::Geocentric,
             },
             appearance,
-            ModelBin(positions_handle),
+            ModelBin {
+                handle: positions_handle,
+                gltf_resource: None,
+            },
             Transform::IDENTITY,
         ));
 
@@ -159,7 +162,7 @@ pub fn delete_model_by_pnts_layer(
 
         for e in entities {
             if let Ok(f) = features.get(*e) {
-                buf.remove(&f.0);
+                buf.remove(&f.handle);
             };
             commands.entity(*e).despawn();
         }

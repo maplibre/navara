@@ -18,6 +18,7 @@ pub struct GlbParser;
 impl TileContentParser for GlbParser {
     type RenderedMarker = RenderedCesium3dTileContentGlbMarker;
     type RequesterMarker = GlbDataRequesterMarker;
+    const BIN_IS_GLTF: bool = true;
 
     fn parse(ctx: &mut ParseContext) -> Option<ParsedTileContent> {
         Some(ParsedTileContent {

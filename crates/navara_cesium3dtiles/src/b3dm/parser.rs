@@ -21,6 +21,7 @@ pub struct B3dmParser;
 impl TileContentParser for B3dmParser {
     type RenderedMarker = RenderedCesium3dTileContentB3dmMarker;
     type RequesterMarker = B3dmDataRequesterMarker;
+    const BIN_IS_GLTF: bool = true;
 
     fn parse(ctx: &mut ParseContext) -> Option<ParsedTileContent> {
         let (center, glb_bin_handle, batch_table, batch_length) =
