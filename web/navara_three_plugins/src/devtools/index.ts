@@ -40,9 +40,4 @@ export {
   describeLayerAsCode,
   type StyleEditorOptions,
 } from "./layers/layerEditor";
-export {
-  MATERIAL_SCHEMA,
-  type FieldKind,
-  type MaterialField,
-} from "./layers/materialSchema.generated";
 export { collectLayerCosts, type LayerCost } from "./layers/layerCost";

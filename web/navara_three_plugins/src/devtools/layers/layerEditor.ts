@@ -1,34 +1,42 @@
+import {
+  MATERIAL_SCHEMA,
+  materialField,
+  type MaterialField,
+} from "@navaramap/material-schema";
 import { Color, type Layer, type LayerDescription } from "@navaramap/three";
 import type { BindingParams, ButtonApi, FolderApi } from "tweakpane";
 
+import { descriptionOf, isPlainObject } from "../../MaterialSchemaPlugin";
 import { hint } from "../util/html";
 
-import { descriptionOf } from "./layerDescriptions";
-import {
-  MATERIAL_SCHEMA,
-  type MaterialField,
-} from "./materialSchema.generated";
-import {
-  NO_EFFECT_FIELDS,
-  NO_EFFECT_HINT,
-  RELOAD_FIELDS,
-  RELOAD_HINT,
-  isReloadField,
-} from "./reloadFields";
+const RELOAD_HINT =
+  "↻ Applies to what is already drawn only after Reload layer: the engine reads it when it builds the layer. MVT and tiled layers also use it for tiles loaded later.";
+const NEVER_HINT = "∅ No effect: the engine does not read this field.";
 
-/** Material keys each layer type can carry, in display order. */
-const MATERIAL_KEYS: Record<string, string[]> = {
-  vector: ["polygon", "polyline", "point", "billboard", "text"],
-  raster: ["raster", "hillshade", "elevationHeatmap"],
-  terrain: ["terrain"],
-  "3d-tiles": ["model"],
+/** Materials shown first, in this order; the others follow in schema order. */
+const DISPLAY_FIRST = ["polygon", "polyline"];
+
+const displayRank = (key: string): number => {
+  const i = DISPLAY_FIRST.indexOf(key);
+  return i < 0 ? DISPLAY_FIRST.length : i;
 };
+
+/**
+ * Material keys each layer type can carry (`MATERIAL_SCHEMA.layers`), in
+ * display order.
+ */
+export const MATERIAL_KEYS: Record<string, string[]> = Object.fromEntries(
+  Object.entries(MATERIAL_SCHEMA.layers).map(([type, keys]) => [
+    type,
+    [...keys].sort((a, b) => displayRank(a) - displayRank(b)),
+  ]),
+);
 
 /** Keys shown even when the description does not carry them. */
 const ALWAYS_SHOWN = new Set(["raster", "terrain", "model"]);
 
 /** The fields most edited; the rest go under "More". Unknown names are skipped. */
-const COMMON: Record<string, string[]> = {
+export const COMMON: Record<string, string[]> = {
   point: [
     "show",
     "color",
@@ -118,14 +126,16 @@ const COMMON: Record<string, string[]> = {
 };
 
 /** Slider ranges for fields whose meaning bounds them. */
-const RANGES: Record<string, { min: number; max: number; step?: number }> = {
+export const RANGES: Record<
+  string,
+  { min: number; max: number; step?: number }
+> = {
   opacity: { min: 0, max: 1, step: 0.01 },
   outlineOpacity: { min: 0, max: 1, step: 0.01 },
   metalness: { min: 0, max: 1, step: 0.01 },
   roughness: { min: 0, max: 1, step: 0.01 },
   reflectivity: { min: 0, max: 1, step: 0.01 },
   borderWidth: { min: 0, max: 0.5, step: 0.01 },
-  cornerRadius: { min: 0, max: 0.5, step: 0.01 },
   rotation: { min: -180, max: 180, step: 1 },
   outlineWidth: { min: 0, max: 20, step: 0.5 },
   outlineBlur: { min: 0, max: 10, step: 0.5 },
@@ -138,14 +148,6 @@ const RANGES: Record<string, { min: number; max: number; step?: number }> = {
 };
 
 const AUTO = "(auto)";
-
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    Object.getPrototypeOf(value) === Object.prototype
-  );
-}
 
 function toHex(value: unknown): string | undefined {
   if (value instanceof Color) {
@@ -202,10 +204,9 @@ type Patch = Record<string, Record<string, unknown>>;
  * A form for a layer's style, generated from the engine's material schema:
  * every field the material accepts, showing the layer's value or, when the
  * layer leaves it unset, the engine's default. A `•` after a name marks a
- * value set on the layer, `↻` one that applies only after a reload
- * ({@link RELOAD_FIELDS}), `∅` one the engine ignores
- * ({@link NO_EFFECT_FIELDS}). Changes apply as you edit, merged into at most
- * one `layer.update()` per frame.
+ * value set on the layer, `↻` one that applies only after a reload, `∅` one
+ * the engine ignores (`MaterialField.applies`). Changes apply as you edit,
+ * merged into at most one `layer.update()` per frame.
  */
 export class StyleEditor {
   /** Top-level controls this editor added to the container. */
@@ -280,7 +281,7 @@ export class StyleEditor {
   }
 
   private addMaterial(key: string): void {
-    const fields = MATERIAL_SCHEMA[key];
+    const fields = MATERIAL_SCHEMA.materials[key];
     if (!fields) return;
     const desc = descriptionOf(this.layer) as unknown as Record<
       string,
@@ -322,10 +323,8 @@ export class StyleEditor {
   ): void {
     const set = field.name in values && values[field.name] !== undefined;
     const value = set ? values[field.name] : field.default;
-    const reload = isReloadField(key, field.name);
-    const reloadNote = RELOAD_FIELDS[key]?.[field.name];
-    const noEffect = NO_EFFECT_FIELDS[key]?.includes(field.name) ?? false;
-    const mark = reload ? " ↻" : noEffect ? " ∅" : "";
+    const reload = field.applies === "reload";
+    const mark = reload ? " ↻" : field.applies === "never" ? " ∅" : "";
     const label = `${field.name}${set ? " •" : ""}${mark}`;
     const autoLabel = `${field.name} ${AUTO}${mark}`;
     const title = [
@@ -335,8 +334,8 @@ export class StyleEditor {
         ? "Set on this layer (•)."
         : "Not set on this layer: the default applies.",
       reload ? RELOAD_HINT : "",
-      reloadNote ?? "",
-      noEffect ? NO_EFFECT_HINT : "",
+      field.applies === "never" ? NEVER_HINT : "",
+      field.note ?? "",
     ]
       .filter(Boolean)
       .join("\n");
@@ -551,7 +550,7 @@ export class StyleEditor {
 function revertValue(path: string, original: unknown): unknown {
   if (original !== undefined) return original;
   const [key, name] = path.split(".");
-  return MATERIAL_SCHEMA[key]?.find((f) => f.name === name)?.default;
+  return materialField(key, name)?.default;
 }
 
 /**

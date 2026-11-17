@@ -30,7 +30,7 @@
 use bevy_ecs::{component::Component, entity::Entity, system::Query};
 use navara_core::{BoundingSphere, BoundingVolume, Extent, LngLat, Obb};
 use navara_data_requester::DataRequesterExtension;
-use navara_feature_component::{id::FeatureId, render::RenderableFeature};
+use navara_feature_component::{id::FeatureId, model::GltfResourceBase, render::RenderableFeature};
 use navara_layer::Cesium3dTilesLayer;
 use navara_material::Appearance;
 use navara_math::{FloatType, Mat4, Transform, Vec3};
@@ -336,6 +336,20 @@ impl Cesium3dTileContent {
     }
 }
 
+/// Resource base for a glTF fetched from `url`, so its relative URIs resolve
+/// like [`Cesium3dTileContent::make_content_url`] resolves content URIs.
+/// `None` unless `url` is http(s): `blob:`/`data:` URLs cannot be a base.
+pub(crate) fn gltf_resource_base(url: &str) -> Option<Arc<GltfResourceBase>> {
+    let url = Url::parse(url).ok()?;
+    if !matches!(url.scheme(), "http" | "https") {
+        return None;
+    }
+    Some(Arc::new(GltfResourceBase {
+        path: url.join(".").ok()?.into(),
+        query: url.query().map(str::to_owned),
+    }))
+}
+
 /// Per-frame traversal state for a tile.
 ///
 /// This state is reset at the beginning of each traversal and updated
@@ -414,4 +428,23 @@ pub struct RenderedCesium3dTileContent {
 #[derive(Component)]
 pub struct TileTransform {
     pub transform: Transform,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn gltf_resource_base_splits_query_containing_slash() {
+        let base =
+            gltf_resource_base("https://example.com/tiles/data/root.glb?sig=a/b&v=1").unwrap();
+        assert_eq!(base.path, "https://example.com/tiles/data/");
+        assert_eq!(base.query.as_deref(), Some("sig=a/b&v=1"));
+    }
+
+    #[test]
+    fn gltf_resource_base_skips_non_http() {
+        assert!(gltf_resource_base("blob:https://example.com/0f8c").is_none());
+        assert!(gltf_resource_base("data:model/gltf-binary;base64,AA==").is_none());
+    }
 }

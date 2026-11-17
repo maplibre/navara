@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use bevy_ecs::component::Component;
 use navara_buffer_store::Handle;
 use navara_core::CRS;
@@ -13,4 +15,17 @@ pub struct ModelGeometry {
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Component)]
-pub struct ModelBin(pub Handle);
+pub struct ModelBin {
+    pub handle: Handle,
+    /// `None` when the bin is not glTF or was not fetched over http(s).
+    pub gltf_resource: Option<Arc<GltfResourceBase>>,
+}
+
+/// Where relative URIs inside a glTF bin resolve.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct GltfResourceBase {
+    /// Directory of the bin's URL, without query.
+    pub path: String,
+    /// Query of the bin's URL; fills in parameters a resolved URI lacks.
+    pub query: Option<String>,
+}

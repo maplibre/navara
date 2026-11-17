@@ -6,6 +6,7 @@ Optional feature plugins for `@navaramap/three`. Each plugin packages a self-con
 - **`OverlayPlugin`**: anchors DOM elements to geographic positions and keeps them projected to screen space as the camera moves.
 - **`CesiumIonPlugin`**: resolves a Cesium Ion asset endpoint and registers the asset as a quantized-mesh terrain layer via `addTerrain()`.
 - **`TileJsonPlugin`**: fetches a TileJSON 3.0.0 document and registers it as a Navara source, surfacing its attribution through the view's built-in credit UI.
+- **`MaterialSchemaPlugin`**: every layer material the engine accepts as JSON (fields, kinds, defaults, options, when a change applies), and each layer's current values, for building a style UI (see [Material schema](#material-schema)).
 - **`DevtoolsPlugin`**: development-only tools on a tweakpane panel, a profiler and a layer inspector (see [Devtools](#devtools)).
 - **`StreetLightsPlugin`**: street lamps, roof beacons and moving traffic at night, streamed in around the camera from vector tiles, read through the caller's readers for any schema.
 
@@ -117,16 +118,46 @@ drawn frames; the summary says "idle" while the map is still.
 Click a layer to select it; its checkbox hides it by setting `show: false` on
 its styles. Hiding the terrain hides the globe surface and the imagery and
 ground-clamped vectors drawn onto it, so Solo keeps the terrain for those
-layers. The style form is generated from the engine's material
-definitions (`MATERIAL_SCHEMA`, from `pnpm run generate:schema`): a field set
-on the layer is marked `•`, the others show the engine default, and hovering
-one shows its documentation. Changes apply as you edit; "Undo my changes"
-puts the values back.
+layers. The style form is generated from the
+[material schema](#material-schema): a field set on the layer is marked `•`,
+the others show the engine default, `↻` marks a field that applies after
+Reload layer and `∅` one with no effect, and hovering one shows its
+documentation. Changes apply as you edit; "Undo my changes" puts the values
+back.
 
 The wireframe toggle needs geometry arrays kept on the CPU
 (`ViewContext.retainGeometryArrays`), which the plugin turns on before layers
 load. That costs a JS-heap copy of every terrain and polygon geometry; pass
 `wireframe: false` to profile memory without it.
+
+## Material schema
+
+`MaterialSchemaPlugin` describes the layer materials as plain JSON, so an app
+can build its own style editor. `schema` (`MATERIAL_SCHEMA` from
+[`@navaramap/material-schema`](../navara_material_schema), which needs no
+engine) lists the materials of each layer type and every field: its `kind`
+(`boolean`, `number`, `color` as a hex number, `enum`, …), `doc`, engine
+`default`, enum `options`, and `applies`: `"live"` on `layer.update()`,
+`"reload"` only when the layer is built again, or `"never"`.
+`describeLayer(layer)` adds the layer's own values:
+
+```typescript
+import { MaterialSchemaPlugin } from "@navaramap/three-plugins";
+
+const materials = new MaterialSchemaPlugin();
+view.addPlugin(materials); // before view.init(): it records each added layer
+await view.init();
+
+const layer = view.addLayer({ type: "vector", source, polygon: {} });
+for (const { key, present, fields } of materials.describeLayer(layer)
+  .materials) {
+  for (const f of fields) console.log(key, f.name, f.kind, f.set, f.value);
+}
+```
+
+The schema is generated from the engine's Rust sources in
+`@navaramap/material-schema`; run `pnpm run generate:schema` there after
+changing a material.
 
 ## Documentation
 

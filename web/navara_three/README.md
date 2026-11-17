@@ -74,7 +74,8 @@ This package ships the `navara-usage` [agent skill](https://pnpm.io/agent-skills
 
 - [`@navaramap/three-default-plugin`](https://github.com/reearth/navara/tree/main/web/navara_three_default_plugin): registers all built-in Descriptors at once
 - [`@navaramap/three-default-descs`](https://github.com/reearth/navara/tree/main/web/navara_three_default_descs): the individual Descriptor classes and their config types
-- [`@navaramap/three-plugins`](https://github.com/reearth/navara/tree/main/web/navara_three_plugins): optional feature plugins (first-person walk, DOM overlays, Cesium ion, TileJSON)
+- [`@navaramap/three-plugins`](https://github.com/reearth/navara/tree/main/web/navara_three_plugins): optional feature plugins (first-person walk, DOM overlays, Cesium ion, TileJSON, material schema for style UIs)
+- [`@navaramap/material-schema`](https://github.com/reearth/navara/tree/main/web/navara_material_schema): every layer material and its fields as plain JSON, usable without the engine
 - [`@navaramap/three-react`](https://github.com/reearth/navara/tree/main/web/navara_three_react): React bindings
 
 ## Documentation

@@ -53,6 +53,10 @@ Development-only tweakpane profiler with hover explanations: summary (frame rate
 
 Development-only layer inspector: `view.layers` with meshes, memory and per-source downloads (with `{ profiler }`), a hide checkbox per layer, solo, wireframe (polygon layers, or `view.globe.wireframe` for terrain/imagery), bounding boxes, and a live style form generated from the engine's material schema (every field, defaults shown, `•` = set on the layer, undo). Turns on `ViewContext.retainGeometryArrays` for wireframes (a JS-heap copy of terrain/polygon geometry; `wireframe: false` opts out). `new LayerInspectorPlugin({ panel, profiler })` before `init()`
 
+### `MaterialSchemaPlugin` — `@navaramap/three-plugins`
+
+For an app's own style UI: `schema` (= `MATERIAL_SCHEMA` from `@navaramap/material-schema`, which has no dependencies and can be used without a view; keep its version equal to `@navaramap/three`'s) is JSON of each layer type's materials and every field (`kind`, `doc`, `default`, `options`, `applies`: `"live"` / `"reload"` = only when the layer is built, re-add it / `"never"`); `describeLayer(layer)` adds `set` and `value` per field. Add before `init()`: only layers added after it are described. A `color` value is a hex number: pass `new Color().setHex(v)` back to `layer.update()`, and typed-array fields come back as plain arrays
+
 ## addDefaultPhotorealScene()
 
 ```typescript

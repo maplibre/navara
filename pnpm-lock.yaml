@@ -388,6 +388,12 @@ importers:
         specifier: 4.23.15
         version: 4.23.15
 
+  web/navara_material_schema:
+    devDependencies:
+      '@types/node':
+        specifier: 26.6.6
+        version: 26.6.6
+
   web/navara_three:
     dependencies:
       '@navaramap/core':
@@ -646,6 +652,9 @@ importers:
       '@mapbox/vector-tile':
         specifier: 3.0.0
         version: 3.0.0
+      '@navaramap/material-schema':
+        specifier: workspace:*
+        version: link:../navara_material_schema
       pbf:
         specifier: 5.1.2
         version: 5.1.2
