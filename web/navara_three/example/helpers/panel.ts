@@ -33,6 +33,8 @@ const ANCHOR_OPTIONS = Object.fromEntries(
   ].map((anchor) => [anchor, anchor]),
 );
 
+const EXTRUSION_BASE_OPTIONS = { position: "position", ellipsoid: "ellipsoid" };
+
 const selectedFeatures = new Set<string>();
 const selectedBatchIds = new Set<number>();
 
@@ -184,6 +186,8 @@ export const addCtrlPanel = (
     maxWidth: 10000,
     height: 1,
     extrudedHeight: 1,
+    perPositionHeight: false,
+    extrusionBase: "position",
     clampToGround: false,
     wireframe: false,
     sizeInMeters: true,
@@ -258,26 +262,29 @@ export const addCtrlPanel = (
       layerDeleted[paneParams.layer] = 1;
       btnCtrl.title = "Add Layer";
     } else {
-      const oldLayerId = layerIds[paneParams.layer];
-      const layerDef = layerMap.get(oldLayerId);
-      if (layerDef) {
-        const newLayer = view.addLayer(layerDef);
-        if (newLayer.id) {
-          layerInstMap.set(newLayer.id, newLayer);
-          layerMap.set(newLayer.id, layerDef);
-          layerIds[paneParams.layer] = newLayer.id;
-          layerDeleted[paneParams.layer] = 0;
-
-          if (layerDef.type !== "raster") {
-            addFeatureUpdateHandler(layerDef, newLayer);
-          }
-        }
-      }
-
-      layerMap.delete(oldLayerId);
-
+      readdLayer(paneParams.layer);
       btnCtrl.title = "Delete Layer";
     }
+  }
+
+  function readdLayer(index: number) {
+    const oldLayerId = layerIds[index];
+    const layerDef = layerMap.get(oldLayerId);
+    if (layerDef) {
+      const newLayer = view.addLayer(layerDef);
+      if (newLayer.id) {
+        layerInstMap.set(newLayer.id, newLayer);
+        layerMap.set(newLayer.id, layerDef);
+        layerIds[index] = newLayer.id;
+        layerDeleted[index] = 0;
+
+        if (layerDef.type !== "raster") {
+          addFeatureUpdateHandler(layerDef, newLayer);
+        }
+      }
+    }
+
+    layerMap.delete(oldLayerId);
   }
 
   function onLayerChange() {
@@ -362,6 +369,19 @@ export const addCtrlPanel = (
 
       if ("extrudedHeight" in material) {
         material.extrudedHeight = paneParams.extrudedHeight;
+      }
+
+      // These are read when the layer builds its geometry, so a change needs
+      // a new layer instead of an update.
+      let rebuild = false;
+      if ("perPositionHeight" in material) {
+        rebuild ||= material.perPositionHeight !== paneParams.perPositionHeight;
+        material.perPositionHeight = paneParams.perPositionHeight;
+      }
+
+      if ("extrusionBase" in material) {
+        rebuild ||= material.extrusionBase !== paneParams.extrusionBase;
+        material.extrusionBase = paneParams.extrusionBase;
       }
 
       if ("clampToGround" in material) {
@@ -495,6 +515,15 @@ export const addCtrlPanel = (
         material.depthTest = paneParams.depthTest;
       }
 
+      if (rebuild) {
+        if (!layerDeleted[paneParams.layer]) {
+          view.deleteLayerById(layerId);
+          layerInstMap.delete(layerId);
+          readdLayer(paneParams.layer);
+        }
+        return;
+      }
+
       // Spread the whole layer description so source-based layers keep their
       // `source` (and legacy layers keep their `data`) on update.
       view.updateLayerById(layerId, {
@@ -575,6 +604,18 @@ function createParamCtrl(
     if ("extrudedHeight" in material) {
       paneParams.extrudedHeight = material.extrudedHeight;
       f.addBinding(paneParams, "extrudedHeight").on("change", changeFunc);
+    }
+
+    if ("perPositionHeight" in material) {
+      paneParams.perPositionHeight = material.perPositionHeight;
+      f.addBinding(paneParams, "perPositionHeight").on("change", changeFunc);
+    }
+
+    if ("extrusionBase" in material) {
+      paneParams.extrusionBase = material.extrusionBase ?? "position";
+      f.addBinding(paneParams, "extrusionBase", {
+        options: EXTRUSION_BASE_OPTIONS,
+      }).on("change", changeFunc);
     }
 
     if ("clampToGround" in material) {

@@ -265,6 +265,7 @@ pub fn update_terrain(
     tc.is_updated_in_this_frame = true;
     tc.retraverse_at = None;
     tc.begin_traversal(frame.rendered_frame());
+    tc.min_zoom_descent.refill();
     tc.prev_layers_len = tiles_len;
 
     // Memory-pressure LOD degrade, weighted by distance relative to the
@@ -347,7 +348,8 @@ pub fn update_terrain(
                 activate_selected_subtree(&qt, &tc, &mut meshes, root_handle, true);
             }
             // Skip rendering root tile if below minimum zoom, but allow traversal above.
-            _ if !is_over_min_z => {}
+            // With the min zoom descent budget spent, a root may be the leaf.
+            _ if !is_over_min_z && !tc.min_zoom_descent.is_spent() => {}
             TraversalResult::TileRendered => {
                 spawn_tile_entity(
                     &mut commands,

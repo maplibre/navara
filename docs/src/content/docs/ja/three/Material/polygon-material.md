@@ -145,7 +145,7 @@ import { Color } from "@navaramap/three";
 
 **Type:** `number | undefined`
 
-**Description:** 押し出し高さを指定します。`clampToGround`が false の場合に機能します。
+**Description:** ポリゴンを指定したメートル数だけ上に押し出します。上面は楕円体から `height + extrudedHeight` の高さに置かれ、[`perPositionHeight`](#perpositionheight) のときは各位置からその高さに置かれます。`perPositionHeight` で [`extrusionBase`](#extrusionbase) が `"ellipsoid"` のときは、上面は各位置からこの値だけ上に置かれ、`height` は加わりません。`clampToGround` が false の場合に機能します。
 
 **Default:** `undefined`
 
@@ -155,6 +155,32 @@ import { Color } from "@navaramap/three";
 {
   polygon: {
     extrudedHeight: 50 // 50メートル押し出し
+  }
+}
+```
+
+### extrusionBase :since[0.3.2]
+
+**Type:** `"position" | "ellipsoid" | undefined`
+
+**Description:** [`perPositionHeight`](#perpositionheight) のポリゴンで、下面が何に沿うかを指定します。
+
+- `"position"`: 下面も上面も各位置に沿います。下面は各位置から [`height`](#height) だけ上、上面は `height + extrudedHeight` だけ上に置かれるため、ポリゴンの厚さはどこでも同じです。
+- `"ellipsoid"`: 下面は楕円体から `height` の高さに平らに置かれ、上面は各位置から [`extrudedHeight`](#extrudedheight) だけ上に置かれます。ポリゴンはその間を埋めます。CesiumJS が `perPositionHeight` と `extrudedHeight` の両方を持つポリゴンを描く形と同じです。下面が上面より上に来る部分は裏返って描かれるため、`height` は上面の最も低いところより下にしてください。
+
+`perPositionHeight` がない場合、位置は楕円体の上に置かれるため、どちらの値でも同じポリゴンになります。レイヤーを追加するときに指定してください。`layer.update()` では、表示済みのポリゴンは作り直されません。
+
+**Default:** `"position"`
+
+**Example:**
+
+```typescript
+{
+  polygon: {
+    clampToGround: false,
+    perPositionHeight: true,
+    // 各位置の高さにある水面から楕円体までを埋める
+    extrusionBase: "ellipsoid"
   }
 }
 ```
@@ -184,7 +210,7 @@ import { Color } from "@navaramap/three";
 
 **Type:** `number | undefined`
 
-**Description:** 高さを指定します。`clampToGround`が false の場合に機能します。単位はメートルです。
+**Description:** ポリゴンの下面を指定したメートル数だけ上げます。基準は楕円体で、[`perPositionHeight`](#perpositionheight) のときは各位置です。ただし [`extrusionBase`](#extrusionbase) が `"ellipsoid"` のときは楕円体が基準になります。`clampToGround` が false の場合に機能します。
 
 **Default:** `undefined`
 
@@ -330,7 +356,7 @@ import { Color } from "@navaramap/three";
 
 **Type:** `boolean | undefined`
 
-**Description:** 高さをデータから取得するかどうかを指定します。false の場合、高さは定数になります。
+**Description:** 各位置の高さを使います。`false` の場合、位置は楕円体の上に置かれ、ポリゴンの高さは [`height`](#height) で決まります。このポリゴンの下面の位置は [`extrusionBase`](#extrusionbase) で決まります。レイヤーを追加するときに指定してください。`layer.update()` では、表示済みのポリゴンは作り直されません。
 
 **Default:** `undefined`
 

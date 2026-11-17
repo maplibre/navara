@@ -169,7 +169,7 @@ sidebar:
 
 **Type:** `number`
 
-**Description:** ポリゴンをこのメートル数だけ上方向に押し出します。上面は `height + extrudedHeight` の高さになります。`clampToGround` が `false` のときに有効です。
+**Description:** ポリゴンをこのメートル数だけ上方向に押し出します。上面は `height + extrudedHeight` の高さになります。`perPositionHeight` で `extrusionBase: "ellipsoid"` のときは、上面は各座標からこの値だけ上になります。`clampToGround` が `false` のときに有効です。
 
 **Default:** `0`
 
@@ -189,7 +189,7 @@ sidebar:
 
 **Type:** `boolean`
 
-**Description:** 一定の `height` の代わりに、各座標の高さを使います。`clampToGround` が `false` のときに有効です。
+**Description:** ポリゴンを各座標の高さに置き、`height` と `extrudedHeight` をそこから測ります。下面の位置は `extrusionBase` で決まります。`clampToGround` が `false` のときに有効です。
 
 **Default:** `false`
 
@@ -200,6 +200,26 @@ sidebar:
   polygon: {
     clampToGround: false,
     perPositionHeight: true,
+  }
+}
+```
+
+### extrusionBase :since[0.3.2]
+
+**Type:** `"position" | "ellipsoid"`
+
+**Description:** `perPositionHeight` のポリゴンで、下面が何に沿うかを指定します。`"position"` では、下面は各座標から `height` だけ上、上面は `height + extrudedHeight` だけ上に置かれます。`"ellipsoid"` では、下面は楕円体から `height` の高さに平らに置かれ、上面は各座標から `extrudedHeight` だけ上に置かれます。CesiumJS が `perPositionHeight` と `extrudedHeight` の両方を持つポリゴンを描く形と同じです。下面が上面より上に来る部分は裏返って描かれるため、`height` は上面の最も低いところより下にしてください。`perPositionHeight` がない場合、どちらでも同じポリゴンになります。`clampToGround` が `false` のときに有効です。
+
+**Default:** `"position"`
+
+**Example:**
+
+```typescript
+{
+  polygon: {
+    clampToGround: false,
+    perPositionHeight: true,
+    extrusionBase: "ellipsoid",
   }
 }
 ```

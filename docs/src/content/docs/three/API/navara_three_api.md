@@ -1203,7 +1203,7 @@ function buildPolygonGeometry(
 
 - `rings`: The outer ring first, then the holes. Each ring is a flat `[lng, lat, height, ...]` array in degrees and meters, or `[x, y, z, ...]` in ECEF meters when `geocentric` is `true`
 - `geocentric`: Reads the positions as ECEF meters instead of longitude and latitude
-- `material`: A [`polygon`](../../../three/material/polygon-material/) layer material as a plain object, with colors as numbers. `clampToGround`, `height` and `perPositionHeight` shape the geometry, and the outline options are ignored
+- `material`: A [`polygon`](../../../three/material/polygon-material/) layer material as a plain object, with colors as numbers. `clampToGround`, `height`, `perPositionHeight` and `extrusionBase` shape the geometry, and the outline options are ignored
 
 **Returns:**
 

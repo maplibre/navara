@@ -281,6 +281,7 @@ pub fn update_raster_tiles(
     // Sort the layer list once per run; the traversal touches every visited tile.
     let sorted_layers: Vec<_> = tiles.iter().sort::<&Order>().collect();
 
+    tc.min_zoom_descent.refill();
     let root_coords = (TilingScheme::WebMercator { tms: false }).root_tiles();
     for root in &root_coords {
         let coords = (root.x, root.y, root.z);

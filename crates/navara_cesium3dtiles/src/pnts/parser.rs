@@ -17,6 +17,7 @@ pub struct PntsParser;
 impl TileContentParser for PntsParser {
     type RenderedMarker = RenderedCesium3dTileContentPntsMarker;
     type RequesterMarker = PntsDataRequesterMarker;
+    const BIN_IS_GLTF: bool = false;
 
     fn parse(ctx: &mut ParseContext) -> Option<ParsedTileContent> {
         let (draco_attributes, positions_center, positions_handle) =

@@ -275,7 +275,12 @@ export {
 } from "./pick/pickHelper";
 export * from "@navaramap/three-api";
 export * from "./Color";
-export { type BlendMode, blendFunction, createReplacer } from "./utils";
+export {
+  type BlendMode,
+  blendFunction,
+  boundingSphereOfRte,
+  createReplacer,
+} from "./utils";
 export type { RenderTargetEntry } from "./utils/fixedGpuFootprint";
 
 export { Atmosphere, type AtmosphereOptions } from "./atmosphere";

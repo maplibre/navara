@@ -169,7 +169,7 @@ Set exactly one of `positions`, `points` or `geojson`. Setting one in `update()`
 
 **Type:** `number`
 
-**Description:** Extrudes the polygon upward by this many meters, so its top sits at `height + extrudedHeight`. Applies when `clampToGround` is `false`.
+**Description:** Extrudes the polygon upward by this many meters, so its top sits at `height + extrudedHeight`. With `perPositionHeight` and `extrusionBase: "ellipsoid"`, the top is this many meters above each position. Applies when `clampToGround` is `false`.
 
 **Default:** `0`
 
@@ -189,7 +189,7 @@ Set exactly one of `positions`, `points` or `geojson`. Setting one in `update()`
 
 **Type:** `boolean`
 
-**Description:** Uses the height of each position instead of the constant `height`. Applies when `clampToGround` is `false`.
+**Description:** Places the polygon at the height of each position, with `height` and `extrudedHeight` measured from there. `extrusionBase` sets where the bottom lies. Applies when `clampToGround` is `false`.
 
 **Default:** `false`
 
@@ -200,6 +200,26 @@ Set exactly one of `positions`, `points` or `geojson`. Setting one in `update()`
   polygon: {
     clampToGround: false,
     perPositionHeight: true,
+  }
+}
+```
+
+### extrusionBase :since[0.3.2]
+
+**Type:** `"position" | "ellipsoid"`
+
+**Description:** Sets what the bottom of a polygon with `perPositionHeight` follows. With `"position"`, the bottom is `height` above each position and the top `height + extrudedHeight` above it. With `"ellipsoid"`, the bottom lies flat at `height` above the ellipsoid and the top is `extrudedHeight` above each position, as CesiumJS draws a polygon with both `perPositionHeight` and `extrudedHeight`; where the bottom lies above the top, the polygon is drawn inside out, so keep `height` below the lowest top. Without `perPositionHeight` both draw the same polygon. Applies when `clampToGround` is `false`.
+
+**Default:** `"position"`
+
+**Example:**
+
+```typescript
+{
+  polygon: {
+    clampToGround: false,
+    perPositionHeight: true,
+    extrusionBase: "ellipsoid",
   }
 }
 ```

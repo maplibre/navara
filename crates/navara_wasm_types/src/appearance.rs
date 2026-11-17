@@ -35,6 +35,19 @@ fn geometry_type_names(value: &[navara_material::SourceGeometryType]) -> Vec<Str
     value.iter().map(|t| t.as_str().to_string()).collect()
 }
 
+/// Parse a JS-facing extrusion base, warning on an unknown value so the caller
+/// keeps the material's current value.
+fn parse_extrusion_base(value: &Option<String>) -> Option<navara_geometry::ExtrusionBase> {
+    let name = value.as_ref()?;
+    let base = navara_geometry::ExtrusionBase::parse(name);
+    if base.is_none() {
+        bevy_log::warn!(
+            "extrusionBase: unknown value {name:?} (expected \"position\" or \"ellipsoid\")"
+        );
+    }
+    base
+}
+
 /// Parse a JS-facing facing name, warning on an unknown value so the caller
 /// keeps the material's current value. `field` is the JS property name
 /// (`textFacing` / `pointFacing` / `billboardFacing`) so the warning points at
@@ -1629,6 +1642,12 @@ pub struct PolygonMaterial {
     #[wasm_bindgen(js_name = perPositionHeight)]
     #[serde(rename = "perPositionHeight")]
     pub per_position_height: Option<bool>,
+    /// What the bottom follows when `perPositionHeight` is set: `"position"`
+    /// keeps both caps at the heights of the positions, `"ellipsoid"` lays the
+    /// bottom flat on the ellipsoid.
+    #[wasm_bindgen(getter_with_clone, js_name = extrusionBase)]
+    #[serde(rename = "extrusionBase")]
+    pub extrusion_base: Option<String>,
     /// Need to enable `transparent`.
     pub opacity: Option<f32>,
     /// Enable `opacity`. It might cause unexpected behavior when you use an effect.
@@ -1732,6 +1751,7 @@ impl PolygonMaterial {
         wireframe: Option<bool>,
         outline: Option<bool>,
         per_position_height: Option<bool>,
+        extrusion_base: Option<String>,
         __internal__: Option<PolygonInternalMaterial>,
     ) -> Self {
         Self {
@@ -1751,6 +1771,7 @@ impl PolygonMaterial {
             __internal__,
 
             per_position_height,
+            extrusion_base,
             opacity: None,
             transparent: None,
 
@@ -1808,6 +1829,8 @@ impl PolygonMaterial {
             per_position_height: self
                 .per_position_height
                 .unwrap_or(other.per_position_height),
+            extrusion_base: parse_extrusion_base(&self.extrusion_base)
+                .unwrap_or(other.extrusion_base),
             opacity: self.opacity.unwrap_or(other.opacity),
             transparent: self.transparent.unwrap_or(other.transparent),
 
@@ -1862,6 +1885,8 @@ impl From<PolygonMaterial> for navara_material::PolygonMaterial {
             per_position_height: val
                 .per_position_height
                 .unwrap_or(default.per_position_height),
+            extrusion_base: parse_extrusion_base(&val.extrusion_base)
+                .unwrap_or(default.extrusion_base),
             opacity: val.opacity.unwrap_or(default.opacity),
             transparent: val.transparent.unwrap_or(default.transparent),
 
@@ -1910,6 +1935,7 @@ impl<'a> From<&'a navara_material::PolygonMaterial> for PolygonMaterial {
             __internal__: value.internal.as_ref().map(|v| v.into()),
 
             per_position_height: Some(value.per_position_height),
+            extrusion_base: Some(value.extrusion_base.as_str().to_owned()),
             opacity: Some(value.opacity),
             transparent: Some(value.transparent),
 
@@ -1955,6 +1981,7 @@ impl From<navara_material::PolygonMaterial> for PolygonMaterial {
             __internal__: value.internal.map(|v| v.into()),
 
             per_position_height: Some(value.per_position_height),
+            extrusion_base: Some(value.extrusion_base.as_str().to_owned()),
             opacity: Some(value.opacity),
             transparent: Some(value.transparent),
 

@@ -21,7 +21,9 @@ navara_three（コア: ThreeView, Plugin, addPlugin）
         ├── CesiumIonPlugin（Cesium Ion quantized-mesh 地形）
         ├── TileJsonPlugin（TileJSON 3.0.0 タイルソースの登録）
         ├── StreetLightsPlugin（夜の街灯・屋上灯・車）
-        └── DevtoolsPlugin（開発用ツール：プロファイラーとレイヤーインスペクター）
+        ├── DevtoolsPlugin（開発用ツール：プロファイラーとレイヤーインスペクター）
+        └── MaterialSchemaPlugin（スタイル UI 向けに、レイヤーのマテリアルとスタイルを JSON で提供。
+                                  スキーマ自体は @navaramap/material-schema）
 ```
 
 `three_plugins` は `Plugin` 基底クラスとコア API のために `navara_three` に依存し、`DefaultDescriptions` 型のために `three_default_plugin` に依存しています。各プラグインは独立しており、片方だけを使うこともできます。
@@ -37,6 +39,7 @@ import {
   StreetLightsPlugin,
   moveOverlayElement,
   DevtoolsPlugin,
+  MaterialSchemaPlugin,
 } from "@navaramap/three-plugins";
 ```
 
@@ -65,6 +68,10 @@ TileJSON 3.0.0 ドキュメントを取得し、`addSource()` を通じて単一
 ### DevtoolsPlugin :since[0.3.2]
 
 1 つのパネルにまとめた開発用ツールです。プロファイラー（フレーム時間、メモリ、ダウンロード、描画バッファ）とレイヤーインスペクター（各レイヤーのコスト、表示切り替え、スタイルフォーム）を備えます。開発ビルド専用です。詳細は [DevtoolsPlugin](../devtoolsplugin/) を参照してください。
+
+### MaterialSchemaPlugin :since[0.3.2]
+
+エンジンが受け付けるすべてのレイヤーマテリアルを JSON で記述します。レイヤータイプごとのマテリアルと、各フィールドの種類、説明、デフォルト値、受け付ける値、そして変更がすぐに反映されるか、レイヤーを追加し直したときにだけ反映されるかを含みます。`describeLayer()` はレイヤー自身の値を加えるので、スタイル UI を作るのに使えます。詳細は [MaterialSchemaPlugin](../materialschemaplugin/) を参照してください。
 
 ## 使い方
 

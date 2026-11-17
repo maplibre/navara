@@ -1,9 +1,8 @@
 import type { Layer, SourceDescription } from "@navaramap/three";
 
+import { descriptionOf } from "../../MaterialSchemaPlugin";
 import { hostOf } from "../util/format";
 import { describeSourceType } from "../util/names";
-
-import { descriptionOf } from "./layerDescriptions";
 
 export type LayerLabel = {
   /** Short name for lists: what the layer draws. */

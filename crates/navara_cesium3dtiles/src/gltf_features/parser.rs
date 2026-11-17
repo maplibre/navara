@@ -24,6 +24,7 @@ pub struct GltfFeaturesParser;
 impl TileContentParser for GltfFeaturesParser {
     type RenderedMarker = RenderedCesium3dTileContentGltfFeaturesMarker;
     type RequesterMarker = GltfFeaturesDataRequesterMarker;
+    const BIN_IS_GLTF: bool = true;
 
     fn parse(ctx: &mut ParseContext) -> Option<ParsedTileContent> {
         let glb_bin = ctx.buf.get_u8(&ctx.requester_handle)?;

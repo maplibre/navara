@@ -72,7 +72,7 @@
     "@navaramap/engine-api": "workspace:*",
     "@zarrita/storage": "0.2.0",
     "delaunator": "5.1.0",
-    "earcut": "3.0.2",
+    "earcut": "3.2.4",
     "zarrita": "0.7.5"
   },
   "devDependencies": {
@@ -80,7 +80,7 @@
     "@navaramap/three-default-descs": "workspace:*",
     "@navaramap/three-default-plugin": "workspace:*",
     "@navaramap/three-plugins": "workspace:*",
-    "@types/earcut": "3.0.0",
+    "@types/earcut": "3.2.4",
     "@types/node": "26.6.6",
     "@types/three": "0.187.0",
     "h5wasm": "0.10.3",

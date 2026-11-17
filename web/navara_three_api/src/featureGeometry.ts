@@ -2,6 +2,7 @@ import type { NormalizeWASMClass } from "@navaramap/core";
 import {
   buildPolygonGeometry as buildPolygonGeometryWasm,
   buildPolylineGeometry as buildPolylineGeometryWasm,
+  polygonCapOffsets as polygonCapOffsetsWasm,
   polygonGroundVolume as polygonGroundVolumeWasm,
   polylineGroundVolume as polylineGroundVolumeWasm,
   angleToDegree,
@@ -232,6 +233,27 @@ function groundVolume(
     angleToRadian(extent.north),
   );
   return [heights[0], heights[1]];
+}
+
+/**
+ * `[bottom, top]` offsets by which the shader raises the caps of an unclamped
+ * polygon built by {@link buildPolygonGeometry}, by the vector layer's rule.
+ * An unset `height` or `extrudedHeight` reads as 0.
+ * @internal For `PolygonMeshDesc`.
+ */
+export function polygonCapOffsets(
+  material: Pick<
+    PolygonGeometryMaterial,
+    "height" | "extrudedHeight" | "perPositionHeight" | "extrusionBase"
+  >,
+): [number, number] {
+  const offsets = polygonCapOffsetsWasm(
+    material.height ?? 0,
+    material.extrudedHeight ?? 0,
+    material.perPositionHeight ?? false,
+    material.extrusionBase,
+  );
+  return [offsets[0], offsets[1]];
 }
 
 /**

@@ -1,7 +1,9 @@
 import type ThreeView from "@navaramap/three";
 import {
   MeshDescWithSelectiveEffect,
+  boundingSphereOfRte,
   buildPolygonGeometry,
+  polygonCapOffsets,
   polygonGroundVolume,
   createPolygonMaterialEnhancer,
   createShadowDepthMaterial,
@@ -28,7 +30,6 @@ import {
 } from "three";
 
 import {
-  boundingSphereOfRte,
   FeatureDrapedMesh,
   releaseFeatureMaterial,
   setBatchIdAttribute,
@@ -92,7 +93,12 @@ type PolygonEnhancer = ReturnType<typeof createPolygonMaterialEnhancer>;
  * Style keys the geometry builder reads; patching one rebuilds the geometry.
  * `extrudedHeight` is applied in the vertex shader.
  */
-const GEOMETRY_KEYS = ["clampToGround", "perPositionHeight", "height"] as const;
+const GEOMETRY_KEYS = [
+  "clampToGround",
+  "perPositionHeight",
+  "extrusionBase",
+  "height",
+] as const;
 
 /** Style keys the geometry builder does not read. */
 const NON_GEOMETRY_KEYS = [...POSITION_KEYS, "useGroundNormals"];
@@ -333,11 +339,9 @@ export class PolygonMeshDesc extends MeshDescWithSelectiveEffect<
    * the ground is watched.
    */
   private minMaxHeight(style: PolygonMeshStyle): [number, number] {
+    if (!isClampedToGround(style)) return polygonCapOffsets(style);
     const height = style.height ?? 0;
     const extrudedHeight = style.extrudedHeight ?? 0;
-    if (!isClampedToGround(style)) {
-      return [height, height + extrudedHeight];
-    }
 
     const ground = this.ground.heights;
     if (!ground) {

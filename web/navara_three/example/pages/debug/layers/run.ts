@@ -444,6 +444,52 @@ const createGeoLayersDef = (
     },
   },
   {
+    // A sloped polygon with a hole whose vertices carry their own heights.
+    type: "vector",
+    source: view.addSource({
+      type: "geojson",
+      data: {
+        type: "Feature",
+        properties: {},
+        geometry: {
+          type: "Polygon",
+          coordinates: [
+            [
+              [139.7555, 35.6795, 40],
+              [139.7595, 35.6795, 80],
+              [139.7595, 35.6825, 140],
+              [139.7555, 35.6825, 100],
+              [139.7555, 35.6795, 40],
+            ],
+            [
+              [139.7568, 35.6805, 73],
+              [139.7568, 35.6815, 93],
+              [139.7582, 35.6815, 107],
+              [139.7582, 35.6805, 87],
+              [139.7568, 35.6805, 73],
+            ],
+          ],
+        },
+      },
+    }),
+    polygon: {
+      color: new Color().setStyle("#2f8fff"),
+      height: 0,
+      extrudedHeight: 0,
+      clampToGround: false,
+      wireframe: false,
+      outlineColor: new Color().setStyle("#ffffff"),
+      outlineWidth: 2,
+      outline: true,
+      outlineShow: true,
+      surfaceShow: true,
+      castShadow: true,
+      receiveShadow: true,
+      perPositionHeight: true,
+      extrusionBase: "ellipsoid",
+    },
+  },
+  {
     type: "3d-tiles",
     source: view.addSource({
       type: "b3dm",

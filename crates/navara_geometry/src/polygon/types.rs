@@ -16,6 +16,57 @@ pub enum WindingOrder {
     CounterClockwise,
 }
 
+/// What the bottom of an extruded polygon follows when the polygon keeps the
+/// height of each position. Without per-position heights the positions lie on
+/// the ellipsoid, so both give the same polygon.
+#[derive(Default, Debug, PartialEq, Eq, Copy, Clone)]
+pub enum ExtrusionBase {
+    /// Both caps follow the positions: the bottom is offset from them by
+    /// `height`, the top by `height` + `extruded_height`.
+    #[default]
+    Position,
+    /// The bottom lies flat on the ellipsoid, offset by `height`, and the top
+    /// is offset from the positions by `extruded_height`.
+    Ellipsoid,
+}
+
+impl ExtrusionBase {
+    /// Parse the JS-facing name (`"position" | "ellipsoid"`).
+    pub fn parse(value: &str) -> Option<Self> {
+        match value {
+            "position" => Some(Self::Position),
+            "ellipsoid" => Some(Self::Ellipsoid),
+            _ => None,
+        }
+    }
+
+    /// JS-facing name of this base.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Position => "position",
+            Self::Ellipsoid => "ellipsoid",
+        }
+    }
+}
+
+/// Offsets of the bottom and the top cap of an unclamped polygon along the up
+/// vector, from the bases the geometry places them on. The top is raised by
+/// `height` only when both caps share a base.
+pub fn polygon_cap_offsets(
+    height: f64,
+    extruded_height: f64,
+    per_position_height: bool,
+    extrusion_base: ExtrusionBase,
+) -> (f64, f64) {
+    let caps_apart = per_position_height && extrusion_base == ExtrusionBase::Ellipsoid;
+    let top = if caps_apart {
+        extruded_height
+    } else {
+        height + extruded_height
+    };
+    (height, top)
+}
+
 #[derive(Default, Debug)]
 pub struct HierarchyDVec3 {
     pub outer_ring: Vec<Vec3>,
@@ -222,7 +273,28 @@ mod test {
 
     use crate::WindingOrder;
 
-    use super::check_winding_order_dvec3;
+    use super::{ExtrusionBase, check_winding_order_dvec3, polygon_cap_offsets};
+
+    #[test]
+    fn top_is_raised_by_the_bottom_height_when_both_caps_share_a_base() {
+        for (per_position_height, base) in [
+            (false, ExtrusionBase::Ellipsoid),
+            (true, ExtrusionBase::Position),
+        ] {
+            assert_eq!(
+                polygon_cap_offsets(5., 20., per_position_height, base),
+                (5., 25.)
+            );
+        }
+    }
+
+    #[test]
+    fn top_keeps_its_own_offset_when_the_caps_have_different_bases() {
+        assert_eq!(
+            polygon_cap_offsets(5., 20., true, ExtrusionBase::Ellipsoid),
+            (5., 20.)
+        );
+    }
 
     #[test]
     fn it_should_compute_counter_clockwise() {

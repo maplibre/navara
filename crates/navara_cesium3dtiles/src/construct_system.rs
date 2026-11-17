@@ -24,7 +24,7 @@ use navara_memory::TileCost;
 
 use crate::{
     Cesium3dTileContentDataRequesterMarker, Cesium3dTilesTree, RenderedCesium3dTileContent,
-    TileOrderByDistance, TileTransform,
+    TileOrderByDistance, TileTransform, gltf_resource_base,
     tile_content_parser::{ParseContext, TileContentParser},
 };
 
@@ -130,7 +130,14 @@ pub fn construct_model_by_cesium3dtiles_layer<T: TileContentParser>(
                 crs: parsed.crs,
             },
             appearance,
-            ModelBin(parsed.model_bin_handle),
+            ModelBin {
+                handle: parsed.model_bin_handle,
+                gltf_resource: if T::BIN_IS_GLTF {
+                    gltf_resource_base(&req.url)
+                } else {
+                    None
+                },
+            },
             parsed.transform,
         ));
 
