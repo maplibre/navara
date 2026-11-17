@@ -4,3 +4,4 @@ export {
   disposeTexture,
 } from "./AbortableTextureLoader";
 export { createGltfLoader } from "./createGltfLoader";
+export { mergeQuery } from "./mergeQuery";
