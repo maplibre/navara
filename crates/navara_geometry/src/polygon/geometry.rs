@@ -1,10 +1,10 @@
-use navara_core::{CRS, Ellipsoid, EncodedVec3, Meters, WGS84_64};
+use navara_core::{CRS, Ellipsoid, EncodedVec3, WGS84_64};
 use navara_math::{EPSILON10, EqualEpsilon, FloatType, RADIANS_PER_DEGREE, Vec2, Vec3};
 
 use crate::{FloatAttribute, helpers::vec::unpack_flatten_vec3_from_f32};
 
 use super::{
-    HierarchyDVec3, PolygonGeometryAttributes, PolygonResource, WindingOrder,
+    ExtrusionBase, HierarchyDVec3, PolygonGeometryAttributes, PolygonResource, WindingOrder,
     helpers::{
         compute_outline_positions, compute_wall_geometry, create_geometry_from_positions,
         polygons_from_hierarchy, project_to_2d, scale_to_geodetic_height_extruded,
@@ -29,6 +29,7 @@ pub struct PolygonGeometryOptions {
     pub extruded_height: f32,
     pub height: f32,
     pub per_position_height: bool,
+    pub extrusion_base: ExtrusionBase,
     pub use_rte: bool,
     pub outline: bool,
 }
@@ -47,6 +48,7 @@ impl Default for PolygonGeometryOptions {
             extruded_height: 0.,
             height: 1.,
             per_position_height: false,
+            extrusion_base: ExtrusionBase::Position,
             use_rte: true, // Default to true for individual features
             outline: false,
         }
@@ -182,10 +184,16 @@ fn create_side_outline(
     skip_indices: &mut Vec<u32>,
     scale_normal_cap: &mut Vec<f32>,
     per_position_height: bool,
+    extrusion_base: ExtrusionBase,
 ) {
     for p in ring {
         let mut side_seg = vec![p.x, p.y, p.z, p.x, p.y, p.z];
-        let s_n_c = scale_to_geodetic_height_extruded(&mut side_seg, WGS84_64, per_position_height);
+        let s_n_c = scale_to_geodetic_height_extruded(
+            &mut side_seg,
+            WGS84_64,
+            per_position_height,
+            extrusion_base,
+        );
         scale_normal_cap.extend(s_n_c);
 
         positions.extend(side_seg);
@@ -197,6 +205,7 @@ fn outlines_from_hierarchy(
     hierarchies: &[HierarchyDVec3],
     granularity: f64,
     per_position_height: bool,
+    extrusion_base: ExtrusionBase,
     use_rte: bool,
 ) -> PolygonOutlineGeometry {
     let mut positions = vec![];
@@ -206,7 +215,12 @@ fn outlines_from_hierarchy(
     for hierarchy in hierarchies {
         let outer_ring = &(hierarchy.outer_ring);
         let mut poss = compute_outline_positions(WGS84_64, outer_ring, granularity);
-        let s_n_c = scale_to_geodetic_height_extruded(&mut poss, WGS84_64, per_position_height);
+        let s_n_c = scale_to_geodetic_height_extruded(
+            &mut poss,
+            WGS84_64,
+            per_position_height,
+            extrusion_base,
+        );
         scale_normal_cap.extend(s_n_c);
 
         // top end index
@@ -221,14 +235,19 @@ fn outlines_from_hierarchy(
             &mut skip_indices,
             &mut scale_normal_cap,
             per_position_height,
+            extrusion_base,
         );
 
         if let Some(holes_src) = &(hierarchy.holes) {
             for hole_src in holes_src {
                 let mut poss =
                     compute_outline_positions(WGS84_64, &hole_src.outer_ring, granularity);
-                let s_n_c =
-                    scale_to_geodetic_height_extruded(&mut poss, WGS84_64, per_position_height);
+                let s_n_c = scale_to_geodetic_height_extruded(
+                    &mut poss,
+                    WGS84_64,
+                    per_position_height,
+                    extrusion_base,
+                );
                 scale_normal_cap.extend(s_n_c);
 
                 // top end index
@@ -243,6 +262,7 @@ fn outlines_from_hierarchy(
                     &mut skip_indices,
                     &mut scale_normal_cap,
                     per_position_height,
+                    extrusion_base,
                 );
             }
         }
@@ -277,6 +297,7 @@ pub fn create_polygon_geometry(
     polygon_resource: &mut PolygonResource,
 ) -> Option<PolygonGeometryResult> {
     let per_position_height = options.per_position_height;
+    let extrusion_base = options.extrusion_base;
     let granularity = options.granularity;
     let polygon_hierarchy = &options.hierarchy;
     let clamp_to_ground = options.clamp_to_ground;
@@ -298,6 +319,7 @@ pub fn create_polygon_geometry(
             &hierarchies,
             granularity as f64,
             per_position_height,
+            extrusion_base,
             options.use_rte,
         ))
     } else {
@@ -316,6 +338,7 @@ pub fn create_polygon_geometry(
             granularity as f64,
             &hierarchies[i],
             per_position_height,
+            extrusion_base,
             use_rte,
         );
 
@@ -324,7 +347,6 @@ pub fn create_polygon_geometry(
                 WGS84_64,
                 &split_geometry.top_bottom_geometry.attributes,
                 false,
-                per_position_height,
             );
             split_geometry.top_bottom_geometry.attributes.normal =
                 Some(FloatAttribute::new(top_bottom_normals, 3));
@@ -334,12 +356,8 @@ pub fn create_polygon_geometry(
 
         for mut wall_geometry in split_geometry.wall_geometries {
             if !clamp_to_ground {
-                let wall_normals = compute_extruded_normals(
-                    WGS84_64,
-                    &wall_geometry.attributes,
-                    true,
-                    per_position_height,
-                );
+                let wall_normals =
+                    compute_extruded_normals(WGS84_64, &wall_geometry.attributes, true);
                 wall_geometry.attributes.normal = Some(FloatAttribute::new(wall_normals, 3));
             }
             geometries.push(wall_geometry);
@@ -437,6 +455,7 @@ pub struct ExtrudedPolygonGeometry {
 }
 
 // Ref: https://github.com/CesiumGS/cesium/blob/baaabaa49058067c855ad050be73a9cdfe9b6ac7/packages/engine/Source/Core/PolygonGeometry.js#L428
+#[allow(clippy::too_many_arguments)]
 pub fn create_geometry_from_positions_extruded(
     ellipsoid: Ellipsoid<FloatType>,
     polygon_resource: &mut PolygonResource,
@@ -444,6 +463,7 @@ pub fn create_geometry_from_positions_extruded(
     granularity: FloatType,
     hierarchy: &HierarchyDVec3,
     per_position_height: bool,
+    extrusion_base: ExtrusionBase,
     use_rte: bool,
 ) -> ExtrudedPolygonGeometry {
     let (mut top_positions, mut top_indices) = create_geometry_from_positions(
@@ -477,6 +497,7 @@ pub fn create_geometry_from_positions_extruded(
         &mut top_bottom_positions,
         ellipsoid,
         per_position_height,
+        extrusion_base,
     );
 
     // Conditionally encode positions based on use_rte
@@ -491,8 +512,12 @@ pub fn create_geometry_from_positions_extruded(
     let (mut wall_positions, wall_indices) =
         compute_wall_geometry(ellipsoid, outer_ring, granularity);
 
-    let wall_scale_normal_and_cap =
-        scale_to_geodetic_height_extruded(&mut wall_positions, ellipsoid, per_position_height);
+    let wall_scale_normal_and_cap = scale_to_geodetic_height_extruded(
+        &mut wall_positions,
+        ellipsoid,
+        per_position_height,
+        extrusion_base,
+    );
 
     // Conditionally encode wall positions based on use_rte
     let (wall_pos, wall_pos_high, wall_pos_low) =
@@ -520,6 +545,7 @@ pub fn create_geometry_from_positions_extruded(
                 &mut hole_wall_pos,
                 ellipsoid,
                 per_position_height,
+                extrusion_base,
             );
 
             // Conditionally encode hole wall positions based on use_rte
@@ -596,7 +622,6 @@ fn compute_extruded_normals(
     ellipsoid: Ellipsoid<FloatType>,
     attributes: &PolygonGeometryAttributes,
     wall: bool,
-    per_position_height: bool,
 ) -> Vec<f32> {
     // Helper closure to get position at index i, decoding from RTE if needed
     let get_position = |idx: usize| -> Vec3 {
@@ -632,22 +657,15 @@ fn compute_extruded_normals(
             if i + 1 < bottom_offset {
                 let mut p1 = get_position(i + 1);
                 if is_in_corner {
-                    let mut bottom_p = get_position(i + bottom_offset);
-
-                    if per_position_height {
-                        // Adjust position for correct normal.
-                        let p0_geo = ellipsoid.xyz_to_lle(p0.into());
-                        let mut p1_geo = ellipsoid.xyz_to_lle(p1.into());
-                        let mut bottom_p_geo = ellipsoid.xyz_to_lle(bottom_p.into());
-                        p1_geo.height = p0_geo.height;
-                        bottom_p_geo.height = Meters::new(p1_geo.height.val() - 100.0);
-                        p1 = p1_geo.to_xyz(ellipsoid).into();
-                        bottom_p = bottom_p_geo.to_xyz(ellipsoid).into();
-                    }
-
+                    // The caps may coincide (they are offset in the shader),
+                    // so the wall runs down the surface normal rather than
+                    // towards the bottom cap. Crossing with it also drops the
+                    // edge's rise between positions of different heights; an
+                    // edge with no run (a vertical step) has a zero-area wall.
+                    let down =
+                        -Into::<Vec3>::into(ellipsoid.geodetic_surface_normal_from_vec3(p0.into()));
                     p1 -= p0;
-                    bottom_p -= p0;
-                    normal = bottom_p.cross(p1).normalize();
+                    normal = down.cross(p1).normalize_or_zero();
                     is_in_corner = false;
                 }
                 if p0.equal_diff_epsilon(p1, EPSILON10) {
@@ -721,17 +739,43 @@ mod tests {
     }
 
     fn build_square(clamp_to_ground: bool) -> PolygonGeometryResult {
+        build_square_with(clamp_to_ground, false, ExtrusionBase::Position)
+    }
+
+    fn build_square_with(
+        clamp_to_ground: bool,
+        per_position_height: bool,
+        extrusion_base: ExtrusionBase,
+    ) -> PolygonGeometryResult {
         let mut polygon_resource = PolygonResource::new();
         create_polygon_geometry(
             PolygonGeometryOptions {
                 hierarchy: square_hierarchy(),
                 clamp_to_ground,
+                per_position_height,
+                extrusion_base,
                 use_rte: true,
                 ..Default::default()
             },
             &mut polygon_resource,
         )
         .expect("polygon geometry")
+    }
+
+    fn assert_unit_normals(result: &PolygonGeometryResult) {
+        let normal = result
+            .geometry
+            .attributes
+            .normal
+            .as_ref()
+            .expect("normal should be present when clamp_to_ground=false");
+        for (i, n) in normal.data.chunks(3).enumerate() {
+            let length = (n[0] * n[0] + n[1] * n[1] + n[2] * n[2]).sqrt();
+            assert!(
+                (length - 1.0).abs() < 1e-3,
+                "normal {i} should be unit length, got {length}"
+            );
+        }
     }
 
     #[test]
@@ -743,10 +787,7 @@ mod tests {
     fn unclamped_polygon_carries_one_usable_normal_per_vertex() {
         let result = build_square(false);
         let attributes = &result.geometry.attributes;
-        let normal = attributes
-            .normal
-            .as_ref()
-            .expect("normal should be present when clamp_to_ground=false");
+        let normal = attributes.normal.as_ref().expect("normal");
         let positions = attributes
             .position_3d_high
             .as_ref()
@@ -754,15 +795,40 @@ mod tests {
 
         assert_eq!(normal.size, 3);
         assert_eq!(normal.data.len(), positions.data.len());
-        // Wall normals use the 1m edge between the caps, so a zero normal means
-        // the caps collapsed.
-        for (i, n) in normal.data.chunks(3).enumerate() {
-            let length = (n[0] * n[0] + n[1] * n[1] + n[2] * n[2]).sqrt();
-            assert!(
-                (length - 1.0).abs() < 1e-3,
-                "normal {i} should be unit length, got {length}"
-            );
+        // The caps coincide before the shader offsets them, so the wall
+        // normals must not come from the gap between them.
+        assert_unit_normals(&result);
+    }
+
+    #[test]
+    fn wall_normals_stay_usable_with_per_position_heights_on_either_base() {
+        for base in [ExtrusionBase::Position, ExtrusionBase::Ellipsoid] {
+            assert_unit_normals(&build_square_with(false, true, base));
         }
+    }
+
+    #[test]
+    fn wall_normals_stay_finite_across_a_vertical_step() {
+        // On the x axis the surface normal is exactly +x, so the step from
+        // 10 m to 30 m runs exactly along it.
+        let r = WGS84_64.semi_major_axis();
+        let ring = [
+            Vec3::new(r + 10., 0., 0.),
+            Vec3::new(r + 30., 0., 0.),
+            Vec3::new(r + 30., 0., 0.),
+            Vec3::new(r + 30., 1000., 0.),
+        ];
+        let top: Vec<f32> = ring
+            .iter()
+            .flat_map(|p| [p.x as f32, p.y as f32, p.z as f32])
+            .collect();
+        let attributes = PolygonGeometryAttributes {
+            position: Some(FloatAttribute::new([top.clone(), top].concat(), 3)),
+            ..Default::default()
+        };
+
+        let normals = compute_extruded_normals(WGS84_64, &attributes, true);
+        assert!(normals.iter().all(|n| n.is_finite()));
     }
 
     #[test]

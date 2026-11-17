@@ -11,6 +11,7 @@ use navara_feature_component::{
     batch::{BatchTable, FeatureBatchId, FeatureBatchIdMap, GlobalBatchIds},
     polygon::{PolygonMarker, UpdatePolygon},
 };
+use navara_geometry::polygon_cap_offsets;
 use navara_layer::{LayerId, LayerStore};
 use navara_material::{PolygonInternalMaterial, PolygonMaterial};
 use navara_math::{Transform, Vec3};
@@ -275,12 +276,20 @@ pub fn update_height_by_terrain(
                 );
 
                 let internal = material.internal.as_mut().unwrap();
-                internal.min_max_heights = calc_min_max_height(
-                    min_height,
-                    max_height,
-                    material.clamp_to_ground,
-                    distance_to_center_from_ellipsoid_surface,
-                );
+                internal.min_max_heights = if material.clamp_to_ground {
+                    vec![
+                        min_height.min(distance_to_center_from_ellipsoid_surface),
+                        max_height,
+                    ]
+                } else {
+                    let (bottom, top) = polygon_cap_offsets(
+                        min_height,
+                        max_height,
+                        material.per_position_height,
+                        material.extrusion_base,
+                    );
+                    vec![bottom, top]
+                };
 
                 let aabb = Aabb::from_extent_f64(*extent, 0., 0.);
                 *bounding_sphere = Some(get_bounding_sphere(&aabb));
@@ -288,26 +297,6 @@ pub fn update_height_by_terrain(
             _ => unreachable!(),
         };
     }
-}
-
-fn calc_min_max_height(
-    height: f64,
-    extruded_height: f64,
-    clamp_to_ground: bool,
-    distance_to_center_from_ellipsoid_surface: f64,
-) -> Vec<f64> {
-    let height = if clamp_to_ground {
-        height.min(distance_to_center_from_ellipsoid_surface)
-    } else {
-        height
-    };
-    let extruded_height = if clamp_to_ground {
-        extruded_height
-    } else {
-        height + extruded_height
-    };
-
-    vec![height, extruded_height]
 }
 
 fn get_bounding_sphere(aabb: &Aabb) -> BoundingSphere {

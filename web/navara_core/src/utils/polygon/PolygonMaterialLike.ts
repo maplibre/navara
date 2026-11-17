@@ -13,6 +13,7 @@ export class PolygonMaterialLike {
   height?: number;
   show?: boolean;
   perPositionHeight?: boolean;
+  extrusionBase?: string;
   wireframe?: boolean;
   outline?: boolean;
   __internal__?: PolygonInternalMaterial | undefined;
@@ -28,6 +29,7 @@ export class PolygonMaterialLike {
     this.show = material.show;
 
     this.perPositionHeight = material.perPositionHeight;
+    this.extrusionBase = material.extrusionBase;
 
     this.wireframe = material.wireframe;
     this.outline = material.outline;

@@ -26,6 +26,7 @@ import { applyLitOption, createShadowDepthMaterial } from "../material";
 import type { PolygonMaterialProps } from "../material/enhancer/polygon";
 import { createPolygonMaterialEnhancer } from "../material/enhancer/polygon/polygonMaterialEnhancer";
 import type { DrapeBakedMesh } from "../tileTexture/types";
+import { boundingSphereOfRte } from "../utils";
 import type { WaterWaves } from "../water/waterState";
 
 import {
@@ -60,10 +61,13 @@ export class PolygonMesh
   /** See {@link DrapeBakedMesh}. */
   drapeTransparent = false;
 
-  private _baseBoundingSphere?: {
-    surfaceCenter: Vector3; // Center point on ellipsoid surface (without height)
-    aabbRadius: number; // Horizontal extent radius from AABB
-  };
+  /** Bounds of the geometry before the shader offsets its caps. */
+  private _baseBoundingSphere?: Sphere;
+  /**
+   * Direction the caps' offsets move the bounds: the up vector at the
+   * extent's center, or zero for a tile (RTC) mesh in its local frame.
+   */
+  private _baseUp = new Vector3();
 
   /** Debug wireframe mesh visualizing the bounding sphere */
   private _debugBoundingSphereMesh?: ThreeMesh;
@@ -119,13 +123,19 @@ export class PolygonMesh
     if (mesh.bounding_sphere) {
       const bs = mesh.bounding_sphere;
 
-      this._baseBoundingSphere = {
+      // The extent's sphere lies on the ellipsoid, so the vertices' own bounds
+      // add the heights of per-position-height positions.
+      this._baseBoundingSphere = new Sphere(
         // If this mesh is tile based, RTC is used. In this case, this mesh is transformed through matrixWorld.
-        surfaceCenter: useRTE
+        useRTE
           ? new Vector3(bs.center_x, bs.center_y, bs.center_z)
           : new Vector3(),
-        aabbRadius: bs.radius,
-      };
+        bs.radius,
+      );
+      this._baseUp.copy(this._baseBoundingSphere.center).normalize();
+      if (this.geometry.boundingSphere) {
+        this._baseBoundingSphere.union(this.geometry.boundingSphere);
+      }
 
       this._recalculateBoundingSphere();
     }
@@ -235,14 +245,22 @@ export class PolygonMesh
     geometry.setIndex(new BufferAttribute(indices, 1));
 
     // Ensure a bounding sphere exists before we drop the CPU arrays. When
-    // `mesh.bounding_sphere` is provided, init() overwrites this from the
-    // WASM AABB (`_baseBoundingSphere`); otherwise this eager compute prevents
+    // `mesh.bounding_sphere` is provided, init() widens the WASM AABB
+    // (`_baseBoundingSphere`) by it; otherwise this eager compute prevents
     // Three.js from lazily calling computeBoundingSphere() on a nulled array
-    // during frustum culling. Batch-id attributes are consumed on the GPU
-    // (batch data texture), so no other CPU read survives the first upload.
+    // during frustum culling. Only the RTE attributes hold positions in RTE
+    // mode. Batch-id attributes are consumed on the GPU (batch data texture),
+    // so no other CPU read survives the first upload.
     // Drop the JS-heap copies to keep a single resident (GPU) copy — see
     // releaseGeometryArraysAfterUpload for the context-loss trade-off.
-    geometry.computeBoundingSphere();
+    if (position_3d_high && position_3d_low) {
+      geometry.boundingSphere = boundingSphereOfRte(
+        position_3d_high,
+        position_3d_low,
+      );
+    } else {
+      geometry.computeBoundingSphere();
+    }
     if (!this.ctx.viewContext.retainGeometryArrays) {
       releaseGeometryArraysAfterUpload(geometry);
     }
@@ -470,10 +488,7 @@ export class PolygonMesh
     const { base } = this._enhancedMaterial.states();
 
     if (base.clampToGround) {
-      this.geometry.boundingSphere?.set(
-        baseBounds.surfaceCenter,
-        baseBounds.aabbRadius,
-      );
+      this.geometry.boundingSphere?.copy(baseBounds);
       return;
     }
 
@@ -494,18 +509,14 @@ export class PolygonMesh
     const heightOffset = (maxHeight - minHeight) / 2.0;
     const centerHeight = (maxHeight + minHeight) / 2.0;
 
-    // Get surface normal from surface center
-    const surfaceNormal = baseBounds.surfaceCenter.clone().normalize();
-
     // Calculate new center by elevating along surface normal
-    const center = baseBounds.surfaceCenter
+    const center = baseBounds.center
       .clone()
-      .add(surfaceNormal.multiplyScalar(centerHeight));
+      .addScaledVector(this._baseUp, centerHeight);
 
     // Calculate new radius using Pythagorean theorem
     const radius = Math.sqrt(
-      baseBounds.aabbRadius * baseBounds.aabbRadius +
-        heightOffset * heightOffset,
+      baseBounds.radius * baseBounds.radius + heightOffset * heightOffset,
     );
 
     // Update geometry bounding sphere

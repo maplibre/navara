@@ -150,6 +150,14 @@ export type TextAlign = "left" | "center" | "right" | "auto";
 export type TranslateAnchor = "map" | "viewport";
 
 /**
+ * What the bottom of a polygon with `perPositionHeight` follows. `"position"`
+ * keeps both caps at the heights of the positions; `"ellipsoid"` lays the
+ * bottom flat on the ellipsoid. The value of `extrusionBase` on the polygon
+ * material.
+ */
+export type ExtrusionBase = "position" | "ellipsoid";
+
+/**
  * Helper type to narrow the material fields that wasm-bindgen generates as
  * bare `string`s to their literal unions, and its typed arrays to the plain
  * arrays the layer description accepts. One recursive pass covers them all.
@@ -169,14 +177,16 @@ type ConvertStringUnionFields<T> = {
               ? TextAlign | Extract<T[K], undefined>
               : K extends "translateAnchor"
                 ? TranslateAnchor | Extract<T[K], undefined>
-                : K extends "variableAnchors"
-                  ? VariableAnchor[] | Extract<T[K], undefined>
-                  : K extends "dashArray" | "declutterPadding"
-                    ? number[] | Extract<T[K], undefined>
-                    : T[K] extends object | undefined
-                      ? | ConvertStringUnionFields<T[K]>
-                        | Extract<T[K], undefined>
-                      : T[K];
+                : K extends "extrusionBase"
+                  ? ExtrusionBase | Extract<T[K], undefined>
+                  : K extends "variableAnchors"
+                    ? VariableAnchor[] | Extract<T[K], undefined>
+                    : K extends "dashArray" | "declutterPadding"
+                      ? number[] | Extract<T[K], undefined>
+                      : T[K] extends object | undefined
+                        ? | ConvertStringUnionFields<T[K]>
+                          | Extract<T[K], undefined>
+                        : T[K];
 };
 
 /**

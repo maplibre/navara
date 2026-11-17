@@ -2,7 +2,7 @@
 //! per-feature construction.
 
 use navara_core::{Angle, CRS, Extent};
-use navara_geometry::{Hierarchy, PolygonResource, WindingOrder};
+use navara_geometry::{ExtrusionBase, Hierarchy, PolygonResource, WindingOrder};
 use navara_wasm_types::{
     PolygonMaterial,
     polygon::{ConstructedPolygonGeometry, ConstructedPolygonOutlineGeometry, PolygonGeometry},
@@ -129,6 +129,25 @@ pub fn polygon_ground_volume(
         },
     );
     vec![min, max]
+}
+
+/// `[bottom, top]` offsets of an unclamped polygon's caps, as the vector layer
+/// computes them. `extrusion_base` is a `polygon` material's `extrusionBase`;
+/// an unknown name reads as `"position"`.
+#[wasm_bindgen(js_name = polygonCapOffsets)]
+pub fn polygon_cap_offsets(
+    height: f64,
+    extruded_height: f64,
+    per_position_height: bool,
+    extrusion_base: Option<String>,
+) -> Vec<f64> {
+    let base = extrusion_base
+        .as_deref()
+        .and_then(ExtrusionBase::parse)
+        .unwrap_or_default();
+    let (bottom, top) =
+        navara_geometry::polygon_cap_offsets(height, extruded_height, per_position_height, base);
+    vec![bottom, top]
 }
 
 #[cfg(test)]

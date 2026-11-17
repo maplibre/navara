@@ -18,6 +18,7 @@ export const RELOAD_FIELDS: Record<string, Record<string, string>> = {
     tiled: "",
     geodesic: "",
     perPositionHeight: "",
+    extrusionBase: "",
     outline: "",
     outlineShow: "Applies at once when the layer was added with an outline.",
   },

@@ -14,6 +14,7 @@ export function toPolygonMaterialLike(like: PolygonMaterialLike) {
     like.wireframe,
     like.outline,
     like.perPositionHeight,
+    like.extrusionBase,
     like.__internal__,
   );
   return mat;

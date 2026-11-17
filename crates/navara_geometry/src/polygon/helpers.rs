@@ -7,7 +7,7 @@ use navara_math::{EPSILON10, EqualEpsilon, FloatType, Vec2, Vec3, chord_length};
 
 use crate::helpers::vec::{unique_with_delta_e, unpack_flatten_vec3};
 
-use super::{HierarchyDVec3, PolygonResource, WindingOrder, types::Polygon};
+use super::{ExtrusionBase, HierarchyDVec3, PolygonResource, WindingOrder, types::Polygon};
 
 // Ref: https://github.com/CesiumGS/cesium/blob/6c2e520420b95bcb6c8eba0f02c76347cee1dd4b/packages/engine/Source/Core/PolygonGeometry.js#L1163
 pub fn project_to_2d(
@@ -119,11 +119,16 @@ pub fn create_geometry_from_positions(
     compute_subdivision(ellipsoid, &polygon.positions, indices, granularity)
 }
 
+/// Places the caps of an extrusion whose top half and bottom half of
+/// `positions` both hold the ring, and returns each vertex's up vector and cap
+/// (1 top, 0 bottom). The shader offsets each cap along the up vector by its
+/// height, so the top and the bottom may coincide here.
 // Ref: https://github.com/CesiumGS/cesium/blob/6c2e520420b95bcb6c8eba0f02c76347cee1dd4b/packages/engine/Source/Core/PolygonGeometryLibrary.js#L358
 pub fn scale_to_geodetic_height_extruded(
     positions: &mut [f64],
     ellipsoid: Ellipsoid<FloatType>,
     per_position_height: bool,
+    extrusion_base: ExtrusionBase,
 ) -> Vec<f32> {
     let length = positions.len() / 2;
 
@@ -138,20 +143,22 @@ pub fn scale_to_geodetic_height_extruded(
         let n1 =
             Into::<Vec3>::into(ellipsoid.geodetic_surface_normal_from_vec3(p.into())).normalize();
 
-        let p2 = if per_position_height {
-            p
-        } else {
-            match ellipsoid.scale_to_geodetic_surface(p) {
-                Some(p2) => p2,
-                None => unreachable!(),
+        let surface = || match ellipsoid.scale_to_geodetic_surface(p) {
+            Some(p2) => p2,
+            None => unreachable!(),
+        };
+        let (top, bottom) = match (per_position_height, extrusion_base) {
+            (false, _) => {
+                let s = surface();
+                (s, s)
             }
+            (true, ExtrusionBase::Position) => (p, p),
+            (true, ExtrusionBase::Ellipsoid) => (p, surface()),
         };
 
-        positions[i3 + length] = p2.x;
-        positions[i3 + 1 + length] = p2.y;
-        positions[i3 + 2 + length] = p2.z;
-
-        let top = p2 + n1;
+        positions[i3 + length] = bottom.x;
+        positions[i3 + 1 + length] = bottom.y;
+        positions[i3 + 2 + length] = bottom.z;
 
         positions[i3] = top.x;
         positions[i3 + 1] = top.y;
@@ -417,12 +424,51 @@ fn subdivide_line(p0: Vec3, p1: Vec3, min_distance: f64) -> Vec<f64> {
 
 #[cfg(test)]
 mod test {
-    use navara_core::WGS84_64;
+    use navara_core::{CRS, WGS84_64};
     use navara_math::{RADIANS_PER_DEGREE, Vec3};
 
-    use crate::polygon::helpers::calculate_wall_indices;
+    use crate::polygon::{ExtrusionBase, helpers::calculate_wall_indices};
 
-    use super::compute_subdivision;
+    use super::{compute_subdivision, scale_to_geodetic_height_extruded};
+
+    /// The caps of one position 30 m above the ellipsoid, as (top, bottom)
+    /// heights above it.
+    fn cap_heights(per_position_height: bool, base: ExtrusionBase) -> (f64, f64) {
+        let p = CRS::Geographic.to_vec3(WGS84_64, Vec3::new(139.7, 35.7, 30.0), 0.0);
+        let mut positions = vec![p.x, p.y, p.z, p.x, p.y, p.z];
+        let caps =
+            scale_to_geodetic_height_extruded(&mut positions, WGS84_64, per_position_height, base);
+        assert_eq!((caps[3], caps[7]), (1.0, 0.0));
+        let height = |i: usize| {
+            let p = Vec3::new(positions[i], positions[i + 1], positions[i + 2]);
+            WGS84_64.xyz_to_lle(p.into()).height.val()
+        };
+        (height(0), height(3))
+    }
+
+    fn assert_heights((top, bottom): (f64, f64), expected: (f64, f64)) {
+        assert!(
+            (top - expected.0).abs() < 1e-6 && (bottom - expected.1).abs() < 1e-6,
+            "caps at {top} and {bottom}, expected {expected:?}"
+        );
+    }
+
+    #[test]
+    fn caps_lie_on_the_ellipsoid_without_per_position_heights() {
+        for base in [ExtrusionBase::Position, ExtrusionBase::Ellipsoid] {
+            assert_heights(cap_heights(false, base), (0.0, 0.0));
+        }
+    }
+
+    #[test]
+    fn caps_follow_the_position_on_a_position_base() {
+        assert_heights(cap_heights(true, ExtrusionBase::Position), (30.0, 30.0));
+    }
+
+    #[test]
+    fn bottom_cap_lies_on_the_ellipsoid_on_an_ellipsoid_base() {
+        assert_heights(cap_heights(true, ExtrusionBase::Ellipsoid), (30.0, 0.0));
+    }
 
     #[test]
     fn it_should_be_non_subdivision_polygon() {
