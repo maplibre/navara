@@ -185,6 +185,7 @@ pub fn update_tiles(
 
             qt.qt.get_mut(zero_tile_handle).unwrap().is_rendered = false;
 
+            tc.min_zoom_descent.refill();
             let mut activations = PendingActivations::default();
             match traverse_tile(
                 &mut commands,
@@ -1353,6 +1354,7 @@ mod keep_drawn_descendants_tests {
     use navara_feature_component::render::PointRenderInformation;
     use navara_frame::FramePlugin;
     use navara_math::Vec3;
+    use navara_tile_component::MinZoomDescentBudget;
     use std::any::Any;
 
     type Coords = (usize, usize, usize);
@@ -1767,5 +1769,33 @@ mod keep_drawn_descendants_tests {
 
         assert!(is_drawn(&app, &scene, DRAWN_CHILD));
         assert!(!is_drawn(&app, &scene, PARENT));
+    }
+
+    /// The source has tiles from z2 only and the descent budget covers the
+    /// root and one z1 tile: that tile's children are drawn, and the other
+    /// z1 tiles stay undivided without holding them back.
+    #[test]
+    fn it_should_draw_the_tiles_reached_before_the_min_zoom_descent_budget_is_spent() {
+        const REACHED_CHILD: Coords = (1, 1, 2);
+        let (mut app, scene) = setup();
+        let world = app.world_mut();
+        let mut source = world
+            .get_mut::<VectorTileSourceResources>(scene.source)
+            .unwrap();
+        source.source_id.traversal_config.min_zoom = 2;
+        source.source_id.traversal_config.max_sse_bits = f32::MAX.to_bits();
+        world
+            .get_mut::<TileCacheManager>(scene.tile_cache_manager)
+            .unwrap()
+            .min_zoom_descent = MinZoomDescentBudget::with_limit(2);
+
+        settle(&mut app, &scene);
+
+        assert!(is_drawn(&app, &scene, REACHED_CHILD));
+        let qt = app
+            .world()
+            .get::<VectorTileQuadtree>(scene.quadtree)
+            .unwrap();
+        assert!(qt.qt.leaf(DRAWN_CHILD).is_none());
     }
 }

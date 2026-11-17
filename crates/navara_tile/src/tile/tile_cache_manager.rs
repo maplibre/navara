@@ -7,7 +7,7 @@ use bevy_ecs::{
 use navara_component::Deleted;
 use navara_memory::RetainedEntry;
 use navara_mesh::Mesh;
-use navara_tile_component::{TileHandle, TileMeshMarker};
+use navara_tile_component::{MinZoomDescentBudget, TileHandle, TileMeshMarker};
 use rustc_hash::{FxHashMap, FxHashSet};
 
 /// Per-layer parent reference used when sampling a parent tile's data
@@ -60,6 +60,7 @@ pub struct TileCacheManager {
     pub previous_traversal_frame: usize,
     pub is_updated_in_this_frame: bool,
     pub prev_layers_len: usize,
+    pub min_zoom_descent: MinZoomDescentBudget,
     /// Forces one re-traversal even with a static camera. Set when a source
     /// changes (e.g. `updateSource`), so terrain tiles pick up the new fetch
     /// config read live from the source. Cleared once consumed.

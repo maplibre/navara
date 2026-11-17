@@ -1,6 +1,6 @@
 use bevy_ecs::prelude::Resource;
 use navara_memory::RetainedEntry;
-use navara_tile_component::TileHandle;
+use navara_tile_component::{MinZoomDescentBudget, TileHandle};
 use rustc_hash::{FxHashMap, FxHashSet};
 
 /// Tracks which raster tiles were visited so stale ones can be pruned. Raster
@@ -18,6 +18,7 @@ pub struct RasterTileCacheManager {
     pub last_rendered_frame: usize,
     pub is_updated_in_this_frame: bool,
     pub prev_layers_len: usize,
+    pub min_zoom_descent: MinZoomDescentBudget,
     /// Bake-relevant layer config from the last change, one entry per layer in
     /// sorted (`Order`) order: (has hillshade, has heatmap, source id). Filters
     /// appearance-only `Changed<TilesLayer>` events (opacity/show/color) out of

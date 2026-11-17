@@ -1,7 +1,7 @@
 use bevy_ecs::{component::Component, entity::Entity};
 use navara_component::Priority;
 use navara_memory::RetainedEntry;
-use navara_tile_component::TileHandle;
+use navara_tile_component::{MinZoomDescentBudget, TileHandle};
 use rustc_hash::FxHashMap;
 
 // Manage the tiles that are going to be rendered.
@@ -20,6 +20,7 @@ pub struct TileCacheManager {
     pub last_rendered_frame: usize,
     pub is_updated_in_this_frame: bool,
     pub needs_update: bool,
+    pub min_zoom_descent: MinZoomDescentBudget,
     /// Set by a traverse that changed a tile's drape source
     /// (`ready_parent_tile_handle`).
     pub drape_sources_changed: bool,
