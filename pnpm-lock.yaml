@@ -76,8 +76,8 @@ importers:
         specifier: 6.0.2
         version: 6.0.2
       '@vitejs/plugin-react':
-        specifier: 6.2.1
-        version: 6.2.1(vite@8.3.8(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.43.1)(tsx@4.23.15)(yaml@2.9.1))
+        specifier: 6.3.0
+        version: 6.3.0(vite@8.3.8(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.43.1)(tsx@4.23.15)(yaml@2.9.1))
       eslint:
         specifier: 10.14.0
         version: 10.14.0(jiti@2.7.0)(supports-color@10.2.2)
@@ -88,8 +88,8 @@ importers:
         specifier: 30.1.3
         version: 30.1.3(@noble/hashes@1.8.0)(canvas@3.2.3)
       prettier:
-        specifier: 3.9.10
-        version: 3.9.10
+        specifier: 3.10.0
+        version: 3.10.0
       react:
         specifier: 19.3.1
         version: 19.3.1
@@ -121,8 +121,8 @@ importers:
         specifier: 5.1.0
         version: 5.1.0(@types/node@26.6.6)(jsdom@30.1.3(@noble/hashes@1.8.0)(canvas@3.2.3))(msw@2.11.3(@types/node@26.6.6)(typescript@7.0.2))(vite@8.3.8(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.43.1)(tsx@4.23.15)(yaml@2.9.1))
       wrangler:
-        specifier: ^4.157.0
-        version: 4.157.0(@types/node@26.6.6)
+        specifier: ^4.160.1
+        version: 4.160.1(@types/node@26.6.6)
 
   debug_tile_server:
     dependencies:
@@ -152,21 +152,21 @@ importers:
         specifier: 0.42.10
         version: 0.42.10(@astrojs/markdown-remark@7.3.8(supports-color@10.2.2))(astro@7.4.11(@astrojs/markdown-remark@7.3.8(supports-color@10.2.2))(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.43.1)(tsx@4.23.15)(yaml@2.9.1))(supports-color@10.2.2)(typescript@7.0.2)
       '@lucide/astro':
-        specifier: 1.68.0
-        version: 1.68.0(astro@7.4.11(@astrojs/markdown-remark@7.3.8(supports-color@10.2.2))(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.43.1)(tsx@4.23.15)(yaml@2.9.1))
+        specifier: 1.72.0
+        version: 1.72.0(astro@7.4.11(@astrojs/markdown-remark@7.3.8(supports-color@10.2.2))(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.43.1)(tsx@4.23.15)(yaml@2.9.1))
       astro:
         specifier: 7.4.11
         version: 7.4.11(@astrojs/markdown-remark@7.3.8(supports-color@10.2.2))(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.43.1)(tsx@4.23.15)(yaml@2.9.1)
       rehype-mermaid:
         specifier: 3.0.0
-        version: 3.0.0(playwright@1.64.1)
+        version: 3.0.0(playwright@1.65.0)
       sharp:
         specifier: 0.35.5
         version: 0.35.5(@types/node@26.6.6)
     devDependencies:
       playwright:
-        specifier: 1.64.1
-        version: 1.64.1
+        specifier: 1.65.0
+        version: 1.65.0
 
   web/experimental/navara_three_flood_mesh:
     dependencies:
@@ -180,8 +180,8 @@ importers:
         specifier: 5.1.0
         version: 5.1.0
       earcut:
-        specifier: 3.0.2
-        version: 3.0.2
+        specifier: 3.2.4
+        version: 3.2.4
       zarrita:
         specifier: 0.7.5
         version: 0.7.5
@@ -199,8 +199,8 @@ importers:
         specifier: workspace:*
         version: link:../../navara_three_plugins
       '@types/earcut':
-        specifier: 3.0.0
-        version: 3.0.0
+        specifier: 3.2.4
+        version: 3.2.4
       '@types/node':
         specifier: 26.6.6
         version: 26.6.6
@@ -370,8 +370,8 @@ importers:
         specifier: 26.6.0
         version: 26.6.0
       '@playwright/test':
-        specifier: 1.64.1
-        version: 1.64.1
+        specifier: 1.65.0
+        version: 1.65.0
       '@types/node':
         specifier: 26.6.6
         version: 26.6.6
@@ -455,8 +455,8 @@ importers:
         specifier: workspace:*
         version: link:../navara_three_react
       '@playwright/test':
-        specifier: 1.64.1
-        version: 1.64.1
+        specifier: 1.65.0
+        version: 1.65.0
       '@radix-ui/react-collapsible':
         specifier: 1.2.1
         version: 1.2.1(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
@@ -512,11 +512,11 @@ importers:
         specifier: 1.11.23
         version: 1.11.23
       lucide-react:
-        specifier: 1.68.0
-        version: 1.68.0(@types/react@19.3.0)(react@19.3.1)
+        specifier: 1.72.0
+        version: 1.72.0(@types/react@19.3.0)(react@19.3.1)
       playwright:
-        specifier: 1.64.1
-        version: 1.64.1
+        specifier: 1.65.0
+        version: 1.65.0
       postcss:
         specifier: 8.5.32
         version: 8.5.32
@@ -1150,32 +1150,32 @@ packages:
       workerd:
         optional: true
 
-  '@cloudflare/workerd-darwin-64@1.20261103.1':
-    resolution: {integrity: sha512-6lWDetzg9mclXUVv/u6/WQWzuJ96cgBqnQ+kEhqckm5TE6FPUkXkCmjMfyIt0qff6aWhhrtYxEfcE2e1X1i4nQ==}
+  '@cloudflare/workerd-darwin-64@1.20261110.1':
+    resolution: {integrity: sha512-RazOdADqTgwYhE60+i6c/R5BA1J5aC//39oousnWBxmoVAiqUh1qsXNCGMbaEV6UC5RnZyWsIBRIcAYNDe1xTg==}
     engines: {node: '>=16'}
     cpu: [x64]
     os: [darwin]
 
-  '@cloudflare/workerd-darwin-arm64@1.20261103.1':
-    resolution: {integrity: sha512-dtsvzndPMoGK9zHCq/pCIekywDsY1RLcBWZnzK2iL7L4jVvJVsBeRe3a+3lMgIRyM4HcelnJup7tT+2s3WYxHw==}
+  '@cloudflare/workerd-darwin-arm64@1.20261110.1':
+    resolution: {integrity: sha512-TFsn/t+wczWnWdm+ytlWe+xHEO9sDgfIBmtMo8OxujuS2DXCmGimiyvJHmuv+6+N9OhUb0dM+fveXJI9yjuzew==}
     engines: {node: '>=16'}
     cpu: [arm64]
     os: [darwin]
 
-  '@cloudflare/workerd-linux-64@1.20261103.1':
-    resolution: {integrity: sha512-g++gRXeum4QXseRgX7/X8RHH+A/wzypgslqVnOzttLjpmw3l+XXRo85S+ct1yYfOsQrlh1II+y3HYbdn2Goxvg==}
+  '@cloudflare/workerd-linux-64@1.20261110.1':
+    resolution: {integrity: sha512-i4080Pp6Q0nwS8OMqt3cbpJoWvbCrIlFKa+4Inbn+y2pWKTVsq6F9bgdi0l8CBZPMszd03gDlQR++dqMbErh2Q==}
     engines: {node: '>=16'}
     cpu: [x64]
     os: [linux]
 
-  '@cloudflare/workerd-linux-arm64@1.20261103.1':
-    resolution: {integrity: sha512-zvVXyJ8h68MVBYboxqZaemdmbvjjNPlZTeKDrwlaaVYaDBWTRsiPjRunEwNtlYF/Zq1IXYEEgkNo4xGAEg+qiQ==}
+  '@cloudflare/workerd-linux-arm64@1.20261110.1':
+    resolution: {integrity: sha512-0l+JyYWOhEzTs7yOkIdf1ZzcXd9WalPZ1kD0bBAobFvDhO/1jBnQkS4rzzyUkGV7g8pb3dkfrBP9c2ZiRLOfdw==}
     engines: {node: '>=16'}
     cpu: [arm64]
     os: [linux]
 
-  '@cloudflare/workerd-windows-64@1.20261103.1':
-    resolution: {integrity: sha512-g7zu5yaJyxPsVAn/WChF3vu0PheeIh/7HCJ3WTOGKshWCcwv1jUs/+Y13cR3srOQ1CGvJSDJoJXrAixQ2M4+IA==}
+  '@cloudflare/workerd-windows-64@1.20261110.1':
+    resolution: {integrity: sha512-zP8IGyWvohyJhbNjHOnTA9anRQtGN7X01T/dG+R9IA4vu2egRODsD02aoYzv0a0qImjt7tTpOOA+uVotDJPcSA==}
     engines: {node: '>=16'}
     cpu: [x64]
     os: [win32]
@@ -1933,8 +1933,8 @@ packages:
   '@keyv/serialize@1.1.1':
     resolution: {integrity: sha512-dXn3FZhPv0US+7dtJsIi2R+c7qWYiReoEh5zUntWCf4oSpMNib8FDhSoed6m3QyZdx5hK7iLFkYk3rNxwt8vTA==}
 
-  '@lucide/astro@1.68.0':
-    resolution: {integrity: sha512-gRSV2aoSL13kdJiJkCr1LFL8whh4LZvDC321u+xLXG8rWAoXByJLFwvy1SSufjiX5hghe8HPK6rObZdeBqg25Q==}
+  '@lucide/astro@1.72.0':
+    resolution: {integrity: sha512-+kBS2kCF0eAOzQom0OIJY0YfaVyRYICgeimNZgOeGIEtwov4EVhMEGjOP3Yb2fWjlLIADY6DfsIaUBW6toVhjg==}
     peerDependencies:
       astro: ^4 || ^5 || ^6 || ^7
 
@@ -2097,8 +2097,8 @@ packages:
   '@petamoriken/float16@3.9.3':
     resolution: {integrity: sha512-8awtpHXCx/bNpFt4mt2xdkgtgVvKqty8VbjHI/WWWQuEw+KLzFot3f4+LkQY9YmOtq7A5GdOnqoIC8Pdygjk2g==}
 
-  '@playwright/test@1.64.1':
-    resolution: {integrity: sha512-IaYGml/nSOiZWROfPtuIL7neuu9qDOZ3TNvNljUIrhDMxiGTgPjzj/g9p9RxpS2tSepPDRY+UwAaEeiKtUvIAg==}
+  '@playwright/test@1.65.0':
+    resolution: {integrity: sha512-iGURLGuKDLakSEl7Pgfv8h7f+XLT+V861Wfhz0zlEl5nyFuKUopdkFBPKqTllTUp06aOwPuH8iuUEb3yp3MpbQ==}
     engines: {node: '>=20'}
     hasBin: true
 
@@ -3170,8 +3170,9 @@ packages:
   '@types/draco3d@1.4.10':
     resolution: {integrity: sha512-AX22jp8Y7wwaBgAixaSvkoG4M/+PlAcm3Qs4OW8yT9DM4xUpWKeFhLueTAyZF39pviAdcDdeJoACapiAceqNcw==}
 
-  '@types/earcut@3.0.0':
-    resolution: {integrity: sha512-k/9fOUGO39yd2sCjrbAJvGDEQvRwRnQIZlBz43roGwUZo5SHAmyVvSFyaVVZkicRVCaDXPKlbxrUcBuJoSWunQ==}
+  '@types/earcut@3.2.4':
+    resolution: {integrity: sha512-I688mi107oflZOpzhs4EwasCN4ycLlZHf7XAGhM6EQIHEJkRTEuTL08lemIZOQ1YAACJoNoCzAiSDCJujpJLHA==}
+    deprecated: This is a stub types definition. earcut provides its own type definitions, so you do not need this installed.
 
   '@types/esrecurse@4.3.1':
     resolution: {integrity: sha512-xJBAbDifo5hpffDBuHl0Y8ywswbiAp/Wi7Y/GtAgSlZyIABppyurxVueOPE8LUQOxdlgi6Zqce7uoEpqNTeiUw==}
@@ -3610,8 +3611,8 @@ packages:
   '@upsetjs/venn.js@2.0.0':
     resolution: {integrity: sha512-WbBhLrooyePuQ1VZxrJjtLvTc4NVfpOyKx0sKqioq9bX1C1m7Jgykkn8gLrtwumBioXIqam8DLxp88Adbue6Hw==}
 
-  '@vitejs/plugin-react@6.2.1':
-    resolution: {integrity: sha512-9KyWCij3r0+qLG3Q62vBmv0VyevmYibAtxaCIVK9o0k6CXgaajZRIe8tpfchQcdZArJ5b/7OrIz4W3b2uxVRDA==}
+  '@vitejs/plugin-react@6.3.0':
+    resolution: {integrity: sha512-H9E955aVvD2F4zNHCw4eIZbIfF6xKldlh7MNu+hSU7xwQzh65lI/N+CJWqmfhi0PEjDXIt/H7T7J/4wU63KJiw==}
     engines: {node: ^20.19.0 || >=22.12.0}
     peerDependencies:
       '@rolldown/plugin-babel': ^0.1.7 || ^0.2.0 || ^0.3.0
@@ -4497,8 +4498,8 @@ packages:
     resolution: {integrity: sha512-KIN/nDJBQRcXw0MLVhZE9iQHmG68qAVIBg9CqmUYjmQIhgij9U5MFvrqkUL5FbtyyzZuOeOt0zdeRe4UY7ct+A==}
     engines: {node: '>= 0.4'}
 
-  earcut@3.0.2:
-    resolution: {integrity: sha512-X7hshQbLyMJ/3RPhyObLARM2sNxxmRALLKx1+NVFFnQ9gKzmCrxm9+uLIAdBcvc8FNLpctqlQ2V6AE92Ol9UDQ==}
+  earcut@3.2.4:
+    resolution: {integrity: sha512-FHc6yNpnTORB0tM5kmZ03iD2mDuNakDE2lvf4Hw1XkfxtEHIGVi01B/GqUSwx+NcC1WGjidAfpTXzeALtPtfpg==}
 
   electron-to-chromium@1.5.464:
     resolution: {integrity: sha512-nRa65aFge40viPAKxMKULIY8tcXKwKboJWNn4RoKwyWXJ6SP7BnrDGKUTzc64818jIciH0PK7LSF8QzZes19GA==}
@@ -5593,8 +5594,8 @@ packages:
   lru-cache@5.1.1:
     resolution: {integrity: sha512-KpNARQA3Iwv+jTA0utUVVbrh+Jlrr1Fv0e56GGzAFOXN7dk/FviaDW8LHmK52DlcH4WP2n6gI8vN1aesBFgo9w==}
 
-  lucide-react@1.68.0:
-    resolution: {integrity: sha512-9i7NKWm2QlOprMhcwkhBOlIt9zB7cp2GIyFY+oMue0EsprolUFxva5rkdBbyfs4k1eejpa0JRnRgVOGiart+Xg==}
+  lucide-react@1.72.0:
+    resolution: {integrity: sha512-fbF5i1GU8GODETa3Q7rXqrJrcx3iPYrQtxthom103zGx+Z0BGwKYAW9s+9435ohYJ7hQm0av0PoZcqI1CRwNrg==}
     peerDependencies:
       '@types/react': '*'
       react: ^16.5.1 || ^17.0.0 || ^18.0.0 || ^19.0.0
@@ -5843,9 +5844,14 @@ packages:
     resolution: {integrity: sha512-r9deDe9p5FJUPZAk3A59wGH7Ii9YrjjWw0jmw/liSbHl2CHiyXj6FcDXDu2K3TjVAXqiJdaw3xxwlZZr9E6nHg==}
     hasBin: true
 
-  miniflare@5.20261103.0-beta:
-    resolution: {integrity: sha512-wghSXG3KHzMbAYvcrHFxN6JNI1Or3LSxpBe1qHdnFXFOPIDIlXCNvsRVF2J97rXsfFSJr7EzxRSjoUCmgVDEUA==}
-    engines: {node: '>=22.0.0'}
+  miniflare@5.20261110.1-beta:
+    resolution: {integrity: sha512-CO8T1DO3/JFxEWvJ7yaHiPx5Ph/5FhRzYKve6cM8O2frHmY7yWudV5p8FU11bfGRAerChGpuK+l0HoxOCw2nFw==}
+    engines: {node: '>=22.12.0'}
+    peerDependencies:
+      kerberos: ^2.0.0
+    peerDependenciesMeta:
+      kerberos:
+        optional: true
 
   minimatch@10.2.3:
     resolution: {integrity: sha512-Rwi3pnapEqirPSbWbrZaa6N3nmqq4Xer/2XooiOKyV3q12ML06f7MOuc5DVH8ONZIFhwIYQ3yzPH4nt7iWHaTg==}
@@ -6168,13 +6174,13 @@ packages:
     resolution: {integrity: sha512-nDywThFk1i4BQK4twPQ6TA4RT8bDY96yeuCVBWL3ePARCiEKDRSrNGbFIgUJpLp+XeIR65v8ra7WuJOFUBtkMA==}
     engines: {node: '>=8'}
 
-  playwright-core@1.64.1:
-    resolution: {integrity: sha512-BC4s8y6SEVA6Q1rSxZTto8hI1KUI3xXlHGZgvGqP4IqPdI/a6FX9H29IDNz7vKo9l21b6LfYosScPL6M3xxyDQ==}
+  playwright-core@1.65.0:
+    resolution: {integrity: sha512-vNSKgH6YqtN7cdT/L334zo0a+YwkrpicyrHJlWWPIm/Q+Nn2SWInil01oT0mbu96U4GgoRtCYQD9CzJQgju+lA==}
     engines: {node: '>=20'}
     hasBin: true
 
-  playwright@1.64.1:
-    resolution: {integrity: sha512-HCrVhHr5QQuwYoswEUGTb7gGp522yflbv/ST8nF4sFWGuLjQCt17Q/EubpGGSNKYn1tsTCPZxqHhHCfVURu7UA==}
+  playwright@1.65.0:
+    resolution: {integrity: sha512-F3AMWcR44qMBt4kq+6Kb6mX7bjGXshktKFOPULd7reED6ZJWevjbNRqysP7q+AATE9kdPEZBibex1BYsvpVoeA==}
     engines: {node: '>=20'}
     hasBin: true
 
@@ -6236,8 +6242,8 @@ packages:
     resolution: {integrity: sha512-vkcDPrRZo1QZLbn5RLGPpg/WmIQ65qoWWhcGKf/b5eplkkarX0m9z8ppCat4mlOqUsWpyNuYgO3VRyrYHSzX5g==}
     engines: {node: '>= 0.8.0'}
 
-  prettier@3.9.10:
-    resolution: {integrity: sha512-skGHTH1Yb9QvaTC4hWnRTzEYtCpApF0UMBPz+t/0ZPzP8ihefo/btKd+QA7pUE0fEwA1SbS/NmhyEcstdXOIdA==}
+  prettier@3.10.0:
+    resolution: {integrity: sha512-mBi4765LgjO1PFjlEs7pUeK0nb1bw71c+N4/ItfeUWNdY5cV2pRKaFpbbFRYmDJMO+5ZwzGxHRqHxFZna7iv5w==}
     engines: {node: '>=14'}
     hasBin: true
 
@@ -7436,20 +7442,20 @@ packages:
     resolution: {integrity: sha512-BN22B5eaMMI9UMtjrGd5g5eCYPpCPDUy0FJXbYsaT5zYxjFOckS53SQDE3pWkVoWpHXVb3BrYcEN4Twa55B5cA==}
     engines: {node: '>=0.10.0'}
 
-  workerd@1.20261103.1:
-    resolution: {integrity: sha512-GgcAnUH94uY8BEDc7CUyX3qsuLVbiidV+SZqJhasxbKi+f2dtR5xrgBC18uLbnaBFarlNFCYfr8JAIL2xJpnZw==}
+  workerd@1.20261110.1:
+    resolution: {integrity: sha512-GKdtki7t19f16vegol8Iw5Dh0mnjHLuwLx8rlhTPvyRBEXM0Osl9eYexWAW8uZD7OMw4WKNq9yvENg5kPDUJ9w==}
     engines: {node: '>=16'}
     hasBin: true
 
   workerpool@10.0.3:
     resolution: {integrity: sha512-6z2Iis68Wqth93/G/wJP9u+R3O+d2XTlgWChGCwuT1qLbBsOYueGRZuJ++v3mtDP5KjYdy+WzvWC+VWETSVXJA==}
 
-  wrangler@4.157.0:
-    resolution: {integrity: sha512-HUft0VZiUbt/oFZXQRDmJAGzPgfDYpdVmJwCGlGBcXrE5IP0yGcTwc1u/H3+bUYhaX2NHoL1sdQqn3zptxyFkA==}
-    engines: {node: '>=22.0.0'}
+  wrangler@4.160.1:
+    resolution: {integrity: sha512-gM8daj5geYTEw+038dV5OQAmrSIo/9e97FoJuNf+r9PllWR0ZnqMI2LXZZDSHpGsMez3mKKFYH5o/hBsf1ZTHg==}
+    engines: {node: '>=22.12.0'}
     hasBin: true
     peerDependencies:
-      '@cloudflare/workers-types': ^5.20261103.1
+      '@cloudflare/workers-types': ^5.20261110.1
     peerDependenciesMeta:
       '@cloudflare/workers-types':
         optional: true
@@ -8091,25 +8097,25 @@ snapshots:
 
   '@cloudflare/kv-asset-handler@0.5.0': {}
 
-  '@cloudflare/unenv-preset@2.16.2(unenv@2.0.0-rc.24)(workerd@1.20261103.1)':
+  '@cloudflare/unenv-preset@2.16.2(unenv@2.0.0-rc.24)(workerd@1.20261110.1)':
     dependencies:
       unenv: 2.0.0-rc.24
     optionalDependencies:
-      workerd: 1.20261103.1
+      workerd: 1.20261110.1
 
-  '@cloudflare/workerd-darwin-64@1.20261103.1':
+  '@cloudflare/workerd-darwin-64@1.20261110.1':
     optional: true
 
-  '@cloudflare/workerd-darwin-arm64@1.20261103.1':
+  '@cloudflare/workerd-darwin-arm64@1.20261110.1':
     optional: true
 
-  '@cloudflare/workerd-linux-64@1.20261103.1':
+  '@cloudflare/workerd-linux-64@1.20261110.1':
     optional: true
 
-  '@cloudflare/workerd-linux-arm64@1.20261103.1':
+  '@cloudflare/workerd-linux-arm64@1.20261110.1':
     optional: true
 
-  '@cloudflare/workerd-windows-64@1.20261103.1':
+  '@cloudflare/workerd-windows-64@1.20261110.1':
     optional: true
 
   '@cspotcode/source-map-support@0.8.1':
@@ -8678,7 +8684,7 @@ snapshots:
 
   '@keyv/serialize@1.1.1': {}
 
-  '@lucide/astro@1.68.0(astro@7.4.11(@astrojs/markdown-remark@7.3.8(supports-color@10.2.2))(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.43.1)(tsx@4.23.15)(yaml@2.9.1))':
+  '@lucide/astro@1.72.0(astro@7.4.11(@astrojs/markdown-remark@7.3.8(supports-color@10.2.2))(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.43.1)(tsx@4.23.15)(yaml@2.9.1))':
     dependencies:
       astro: 7.4.11(@astrojs/markdown-remark@7.3.8(supports-color@10.2.2))(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.43.1)(tsx@4.23.15)(yaml@2.9.1)
 
@@ -8884,9 +8890,9 @@ snapshots:
 
   '@petamoriken/float16@3.9.3': {}
 
-  '@playwright/test@1.64.1':
+  '@playwright/test@1.65.0':
     dependencies:
-      playwright: 1.64.1
+      playwright: 1.65.0
 
   '@poppinss/colors@4.1.6':
     dependencies:
@@ -9795,7 +9801,9 @@ snapshots:
 
   '@types/draco3d@1.4.10': {}
 
-  '@types/earcut@3.0.0': {}
+  '@types/earcut@3.2.4':
+    dependencies:
+      earcut: 3.2.4
 
   '@types/esrecurse@4.3.1': {}
 
@@ -10186,7 +10194,7 @@ snapshots:
       d3-selection: 3.0.0
       d3-transition: 3.0.1(d3-selection@3.0.0)
 
-  '@vitejs/plugin-react@6.2.1(vite@8.3.8(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.43.1)(tsx@4.23.15)(yaml@2.9.1))':
+  '@vitejs/plugin-react@6.3.0(vite@8.3.8(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.43.1)(tsx@4.23.15)(yaml@2.9.1))':
     dependencies:
       '@rolldown/pluginutils': 1.0.1
       vite: 8.3.8(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.43.1)(tsx@4.23.15)(yaml@2.9.1)
@@ -11151,7 +11159,7 @@ snapshots:
       es-errors: 1.3.0
       gopd: 1.2.0
 
-  earcut@3.0.2: {}
+  earcut@3.2.4: {}
 
   electron-to-chromium@1.5.464: {}
 
@@ -12520,7 +12528,7 @@ snapshots:
     dependencies:
       yallist: 3.1.1
 
-  lucide-react@1.68.0(@types/react@19.3.0)(react@19.3.1):
+  lucide-react@1.72.0(@types/react@19.3.0)(react@19.3.1):
     dependencies:
       react: 19.3.1
     optionalDependencies:
@@ -12743,13 +12751,13 @@ snapshots:
 
   merge2@1.4.1: {}
 
-  mermaid-isomorphic@3.1.0(playwright@1.64.1):
+  mermaid-isomorphic@3.1.0(playwright@1.65.0):
     dependencies:
       '@fortawesome/fontawesome-free': 6.7.2
       katex: 0.16.47
       mermaid: 11.16.0
     optionalDependencies:
-      playwright: 1.64.1
+      playwright: 1.65.0
 
   mermaid@11.16.0:
     dependencies:
@@ -13066,12 +13074,12 @@ snapshots:
 
   mini-svg-data-uri@1.4.4: {}
 
-  miniflare@5.20261103.0-beta(@types/node@26.6.6):
+  miniflare@5.20261110.1-beta(@types/node@26.6.6):
     dependencies:
       '@cspotcode/source-map-support': 0.8.1
       sharp: 0.35.5(@types/node@26.6.6)
       undici: 7.30.1
-      workerd: 1.20261103.1
+      workerd: 1.20261110.1
       ws: 8.21.0
       youch: 4.1.0-beta.10
     transitivePeerDependencies:
@@ -13431,11 +13439,11 @@ snapshots:
     dependencies:
       find-up: 3.0.0
 
-  playwright-core@1.64.1: {}
+  playwright-core@1.65.0: {}
 
-  playwright@1.64.1:
+  playwright@1.65.0:
     dependencies:
-      playwright-core: 1.64.1
+      playwright-core: 1.65.0
 
   pngjs@7.0.0: {}
 
@@ -13500,7 +13508,7 @@ snapshots:
 
   prelude-ls@1.2.1: {}
 
-  prettier@3.9.10: {}
+  prettier@3.10.0: {}
 
   pretty-ms@9.3.0:
     dependencies:
@@ -13687,19 +13695,19 @@ snapshots:
     dependencies:
       expressive-code: 0.44.1
 
-  rehype-mermaid@3.0.0(playwright@1.64.1):
+  rehype-mermaid@3.0.0(playwright@1.65.0):
     dependencies:
       '@types/hast': 3.0.5
       hast-util-from-html-isomorphic: 2.0.0
       hast-util-to-text: 4.0.2
-      mermaid-isomorphic: 3.1.0(playwright@1.64.1)
+      mermaid-isomorphic: 3.1.0(playwright@1.65.0)
       mini-svg-data-uri: 1.4.4
       space-separated-tokens: 2.0.2
       unified: 11.0.5
       unist-util-visit-parents: 6.0.2
       vfile: 6.0.3
     optionalDependencies:
-      playwright: 1.64.1
+      playwright: 1.65.0
 
   rehype-raw@7.0.0:
     dependencies:
@@ -14909,32 +14917,33 @@ snapshots:
 
   word-wrap@1.2.5: {}
 
-  workerd@1.20261103.1:
+  workerd@1.20261110.1:
     optionalDependencies:
-      '@cloudflare/workerd-darwin-64': 1.20261103.1
-      '@cloudflare/workerd-darwin-arm64': 1.20261103.1
-      '@cloudflare/workerd-linux-64': 1.20261103.1
-      '@cloudflare/workerd-linux-arm64': 1.20261103.1
-      '@cloudflare/workerd-windows-64': 1.20261103.1
+      '@cloudflare/workerd-darwin-64': 1.20261110.1
+      '@cloudflare/workerd-darwin-arm64': 1.20261110.1
+      '@cloudflare/workerd-linux-64': 1.20261110.1
+      '@cloudflare/workerd-linux-arm64': 1.20261110.1
+      '@cloudflare/workerd-windows-64': 1.20261110.1
 
   workerpool@10.0.3: {}
 
-  wrangler@4.157.0(@types/node@26.6.6):
+  wrangler@4.160.1(@types/node@26.6.6):
     dependencies:
       '@cloudflare/kv-asset-handler': 0.5.0
-      '@cloudflare/unenv-preset': 2.16.2(unenv@2.0.0-rc.24)(workerd@1.20261103.1)
+      '@cloudflare/unenv-preset': 2.16.2(unenv@2.0.0-rc.24)(workerd@1.20261110.1)
       '@cspotcode/source-map-support': 0.8.1
       blake3-wasm: 2.1.5
       esbuild: 0.28.2
-      miniflare: 5.20261103.0-beta(@types/node@26.6.6)
+      miniflare: 5.20261110.1-beta(@types/node@26.6.6)
       path-to-regexp: 6.3.0
       unenv: 2.0.0-rc.24
-      workerd: 1.20261103.1
+      workerd: 1.20261110.1
     optionalDependencies:
       fsevents: 2.3.3
     transitivePeerDependencies:
       - '@types/node'
       - bufferutil
+      - kerberos
       - utf-8-validate
 
   wrap-ansi@6.2.0:
