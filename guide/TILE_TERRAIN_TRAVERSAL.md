@@ -386,6 +386,23 @@ tile's own `x/y/z`; on **Geographic** (quantized-mesh) terrain it is the level
 two rows. Covering the whole raster tile, rather than a point in it, keeps the
 range from missing relief the tile spans.
 
+## Min zoom descent
+
+A source has no tiles below its `minZoom`, so a tile below it never counts as
+detailed enough: the traversal keeps subdividing it whatever its screen-space
+error, and the view shows the source from its first level. The terrain and
+raster traversals apply this below the lowest min zoom among the regular
+(non-hillshade) raster layers, the vector traversal below its own source's.
+
+Each level of that descent quadruples the tiles under the view, so it is
+bounded. `MinZoomDescentBudget` (one per tile cache manager, refilled per
+traversal) counts the in-frustum tiles subdivided this way, up to
+`DEFAULT_LIMIT`. Once it is spent a tile stays undivided: a terrain tile
+renders as the leaf without the source's drape, a raster tile ends the
+descent, and a vector tile reports `Culled`. The traversals are depth-first,
+so the tiles reached first show the source and the rest of the view goes
+without it.
+
 ## Joining the two — the pull
 
 When `update_mesh_material` (`crates/navara_tile/src/tile/system.rs`) builds a

@@ -122,8 +122,7 @@ pub fn traverse_raster(
         );
     }
 
-    let meets_sse =
-        sse <= degrade.effective_max_sse(max_sse, distance_from_camera) && is_over_min_z;
+    let meets_error = sse <= degrade.effective_max_sse(max_sse, distance_from_camera);
 
     // Once the screen-space error is satisfied, stop: no need for finer tiles.
     // Beyond max zoom, the layer overscales (parent texture stretched), so we
@@ -133,12 +132,18 @@ pub fn traverse_raster(
         .filter(|(t, _)| t.hillshade_config.is_none())
         .filter_map(|(t, _)| t.source_id.as_deref().and_then(|id| source_store.get(id)))
         .any(|s| !s.is_over_max_zoom(coords_z + 1));
-    if meets_sse || !any_under_max {
+    if (meets_error && is_over_min_z) || !any_under_max {
         return;
     }
 
     // Frustum-culled tiles do not descend.
     if is_culled_by_frustum {
+        return;
+    }
+
+    // Below every layer's min zoom a tile descends whatever its error, until
+    // the traversal's budget is spent.
+    if meets_error && !tc.min_zoom_descent.try_spend() {
         return;
     }
 
@@ -182,7 +187,7 @@ mod tests {
     use navara_math::Vec3;
     use navara_mesh::CachedMeshHandle;
     use navara_texture_fragment::TextureFragment;
-    use navara_tile_component::{TerrainTile, TileTextureFragmentMarker};
+    use navara_tile_component::{MinZoomDescentBudget, TerrainTile, TileTextureFragmentMarker};
 
     /// A terrain quadtree whose WebMercator root tile carries the given heights
     /// and a (dummy) cached mesh, so `terrain_height_for_tile` resolves it.
@@ -512,6 +517,29 @@ mod tests {
             urls.iter().all(|u| u.starts_with("https://example.com/2/")),
             "no fetch below min zoom; got {urls:?}"
         );
+    }
+
+    #[test]
+    fn traverse_raster_stops_descending_toward_min_zoom_once_the_budget_is_spent() {
+        let (mut app, handle) = app_with_root(TerrainTileQuadtree::new_with_linear_qt());
+        app.insert_resource(TargetHandle(handle));
+        spawn_layer(&mut app, raster_layer("a", 2, 20), Order(0));
+        // Enough for the root only: its z=1 children stay undivided.
+        app.world_mut()
+            .resource_mut::<RasterTileCacheManager>()
+            .min_zoom_descent = MinZoomDescentBudget::with_limit(1);
+
+        app.add_systems(Update, run_traverse_system);
+        app.update();
+
+        let qt = app.world().resource::<RasterTileQuadtree>();
+        assert!(qt.qt.leaf((0, 0, 1)).is_some(), "the root should subdivide");
+        for x in 0..4 {
+            for y in 0..4 {
+                assert!(qt.qt.leaf((x, y, 2)).is_none(), "z=1 must not subdivide");
+            }
+        }
+        assert!(requested_urls(&mut app).is_empty());
     }
 
     // ----- screen-space error & max zoom subdivision --------------------------
