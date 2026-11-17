@@ -26,9 +26,11 @@ web/navara_material_schema/src/materialSchema.json   @navaramap/material-schema 
         └─► navara_three_plugins/src/devtools/layers/*      Layers tool UI
 ```
 
-`MATERIAL_SCHEMA.version` is not in the JSON: the build inlines the package
-version (`vite.config.ts`), which the release stamps in lockstep with
-`@navaramap/three`.
+`MATERIAL_SCHEMA.version` is not in the JSON: `src/index.ts` imports it from
+the package's own `package.json`, which `scripts/set-version.mjs` stamps in
+lockstep with `@navaramap/three` before a release build. Keep it an import,
+not a build-time define: bundlers that compile the package from `src` (the
+workspace examples) know no such define.
 
 ## Flow
 

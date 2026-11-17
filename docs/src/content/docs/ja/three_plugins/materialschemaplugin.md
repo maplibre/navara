@@ -66,7 +66,7 @@ layer.update({
 });
 ```
 
-スキーマだけならビューもエンジンも不要です。`@navaramap/material-schema` から `MATERIAL_SCHEMA` としてインポートします。
+スキーマだけならビューもエンジンも不要です。`@navaramap/material-schema` は `@navaramap/three-plugins` の依存関係としてインストールされますが、直接インポートするアプリは自分の `package.json` にも追加してください。スキーマは `MATERIAL_SCHEMA` としてインポートします。
 
 ```typescript
 import { MATERIAL_SCHEMA, materialField } from "@navaramap/material-schema";
@@ -90,7 +90,7 @@ new MaterialSchemaPlugin();
 
 **型:** [`MaterialSchema`](#materialschema)
 
-**説明:** エンジンのソースから生成された、すべてのレイヤーマテリアルです。`@navaramap/material-schema` の `MATERIAL_SCHEMA` と同じオブジェクトです。
+**説明:** エンジンのソースから生成された、すべてのレイヤーマテリアルです。`@navaramap/material-schema` の `MATERIAL_SCHEMA` と同じオブジェクトです。凍結されているため、変更したい部分はコピーしてから変更してください。
 
 ## メソッド
 
@@ -103,6 +103,8 @@ describeLayer(layer: Layer): LayerStyle
 レイヤーのマテリアルを、フィールドと現在の値とともにプレーンな JSON で返します。そのレイヤータイプが受け付けるすべてのマテリアルを、スキーマの順に並べます。`present` は、レイヤーの description がそのマテリアルを持っているかを示します。vector レイヤーは持っているマテリアルだけを描画し、その他のレイヤータイプは常に自分のマテリアルを描画します。[`LayerStyle`](#layerstyle) を参照してください。
 
 値は、アプリが `addLayer()` と `layer.update()` で設定したもので、設定がなければエンジンのデフォルト値です。エンジンから読み戻した値ではありません。
+
+戻り値は呼び出しごとに新しいオブジェクトです。UI がそのまま書き換えても、スキーマは変わりません。
 
 ### description()
 

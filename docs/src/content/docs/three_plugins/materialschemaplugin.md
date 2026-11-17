@@ -66,7 +66,7 @@ layer.update({
 });
 ```
 
-The schema alone needs no view or engine. Import it as `MATERIAL_SCHEMA` from `@navaramap/material-schema`:
+The schema alone needs no view or engine. `@navaramap/three-plugins` installs `@navaramap/material-schema` as a dependency, but an app that imports it directly must add it to its own `package.json` too. Import the schema as `MATERIAL_SCHEMA`:
 
 ```typescript
 import { MATERIAL_SCHEMA, materialField } from "@navaramap/material-schema";
@@ -90,7 +90,7 @@ Register the plugin with `view.addPlugin()` **before** `view.init()`. It records
 
 **Type:** [`MaterialSchema`](#materialschema)
 
-**Description:** Every layer material, generated from the engine sources. The same object as `MATERIAL_SCHEMA` from `@navaramap/material-schema`.
+**Description:** Every layer material, generated from the engine sources. The same object as `MATERIAL_SCHEMA` from `@navaramap/material-schema`. It is frozen: copy a part of it before changing that part.
 
 ## Methods
 
@@ -103,6 +103,8 @@ describeLayer(layer: Layer): LayerStyle
 Returns the layer's materials with their fields and current values as plain JSON. It lists every material the layer type takes, in schema order. `present` tells whether the layer's description carries the material. A vector layer draws only the materials it carries, and the other layer types always draw theirs. See [`LayerStyle`](#layerstyle).
 
 A value is the one the app set with `addLayer()` and `layer.update()`, else the engine default. It is not read back from the engine.
+
+The result is a new object on every call, so a UI can change it in place without changing the schema.
 
 ### description()
 
