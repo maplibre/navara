@@ -212,8 +212,15 @@ pub fn traverse_tile(
     // down to — but not past — where the source has data. Without this, a
     // horizon-tilted view relaxes far tiles below `min_zoom` and their
     // features vanish.
-    let meets_sse = coords_z >= traversal_config.min_zoom
-        && sse <= degrade.effective_max_sse(max_sse, distance_from_camera);
+    let meets_error = sse <= degrade.effective_max_sse(max_sse, distance_from_camera);
+    let meets_sse = coords_z >= traversal_config.min_zoom && meets_error;
+
+    // The descent toward `min_zoom` ends once the traversal's budget is
+    // spent. The tile has no data to show, so it is left out like a culled
+    // one. A frustum-culled tile does not descend and takes no budget.
+    if meets_error && !meets_sse && !is_culled_by_frustum && !tc.min_zoom_descent.try_spend() {
+        return TraversalResult::Culled;
+    }
 
     let is_renderable = is_rendered_last_frame || is_tile_ready;
 

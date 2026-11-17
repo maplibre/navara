@@ -1,6 +1,7 @@
 #![doc = include_str!("../README.md")]
 
 mod component;
+mod min_zoom_descent;
 mod raster_tile;
 mod raster_tile_texture_fragment;
 mod resolve;
@@ -14,6 +15,7 @@ mod types;
 mod vector_tile;
 
 pub use component::*;
+pub use min_zoom_descent::*;
 pub use raster_tile::*;
 pub use raster_tile_texture_fragment::*;
 pub use resolve::*;

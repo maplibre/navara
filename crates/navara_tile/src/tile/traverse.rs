@@ -237,8 +237,11 @@ pub fn traverse_terrain(
         true
     };
 
-    let meets_sse =
-        sse <= degrade.effective_max_sse(max_sse, distance_from_camera) && is_over_min_z;
+    // Below the regular layers' min zoom a tile subdivides whatever its error,
+    // until the traversal's budget is spent. A frustum-culled tile does not
+    // subdivide, so it takes nothing out of the budget.
+    let meets_sse = sse <= degrade.effective_max_sse(max_sse, distance_from_camera)
+        && (is_over_min_z || !(is_culled_by_frustum || tc.min_zoom_descent.try_spend()));
 
     let is_renderable = is_rendered_last_frame || is_tile_ready;
 
@@ -1317,6 +1320,7 @@ mod tests {
     use navara_core::{Aabb, Angle, TileXYZ, WGS84_64, WGS84_A_64};
     use navara_material::{Appearance, RasterMaterial};
     use navara_math::Vec3;
+    use navara_tile_component::MinZoomDescentBudget;
 
     /// Camera placed at twice the Earth radius above (lng 0, lat 0), looking at
     /// the globe centre. The horizon half-angle is `acos(R / 2R) = 60°`, so any
@@ -1646,6 +1650,25 @@ mod tests {
         // The tile's resource was requested while it renders.
         let tc = app.world().resource::<TileCacheManager>();
         assert!(tc.requested_tile_caches.contains(&handle));
+    }
+
+    #[test]
+    fn traverse_terrain_renders_a_tile_below_min_zoom_once_the_descent_budget_is_spent() {
+        let (mut app, handle) = terrain_app_with_root();
+        app.insert_resource(TargetHandle(handle));
+        // The root satisfies the huge threshold but sits below the layer's min
+        // zoom: with nothing left in the budget it is the leaf.
+        spawn_layer(&mut app, raster_layer("a", 2, 20), Order(0));
+        app.world_mut()
+            .resource_mut::<TileCacheManager>()
+            .min_zoom_descent = MinZoomDescentBudget::with_limit(0);
+
+        app.add_systems(Update, run_terrain_traverse);
+        app.update();
+
+        assert_eq!(app.world().resource::<LastResult>().0, "rendered");
+        let qt = app.world().resource::<TerrainTileQuadtree>();
+        assert!(qt.qt.leaf((0, 0, 1)).is_none(), "must not subdivide");
     }
 
     #[test]
