@@ -4,6 +4,7 @@
     "noEmit": true,
     "paths": {
       "@navaramap/three-plugins": ["./src"],
+      "@navaramap/material-schema": ["../navara_material_schema/src"],
       "@navaramap/three-default-plugin": ["../navara_three_default_plugin/src"],
       "@navaramap/three-default-descs": ["../navara_three_default_descs/src"],
       "@navaramap/three": ["../navara_three/src"],

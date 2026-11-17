@@ -41,6 +41,14 @@ export {
   type TileJsonPluginEventMap,
 } from "./TileJsonPlugin";
 
+// The schema itself is @navaramap/material-schema.
+export {
+  MaterialSchemaPlugin,
+  type FieldState,
+  type LayerStyle,
+  type MaterialState,
+} from "./MaterialSchemaPlugin";
+
 // Development-only tools (tweakpane panels); see the README.
 export * from "./devtools";
 export {

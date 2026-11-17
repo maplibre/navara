@@ -11,6 +11,7 @@
         "../../navara_three_default_plugin/src"
       ],
       "@navaramap/three-plugins": ["../../navara_three_plugins/src"],
+      "@navaramap/material-schema": ["../../navara_material_schema/src"],
       "@navaramap/three-api": ["../../navara_three_api/src"],
       "@navaramap/three-csm": ["../../navara_three_csm/src"],
       "@navaramap/core": ["../../navara_core/src"],

@@ -93,6 +93,22 @@ by a redeploy, removes the badges, so the markers stay in the sources.
 marker is changed to a version. Mechanism: [`site/release-status.ts`](../site/release-status.ts).
 The file is also served at `https://navara.world/released-version.json`.
 
+## New packages
+
+Trusted publishing works only for a package that already exists on npm. CI
+cannot create one: `pnpm publish -r` fails on it, and a package that depends
+on it may be published with a dependency that cannot be installed. So before
+the first nightly or release that includes a new `@navaramap/*` package
+(e.g. `@navaramap/material-schema`):
+
+1. Publish it once by hand under the `nightly` dist-tag, at a nightly version
+   (`node scripts/set-version.mjs <version>`, build, then
+   `pnpm publish --tag nightly --access public` in its folder; revert the
+   version stamp afterwards).
+2. On npmjs.com, register `release.yml` / `npm-publish` as its trusted
+   publisher and turn on "Require two-factor authentication and disallow
+   tokens".
+
 ## Experimental packages
 
 Packages under `web/experimental/` (e.g. `@navaramap/three-flood-mesh`) are
@@ -103,10 +119,7 @@ published in nightlies only, at the nightly version.
   package always runs on the Navara of the same commit.
 - **Excluded from `vX.Y.Z`**: `release.yml` publishes releases with
   `--filter "!./web/experimental/**"`.
-- **First publish** is by hand (trusted publishing needs the package to
-  exist), with `--tag nightly`, then register `release.yml` / `npm-publish`
-  as its trusted publisher and turn on "Require two-factor authentication and
-  disallow tokens".
+- **First publish** is by hand, as for any [new package](#new-packages).
 - **Docs and examples** mark it `since: nightly` (`:since[nightly]` inline),
   not "Experimental", so it shows the same Nightly badge as other
   nightly-only features.
