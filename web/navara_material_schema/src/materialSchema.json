@@ -976,6 +976,14 @@
         "applies": "reload"
       },
       {
+        "name": "extrusionBase",
+        "kind": "enum",
+        "doc": "What the bottom follows when `perPositionHeight` is set: `\"position\"` keeps both caps at the heights of the positions, `\"ellipsoid\"` lays the bottom flat on the ellipsoid.",
+        "default": "position",
+        "options": ["position", "ellipsoid"],
+        "applies": "reload"
+      },
+      {
         "name": "opacity",
         "kind": "number",
         "doc": "Need to enable `transparent`.",

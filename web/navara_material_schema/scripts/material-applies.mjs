@@ -24,6 +24,7 @@ export const RELOAD = {
     tiled: "",
     geodesic: "",
     perPositionHeight: "",
+    extrusionBase: "",
     outline: "",
     outlineShow: "Applies at once when the layer was added with an outline.",
   },

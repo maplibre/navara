@@ -1203,7 +1203,7 @@ function buildPolygonGeometry(
 
 - `rings`: 外周リング、続けて穴。各リングは度とメートルの `[lng, lat, height, ...]` のフラットな配列で、`geocentric` が `true` のときは ECEF メートルの `[x, y, z, ...]`
 - `geocentric`: 座標を経度・緯度ではなく ECEF メートルとして読む
-- `material`: [`polygon`](../../../three/material/polygon-material/) レイヤーマテリアルのプレーンオブジェクト。色は数値で指定します。ジオメトリの形に効くのは `clampToGround`、`height`、`perPositionHeight` で、輪郭線のオプションは無視されます
+- `material`: [`polygon`](../../../three/material/polygon-material/) レイヤーマテリアルのプレーンオブジェクト。色は数値で指定します。ジオメトリの形に効くのは `clampToGround`、`height`、`perPositionHeight`、`extrusionBase` で、輪郭線のオプションは無視されます
 
 **Returns:**
 

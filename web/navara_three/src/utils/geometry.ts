@@ -2,7 +2,7 @@
 
 import { isNotNullish } from "@navaramap/core";
 import { pick } from "lodash-es";
-import { BufferAttribute, BufferGeometry } from "three";
+import { Box3, BufferAttribute, BufferGeometry, Sphere, Vector3 } from "three";
 
 export type BufferGeometryLike = Pick<
   BufferGeometry,
@@ -50,4 +50,22 @@ export function fromBufferGeometryLike(
   result.boundingBox = input.boundingBox;
   result.boundingSphere = input.boundingSphere;
   return result;
+}
+
+/** Bounding sphere of RTE positions split into high and low parts. */
+export function boundingSphereOfRte(
+  high: Float32Array,
+  low: Float32Array,
+): Sphere {
+  const box = new Box3();
+  const point = new Vector3();
+  for (let i = 0; i < high.length; i += 3) {
+    point.set(
+      high[i] + low[i],
+      high[i + 1] + low[i + 1],
+      high[i + 2] + low[i + 2],
+    );
+    box.expandByPoint(point);
+  }
+  return box.getBoundingSphere(new Sphere());
 }

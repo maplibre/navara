@@ -13,6 +13,7 @@
 //   `impl Default` holds the defaults and whose enums' `parse` functions hold
 //   the accepted strings.
 // - scripts/material-applies.mjs: which fields apply only on reload, or never.
+// - ENUM_SOURCES: enums the internal materials take from other crates.
 import { readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -27,6 +28,8 @@ const read = (path) => readFileSync(resolve(root, path), "utf8");
 const layerSrc = read("crates/navara_wasm/src/source_types.rs");
 const wasmSrc = read("crates/navara_wasm_types/src/appearance.rs");
 const internalSrc = read("crates/navara_material/src/appearance.rs");
+/** Files whose enums' `parse` functions the internal materials also use. */
+const ENUM_SOURCES = ["crates/navara_geometry/src/polygon/types.rs"];
 const outFile = resolve(here, "../src/materialSchema.json");
 
 /** Layer `type` → its description struct in source_types.rs. */
@@ -139,7 +142,10 @@ function parseConsts(src) {
   return out;
 }
 
-const enums = parseEnums(internalSrc);
+const enums = Object.assign(
+  parseEnums(internalSrc),
+  ...ENUM_SOURCES.map((path) => parseEnums(read(path))),
+);
 const consts = parseConsts(internalSrc);
 
 function number(text) {

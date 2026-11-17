@@ -145,7 +145,7 @@ import { Color } from "@navaramap/three";
 
 **Type:** `number | undefined`
 
-**Description:** Specifies the extrusion height. This works when `clampToGround` is false.
+**Description:** Extrudes the polygon upward by this many meters: its top sits at `height + extrudedHeight` above the ellipsoid, or above each position with [`perPositionHeight`](#perpositionheight). With `perPositionHeight` and [`extrusionBase`](#extrusionbase) set to `"ellipsoid"`, the top is this many meters above each position, not raised by `height`. Applies when `clampToGround` is false.
 
 **Default:** `undefined`
 
@@ -155,6 +155,32 @@ import { Color } from "@navaramap/three";
 {
   polygon: {
     extrudedHeight: 50 // 50 meters extrusion
+  }
+}
+```
+
+### extrusionBase :since[0.3.2]
+
+**Type:** `"position" | "ellipsoid" | undefined`
+
+**Description:** Sets what the bottom of a polygon with [`perPositionHeight`](#perpositionheight) follows.
+
+- `"position"`: Both the bottom and the top follow the positions. The bottom is [`height`](#height) above each position and the top `height + extrudedHeight` above it, so the polygon has the same thickness everywhere.
+- `"ellipsoid"`: The bottom lies flat at `height` above the ellipsoid, and the top is [`extrudedHeight`](#extrudedheight) above each position, so the polygon fills the space between them. This is how CesiumJS draws a polygon with both `perPositionHeight` and `extrudedHeight`. Where the bottom lies above the top, the polygon is drawn inside out, so keep `height` below the lowest top.
+
+Without `perPositionHeight` the positions lie on the ellipsoid, and both values draw the same polygon. Set it when the layer is added: `layer.update()` does not rebuild the polygons already shown.
+
+**Default:** `"position"`
+
+**Example:**
+
+```typescript
+{
+  polygon: {
+    clampToGround: false,
+    perPositionHeight: true,
+    // A water surface at each position's height, filled down to the ellipsoid
+    extrusionBase: "ellipsoid"
   }
 }
 ```
@@ -184,7 +210,7 @@ The option applies to the whole layer: its tiled `polygon` and `polyline` share 
 
 **Type:** `number | undefined`
 
-**Description:** Specifies the height. This works when `clampToGround` is false. The unit is meters.
+**Description:** Raises the bottom of the polygon by this many meters: above the ellipsoid, or above each position with [`perPositionHeight`](#perpositionheight) unless [`extrusionBase`](#extrusionbase) is `"ellipsoid"`. Works when `clampToGround` is false.
 
 **Default:** `undefined`
 
@@ -330,7 +356,7 @@ import { Color } from "@navaramap/three";
 
 **Type:** `boolean | undefined`
 
-**Description:** Specifies whether to obtain height from the data. When false, the height is a constant value.
+**Description:** Uses the height of each position. When `false`, the positions are placed on the ellipsoid and [`height`](#height) sets the polygon's height. [`extrusionBase`](#extrusionbase) sets where the bottom of such a polygon lies. Set it when the layer is added: `layer.update()` does not rebuild the polygons already shown.
 
 **Default:** `undefined`
 

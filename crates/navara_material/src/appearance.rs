@@ -1,6 +1,6 @@
 use bevy_ecs::{component::Component, entity::Entity};
 use navara_core::{CRS, ElevationDecoder, calc_transform};
-use navara_geometry::TileUvTransform;
+use navara_geometry::{ExtrusionBase, TileUvTransform};
 use navara_math::{Transform, Vec2, Vec3};
 
 /// Configuration for elevation heatmap rendering (one per elevation heatmap layer).
@@ -1057,6 +1057,8 @@ pub struct PolygonMaterial {
     pub roughness: f32,
     pub internal: Option<PolygonInternalMaterial>,
     pub per_position_height: bool,
+    /// What the bottom follows when `per_position_height` is set.
+    pub extrusion_base: ExtrusionBase,
     pub opacity: f32,
     pub transparent: bool,
 
@@ -1108,6 +1110,7 @@ impl Default for PolygonMaterial {
             roughness: 0.0,
             internal: None,
             per_position_height: false,
+            extrusion_base: ExtrusionBase::Position,
             opacity: 1.0,
             transparent: false,
 
@@ -1139,10 +1142,15 @@ impl Default for PolygonMaterial {
 }
 
 impl PolygonMaterial {
+    /// Takes `from`, but keeps the fields the built geometry was shaped with,
+    /// since an update does not rebuild it.
     pub fn update(&mut self, from: &PolygonMaterial) {
         let internal = self.internal.clone();
+        let (per_position_height, extrusion_base) = (self.per_position_height, self.extrusion_base);
         *self = from.clone();
         self.internal = internal;
+        self.per_position_height = per_position_height;
+        self.extrusion_base = extrusion_base;
     }
 }
 
