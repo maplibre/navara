@@ -90,7 +90,7 @@ new DevtoolsPlugin(options?: DevtoolsPluginOptions);
 
 **型:** `CameraInspectorPlugin | undefined`
 
-**説明:** Camera ツールです。`tools` に含まれないときは `undefined` です。`enabled` で有効・無効を切り替えます。`snapshot()` はカメラを `CameraSnapshot` として返します。最初のエンジン更新の前は `undefined` です。`apply(camera)` は渡したキーだけを設定して残りはそのままにします。`fov` は渡したときだけ変わります。
+**説明:** Camera ツールです。`tools` に含まれないときは `undefined` です。`enabled` で有効・無効を切り替えます。`apply(camera)` は渡したキーだけを次のフレームで設定し、残りはそのままにします。`fov` は渡したときだけ変わります。`lng`・`lat`・`height` はまとめて扱われ、一部だけを渡すと残りは現在のカメラの値を使います。カメラを読み取るには [`view.getCamera()`](../../three/api/threeview-functions/#getcamera) を使ってください。
 
 ## メソッド
 
@@ -133,7 +133,7 @@ GPU 時間には WebGL 拡張 `EXT_disjoint_timer_query_webgl2`（デスクト�
 
 `lng`、`lat`、`height`（楕円体からの高さ、メートル）、`heading`、`pitch`、`roll`（度）、`fov`（垂直方向の視野角、度）を表示します。タブが表示されている間だけカメラに追従します。ツールが無効な間と、エンジンのカメラができる（最初のエンジン更新）までは、操作がグレーアウトします。
 
-「Copy as JS object」はカメラをコピーします。
+「Copy as JS object」は [`view.getCamera()`](../../three/api/threeview-functions/#getcamera) を約 1 cm に丸めてコピーします。
 
 ```typescript
 {

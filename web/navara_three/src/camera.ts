@@ -15,6 +15,8 @@ import { radianToDegree } from "@navaramap/three-api";
 import { PerspectiveCamera } from "three";
 import invariant from "tiny-invariant";
 
+import { isValidFov } from "./cameraState";
+
 export type CameraEvent = {
   movestart: () => void;
   move: () => void;
@@ -125,7 +127,7 @@ export class ThreeViewCamera extends EventHandler<CameraEvent> {
     };
   }
 
-  get orientation(): CameraOrientation {
+  get orientation(): Required<CameraOrientation> {
     const orientation = this._core?.getCameraOrientation();
     invariant(orientation);
     return {
@@ -155,7 +157,7 @@ export class ThreeViewCamera extends EventHandler<CameraEvent> {
   }
 
   set fov(val: number) {
-    if (val < 1 || val > 180) {
+    if (!isValidFov(val)) {
       return;
     }
 

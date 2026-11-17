@@ -1,14 +1,11 @@
+import type { CameraState } from "@navaramap/three";
 import type { ButtonApi, NumberInputParams } from "tweakpane";
 
 import { DevtoolPlugin, type DevtoolPluginOptions } from "../DevtoolPlugin";
 import { hint } from "../util/html";
 import { Ticker } from "../util/ticker";
 
-import {
-  formatCameraSnippet,
-  parseCameraSnippet,
-  type CameraSnapshot,
-} from "./cameraSnippet";
+import { formatCameraSnippet, parseCameraSnippet } from "./cameraSnippet";
 
 export type CameraInspectorPluginOptions = DevtoolPluginOptions;
 
@@ -25,7 +22,7 @@ const degrees = (decimals: number) => ({
  * only limits what can be entered: refreshing a binding clamps its value in
  * `params`, so an edit reads the camera again and sends only its own key.
  */
-const ROWS: [keyof CameraSnapshot, NumberInputParams, string][] = [
+const ROWS: [keyof CameraState, NumberInputParams, string][] = [
   ["lng", { min: -180, max: 180, ...degrees(6) }, "Longitude in degrees."],
   ["lat", { min: -89.999, max: 89.999, ...degrees(6) }, "Latitude in degrees."],
   [
@@ -57,7 +54,7 @@ export class CameraInspectorPlugin extends DevtoolPlugin {
   readonly title = "Camera";
 
   /** What the bindings show; written only from the camera. */
-  private readonly params: CameraSnapshot = {
+  private readonly params: CameraState = {
     lng: 0,
     lat: 0,
     height: 0,
@@ -77,6 +74,10 @@ export class CameraInspectorPlugin extends DevtoolPlugin {
   /** The camera changed since the bindings last showed it. */
   private stale = true;
   private flushQueued = false;
+  /** The position sent by `apply()` that the engine has not applied yet. */
+  private pendingPosition?: Partial<
+    Pick<CameraState, "lng" | "lat" | "height">
+  >;
   /** Shows a camera that changed while the panel could not be seen. */
   private readonly ticker = new Ticker(CATCH_UP_MS, () => this.flush());
 
@@ -85,24 +86,40 @@ export class CameraInspectorPlugin extends DevtoolPlugin {
   }
 
   /**
-   * The camera, read from the view now. `undefined` until the engine camera
-   * exists (the first engine update after `init`).
+   * Sets the camera on the next frame; keys left out keep their value.
+   * Valid after `init`. Only the keys given are sent, except that `lng`,
+   * `lat` and `height` move together: one of them takes the other two from
+   * the camera (or from an earlier `apply()` of this frame). Before the
+   * engine camera exists there is nothing to take them from, so the
+   * position moves only when `lng` and `lat` are given, and a missing
+   * `height` is 0.
    */
-  snapshot(): CameraSnapshot | undefined {
-    return this.readCamera();
-  }
-
-  /**
-   * Sets the camera; keys left out keep their current value. Valid after
-   * `init`. Before the engine camera exists there is no current value, so
-   * only the keys given are sent: the position moves only when `lng`, `lat`
-   * and `height` are all given.
-   */
-  apply(camera: Partial<CameraSnapshot>): void {
-    const { fov, ...pose } = camera;
+  apply(camera: Partial<CameraState>): void {
+    const { lng, lat, height } = camera;
+    if (lng === undefined && lat === undefined && height === undefined) {
+      // The engine keeps the heading, pitch and roll left out, and a `fov`
+      // alone leaves the pose (and a running flight) as it is.
+      this.view.setCamera(camera);
+      return;
+    }
+    // The camera read here is the one of the last frame: an earlier
+    // `apply()` of this frame is not in it yet, so its position is kept
+    // until the engine has moved the camera.
+    if (!this.pendingPosition) {
+      this.view.camera.once("move", () => (this.pendingPosition = undefined));
+    }
     const current = this.readCamera();
-    this.view.setCamera(current ? { ...current, ...pose } : pose);
-    if (fov !== undefined) this.view.camera.fov = fov;
+    const position = {
+      ...(current && {
+        lng: current.lng,
+        lat: current.lat,
+        height: current.height,
+      }),
+      ...this.pendingPosition,
+      ...definedOnly({ lng, lat, height }),
+    };
+    this.pendingPosition = position;
+    this.view.setCamera({ ...camera, ...position });
   }
 
   protected onInit(): void {
@@ -120,7 +137,7 @@ export class CameraInspectorPlugin extends DevtoolPlugin {
     const copy = this.ui.addButton({ title: COPY_TITLE });
     hint(copy, "Copies the camera to the clipboard.");
     copy.on("click", () => {
-      const camera = this.snapshot();
+      const camera = this.readCamera();
       const clipboard = getClipboard();
       if (!camera || !clipboard) {
         flash(copy, camera ? NO_CLIPBOARD : "No camera yet", COPY_TITLE);
@@ -217,19 +234,11 @@ export class CameraInspectorPlugin extends DevtoolPlugin {
     this.updateControls();
   }
 
-  /**
-   * The camera now, or `undefined` before the first engine update (plugin
-   * `init` runs earlier), when there is no engine camera yet and `fov`
-   * reports `undefined`.
-   */
-  private readCamera(): CameraSnapshot | undefined {
-    const camera = this.view.camera;
-    const fov = camera.fov;
-    if (fov === undefined) return undefined;
-    this.hasCamera = true;
-    // The getter fills all three; the type is `Partial` for setCamera.
-    const { heading = 0, pitch = 0, roll = 0 } = camera.orientation;
-    return { ...camera.positionGeographic, heading, pitch, roll, fov };
+  /** `view.getCamera()`, noting when the engine camera first exists. */
+  private readCamera(): CameraState | undefined {
+    const camera = this.view.getCamera();
+    if (camera) this.hasCamera = true;
+    return camera;
   }
 
   private updateControls(): void {
@@ -239,6 +248,13 @@ export class CameraInspectorPlugin extends DevtoolPlugin {
 }
 
 const NO_CLIPBOARD = "Clipboard needs HTTPS";
+
+/** `obj` without its `undefined` values, so a spread does not clear keys. */
+function definedOnly<T extends object>(obj: T): Partial<T> {
+  return Object.fromEntries(
+    Object.entries(obj).filter(([, value]) => value !== undefined),
+  ) as Partial<T>;
+}
 
 /**
  * `navigator.clipboard`, which exists only in a secure context (https or

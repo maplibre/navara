@@ -90,7 +90,7 @@ Register the plugin with `view.addPlugin()` **before** `view.init()`. The Layers
 
 **Type:** `CameraInspectorPlugin | undefined`
 
-**Description:** The Camera tool, or `undefined` when `tools` leaves it out. Set `enabled` to switch it on and off. `snapshot()` returns the camera as a `CameraSnapshot`, or `undefined` before the first engine update, and `apply(camera)` sets the keys given and keeps the others. `fov` changes only when it is given.
+**Description:** The Camera tool, or `undefined` when `tools` leaves it out. Set `enabled` to switch it on and off. `apply(camera)` sets the keys given on the next frame and keeps the others; `fov` changes only when it is given. `lng`, `lat` and `height` move together: one of them takes the other two from the camera. To read the camera, use [`view.getCamera()`](../../three/api/threeview-functions/#getcamera).
 
 ## Methods
 
@@ -133,7 +133,7 @@ The wireframe toggle needs each geometry's vertex arrays kept in JS memory. Whil
 
 The tool shows `lng`, `lat` and `height` (meters above the ellipsoid), `heading`, `pitch` and `roll` (degrees), and `fov` (vertical field of view in degrees). They follow the camera only while the tab is shown. The controls are greyed out while the tool is disabled and until the engine camera exists (the first engine update).
 
-"Copy as JS object" copies the camera:
+"Copy as JS object" copies [`view.getCamera()`](../../three/api/threeview-functions/#getcamera), rounded to about 1 cm:
 
 ```typescript
 {

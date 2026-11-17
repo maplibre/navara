@@ -1078,6 +1078,28 @@ impl App {
         None
     }
 
+    /// The whole camera in one query: `[lng, lat, height, heading, pitch,
+    /// roll, fov]`; angles in degrees (fov is the vertical field of view),
+    /// height in meters above the ellipsoid.
+    pub fn get_camera_state(&mut self) -> Option<[FloatType; 7]> {
+        let world = self.app.world_mut();
+        let mut query = world.query_filtered::<(&Transform, &CameraFrustum), With<CameraMarker>>();
+
+        let (transform, frustum) = query.iter(world).next()?;
+        let lle = CRS::Geocentric
+            .to_lle(WGS84_64, transform.translation, 0.0)
+            .deg();
+        Some([
+            lle.lng.val(),
+            lle.lat.val(),
+            lle.height.val(),
+            get_heading(transform),
+            get_pitch(transform),
+            get_roll(transform),
+            frustum.fov.to_degrees(),
+        ])
+    }
+
     /// Vertical field of view in radians as set via `set_frustum`.
     pub fn get_camera_fov(&mut self) -> Option<FloatType> {
         let world = self.app.world_mut();

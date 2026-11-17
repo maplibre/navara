@@ -1,13 +1,4 @@
-/** The camera as the Camera tool shows it; angles and `fov` in degrees. */
-export type CameraSnapshot = {
-  lng: number;
-  lat: number;
-  height: number;
-  heading: number;
-  pitch: number;
-  roll: number;
-  fov: number;
-};
+import type { CameraState } from "@navaramap/three";
 
 const KEYS = [
   "lng",
@@ -17,12 +8,12 @@ const KEYS = [
   "pitch",
   "roll",
   "fov",
-] as const satisfies readonly (keyof CameraSnapshot)[];
+] as const satisfies readonly (keyof CameraState)[];
 
 const REQUIRED = ["lng", "lat", "height"] as const;
 
 /** Decimals kept per key: ~1 cm for lng / lat and height. */
-const DECIMALS: Record<keyof CameraSnapshot, number> = {
+const DECIMALS: Record<keyof CameraState, number> = {
   lng: 7,
   lat: 7,
   height: 2,
@@ -33,7 +24,7 @@ const DECIMALS: Record<keyof CameraSnapshot, number> = {
 };
 
 /** The camera as a JS object literal, one key per line. */
-export function formatCameraSnippet(camera: CameraSnapshot): string {
+export function formatCameraSnippet(camera: CameraState): string {
   const lines = KEYS.map(
     (key) => `  ${key}: ${Number(camera[key].toFixed(DECIMALS[key]))},`,
   );
@@ -41,7 +32,7 @@ export function formatCameraSnippet(camera: CameraSnapshot): string {
 }
 
 /** Allowed values per key; every value must also be finite. */
-const RANGES: Partial<Record<keyof CameraSnapshot, [number, number]>> = {
+const RANGES: Partial<Record<keyof CameraState, [number, number]>> = {
   lng: [-180, 180],
   lat: [-90, 90],
   // Below the deepest seafloor is inside the Earth.
@@ -49,8 +40,7 @@ const RANGES: Partial<Record<keyof CameraSnapshot, [number, number]>> = {
   fov: [1, 179],
 };
 
-export type ParsedCamera =
-  { camera: Partial<CameraSnapshot> } | { error: string };
+export type ParsedCamera = { camera: Partial<CameraState> } | { error: string };
 
 /**
  * Reads the camera from text such as a JS object, JSON or a
@@ -77,7 +67,7 @@ export function parseCameraSnippet(text: string): ParsedCamera {
   return { camera: found.values };
 }
 
-type ObjectPairs = { depth: number; values: Partial<CameraSnapshot> };
+type ObjectPairs = { depth: number; values: Partial<CameraState> };
 
 const NAME = /[A-Za-z_$][\w$]*/y;
 const NUMBER = /(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?/y;
@@ -91,11 +81,11 @@ function readObjects(text: string): ObjectPairs[] {
   const objects: ObjectPairs[] = [{ depth: 0, values: {} }];
   const stack = [objects[0]];
   // The last key read, while waiting for its `:` and number.
-  let key: keyof CameraSnapshot | undefined;
+  let key: keyof CameraState | undefined;
   let colon = false;
   let sign = 1;
   let i = 0;
-  const isKey = (name: string): name is keyof CameraSnapshot =>
+  const isKey = (name: string): name is keyof CameraState =>
     (KEYS as readonly string[]).includes(name);
   const readKey = (name: string) => {
     key = isKey(name) ? name : undefined;

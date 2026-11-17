@@ -77,8 +77,15 @@ export class DevtoolsPlugin extends Plugin<ThreeView, ViewContext> {
     if (names.includes("camera")) {
       this.camera = new CameraInspectorPlugin({ ...options.camera, panel });
     }
+    // A Map, not `this[name]`: a JS caller can pass any string, and only
+    // these names may become tabs.
+    const byName = new Map<DevtoolName, DevtoolPlugin | undefined>([
+      ["profiler", this.profiler],
+      ["layers", this.layers],
+      ["camera", this.camera],
+    ]);
     for (const name of names) {
-      const tool = this[name];
+      const tool = byName.get(name);
       if (tool && !this.tools.includes(tool)) this.tools.push(tool);
     }
   }

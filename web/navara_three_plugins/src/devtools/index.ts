@@ -45,4 +45,3 @@ export {
   CameraInspectorPlugin,
   type CameraInspectorPluginOptions,
 } from "./camera/CameraInspectorPlugin";
-export type { CameraSnapshot } from "./camera/cameraSnippet";
