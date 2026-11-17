@@ -22,7 +22,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Harden Runner
-        uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2.22.3
+        uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
         with:
           egress-policy: audit
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -51,7 +51,7 @@ jobs:
           node-version: '24.22.1'
 
       - name: Install Tools (wasm-bindgen-cli, cargo-make)
-        uses: taiki-e/install-action@c509219cf42fba86913069efd0ade2458c59337b # v2.90.1
+        uses: taiki-e/install-action@cfdb7ed4ccc7c7dce37759eae89dc5674b469b39 # v2.90.3
         with:
           tool: wasm-bindgen-cli@0.2.126, cargo-make
 
@@ -85,7 +85,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Harden Runner
-        uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2.22.3
+        uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
         with:
           egress-policy: audit
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
