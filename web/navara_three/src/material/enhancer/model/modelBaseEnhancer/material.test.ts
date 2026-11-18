@@ -23,6 +23,20 @@ describe("modelBaseEnhancer/material", () => {
       expect(material.color.getHex()).toBe(0x00ff00);
     });
 
+    it("should multiply color into the material's own base color", () => {
+      const material = new MeshStandardMaterial();
+      material.color.set(0x00ffff);
+
+      updateMaterialProps(material, { color: 0xffffff });
+      expect(material.color.getHex()).toBe(0x00ffff);
+      // Tints do not compound: each one starts from the base color.
+      updateMaterialProps(material, { color: 0x00ff00 });
+      updateMaterialProps(material, { color: 0x00ff00 });
+      expect(material.color.getHex()).toBe(0x00ff00);
+      updateMaterialProps(material, { color: 0xffffff });
+      expect(material.color.getHex()).toBe(0x00ffff);
+    });
+
     it("should update metalness and roughness when provided", () => {
       const material = new MeshStandardMaterial();
       updateMaterialProps(material, { metalness: 0.8, roughness: 0.2 });

@@ -3,9 +3,11 @@
 use navara_buffer_store::Handle;
 use navara_core::CRS;
 use navara_feature_component::batch::{FeatureBatchId, GlobalBatchIds};
-use navara_math::{PI_OVER_TWO, Quat, Transform, Vec3};
+use navara_math::Vec3;
 
-use crate::tile_content_parser::{ParseContext, ParsedTileContent, TileContentParser};
+use crate::tile_content_parser::{
+    ParseContext, ParsedTileContent, TileContentParser, gltf_placement,
+};
 
 use super::{RenderedCesium3dTileContentGlbMarker, requester::GlbDataRequesterMarker};
 
@@ -21,11 +23,12 @@ impl TileContentParser for GlbParser {
     const BIN_IS_GLTF: bool = true;
 
     fn parse(ctx: &mut ParseContext) -> Option<ParsedTileContent> {
+        let (coords, transform) = gltf_placement(ctx.tile_transform, Vec3::ZERO);
         Some(ParsedTileContent {
-            coords: Vec3::ZERO,
+            coords,
             crs: CRS::Geocentric,
             model_bin_handle: ctx.requester_handle,
-            transform: Transform::from_rotation(Quat::from_rotation_x(PI_OVER_TWO)),
+            transform,
             feature_batch_id: FeatureBatchId(0),
             global_batch_ids: GlobalBatchIds {
                 handle: Handle::default(),

@@ -28,6 +28,7 @@
 //!   that changes every frame (visibility, SSE, loading status).
 
 use bevy_ecs::{component::Component, entity::Entity, system::Query};
+use bevy_log::warn;
 use navara_core::{BoundingSphere, BoundingVolume, Extent, LngLat, Obb};
 use navara_data_requester::DataRequesterExtension;
 use navara_feature_component::{id::FeatureId, model::GltfResourceBase, render::RenderableFeature};
@@ -124,8 +125,8 @@ impl Cesium3dTilesTree {
 ///
 /// # Content Types
 ///
-/// - **Renderable content** (`is_renderable_content = true`): B3DM, PNTS, GLB files
-/// - **Non-renderable content** (`is_renderable_content = false`): Nested tileset.json
+/// - **Renderable content** (`is_renderable_content() = true`): B3DM, PNTS, GLB files
+/// - **Non-renderable content** (`is_renderable_content() = false`): Nested tileset.json
 ///
 /// # Memory Management
 ///
@@ -148,8 +149,8 @@ pub struct Cesium3dTileContent {
     pub children: Option<Vec<Cesium3dTileContent>>,
     /// Refinement strategy (REPLACE or ADD).
     pub refine: Refine,
-    /// True for B3DM/PNTS/GLB, false for nested tileset.json.
-    pub is_renderable_content: bool,
+    /// Format of `uri`; `None` for an empty tile.
+    pub kind: Option<ContentKind>,
     /// Bounding volume for frustum culling and SSE distance. Built as an OBB
     /// for both region (ENU-aligned at patch center) and box (preserves the
     /// source orientation) sources, so the envelope stays tight against
@@ -163,18 +164,22 @@ pub struct Cesium3dTileContent {
 
 impl Cesium3dTileContent {
     pub fn new(tile: &cesium3dtiles::tileset::Tile, parent: Option<&Self>) -> Self {
-        let (uri, is_renderable_content) = match &tile.content {
-            Some(content) => {
-                let uri = content
-                    .uri
-                    .clone()
-                    .unwrap_or_else(|| content.url.clone().unwrap());
-                (
-                    Some(uri.clone()),
-                    (!uri.contains(".json")) && (!uri.is_empty()),
-                )
+        // Legacy tilesets name the content URI `url`.
+        let uri = tile
+            .content
+            .as_ref()
+            .and_then(|c| c.uri.as_ref().or(c.url.as_ref()));
+        let (uri, kind) = match uri.map(|u| (u, ContentKind::from_uri(u))) {
+            Some((uri, Some(kind))) => (Some(uri.clone()), Some(kind)),
+            Some((uri, None)) if !uri.is_empty() => {
+                // TODO: support other formats like i3dm, cmpt, plain glTF, etc.
+                // Kept as an empty tile so its children still render.
+                // A data URI can be megabytes long.
+                let uri: String = uri.chars().take(128).collect();
+                warn!("Unsupported 3D Tiles content, skipping: {uri}");
+                (None, None)
             }
-            None => (None, false),
+            _ => (None, None),
         };
 
         // Per 3D Tiles 1.1 spec, `tile.transform` is defined relative to the parent
@@ -262,7 +267,7 @@ impl Cesium3dTileContent {
             data_requester_id: None,
             rendered_tile_id: None,
             children: None,
-            is_renderable_content,
+            kind,
             bounding_volume,
             refine: match tile
                 .refine
@@ -277,22 +282,9 @@ impl Cesium3dTileContent {
         }
     }
 
-    pub fn make_content_url(
-        &self,
-        base_url: &Url,
-    ) -> Result<(String, DataRequesterExtension), ParseError> {
-        let mut url = base_url.join(self.uri.as_ref().unwrap())?;
-        let base_query = base_url.query_pairs().into_owned();
-        let new_query: HashMap<String, String> = url.query_pairs().into_owned().collect();
-        for (key, value) in base_query {
-            if new_query.contains_key(&key) {
-                continue;
-            }
-            url.query_pairs_mut()
-                .append_pair(key.as_ref(), value.as_ref());
-        }
-        let extension = DataRequesterExtension::from_url(&url);
-        Ok((url.to_string(), extension))
+    /// True for B3DM/PNTS/GLB, false for nested tileset.json or an empty tile.
+    pub fn is_renderable_content(&self) -> bool {
+        self.kind.is_some_and(|kind| kind != ContentKind::Json)
     }
 
     pub fn reset_state(&mut self) {
@@ -336,8 +328,120 @@ impl Cesium3dTileContent {
     }
 }
 
+/// Supported format of a tile's content.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ContentKind {
+    /// A nested tileset.
+    Json,
+    B3dm,
+    Pnts,
+    Glb,
+    /// JSON glTF, which the frontend packs into a GLB, so it is then handled
+    /// as [`Self::Glb`].
+    Gltf,
+}
+
+impl ContentKind {
+    /// Format of a content URI: from the extension of its path, or for a
+    /// `data:` URI from its media type or the magic of its payload. `None`
+    /// when unsupported.
+    pub(crate) fn from_uri(uri: &str) -> Option<Self> {
+        if let Some(data) = uri.strip_prefix("data:") {
+            return Self::from_data_uri(data);
+        }
+        match content_extension(uri)? {
+            "json" => Some(Self::Json),
+            "b3dm" => Some(Self::B3dm),
+            "pnts" => Some(Self::Pnts),
+            "glb" => Some(Self::Glb),
+            "gltf" => Some(Self::Gltf),
+            _ => None,
+        }
+    }
+
+    /// `data` is the URI after `data:`, i.e. `[<media type>][;base64],<payload>`.
+    fn from_data_uri(data: &str) -> Option<Self> {
+        let (header, payload) = data.split_once(',')?;
+        match header.split(';').next() {
+            Some("application/json") => return Some(Self::Json),
+            Some("model/gltf-binary") => return Some(Self::Glb),
+            Some("model/gltf+json") => return Some(Self::Gltf),
+            _ => {}
+        }
+        let magic = if header.ends_with(";base64") {
+            base64_magic(payload)?
+        } else {
+            payload.as_bytes().get(..4)?.try_into().ok()?
+        };
+        match &magic {
+            b"b3dm" => Some(Self::B3dm),
+            b"pnts" => Some(Self::Pnts),
+            b"glTF" => Some(Self::Glb),
+            [b'{', ..] => Some(Self::Json),
+            _ => None,
+        }
+    }
+
+    pub(crate) fn data_requester_extension(self) -> DataRequesterExtension {
+        match self {
+            Self::Json => DataRequesterExtension::Json,
+            Self::B3dm => DataRequesterExtension::B3dm,
+            Self::Pnts => DataRequesterExtension::Pnts,
+            Self::Glb => DataRequesterExtension::Glb,
+            Self::Gltf => DataRequesterExtension::Gltf,
+        }
+    }
+}
+
+/// First 4 bytes of a base64 payload, decoded from its first 6 characters.
+fn base64_magic(payload: &str) -> Option<[u8; 4]> {
+    let mut bits = 0u64;
+    let mut len = 0;
+    for c in payload.bytes().take(6) {
+        let v = match c {
+            b'A'..=b'Z' => c - b'A',
+            b'a'..=b'z' => c - b'a' + 26,
+            b'0'..=b'9' => c - b'0' + 52,
+            b'+' | b'-' => 62,
+            b'/' | b'_' => 63,
+            _ => return None,
+        };
+        bits = bits << 6 | u64::from(v);
+        len += 1;
+    }
+    // 6 characters hold 36 bits; the magic is the top 32.
+    (len == 6).then(|| ((bits >> 4) as u32).to_be_bytes())
+}
+
+/// Resolves a content URI against the tileset URL, carrying over the
+/// tileset's query parameters the URI does not set. A `data:` URI is used as
+/// is, since a query would corrupt its payload.
+pub(crate) fn resolve_content_url(base_url: &Url, uri: &str) -> Result<Url, ParseError> {
+    if uri.starts_with("data:") {
+        return Url::parse(uri);
+    }
+    let mut url = base_url.join(uri)?;
+    let base_query = base_url.query_pairs().into_owned();
+    let new_query: HashMap<String, String> = url.query_pairs().into_owned().collect();
+    for (key, value) in base_query {
+        if new_query.contains_key(&key) {
+            continue;
+        }
+        url.query_pairs_mut()
+            .append_pair(key.as_ref(), value.as_ref());
+    }
+    Ok(url)
+}
+
+/// Extension of a content URI's path, ignoring its query and fragment.
+fn content_extension(uri: &str) -> Option<&str> {
+    let path = uri.split(['?', '#']).next()?;
+    let (_, ext) = path.rsplit_once('.')?;
+    (!ext.contains('/')).then_some(ext)
+}
+
 /// Resource base for a glTF fetched from `url`, so its relative URIs resolve
-/// like [`Cesium3dTileContent::make_content_url`] resolves content URIs.
+/// like [`resolve_content_url`] resolves content URIs.
 /// `None` unless `url` is http(s): `blob:`/`data:` URLs cannot be a base.
 pub(crate) fn gltf_resource_base(url: &str) -> Option<Arc<GltfResourceBase>> {
     let url = Url::parse(url).ok()?;
@@ -440,6 +544,48 @@ mod tests {
             gltf_resource_base("https://example.com/tiles/data/root.glb?sig=a/b&v=1").unwrap();
         assert_eq!(base.path, "https://example.com/tiles/data/");
         assert_eq!(base.query.as_deref(), Some("sig=a/b&v=1"));
+    }
+
+    #[test]
+    fn content_extension_ignores_query_and_fragment() {
+        assert_eq!(content_extension("a/b.b3dm?v=1.2"), Some("b3dm"));
+        assert_eq!(content_extension("sub.json#x"), Some("json"));
+        assert_eq!(content_extension("v1.0/content"), None);
+        assert_eq!(content_extension("content?id=1"), None);
+    }
+
+    #[test]
+    fn content_kind_from_data_uri() {
+        let cases = [
+            // "b3dm" + version 1.
+            (
+                "data:application/octet-stream;base64,YjNkbQEAAAA=",
+                Some(ContentKind::B3dm),
+            ),
+            ("data:;base64,cG50cwEAAAA=", Some(ContentKind::Pnts)),
+            ("data:model/gltf-binary;base64,AAAA", Some(ContentKind::Glb)),
+            ("data:model/gltf+json,{}", Some(ContentKind::Gltf)),
+            ("data:application/json,{}", Some(ContentKind::Json)),
+            ("data:,{\"asset\":{}}", Some(ContentKind::Json)),
+            // "i3dm".
+            ("data:;base64,aTNkbQEAAAA=", None),
+            ("data:;base64,YjNk", None),
+            ("data:;base64", None),
+        ];
+        for (uri, kind) in cases {
+            assert_eq!(ContentKind::from_uri(uri), kind, "{uri}");
+        }
+    }
+
+    #[test]
+    fn resolve_content_url_keeps_data_uri_intact() {
+        let base = Url::parse("https://example.com/t/tileset.json?key=1").unwrap();
+        assert_eq!(
+            resolve_content_url(&base, "a.b3dm").unwrap().as_str(),
+            "https://example.com/t/a.b3dm?key=1"
+        );
+        let data = "data:application/octet-stream;base64,YjNkbQEAAAA=";
+        assert_eq!(resolve_content_url(&base, data).unwrap().as_str(), data);
     }
 
     #[test]

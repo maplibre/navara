@@ -7,8 +7,10 @@ mod types;
 pub use navara_bin::*;
 
 use alloc::borrow::Cow;
+use alloc::boxed::Box;
 use alloc::vec::Vec;
-use binrw::BinRead;
+use binrw::io::{Read, Seek, SeekFrom};
+use binrw::{BinRead, BinReaderExt, BinResult, Endian};
 use core::fmt;
 use navara_glb::Glb;
 use navara_property::{PropertyValue, json_value_to_property_value};
@@ -29,8 +31,32 @@ pub struct B3dm {
 }
 
 impl B3dm {
+    /// `BATCH_LENGTH`, or the batch length a legacy header carries.
+    pub fn batch_length(&self) -> u32 {
+        self.feature_table
+            .json
+            .batch_length
+            .or(self.header.legacy_batch_length)
+            .unwrap_or(0)
+    }
+
+    /// Feature table `RTC_CENTER` plus the glTF `CESIUM_RTC` center older
+    /// tilesets use; CesiumJS applies both.
+    pub fn rtc_center(&self) -> [f64; 3] {
+        let mut center = self.feature_table.json.rtc_center.unwrap_or_default();
+        if let Some(gltf_center) =
+            self.glb.0.json_chunk.data["extensions"]["CESIUM_RTC"]["center"].as_array()
+            && let [x, y, z] = gltf_center.as_slice()
+        {
+            for (c, v) in center.iter_mut().zip([x, y, z]) {
+                *c += v.as_f64().unwrap_or(0.);
+            }
+        }
+        center
+    }
+
     pub fn extract_glb(&self, original_data: &[u8]) -> Result<Vec<u8>, &'static str> {
-        let glb_start = B3DM_HEADER_SIZE
+        let glb_start = self.header.header_length
             + self.header.feature_table_json_byte_length as usize
             + self.header.feature_table_binary_byte_length as usize
             + self.header.batch_table_json_byte_length as usize
@@ -48,8 +74,6 @@ impl B3dm {
 
 impl BinaryReader<B3dm> for B3dm {}
 
-#[derive(BinRead)]
-#[br(magic = b"b3dm", little)]
 pub struct B3dmHeader {
     pub version: u32,
     pub byte_length: u32,
@@ -57,18 +81,83 @@ pub struct B3dmHeader {
     pub feature_table_binary_byte_length: u32,
     pub batch_table_json_byte_length: u32,
     pub batch_table_binary_byte_length: u32,
+    /// [`B3DM_HEADER_SIZE`], or shorter for a legacy header.
+    pub header_length: usize,
+    /// Batch length stored in a legacy header, which has no feature table.
+    pub legacy_batch_length: Option<u32>,
 }
 
-#[derive(BinRead, Deserialize, Serialize)]
+/// A byte length this large is the payload misread as a header field, which
+/// identifies a legacy header. Same threshold as CesiumJS:
+/// https://github.com/CesiumGS/cesium/blob/main/packages/engine/Source/Scene/B3dmParser.js
+const LEGACY_HEADER_THRESHOLD: u32 = 570425344;
+
+impl BinRead for B3dmHeader {
+    type Args<'a> = ();
+
+    fn read_options<R: Read + Seek>(reader: &mut R, _: Endian, _: ()) -> BinResult<Self> {
+        let pos = reader.stream_position()?;
+        let magic: [u8; 4] = reader.read_le()?;
+        if &magic != b"b3dm" {
+            return Err(binrw::Error::BadMagic {
+                pos,
+                found: Box::new(magic),
+            });
+        }
+        let [version, byte_length, ft_json, ft_binary, bt_json, bt_binary]: [u32; 6] =
+            reader.read_le()?;
+        let mut header = Self {
+            version,
+            byte_length,
+            feature_table_json_byte_length: ft_json,
+            feature_table_binary_byte_length: ft_binary,
+            batch_table_json_byte_length: bt_json,
+            batch_table_binary_byte_length: bt_binary,
+            header_length: B3DM_HEADER_SIZE,
+            legacy_batch_length: None,
+        };
+        if bt_json >= LEGACY_HEADER_THRESHOLD {
+            // [batchLength] [batchTableByteLength]
+            header.header_length -= 8;
+            header.legacy_batch_length = Some(ft_json);
+            header.batch_table_json_byte_length = ft_binary;
+            header.batch_table_binary_byte_length = 0;
+        } else if bt_binary >= LEGACY_HEADER_THRESHOLD {
+            // [batchTableJsonByteLength] [batchTableBinaryByteLength] [batchLength]
+            header.header_length -= 4;
+            header.legacy_batch_length = Some(bt_json);
+            header.batch_table_json_byte_length = ft_json;
+            header.batch_table_binary_byte_length = ft_binary;
+        } else {
+            return Ok(header);
+        }
+        header.feature_table_json_byte_length = 0;
+        header.feature_table_binary_byte_length = 0;
+        reader.seek(SeekFrom::Start(pos + header.header_length as u64))?;
+        Ok(header)
+    }
+}
+
+#[derive(Default, Deserialize, Serialize)]
 pub struct FeatureTableJson {
     #[serde(alias = "BATCH_LENGTH")]
     pub batch_length: Option<u32>,
+    #[serde(alias = "RTC_CENTER")]
+    pub rtc_center: Option<[f64; 3]>,
+}
+
+#[binrw::parser(reader, endian)]
+fn parse_feature_table_json(count: u32) -> BinResult<FeatureTableJson> {
+    if count == 0 {
+        return Ok(FeatureTableJson::default());
+    }
+    parse_json_to_struct_from_reader(reader, endian, (count,))
 }
 
 #[derive(BinRead)]
 #[br(import(feature_table_json_byte_length: u32, feature_table_binary_byte_length: u32))]
 pub struct FeatureTable {
-    #[br(parse_with = parse_json_to_struct_from_reader, args(feature_table_json_byte_length))]
+    #[br(parse_with = parse_feature_table_json, args(feature_table_json_byte_length))]
     pub json: FeatureTableJson,
     #[br(count = feature_table_binary_byte_length)]
     pub binary: Vec<u8>,
@@ -614,5 +703,57 @@ mod tests {
         let glb = Glb::from_data(&b3dm.extract_glb(&data).unwrap()).unwrap();
 
         assert_eq!(glb.0.header.version, 2);
+    }
+
+    fn create_b3dm(header_fields: &[u32], payload: &[&[u8]]) -> Vec<u8> {
+        let body: Vec<u8> = payload.concat();
+        let total = 12 + header_fields.len() * 4 + body.len();
+        let mut data = b"b3dm".to_vec();
+        data.extend_from_slice(&1u32.to_le_bytes());
+        data.extend_from_slice(&(total as u32).to_le_bytes());
+        for v in header_fields {
+            data.extend_from_slice(&v.to_le_bytes());
+        }
+        data.extend_from_slice(&body);
+        data
+    }
+
+    #[test]
+    fn it_should_add_rtc_center_to_cesium_rtc() {
+        let feature_table = br#"{"BATCH_LENGTH":0,"RTC_CENTER":[10,20,30]}"#;
+        let glb = create_mock_glb_data();
+        let data = create_b3dm(
+            &[feature_table.len() as u32, 0, 0, 0],
+            &[feature_table, &glb],
+        );
+        let b3dm = B3dm::from_data(&data).unwrap();
+
+        // The mock glTF has CESIUM_RTC [1, 2, 3].
+        assert_eq!(b3dm.rtc_center(), [11., 22., 33.]);
+    }
+
+    #[test]
+    fn it_should_parse_legacy_headers() {
+        let batch_table = br#"{"id":[0,1]}"#;
+        let bt_len = batch_table.len() as u32;
+        let glb = create_mock_glb_data();
+        let cases = [
+            // [batchLength] [batchTableByteLength]
+            create_b3dm(&[2, bt_len], &[batch_table, &glb]),
+            // [batchTableJsonByteLength] [batchTableBinaryByteLength] [batchLength]
+            create_b3dm(&[bt_len, 0, 2], &[batch_table, &glb]),
+            // Legacy header #1 straight into the glTF.
+            create_b3dm(&[2, 0], &[&glb]),
+        ];
+        for (i, data) in cases.iter().enumerate() {
+            let b3dm = B3dm::from_data(data).unwrap_or_else(|e| panic!("case {i}: {e}"));
+
+            assert_eq!(b3dm.batch_length(), 2, "case {i}");
+            if b3dm.header.batch_table_json_byte_length > 0 {
+                assert_eq!(b3dm.batch_table.json().unwrap()["id"], json!([0, 1]));
+            }
+            let glb = Glb::from_data(&b3dm.extract_glb(data).unwrap()).unwrap();
+            assert_eq!(glb.0.header.version, 2, "case {i}");
+        }
     }
 }
