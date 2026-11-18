@@ -19,11 +19,15 @@ A `3d-tiles` source points at a 3D Tiles tileset (a `tileset.json` hierarchy). R
 
 ### 3D Tiles 1.0
 
-| Tile Format                    | Description                                                |
-| ------------------------------ | ---------------------------------------------------------- |
-| b3dm (Batched 3D Model)        | Batched 3D models such as buildings.                       |
-| pnts (Point Cloud)             | Point cloud data. See [PNTS attributes](#pnts-attributes). |
-| Google Photorealistic 3D Tiles | Photorealistic tiles provided by Google Maps Platform.     |
+Google Photorealistic 3D Tiles from Google Maps Platform are supported. A tile whose content format is not supported is skipped, and the rest of the tileset still renders.
+
+| Tile Format                                  | Support                                                               |
+| -------------------------------------------- | --------------------------------------------------------------------- |
+| b3dm (Batched 3D Model)                      | ⚠️ glTF 2.0 payloads only                                             |
+| pnts (Point Cloud)                           | ⚠️ Part of the feature table, see [PNTS attributes](#pnts-attributes) |
+| i3dm (Instanced 3D Model)                    | ❌                                                                    |
+| cmpt (Composite)                             | ❌                                                                    |
+| External tileset (`tileset.json` as content) | ✅                                                                    |
 
 ### PNTS attributes
 
@@ -44,19 +48,32 @@ Navara reads only part of the pnts feature table. Point colors are interpreted a
 
 ### 3D Tiles 1.1
 
-| Feature                      | Description                                                                           |
-| ---------------------------- | ------------------------------------------------------------------------------------- |
-| GLB content                  | Tiles using GLB (binary glTF) as the content format.                                  |
-| GLB POINTS primitive         | Point cloud rendering for glTF meshes with `mode: POINTS` (3D Tiles 1.1 point cloud). |
-| `EXT_mesh_features`          | Feature identification via FeatureId sets in glTF meshes.                             |
-| `EXT_structural_metadata`    | Access to per-feature metadata via property tables embedded in glTF assets.           |
-| `KHR_draco_mesh_compression` | Decoding of Draco-compressed mesh data.                                               |
-| `KHR_mesh_quantization`      | Quantized vertex attributes for compact glTF assets.                                  |
-| `EXT_meshopt_compression`    | Decoding of meshopt-compressed buffers.                                               |
+| Feature                      | Description                                                                                              |
+| ---------------------------- | -------------------------------------------------------------------------------------------------------- |
+| GLB content                  | Tiles using GLB (binary glTF) as the content format.                                                     |
+| glTF content                 | ⚠️ Rendered without `EXT_mesh_features` and `EXT_structural_metadata`, so its features cannot be picked. |
+| GLB POINTS primitive         | Point cloud rendering for glTF meshes with `mode: POINTS` (3D Tiles 1.1 point cloud).                    |
+| `EXT_mesh_features`          | Feature identification via FeatureId sets in glTF meshes.                                                |
+| `EXT_structural_metadata`    | Access to per-feature metadata via property tables embedded in glTF assets.                              |
+| `KHR_draco_mesh_compression` | Decoding of Draco-compressed mesh data.                                                                  |
+| `KHR_mesh_quantization`      | Quantized vertex attributes for compact glTF assets.                                                     |
+| `EXT_meshopt_compression`    | Decoding of meshopt-compressed buffers.                                                                  |
 
 :::note
-Only GLB (binary glTF container) content is supported. Plain `.gltf` files referencing external `.bin` buffers are not supported yet. Implicit tiling is not supported either, so a tileset must describe its tile hierarchy explicitly in `tileset.json`.
+Implicit tiling is not supported, so a tileset must describe its tile hierarchy explicitly in `tileset.json`. A tile with multiple contents (`contents`) renders nothing; only a single `content` is read.
 :::
+
+### Tileset features
+
+| Feature                                               | Support                   |
+| ----------------------------------------------------- | ------------------------- |
+| `refine` (`ADD` / `REPLACE`)                          | ✅                        |
+| Tile `transform`                                      | ✅                        |
+| b3dm `RTC_CENTER` and glTF `CESIUM_RTC`               | ✅                        |
+| `data:` URI content                                   | ✅                        |
+| Pre-1.0 tilesets (`content.url`, legacy b3dm headers) | ✅                        |
+| `viewerRequestVolume`                                 | ❌                        |
+| `asset.gltfUpAxis`                                    | ⚠️ `Y` (the default) only |
 
 ## Example
 

@@ -607,7 +607,7 @@ mod memory_budget_tests {
                 rendered_tile_id: None,
                 children: None,
                 refine: navara_parser::cesium3dtiles::tileset::Refine::Replace,
-                is_renderable_content: false,
+                kind: None,
                 bounding_volume: None,
                 transform: None,
                 state: Default::default(),

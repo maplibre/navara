@@ -10,53 +10,70 @@ sidebar:
 ## プロパティ
 
 | プロパティ | 型           | デフォルト | 説明                     |
-| -------- | ------------ | ---------- | ------------------------ |
-| `type`   | `"3d-tiles"` | （必須） | Source のタイプ。        |
-| `url`    | `string`     | （必須） | `tileset.json` の URL。  |
-| `crs`    | `string`     | —          | コンテンツの座標参照系。 |
+| ---------- | ------------ | ---------- | ------------------------ |
+| `type`     | `"3d-tiles"` | （必須）   | Source のタイプ。        |
+| `url`      | `string`     | （必須）   | `tileset.json` の URL。  |
+| `crs`      | `string`     | —          | コンテンツの座標参照系。 |
 
 ## 対応仕様
 
 ### 3D Tiles 1.0
 
-| タイルフォーマット             | 説明                                                        |
-| ------------------------------ | ----------------------------------------------------------- |
-| b3dm (Batched 3D Model)        | 建物などのバッチ化された 3D モデル。                        |
-| pnts (Point Cloud)             | 点群データ。[PNTS の属性](#pnts-の属性)を参照してください。 |
-| Google Photorealistic 3D Tiles | Google Maps Platform が提供するフォトリアリスティックタイル。 |
+Google Maps Platform の Google Photorealistic 3D Tiles に対応しています。コンテンツのフォーマットに対応していないタイルはスキップされ、タイルセットの残りはそのまま描画されます。
+
+| タイルフォーマット                                    | 対応状況                                                       |
+| ----------------------------------------------------- | -------------------------------------------------------------- |
+| b3dm (Batched 3D Model)                               | ⚠️ glTF 2.0 のペイロードのみ                                   |
+| pnts (Point Cloud)                                    | ⚠️ feature table の一部のみ。[PNTS の属性](#pnts-の属性)を参照 |
+| i3dm (Instanced 3D Model)                             | ❌                                                             |
+| cmpt (Composite)                                      | ❌                                                             |
+| 外部タイルセット（コンテンツとしての `tileset.json`） | ✅                                                             |
 
 ### PNTS の属性
 
 Navara が読み取るのは pnts の feature table の一部です。点の色は sRGB として扱われます。位置を `POSITION_QUANTIZED` でしか持たないタイルは描画されません。
 
-| セマンティクス                    | 対応状況                                  |
-| --------------------------------- | ----------------------------------------- |
-| `POSITION`                        | ✅                                        |
-| `POSITION_QUANTIZED`              | ❌                                        |
-| `RTC_CENTER`                      | ✅                                        |
-| `RGB`                             | ⚠️ Draco 圧縮されたタイルのみ             |
-| `RGBA`                            | ⚠️ Draco 圧縮されたタイルのみ             |
-| `RGB565`                          | ❌                                        |
-| `CONSTANT_RGBA`                   | ❌                                        |
-| `NORMAL` / `NORMAL_OCT16P`        | ❌                                        |
-| `BATCH_ID` と batch table         | ❌                                        |
-| `3DTILES_draco_point_compression` | ⚠️ `POSITION`、`RGB`、`RGBA` のみ         |
+| セマンティクス                    | 対応状況                          |
+| --------------------------------- | --------------------------------- |
+| `POSITION`                        | ✅                                |
+| `POSITION_QUANTIZED`              | ❌                                |
+| `RTC_CENTER`                      | ✅                                |
+| `RGB`                             | ⚠️ Draco 圧縮されたタイルのみ     |
+| `RGBA`                            | ⚠️ Draco 圧縮されたタイルのみ     |
+| `RGB565`                          | ❌                                |
+| `CONSTANT_RGBA`                   | ❌                                |
+| `NORMAL` / `NORMAL_OCT16P`        | ❌                                |
+| `BATCH_ID` と batch table         | ❌                                |
+| `3DTILES_draco_point_compression` | ⚠️ `POSITION`、`RGB`、`RGBA` のみ |
 
 ### 3D Tiles 1.1
 
-| 機能                         | 説明                                                                                        |
-| ---------------------------- | ------------------------------------------------------------------------------------------- |
-| GLB コンテンツ               | GLB（バイナリ glTF）をコンテンツフォーマットとして使用するタイル。                          |
-| GLB POINTS プリミティブ      | `mode: POINTS` の glTF メッシュを点群として描画（3D Tiles 1.1 の点群対応）。               |
-| `EXT_mesh_features`          | glTF メッシュ内の FeatureId セットによるフィーチャー識別。                                  |
-| `EXT_structural_metadata`    | glTF アセットに埋め込まれたプロパティテーブルによるフィーチャーごとのメタデータへのアクセス。 |
-| `KHR_draco_mesh_compression` | Draco 圧縮されたメッシュデータのデコード。                                                  |
-| `KHR_mesh_quantization`      | 量子化された頂点属性によるコンパクトな glTF アセットへの対応。                              |
-| `EXT_meshopt_compression`    | meshopt 圧縮バッファのデコード。                                                            |
+| 機能                         | 説明                                                                                                       |
+| ---------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| GLB コンテンツ               | GLB（バイナリ glTF）をコンテンツフォーマットとして使用するタイル。                                         |
+| glTF コンテンツ              | ⚠️ `EXT_mesh_features` と `EXT_structural_metadata` を読まずに描画するため、フィーチャーを選択できません。 |
+| GLB POINTS プリミティブ      | `mode: POINTS` の glTF メッシュを点群として描画（3D Tiles 1.1 の点群対応）。                               |
+| `EXT_mesh_features`          | glTF メッシュ内の FeatureId セットによるフィーチャー識別。                                                 |
+| `EXT_structural_metadata`    | glTF アセットに埋め込まれたプロパティテーブルによるフィーチャーごとのメタデータへのアクセス。              |
+| `KHR_draco_mesh_compression` | Draco 圧縮されたメッシュデータのデコード。                                                                 |
+| `KHR_mesh_quantization`      | 量子化された頂点属性によるコンパクトな glTF アセットへの対応。                                             |
+| `EXT_meshopt_compression`    | meshopt 圧縮バッファのデコード。                                                                           |
 
 :::note
-対応しているのは GLB（バイナリ glTF コンテナ）のコンテンツのみです。外部 `.bin` バッファを参照するプレーンな `.gltf` ファイルには未対応です。また Implicit tiling にも対応していないため、タイルセットは `tileset.json` で明示的なタイル階層を記述する必要があります。
+Implicit tiling には対応していないため、タイルセットは `tileset.json` で明示的なタイル階層を記述する必要があります。複数のコンテンツ（`contents`）を持つタイルは何も描画されません。読み取るのは単一の `content` のみです。
 :::
+
+### タイルセットの機能
+
+| 機能                                                            | 対応状況             |
+| --------------------------------------------------------------- | -------------------- |
+| `refine`（`ADD` / `REPLACE`）                                   | ✅                   |
+| タイルの `transform`                                            | ✅                   |
+| b3dm の `RTC_CENTER` と glTF の `CESIUM_RTC`                    | ✅                   |
+| `data:` URI のコンテンツ                                        | ✅                   |
+| 1.0 以前のタイルセット（`content.url`、旧形式の b3dm ヘッダー） | ✅                   |
+| `viewerRequestVolume`                                           | ❌                   |
+| `asset.gltfUpAxis`                                              | ⚠️ `Y`（既定値）のみ |
 
 ## 使用例
 

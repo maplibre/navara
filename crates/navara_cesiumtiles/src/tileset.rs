@@ -10,10 +10,9 @@ use serde_json::Value;
 
 /// Metadata about the tile's content and a link to the content.
 /// Almost same with original: https://github.com/reearth/cesiumtiles-rs/blob/97485fe1c80577f052ae710eaa35b472bf594295/src/models/tileset.rs#L172,
-/// but `uri` and `url` are optional.
+/// but `uri` and `url` are optional, and unknown fields are ignored.
 #[derive(Serialize, Deserialize, Debug, Default)]
 #[serde(rename_all = "camelCase")]
-#[serde(deny_unknown_fields)]
 pub struct Content {
     /// An optional bounding volume that tightly encloses tile content. tile.boundingVolume provides spatial coherence and tile.content.boundingVolume enables tight view frustum culling. When this is omitted, tile.boundingVolume is used.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -45,14 +44,18 @@ pub struct Content {
 #[derive(Serialize, Deserialize, Debug, Clone, Copy)]
 #[serde(rename_all = "UPPERCASE")]
 pub enum Refine {
+    // Lowercase is deprecated but still accepted by CesiumJS.
+    #[serde(alias = "add")]
     Add,
+    #[serde(alias = "replace")]
     Replace,
 }
 
 /// A tile in a 3D Tiles tileset.
-/// Same with https://github.com/reearth/cesiumtiles-rs/blob/97485fe1c80577f052ae710eaa35b472bf594295/src/models/tileset.rs#L207
+/// Same with https://github.com/reearth/cesiumtiles-rs/blob/97485fe1c80577f052ae710eaa35b472bf594295/src/models/tileset.rs#L207,
+/// but unknown fields are ignored, as tilesets in the wild carry tool-specific ones.
 #[derive(Serialize, Deserialize, Debug)]
-#[serde(default, rename_all = "camelCase", deny_unknown_fields)]
+#[serde(default, rename_all = "camelCase")]
 pub struct Tile {
     /// The bounding volume that encloses the tile.
     pub bounding_volume: BoundingVolume,
@@ -226,4 +229,30 @@ fn is_identity_matrix(a: &[f64; 16]) -> bool {
     *a == [
         1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0,
     ]
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn it_should_parse_legacy_tileset() {
+        let tileset: Tileset = serde_json::from_str(
+            r#"{
+                "asset": {"version": "0.0", "gltfUpAxis": "Y"},
+                "geometricError": 100,
+                "root": {
+                    "boundingVolume": {"sphere": [0, 0, 0, 10]},
+                    "geometricError": 10,
+                    "refine": "replace",
+                    "content": {"url": "a.b3dm", "toolSpecific": 1},
+                    "toolSpecific": true
+                }
+            }"#,
+        )
+        .unwrap();
+
+        assert!(matches!(tileset.root.refine, Some(Refine::Replace)));
+        assert_eq!(tileset.root.content.unwrap().url.as_deref(), Some("a.b3dm"));
+    }
 }

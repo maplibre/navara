@@ -1,4 +1,4 @@
-export { createModelBaseEnhancer } from "./modelBaseEnhancer";
+export { createModelBaseEnhancer, tintBaseColor } from "./modelBaseEnhancer";
 export {
   MODEL_BASE_SHADER_MARKERS,
   createModelBaseShaderReplacer,

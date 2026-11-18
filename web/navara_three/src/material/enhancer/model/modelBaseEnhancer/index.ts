@@ -95,6 +95,7 @@ export type { ModelBaseMutates, ModelBaseProps, ModelBaseState };
 
 // Re-export SupportedMaterial for use by water enhancer
 export type { SupportedMaterial } from "./material";
+export { tintBaseColor } from "./material";
 
 // Re-export marker types for composing enhancers
 export {
