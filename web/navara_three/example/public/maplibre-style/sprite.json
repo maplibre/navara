@@ -1,0 +1,280 @@
+{
+  "version": 8,
+  "name": "Sprite test",
+  "metadata": {
+    "test": [
+      "Red dots mark each feature's anchor point.",
+      "face.json has pixelRatio 1 and face@2x.json pixelRatio 2 over the same 165x153 image, so on a high-DPI screen every icon draws at half the size it does at DPR 1.",
+      "Row 1: icon-size 0.25 / 0.5 / 1 (labels below).",
+      "Row 2: icon-anchor center / bottom / top-left / right.",
+      "Row 3: data-driven icon-image: 'face' (default sprite), 'extra:face' (prefixed by the sprite id; its URL carries '?extra' because sprite URLs must be unique, which also checks @2x goes before the query), 'missing' (not in the sprite: draws nothing, as in MapLibre), icon-rotate 45.",
+      "Row 4: icon-opacity 0.4, icon-offset [60, 0], icon + text, icon-size interpolated by zoom (zoom in/out).",
+      "Row 5: icons cut from other cells of the sheet (sad, surprised, wink; 'extra:surprised' via the second sprite). face/sad/surprised/wink share one PNG, so each must show its own expression, not the top-left cell.",
+      "Sprite URLs must be absolute, as in MapLibre: they point at the dev server (http://localhost:5173/examples/...), so change the origin if it differs."
+    ]
+  },
+  "projection": {
+    "type": "globe"
+  },
+  "center": [0, -6],
+  "zoom": 2.6,
+  "pitch": 0,
+  "bearing": 0,
+  "sprite": [
+    { "id": "default", "url": "http://localhost:5173/examples/maplibre-style/sprite/face" },
+    { "id": "extra", "url": "http://localhost:5173/examples/maplibre-style/sprite/face?extra" }
+  ],
+  "glyphs": "https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf",
+  "sources": {
+    "osm": {
+      "type": "raster",
+      "tiles": ["https://tile.openstreetmap.org/{z}/{x}/{y}.png"],
+      "tileSize": 256,
+      "maxzoom": 19,
+      "attribution": "© OpenStreetMap contributors"
+    },
+    "points": {
+      "type": "geojson",
+      "data": {
+        "type": "FeatureCollection",
+        "features": [
+          {
+            "type": "Feature",
+            "properties": { "test": "size", "size": 0.25, "label": "icon-size 0.25" },
+            "geometry": { "type": "Point", "coordinates": [-12, 18] }
+          },
+          {
+            "type": "Feature",
+            "properties": { "test": "size", "size": 0.5, "label": "icon-size 0.5" },
+            "geometry": { "type": "Point", "coordinates": [0, 18] }
+          },
+          {
+            "type": "Feature",
+            "properties": { "test": "size", "size": 1, "label": "icon-size 1" },
+            "geometry": { "type": "Point", "coordinates": [12, 18] }
+          },
+          {
+            "type": "Feature",
+            "properties": { "test": "anchor", "anchor": "center", "label": "center" },
+            "geometry": { "type": "Point", "coordinates": [-18, 6] }
+          },
+          {
+            "type": "Feature",
+            "properties": { "test": "anchor", "anchor": "bottom", "label": "bottom" },
+            "geometry": { "type": "Point", "coordinates": [-6, 6] }
+          },
+          {
+            "type": "Feature",
+            "properties": { "test": "anchor", "anchor": "top-left", "label": "top-left" },
+            "geometry": { "type": "Point", "coordinates": [6, 6] }
+          },
+          {
+            "type": "Feature",
+            "properties": { "test": "anchor", "anchor": "right", "label": "right" },
+            "geometry": { "type": "Point", "coordinates": [18, 6] }
+          },
+          {
+            "type": "Feature",
+            "properties": { "test": "image", "icon": "face", "rotate": 0, "label": "face" },
+            "geometry": { "type": "Point", "coordinates": [-18, -6] }
+          },
+          {
+            "type": "Feature",
+            "properties": { "test": "image", "icon": "extra:face", "rotate": 0, "label": "extra:face" },
+            "geometry": { "type": "Point", "coordinates": [-6, -6] }
+          },
+          {
+            "type": "Feature",
+            "properties": { "test": "image", "icon": "missing", "rotate": 0, "label": "missing" },
+            "geometry": { "type": "Point", "coordinates": [6, -6] }
+          },
+          {
+            "type": "Feature",
+            "properties": { "test": "image", "icon": "face", "rotate": 45, "label": "rotate 45" },
+            "geometry": { "type": "Point", "coordinates": [18, -6] }
+          },
+          {
+            "type": "Feature",
+            "properties": { "test": "image", "icon": "sad", "rotate": 0, "label": "sad" },
+            "geometry": { "type": "Point", "coordinates": [-18, -30] }
+          },
+          {
+            "type": "Feature",
+            "properties": { "test": "image", "icon": "surprised", "rotate": 0, "label": "surprised" },
+            "geometry": { "type": "Point", "coordinates": [-6, -30] }
+          },
+          {
+            "type": "Feature",
+            "properties": { "test": "image", "icon": "wink", "rotate": 0, "label": "wink" },
+            "geometry": { "type": "Point", "coordinates": [6, -30] }
+          },
+          {
+            "type": "Feature",
+            "properties": { "test": "image", "icon": "extra:surprised", "rotate": 0, "label": "extra:surprised" },
+            "geometry": { "type": "Point", "coordinates": [18, -30] }
+          },
+          {
+            "type": "Feature",
+            "properties": { "test": "opacity", "label": "opacity 0.4" },
+            "geometry": { "type": "Point", "coordinates": [-18, -18] }
+          },
+          {
+            "type": "Feature",
+            "properties": { "test": "offset", "label": "offset [60, 0]" },
+            "geometry": { "type": "Point", "coordinates": [-8, -18] }
+          },
+          {
+            "type": "Feature",
+            "properties": { "test": "with-text", "label": "icon + text" },
+            "geometry": { "type": "Point", "coordinates": [6, -18] }
+          },
+          {
+            "type": "Feature",
+            "properties": { "test": "zoom-size", "label": "size by zoom" },
+            "geometry": { "type": "Point", "coordinates": [18, -18] }
+          }
+        ]
+      }
+    }
+  },
+  "layers": [
+    {
+      "id": "osm-basemap",
+      "type": "raster",
+      "source": "osm"
+    },
+    {
+      "id": "icon-size",
+      "type": "symbol",
+      "source": "points",
+      "filter": ["==", ["get", "test"], "size"],
+      "layout": {
+        "icon-image": "face",
+        "icon-size": ["get", "size"],
+        "icon-allow-overlap": true,
+        "icon-ignore-placement": true
+      }
+    },
+    {
+      "id": "icon-anchor",
+      "type": "symbol",
+      "source": "points",
+      "filter": ["==", ["get", "test"], "anchor"],
+      "layout": {
+        "icon-image": "face",
+        "icon-size": 0.5,
+        "icon-anchor": ["get", "anchor"],
+        "icon-allow-overlap": true,
+        "icon-ignore-placement": true
+      }
+    },
+    {
+      "id": "icon-image-expression",
+      "type": "symbol",
+      "source": "points",
+      "filter": ["==", ["get", "test"], "image"],
+      "layout": {
+        "icon-image": ["get", "icon"],
+        "icon-size": 0.5,
+        "icon-rotate": ["get", "rotate"],
+        "icon-allow-overlap": true,
+        "icon-ignore-placement": true
+      }
+    },
+    {
+      "id": "icon-opacity",
+      "type": "symbol",
+      "source": "points",
+      "filter": ["==", ["get", "test"], "opacity"],
+      "layout": {
+        "icon-image": "face",
+        "icon-size": 0.5,
+        "icon-allow-overlap": true,
+        "icon-ignore-placement": true
+      },
+      "paint": {
+        "icon-opacity": 0.4
+      }
+    },
+    {
+      "id": "icon-offset",
+      "type": "symbol",
+      "source": "points",
+      "filter": ["==", ["get", "test"], "offset"],
+      "layout": {
+        "icon-image": "face",
+        "icon-size": 0.5,
+        "icon-offset": [60, 0],
+        "icon-allow-overlap": true,
+        "icon-ignore-placement": true
+      }
+    },
+    {
+      "id": "icon-with-text",
+      "type": "symbol",
+      "source": "points",
+      "filter": ["==", ["get", "test"], "with-text"],
+      "layout": {
+        "icon-image": "face",
+        "icon-size": 0.5,
+        "icon-anchor": "bottom",
+        "text-field": "icon + text",
+        "text-font": ["Open Sans Semibold"],
+        "text-size": 14,
+        "text-anchor": "top",
+        "icon-allow-overlap": true,
+        "icon-ignore-placement": true,
+        "text-allow-overlap": true,
+        "text-ignore-placement": true
+      },
+      "paint": {
+        "text-color": "#1b1f3b",
+        "text-halo-color": "#ffffff",
+        "text-halo-width": 1.5
+      }
+    },
+    {
+      "id": "icon-size-zoom",
+      "type": "symbol",
+      "source": "points",
+      "filter": ["==", ["get", "test"], "zoom-size"],
+      "layout": {
+        "icon-image": "face",
+        "icon-size": ["interpolate", ["linear"], ["zoom"], 2, 0.2, 5, 1],
+        "icon-allow-overlap": true,
+        "icon-ignore-placement": true
+      }
+    },
+    {
+      "id": "labels",
+      "type": "symbol",
+      "source": "points",
+      "filter": ["!=", ["get", "test"], "with-text"],
+      "layout": {
+        "text-field": ["get", "label"],
+        "text-font": ["Open Sans Semibold"],
+        "text-size": 12,
+        "text-anchor": "top",
+        "text-offset": [0, 3.5],
+        "text-allow-overlap": true,
+        "text-ignore-placement": true
+      },
+      "paint": {
+        "text-color": "#1b1f3b",
+        "text-halo-color": "#ffffff",
+        "text-halo-width": 1.5
+      }
+    },
+    {
+      "id": "anchor-dots",
+      "type": "circle",
+      "source": "points",
+      "paint": {
+        "circle-radius": 3,
+        "circle-color": "#e00000",
+        "circle-stroke-color": "#ffffff",
+        "circle-stroke-width": 1
+      }
+    }
+  ]
+}

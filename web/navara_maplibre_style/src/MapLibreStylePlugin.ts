@@ -38,6 +38,7 @@ import { RustStyleEngine } from "./engine/RustStyleEngine";
 import { validateAndMigrateStyle } from "./engine/styleEngineUtils";
 import type { ParsedStyle, StyleLayer } from "./engine/types";
 import { convertFontFacesToFontFamilies } from "./fontHelper";
+import { loadSprite, type SpriteImages } from "./sprite";
 import {
   zoomToCameraDistance,
   maplibrePitchToNavaraPitch,
@@ -58,13 +59,20 @@ type MapLibreStylePluginOptions = {
  * The zoom-following part of a layer's materials, comparable across zooms
  * (the source is not): a symbol layer's text/billboard, or a color-relief
  * layer's opacity and resampling. `Color` keeps its value in a private field,
- * which JSON cannot see.
+ * which JSON cannot see. The billboard `url` is left out: it comes from a
+ * constant `icon-image`, which cannot follow zoom, and a sprite icon's is a
+ * long data URL.
  */
 function serializeMaterials(layerDesc: LayerDescription): string {
   if ("text" in layerDesc || "billboard" in layerDesc) {
     return JSON.stringify(
       [layerDesc.text, layerDesc.billboard],
-      (_key, value) => (value instanceof Color ? value.toHex() : value),
+      (key, value) =>
+        key === "url"
+          ? undefined
+          : value instanceof Color
+            ? value.toHex()
+            : value,
     );
   }
   if (layerDesc.type === "raster" && layerDesc.elevationHeatmap) {
@@ -182,6 +190,23 @@ export class MapLibreStylePlugin extends Plugin<ThreeView, ViewContext> {
    * Background layer handler for evaluating and applying background colors.
    */
   private backgroundHandler?: BackgroundHandler;
+  /**
+   * Icons of the style's `sprite`, which `icon-image` names refer to: empty
+   * while it loads (or after it fails), undefined when the style has none.
+   */
+  private sprite?: SpriteImages;
+  /**
+   * Symbol layers with an `icon-image`, rebuilt once the sprite loads.
+   */
+  private iconLayers = new Map<
+    Layer,
+    {
+      styleLayer: StyleLayer;
+      source: Source;
+      fontFamily: string | undefined;
+      rank: number;
+    }
+  >();
 
   /**
    * Create a new MapLibre Style plugin.
@@ -424,6 +449,15 @@ export class MapLibreStylePlugin extends Plugin<ThreeView, ViewContext> {
     // IMPORTANT: Must be called AFTER backgroundHandler is initialized to avoid race conditions
     this.setupZoomChangeDetection(view);
 
+    // As in MapLibre, layers do not wait for the sprite: icons show once it
+    // loads (see refreshIconLayers).
+    const spriteLoad =
+      this.parsedStyle.sprite === undefined
+        ? undefined
+        : loadSprite(this.parsedStyle.sprite, view.pixelRatio);
+    // Empty until the sprite loads: its icon names resolve to nothing yet.
+    this.sprite = this.parsedStyle.sprite === undefined ? undefined : new Map();
+
     // Step 4: Add all sources first
     for (const [sourceId, sourceSpec] of Object.entries(
       this.parsedStyle.sources,
@@ -445,6 +479,13 @@ export class MapLibreStylePlugin extends Plugin<ThreeView, ViewContext> {
         // Continue loading other layers
       }
     }
+
+    void spriteLoad?.then((sprite) => {
+      // Disposed while loading: the layers are gone.
+      if (this.view !== view) return;
+      this.sprite = sprite;
+      this.refreshIconLayers(view);
+    });
 
     // Step 6: Add terrain if specified
     if (this.parsedStyle.terrain) {
@@ -680,12 +721,36 @@ export class MapLibreStylePlugin extends Plugin<ThreeView, ViewContext> {
         this.engine,
         zoom,
         entry.rank,
+        this.sprite,
       );
       if (!layerDesc) continue;
       const materials = serializeMaterials(layerDesc);
       if (materials === entry.appliedMaterials) continue;
       entry.appliedMaterials = materials;
       layer.update(layerDesc);
+    }
+  }
+
+  /**
+   * Apply the loaded sprite to the symbol layers with an `icon-image`: a
+   * constant one becomes the billboard's image, and `forceUpdate`
+   * re-evaluates the features so per-feature icons resolve too.
+   */
+  private refreshIconLayers(view: ThreeView): void {
+    const zoom = view.getZoomLevel(MAPLIBRE_TILE_SIZE);
+    for (const [layer, entry] of this.iconLayers) {
+      const layerDesc = toLayerDescription(
+        entry.source,
+        entry.styleLayer,
+        entry.fontFamily,
+        this.engine,
+        zoom,
+        entry.rank,
+        this.sprite,
+      );
+      if (!layerDesc) continue;
+      layer.update(layerDesc);
+      layer.forceUpdate();
     }
   }
 
@@ -846,6 +911,7 @@ export class MapLibreStylePlugin extends Plugin<ThreeView, ViewContext> {
       this.engine,
       view.getZoomLevel(MAPLIBRE_TILE_SIZE),
       rank,
+      this.sprite,
     );
 
     // Skip unsupported layers (toLayerDescription returns null for unsupported types)
@@ -856,6 +922,14 @@ export class MapLibreStylePlugin extends Plugin<ThreeView, ViewContext> {
     // Add layer
     const layer = view.addLayer(layerDesc);
     this.layers.push(layer);
+
+    if (
+      this.sprite &&
+      styleLayer.type === "symbol" &&
+      styleLayer.layout?.["icon-image"] !== undefined
+    ) {
+      this.iconLayers.set(layer, { styleLayer, source, fontFamily, rank });
+    }
 
     if (
       symbolLayerFollowsZoom(styleLayer) ||
@@ -1069,6 +1143,7 @@ export class MapLibreStylePlugin extends Plugin<ThreeView, ViewContext> {
             layoutValues,
             meshGeometryType,
             this.warnedLayers,
+            this.sprite,
           );
         },
       );
@@ -1166,6 +1241,9 @@ export class MapLibreStylePlugin extends Plugin<ThreeView, ViewContext> {
       source.delete();
     }
     this.sources.clear();
+
+    this.sprite = undefined;
+    this.iconLayers.clear();
 
     // Dispose TileJsonPlugin only if it was created internally
     if (this.ownsTileJsonPlugin) {

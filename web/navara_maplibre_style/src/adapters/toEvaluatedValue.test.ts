@@ -539,6 +539,56 @@ describe("toEvaluatedValue", () => {
       expect(result.declutterPriority).toBe(-3);
     });
 
+    it("should resolve icon-image through the sprite and size by its pixel ratio", () => {
+      const layer: StyleLayer = { id: "test", type: "symbol", source: "test" };
+      const sprite = new Map([
+        ["marker", { url: "data:marker", pixelRatio: 2 }],
+      ]);
+      const evaluate = (iconImage: string, withSprite = true) =>
+        toEvaluatedValue(
+          layer,
+          {},
+          { "icon-image": iconImage, "icon-size": 1.5, "icon-offset": [2, 0] },
+          "billboard",
+          undefined,
+          withSprite ? sprite : undefined,
+        );
+
+      const fromSprite = evaluate("marker");
+      expect(fromSprite.image).toBe("data:marker");
+      expect(fromSprite.size).toBe(0.75);
+      // `icon-offset` is in CSS pixels scaled by `icon-size` only.
+      expect(fromSprite.offset).toEqual({ x: 3, y: 0 });
+
+      // With a sprite, a name it lacks draws nothing, as in MapLibre.
+      const missing = evaluate("/icons/pin.png");
+      expect(missing.show).toBe(false);
+      expect(missing.image).toBeUndefined();
+
+      // Without one, the name is an image URL.
+      const fromUrl = evaluate("/icons/pin.png", false);
+      expect(fromUrl.image).toBe("/icons/pin.png");
+      expect(fromUrl.size).toBe(1.5);
+    });
+
+    it("should still divide a sprite icon's size by its pixel ratio when icon-size is not a number", () => {
+      const layer: StyleLayer = { id: "test", type: "symbol", source: "test" };
+      const sprite = new Map([
+        ["marker", { url: "data:marker", pixelRatio: 2 }],
+      ]);
+
+      const result = toEvaluatedValue(
+        layer,
+        {},
+        { "icon-image": "marker", "icon-size": "invalid" },
+        "billboard",
+        undefined,
+        sprite,
+      );
+
+      expect(result.size).toBe(0.5);
+    });
+
     it("should map text-rotate, text-transform and symbol-sort-key for text", () => {
       const layer: StyleLayer = { id: "test", type: "symbol", source: "test" };
 

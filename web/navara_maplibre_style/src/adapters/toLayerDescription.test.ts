@@ -867,6 +867,29 @@ describe("toLayerDescription", () => {
       expect(billboard?.geometryTypes).toEqual(["point", "line", "polygon"]);
     });
 
+    it("resolves a constant icon-image through the sprite, or as a URL without one", () => {
+      const sprite = new Map([
+        ["marker", { url: "data:marker", pixelRatio: 2 }],
+      ]);
+      const iconUrl = (iconImage: unknown, withSprite = true) =>
+        (
+          toLayerDescription(
+            mockSource,
+            symbolLayer({ "icon-image": iconImage } as StyleLayer["layout"]),
+            undefined,
+            engine,
+            undefined,
+            undefined,
+            withSprite ? sprite : undefined,
+          ) as { billboard?: { url?: string } }
+        ).billboard?.url;
+
+      expect(iconUrl("marker")).toBe("data:marker");
+      // A name the sprite lacks gets the placeholder an expression gets.
+      expect(iconUrl("/icons/pin.png")).toBe(iconUrl(["get", "icon"]));
+      expect(iconUrl("/icons/pin.png", false)).toBe("/icons/pin.png");
+    });
+
     it("gives text the spec default text-color, black, and icons no tint", () => {
       const { text, billboard } = buildSymbol({
         "text-field": "{name}",

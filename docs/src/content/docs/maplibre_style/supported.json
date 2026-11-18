@@ -1000,7 +1000,7 @@
       "status": "✅"
     },
     "sprite": {
-      "status": "❌"
+      "status": "⚠️ SDF icons and stretch/content metadata are ignored"
     },
     "glyphs": {
       "status": "❌"
@@ -1071,7 +1071,7 @@
     }
   },
   "sprite": {
-    "status": "❌"
+    "status": "⚠️ SDF icons and stretch/content metadata are ignored"
   },
   "glyphs": {
     "status": "❌"
