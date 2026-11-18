@@ -64,7 +64,7 @@ See [MapLibre Expressions](https://maplibre.org/maplibre-style-spec/expressions/
 
 <MapLibreSupportTable category="sprite" />
 
-**Note:** As in MapLibre, sprite URLs must be absolute, and the `@2x` sheet is used on high-DPI screens. If any sprite fails to load, none of them is used. As in MapLibre, an `icon-image` name that is not in the sprite draws nothing; in a style with no `sprite`, Navara loads the name as an image URL instead. Sprite icons are passed to billboards as `data:` URLs, so a Content Security Policy must allow `data:` in `img-src`.
+**Note:** A sprite URL is an absolute URL or an origin-relative path (`/path/to/sprite`); a path such as `../sprite` is not resolved against the style's URL. As in MapLibre, the `@2x` sheet is used on high-DPI screens. If any sprite fails to load, none of them is used. As in MapLibre, an `icon-image` name that is not in the sprite draws nothing; in a style with no `sprite`, Navara loads the name as an image URL instead. Sprite icons are passed to billboards as `data:` URLs, so a Content Security Policy must allow `data:` in `img-src`.
 
 ## State
 

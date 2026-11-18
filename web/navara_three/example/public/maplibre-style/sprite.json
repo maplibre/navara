@@ -10,7 +10,7 @@
       "Row 3: data-driven icon-image: 'face' (default sprite), 'extra:face' (prefixed by the sprite id; its URL carries '?extra' because sprite URLs must be unique, which also checks @2x goes before the query), 'missing' (not in the sprite: draws nothing, as in MapLibre), icon-rotate 45.",
       "Row 4: icon-opacity 0.4, icon-offset [60, 0], icon + text, icon-size interpolated by zoom (zoom in/out).",
       "Row 5: icons cut from other cells of the sheet (sad, surprised, wink; 'extra:surprised' via the second sprite). face/sad/surprised/wink share one PNG, so each must show its own expression, not the top-left cell.",
-      "Sprite URLs must be absolute, as in MapLibre: they point at the dev server (http://localhost:5173/examples/...), so change the origin if it differs."
+      "Sprite URLs: 'default' is an origin-relative path (the examples are served under /examples/), 'extra' is an absolute URL, so both forms are tested. The absolute one hard-codes the dev server origin (http://localhost:5173); change it if yours differs."
     ]
   },
   "projection": {
@@ -21,7 +21,7 @@
   "pitch": 0,
   "bearing": 0,
   "sprite": [
-    { "id": "default", "url": "http://localhost:5173/examples/maplibre-style/sprite/face" },
+    { "id": "default", "url": "/examples/maplibre-style/sprite/face" },
     { "id": "extra", "url": "http://localhost:5173/examples/maplibre-style/sprite/face?extra" }
   ],
   "glyphs": "https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf",

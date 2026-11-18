@@ -10,18 +10,22 @@ describe("spriteSheetUrls", () => {
     });
   });
 
-  it("puts @2x before the extension and keeps the query string", () => {
+  it("appends the suffixes to an origin-relative path as is", () => {
+    expect(spriteSheetUrls("/examples/sprite/face", true)).toEqual({
+      json: "/examples/sprite/face@2x.json",
+      image: "/examples/sprite/face@2x.png",
+    });
+  });
+
+  it("puts @2x before the extension and keeps the query string and fragment", () => {
     expect(
       spriteSheetUrls("https://cdn.example.com/s/sprite?key=1", true),
     ).toEqual({
       json: "https://cdn.example.com/s/sprite@2x.json?key=1",
       image: "https://cdn.example.com/s/sprite@2x.png?key=1",
     });
-  });
-
-  it("rejects a relative URL, as MapLibre does", () => {
-    expect(() => spriteSheetUrls("../sprite/face", false)).toThrow(
-      'Invalid sprite URL "../sprite/face", must be absolute.',
+    expect(spriteSheetUrls("/s/sprite#frag", false).json).toBe(
+      "/s/sprite.json#frag",
     );
   });
 });
@@ -189,17 +193,17 @@ describe("loadSprite", () => {
     );
   });
 
-  it("rejects a relative sprite URL with a warning", async () => {
-    vi.spyOn(console, "warn").mockImplementation(() => {});
-    stubFetch({});
+  it("requests an origin-relative path as is", async () => {
+    const fetchMock = stubFetch({
+      "/examples/sprite/face.json": { face },
+      "/examples/sprite/face.png": "png",
+    });
 
-    const images = await loadSprite("../sprite/face", 1);
+    const images = await loadSprite("/examples/sprite/face", 1);
 
-    expect(images.get("face")).toBeUndefined();
-    expect(console.warn).toHaveBeenCalledWith(
-      'Failed to load sprite "../sprite/face":',
-      expect.objectContaining({ message: expect.stringContaining("absolute") }),
-    );
+    expect(fetchMock).toHaveBeenCalledWith("/examples/sprite/face.json");
+    expect(fetchMock).toHaveBeenCalledWith("/examples/sprite/face.png");
+    expect(images.get("face")?.pixelRatio).toBe(1);
   });
 
   it("ignores malformed and empty index entries; pixelRatio defaults to 1", async () => {

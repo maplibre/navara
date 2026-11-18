@@ -22,26 +22,21 @@ export type SpriteRect = {
 };
 
 /**
- * The index and sheet URLs of a sprite, built as MapLibre's
- * `normalizeSpriteURL` does: the URL must be absolute, and `@2x` goes before
- * the extension, ahead of any query string (`https://a/sprite?k=1` →
- * `https://a/sprite@2x.json?k=1`).
+ * The index and sheet URLs of a sprite: `@2x` and the extension go after the
+ * path, ahead of any query string or fragment (`/sprite?k=1` →
+ * `/sprite@2x.json?k=1`). The URL is not parsed or checked: an absolute URL or
+ * an origin-relative path (`/path/to/sprite`) goes to `fetch` as is. A path
+ * like `../sprite` is not resolved against the style's URL.
  */
 export function spriteSheetUrls(
   url: string,
   highDpi: boolean,
 ): { json: string; image: string } {
-  const withSuffix = (extension: string) => {
-    let resolved: URL;
-    try {
-      resolved = new URL(url);
-    } catch {
-      throw new Error(`Invalid sprite URL "${url}", must be absolute.`);
-    }
-    resolved.pathname += `${highDpi ? "@2x" : ""}${extension}`;
-    return resolved.href;
-  };
-  return { json: withSuffix(".json"), image: withSuffix(".png") };
+  const end = url.search(/[?#]/);
+  const path = end === -1 ? url : url.slice(0, end);
+  const rest = end === -1 ? "" : url.slice(end);
+  const base = path + (highDpi ? "@2x" : "");
+  return { json: `${base}.json${rest}`, image: `${base}.png${rest}` };
 }
 
 const isPositive = (v: unknown) =>
