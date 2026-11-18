@@ -90,7 +90,7 @@ export const DATASETS: Dataset[] = [
   ...specs(
     "Metadata",
     ["StructuralMetadata"],
-    "Plain .gltf: renders, but its metadata is not read",
+    "Plain .gltf with EXT_structural_metadata",
   ),
   ...[
     "TileMetadata",

@@ -48,16 +48,16 @@ Navara reads only part of the pnts feature table. Point colors are interpreted a
 
 ### 3D Tiles 1.1
 
-| Feature                      | Description                                                                                              |
-| ---------------------------- | -------------------------------------------------------------------------------------------------------- |
-| GLB content                  | Tiles using GLB (binary glTF) as the content format.                                                     |
-| glTF content                 | ⚠️ Rendered without `EXT_mesh_features` and `EXT_structural_metadata`, so its features cannot be picked. |
-| GLB POINTS primitive         | Point cloud rendering for glTF meshes with `mode: POINTS` (3D Tiles 1.1 point cloud).                    |
-| `EXT_mesh_features`          | Feature identification via FeatureId sets in glTF meshes.                                                |
-| `EXT_structural_metadata`    | Access to per-feature metadata via property tables embedded in glTF assets.                              |
-| `KHR_draco_mesh_compression` | Decoding of Draco-compressed mesh data.                                                                  |
-| `KHR_mesh_quantization`      | Quantized vertex attributes for compact glTF assets.                                                     |
-| `EXT_meshopt_compression`    | Decoding of meshopt-compressed buffers.                                                                  |
+| Feature                      | Description                                                                           |
+| ---------------------------- | ------------------------------------------------------------------------------------- |
+| GLB content                  | Tiles using GLB (binary glTF) as the content format.                                  |
+| glTF content                 | Tiles using glTF (JSON, `.gltf`) as the content format.                               |
+| GLB POINTS primitive         | Point cloud rendering for glTF meshes with `mode: POINTS` (3D Tiles 1.1 point cloud). |
+| `EXT_mesh_features`          | Feature identification via FeatureId sets in glTF meshes.                             |
+| `EXT_structural_metadata`    | Access to per-feature metadata via property tables embedded in glTF assets.           |
+| `KHR_draco_mesh_compression` | Decoding of Draco-compressed mesh data.                                               |
+| `KHR_mesh_quantization`      | Quantized vertex attributes for compact glTF assets.                                  |
+| `EXT_meshopt_compression`    | Decoding of meshopt-compressed buffers.                                               |
 
 :::note
 Implicit tiling is not supported, so a tileset must describe its tile hierarchy explicitly in `tileset.json`. A tile with multiple contents (`contents`) renders nothing; only a single `content` is read.
