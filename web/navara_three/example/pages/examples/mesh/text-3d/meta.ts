@@ -3,7 +3,7 @@ import type { ExampleMeta } from "../../sections";
 export default {
   section: "3d",
   order: 10,
-  title: { en: "Font 3D Object", ja: "フォント 3D オブジェクト" },
+  title: { en: "Text 3D", ja: "テキスト 3D" },
   description: {
     en: "3D text objects placed among global buildings.",
     ja: "世界の建物の中に 3D の文字オブジェクトを置く。",
