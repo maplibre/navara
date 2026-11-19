@@ -68,12 +68,26 @@ impl FeatureShape {
 /// Number of f64s one summary takes in [`FeatureSummary::write_f64s`].
 pub const SUMMARY_F64_STRIDE: usize = 7;
 
+/// Number of f64s one summary takes in [`FeatureSummary::write_wasm_f64s`].
+pub const WASM_SUMMARY_STRIDE: usize = 3 + SUMMARY_F64_STRIDE;
+
 impl FeatureSummary {
     /// Append `bbox`, `centroid` and the shape's measure.
     pub fn write_f64s(&self, out: &mut Vec<f64>) {
         out.extend_from_slice(&self.bbox);
         out.extend_from_slice(&self.centroid);
         out.push(self.shape.measure());
+    }
+
+    /// Append the layout `readFeatureSummaries` hands to JS,
+    /// [`WASM_SUMMARY_STRIDE`] f64s: the id's high and low 32 bits (both NaN
+    /// when absent), the shape tag, then [`Self::write_f64s`].
+    pub fn write_wasm_f64s(&self, out: &mut Vec<f64>) {
+        let (high, low) = self.id.map_or((f64::NAN, f64::NAN), |id| {
+            (f64::from((id >> 32) as u32), f64::from(id as u32))
+        });
+        out.extend_from_slice(&[high, low, f64::from(self.shape.tag())]);
+        self.write_f64s(out);
     }
 
     /// Rebuild from [`Self::write_f64s`] output, the id, and the shape tag.
@@ -396,6 +410,49 @@ mod test {
         assert!(
             rel_eq(length, expected, 1e-9),
             "length {length} vs {expected}"
+        );
+    }
+
+    #[test]
+    fn wasm_layout_matches_the_typescript_decoder() {
+        // FeatureEvaluator.test.ts decodes these same numbers; change both
+        // together.
+        let polygon = FeatureSummary {
+            id: Some(0xfedc_ba98_7654_3210),
+            bbox: [139.7, 35.6, 139.8, 35.7],
+            centroid: [139.75, 35.65],
+            shape: FeatureShape::Polygon { area: 1234.5 },
+        };
+        let line = FeatureSummary {
+            id: None,
+            bbox: [139.0, 35.0, 139.1, 35.1],
+            centroid: [139.05, 35.05],
+            shape: FeatureShape::LineString { length: 500.0 },
+        };
+        let mut flat = Vec::new();
+        polygon.write_wasm_f64s(&mut flat);
+        line.write_wasm_f64s(&mut flat);
+
+        assert_eq!(flat.len(), 2 * WASM_SUMMARY_STRIDE);
+        assert_eq!(
+            flat[..WASM_SUMMARY_STRIDE],
+            [
+                f64::from(0xfedc_ba98_u32),
+                f64::from(0x7654_3210_u32),
+                2.0,
+                139.7,
+                35.6,
+                139.8,
+                35.7,
+                139.75,
+                35.65,
+                1234.5,
+            ]
+        );
+        assert!(flat[WASM_SUMMARY_STRIDE].is_nan() && flat[WASM_SUMMARY_STRIDE + 1].is_nan());
+        assert_eq!(
+            flat[WASM_SUMMARY_STRIDE + 2..],
+            [1.0, 139.0, 35.0, 139.1, 35.1, 139.05, 35.05, 500.0]
         );
     }
 
