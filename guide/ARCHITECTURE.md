@@ -250,7 +250,7 @@ The engine supports comprehensive geospatial data formats:
 
 The rendering engine includes a GPU-based mesh picking system that identifies which mesh the user clicked or hovered. Rather than using CPU-side raycasting, picking renders all pickable meshes into a dedicated 1×1 render target with each mesh's batch ID encoded as an RGB color, then reads back the single pixel to determine the hit.
 
-Two gestures trigger a pick: a click (emitting `"featureClick"`) and hovering (emitting `"featureHover"` plus the diff-synthesized `"featureEnter"` / `"featureLeave"` pair). Hover picks are throttled to one per animation frame and suppressed while a mouse button is down. Both gestures are lazy, and the pick runs only while a matching listener is registered on the view.
+Two gestures trigger a pick: a click (emitting `"featureClick"`) and hovering (emitting `"featureHover"` plus the diff-synthesized `"featureEnter"` / `"featureLeave"` pair). Hover picks are throttled to one per animation frame and suppressed while a mouse button is down. The view runs the frame's hover pick (`PickHelper.pickHover`) at the start of the frame, before its render: the readback is synchronous, and by then the GPU has usually finished the previous frame, so it waits for the pick render alone. Both gestures are lazy, and the pick runs only while a matching listener is registered on the view.
 
 ### Pick Flow
 
