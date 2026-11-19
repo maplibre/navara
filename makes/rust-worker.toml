@@ -7,17 +7,11 @@ script = ['''
 #!/usr/bin/env bash
 
 wasm-bindgen target/wasm32-unknown-unknown/release/navara_wasm_worker.wasm --out-dir web/wasm/navara_engine_worker --target web
-if command -v wasm-opt &> /dev/null; then
-    wasm-opt -Oz --strip-debug --strip-producers web/wasm/navara_engine_worker/navara_wasm_worker_bg.wasm -o web/wasm/navara_engine_worker/navara_wasm_worker_bg.wasm
-  else
-    echo "wasm-opt not found, skipping optimization"
-fi
 ''']
 
 [tasks.bindgen-rust-worker.windows]
 script = ['''
 wasm-bindgen target/wasm32-unknown-unknown/release/navara_wasm_worker.wasm --out-dir web/wasm/navara_engine_worker --target web
-where wasm-opt >nul 2>&1 && wasm-opt -Oz --strip-debug --strip-producers web/wasm/navara_engine_worker/navara_wasm_worker_bg.wasm -o web/wasm/navara_engine_worker/navara_wasm_worker_bg.wasm || echo "wasm-opt not found, skipping optimization"
 ''']
 
 [tasks.bindgen-dev-rust-worker]
