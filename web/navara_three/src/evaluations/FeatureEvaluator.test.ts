@@ -157,8 +157,9 @@ describe("FeatureEvaluator", () => {
 
   describe("id and geometry summary", () => {
     // Two features of one MVT layer: a polygon whose id needs all 64 bits,
-    // and a line with no id, laid out as navara_wasm's readFeatureSummaries
-    // returns them.
+    // and a line with no id. The navara_parser test
+    // `wasm_layout_matches_the_typescript_decoder` writes these same numbers;
+    // change both together.
     const summaries = new Float64Array([
       0xfedcba98,
       0x76543210,
@@ -293,6 +294,49 @@ describe("FeatureEvaluator", () => {
       const all = new FeatureEvaluator(handler, "layer", 0n, new Object3D());
       all.readFeatureProperties((info) => seen.push(pick(info)));
       expect(seen).toEqual([...expected, ...expected]);
+    });
+
+    it("decodes id and geometry when read, equal on every read", () => {
+      const flat = summaries.slice();
+      const evaluator = new FeatureEvaluator(
+        handlerWith(flat),
+        "layer",
+        0n,
+        new Object3D(),
+      );
+      const infos: FeatureInfo[] = [];
+      evaluator.readFeatureProperties((info) => infos.push(info));
+      // Read after the callbacks return: the values come from the fetched
+      // summaries, not from a decode done before the callback ran.
+      flat[2] = 0;
+      expect(infos.map(pick)).toEqual([
+        {
+          id: expected[0].id,
+          geometry: {
+            type: "Point",
+            bbox: [139.7, 35.6, 139.8, 35.7],
+            centroid: [139.75, 35.65],
+          },
+        },
+        expected[1],
+      ]);
+      expect(infos.map(pick)).toEqual(infos.map(pick));
+    });
+
+    it("throws on an unknown shape tag", () => {
+      const flat = summaries.slice();
+      flat[2] = 3;
+      const evaluator = new FeatureEvaluator(
+        handlerWith(flat),
+        "layer",
+        0n,
+        new Object3D(),
+      );
+      const infos: FeatureInfo[] = [];
+      evaluator.readFeatureProperties((info) => infos.push(info));
+      expect(() => infos[0].geometry).toThrow(
+        "Unknown feature summary shape tag: 3",
+      );
     });
 
     it("leaves id and geometry undefined for sources without summaries", () => {

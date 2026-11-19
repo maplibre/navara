@@ -169,8 +169,12 @@ export type { GeometryType };
 
 /**
  * Summary of a vector tile feature's geometry, computed once per feature when
- * its tile is decoded. Vector tiles clip geometry at tile edges, so a feature
- * crossing an edge is summarized per tile, from the part that tile holds.
+ * its tile is decoded, from the geometry that tile holds: the tile and the
+ * buffer around it. A feature in the buffer reaches the neighboring tile's
+ * evaluator too, and a feature crossing tile edges is summarized once per
+ * tile, so its per-tile areas or lengths overlap by the buffer. Nothing is
+ * clamped to the tile or wrapped: in tiles at the antimeridian, longitudes can
+ * fall below -180 or above 180.
  */
 export type FeatureGeometrySummary = {
   /** `[west, south, east, north]` in degrees. */
@@ -214,44 +218,55 @@ export type FeatureInfo = {
    * when the feature has none, and for other sources.
    */
   id?: bigint;
-  /** Summary of the feature's geometry. Vector tile sources only. */
+  /**
+   * Summary of the feature's geometry, decoded into a new object on each
+   * read. Vector tile sources only.
+   */
   geometry?: FeatureGeometrySummary;
 };
 
-type FeatureSource = Pick<FeatureInfo, "id" | "geometry">;
-
-// Layout of `FeatureHandler.readFeatureSummaries`, set by `readFeatureSummaries`
-// in the navara_wasm crate: the id's high and low 32 bits (NaN when absent),
-// shape tag, west, south, east, north, centroid lng, centroid lat, length or
-// area.
+// Layout of `FeatureHandler.readFeatureSummaries`, set by
+// `FeatureSummary::write_wasm_f64s` in the navara_parser crate: the id's high
+// and low 32 bits (NaN when absent), shape tag, west, south, east, north,
+// centroid lng, centroid lat, length or area.
 const FEATURE_SUMMARY_STRIDE = 10;
 
-const decodeFeatureSummaries = (flat: Float64Array): FeatureSource[] => {
-  const sources: FeatureSource[] = [];
-  for (let i = 0; i < flat.length; i += FEATURE_SUMMARY_STRIDE) {
-    const id = Number.isNaN(flat[i])
-      ? undefined
-      : (BigInt(flat[i]) << 32n) | BigInt(flat[i + 1]);
-    const bbox: FeatureGeometrySummary["bbox"] = [
-      flat[i + 3],
-      flat[i + 4],
-      flat[i + 5],
-      flat[i + 6],
-    ];
-    const centroid: FeatureGeometrySummary["centroid"] = [
-      flat[i + 7],
-      flat[i + 8],
-    ];
-    const measure = flat[i + 9];
-    const geometry: FeatureGeometrySummary =
-      flat[i + 2] === 2
-        ? { type: "Polygon", bbox, centroid, area: measure }
-        : flat[i + 2] === 1
-          ? { type: "LineString", bbox, centroid, length: measure }
-          : { type: "Point", bbox, centroid };
-    sources.push({ id, geometry });
+const decodeFeatureId = (
+  flat: Float64Array,
+  batchIndex: number,
+): bigint | undefined => {
+  const o = batchIndex * FEATURE_SUMMARY_STRIDE;
+  return Number.isNaN(flat[o])
+    ? undefined
+    : (BigInt(flat[o]) << 32n) | BigInt(flat[o + 1]);
+};
+
+const decodeFeatureGeometry = (
+  flat: Float64Array,
+  batchIndex: number,
+): FeatureGeometrySummary => {
+  const o = batchIndex * FEATURE_SUMMARY_STRIDE;
+  const bbox: FeatureGeometrySummary["bbox"] = [
+    flat[o + 3],
+    flat[o + 4],
+    flat[o + 5],
+    flat[o + 6],
+  ];
+  const centroid: FeatureGeometrySummary["centroid"] = [
+    flat[o + 7],
+    flat[o + 8],
+  ];
+  const tag = flat[o + 2];
+  switch (tag) {
+    case 0:
+      return { type: "Point", bbox, centroid };
+    case 1:
+      return { type: "LineString", bbox, centroid, length: flat[o + 9] };
+    case 2:
+      return { type: "Polygon", bbox, centroid, area: flat[o + 9] };
+    default:
+      throw new Error(`Unknown feature summary shape tag: ${tag}`);
   }
-  return sources;
 };
 
 /**
@@ -324,8 +339,8 @@ export class FeatureEvaluator {
     Record<string, unknown> | undefined
   >;
   private batchIds: number[] = [];
-  /** Decoded on first read; `null` for sources without summaries. */
-  private sources?: FeatureSource[] | null;
+  /** Fetched on first read; `null` for sources without summaries. */
+  private summaries?: Float64Array | null;
 
   /**
    * The underlying Three.js object representing this feature.
@@ -393,10 +408,10 @@ export class FeatureEvaluator {
    * Must run before the handler's property reads: their callbacks run while
    * the engine is borrowed, so the engine cannot be called from inside them.
    */
-  private loadSources() {
-    if (this.sources === undefined) {
-      const flat = this.handler.readFeatureSummaries(this.featureSetId);
-      this.sources = flat ? decodeFeatureSummaries(flat) : null;
+  private loadSummaries() {
+    if (this.summaries === undefined) {
+      this.summaries =
+        this.handler.readFeatureSummaries(this.featureSetId) ?? null;
     }
   }
 
@@ -406,14 +421,22 @@ export class FeatureEvaluator {
     properties: Record<string, unknown> | undefined,
     meshGeomType: GeometryType | undefined,
   ): FeatureInfo {
-    const source = this.sources?.[batchIndex];
+    const summaries = this.summaries;
+    if (!summaries) {
+      return { layerId: this.layerId, batchId, properties, meshGeomType };
+    }
+    // Decoded on read: the evaluator keeps only the fetched array.
     return {
       layerId: this.layerId,
       batchId,
       properties,
       meshGeomType,
-      id: source?.id,
-      geometry: source?.geometry,
+      get id() {
+        return decodeFeatureId(summaries, batchIndex);
+      },
+      get geometry() {
+        return decodeFeatureGeometry(summaries, batchIndex);
+      },
     };
   }
 
@@ -448,7 +471,7 @@ export class FeatureEvaluator {
   readFeatureProperties(f: (info: FeatureInfo, batchIndex: number) => void) {
     // Read geometry type dynamically to handle cases where it changes after evaluator creation
     const meshGeomType = this.determineGeometryType(this.obj);
-    this.loadSources();
+    this.loadSummaries();
 
     if (this.cachedBatchedProperties) {
       for (const [batchIdx, properties] of this.cachedBatchedProperties) {
@@ -499,7 +522,7 @@ export class FeatureEvaluator {
   ) {
     // Read geometry type dynamically to handle cases where it changes after evaluator creation
     const meshGeomType = this.determineGeometryType(this.obj);
-    this.loadSources();
+    this.loadSummaries();
 
     const cacheKey = keys.join("|");
     if (this.filterCacheKey === cacheKey && this.cachedFilteredProperties) {
