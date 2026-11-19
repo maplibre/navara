@@ -86,9 +86,10 @@ fn handle_frustum_setting(
 ) {
     for event in ev.read() {
         for (e, _, mut frustum, transform) in &mut camera {
-            // 180° or more is not a perspective projection (tan(fov / 2) is
-            // infinite), and NaN would poison the planes and the SSE.
-            if let Some(fov) = event.fov.filter(|fov| (1.0..180.0).contains(fov)) {
+            if let Some(fov) = event
+                .fov
+                .filter(|&fov| CameraFrustum::is_valid_fov_deg(fov))
+            {
                 frustum.fov = Angle::new(fov).rad().val();
             }
 
