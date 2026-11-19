@@ -142,17 +142,6 @@ impl GltfPropertyTable {
         let binary = self.resolve_binary(buf_store)?;
         self.table.get_properties(index, binary)
     }
-
-    /// Get filtered properties for a feature at the given index.
-    pub fn get_filtered_properties<V: PropertyValue>(
-        &self,
-        index: usize,
-        keys: &[String],
-        buf_store: &BufferStore,
-    ) -> Option<Vec<Option<V>>> {
-        let binary = self.resolve_binary(buf_store)?;
-        self.table.get_filtered_properties(index, keys, binary)
-    }
 }
 
 pub struct BatchTableValue {

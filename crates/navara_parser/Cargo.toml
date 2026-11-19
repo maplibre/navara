@@ -8,7 +8,6 @@ license.workspace = true
 geojson_lib.workspace = true
 geozero.workspace = true
 geo-types.workspace = true
-rustc-hash.workspace = true
 navara_cesiumtiles.workspace = true
 navara_b3dm.workspace = true
 navara_pnts.workspace = true

@@ -3,7 +3,6 @@ use std::ops::Range;
 use std::sync::Arc;
 
 use navara_property::PropertyValue;
-use rustc_hash::FxHashMap;
 
 /// Stores property table metadata from EXT_structural_metadata for lazy decoding.
 /// Binary data is not owned; callers must provide the BIN chunk slice at read time.
@@ -67,35 +66,59 @@ impl PropertyTableData {
         Some(V::finalize_map(props))
     }
 
+    /// Resolve `keys` to their columns once, for reading many features with
+    /// [`Self::get_filtered_properties`]. `binary` is the GLB BIN chunk slice
+    /// from which column data is read.
+    pub fn filtered_columns<'a>(
+        &'a self,
+        keys: &[String],
+        binary: &'a [u8],
+    ) -> Vec<Option<ColumnSlice<'a>>> {
+        keys.iter()
+            .map(|key| {
+                let col = self.properties.get(key)?;
+                Some(ColumnSlice {
+                    col,
+                    values: binary.get(col.values_range.clone()).unwrap_or(&[]),
+                    string_offsets: col
+                        .string_offsets_range
+                        .as_ref()
+                        .and_then(|r| binary.get(r.clone())),
+                })
+            })
+            .collect()
+    }
+
     /// Get filtered properties for a feature at the given index.
-    /// Returns `Vec<Option<V>>` in the same order as `keys`.
-    /// `binary` is the GLB BIN chunk slice from which column data is read.
+    /// Returns `Vec<Option<V>>` in the order of the keys `columns` was
+    /// resolved from.
     pub fn get_filtered_properties<V: PropertyValue>(
         &self,
         index: usize,
-        keys: &[String],
-        binary: &[u8],
+        columns: &[Option<ColumnSlice>],
     ) -> Option<Vec<Option<V>>> {
         if index >= self.count as usize {
             return None;
         }
-        let mut indexed_keys = FxHashMap::default();
-        for (i, k) in keys.iter().enumerate() {
-            indexed_keys.insert(k.as_str(), i);
-        }
-        let mut result: Vec<Option<V>> = keys.iter().map(|_| None).collect();
-        for (name, col) in self.properties.as_ref() {
-            if let Some(&pos) = indexed_keys.get(name.as_str()) {
-                let values = binary.get(col.values_range.clone()).unwrap_or(&[]);
-                let string_offsets = col
-                    .string_offsets_range
-                    .as_ref()
-                    .and_then(|r| binary.get(r.clone()));
-                result[pos] = read_column_value::<V>(col, values, string_offsets, index);
-            }
-        }
-        Some(result)
+        Some(
+            columns
+                .iter()
+                .map(|c| {
+                    c.as_ref().and_then(|c| {
+                        read_column_value::<V>(c.col, c.values, c.string_offsets, index)
+                    })
+                })
+                .collect(),
+        )
     }
+}
+
+/// A column with its data sliced from the BIN chunk. Built by
+/// [`PropertyTableData::filtered_columns`].
+pub struct ColumnSlice<'a> {
+    col: &'a PropertyColumnData,
+    values: &'a [u8],
+    string_offsets: Option<&'a [u8]>,
 }
 
 /// Read a value from a column, returning null if it matches the noData sentinel.
@@ -679,7 +702,9 @@ mod tests {
             "nonexistent".to_string(),
             "id".to_string(),
         ];
-        let result: Vec<Option<Value>> = table.get_filtered_properties(0, &keys, &binary).unwrap();
+        let result: Vec<Option<Value>> = table
+            .get_filtered_properties(0, &table.filtered_columns(&keys, &binary))
+            .unwrap();
 
         assert_eq!(result.len(), 3);
         assert_eq!(result[0], Some(Value::String("building_a".to_string())));
@@ -691,7 +716,8 @@ mod tests {
     fn test_get_filtered_properties_out_of_bounds() {
         let (binary, table) = make_property_table();
         let keys = vec!["id".to_string()];
-        let result: Option<Vec<Option<Value>>> = table.get_filtered_properties(99, &keys, &binary);
+        let result: Option<Vec<Option<Value>>> =
+            table.get_filtered_properties(99, &table.filtered_columns(&keys, &binary));
         assert!(result.is_none());
     }
 
