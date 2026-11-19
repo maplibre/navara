@@ -41,6 +41,7 @@ import type { CustomObject3DEventMap } from "../object3DEvent";
 
 import { GEOMETRY_TYPES } from "./constants";
 import type { FeatureMesh } from "./featureMesh";
+import { vertexGlobalBatchIds } from "./modelBatchIds";
 import type { PickableMesh } from "./pickableMesh";
 import { releaseGeometryArraysAfterUpload } from "./releaseGeometryArrays";
 
@@ -211,7 +212,7 @@ export class ModelMesh
    * Drop the CPU-side typed arrays of a loaded glTF/point-cloud node after its
    * first GPU upload. The GLTFLoader has already computed bounding volumes at
    * parse time (and the point-cloud path assigns them from the WASM AABB), and
-   * `_setupMeshNode` has already read `_batchid.array` before this runs, so no
+   * `_setupMeshNode` has already read `_batchid` before this runs, so no
    * CPU read survives the first upload.
    *
    * Skipped for skinned meshes and geometries with morph targets: those keep
@@ -327,9 +328,6 @@ export class ModelMesh
     batchIds: Uint32Array<ArrayBufferLike>,
     dataSize: number,
   ) {
-    const vertCnt = mesh.geometry.attributes?.position?.count;
-
-    const attrBatchIds = new Float32Array(vertCnt);
     // B3DM (1.0) uses _batchid; glTF with EXT_mesh_features (1.1) uses _FEATURE_ID_N.
     // Assign _FEATURE_ID_0 to _batchid so the batch texture shader works unchanged.
     // Also accept lowercase _feature_id_0 as a compatibility fallback.
@@ -341,19 +339,10 @@ export class ModelMesh
       // Need to clone, since it might be switch to different feature ID attributes.
       mesh.geometry.setAttribute("_batchid", featureIdAttribute.clone());
     }
-    const internalBatchIds = attrs?._batchid?.array;
-
-    if (internalBatchIds) {
-      let i = 0;
-      for (const internalBatchId of internalBatchIds) {
-        attrBatchIds[i] = batchIds[internalBatchId] ?? 0;
-        i++;
-      }
-    } else {
-      for (let i = 0; i < vertCnt; i++) {
-        attrBatchIds[i] = batchIds[0];
-      }
-    }
+    const featureIndices = attrs?._batchid;
+    const attrBatchIds = featureIndices
+      ? vertexGlobalBatchIds(featureIndices, batchIds)
+      : new Float32Array(attrs?.position?.count).fill(batchIds[0]);
 
     mesh.geometry.setAttribute(
       "batchId",
