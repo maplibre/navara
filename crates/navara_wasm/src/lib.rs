@@ -817,6 +817,30 @@ impl Core {
         Ok(())
     }
 
+    /// Per-feature ids and geometry summaries of a batched MVT feature, as an
+    /// owned copy with 10 numbers per batch index: the id's high and low 32
+    /// bits (both NaN when absent), shape tag (0 point, 1 line, 2 polygon),
+    /// west, south, east, north, centroid lng, centroid lat, and the length or
+    /// area. `undefined` for features of other sources.
+    #[wasm_bindgen(js_name = readFeatureSummaries)]
+    pub fn read_feature_summaries(
+        &mut self,
+        renderable_feature_bits: u64,
+    ) -> Option<js_sys::Float64Array> {
+        let summaries = self.app.read_feature_summaries(renderable_feature_bits)?;
+        let mut flat = Vec::with_capacity(summaries.len() * 10);
+        for summary in summaries {
+            let (high, low) = summary.id.map_or((f64::NAN, f64::NAN), |id| {
+                (f64::from((id >> 32) as u32), f64::from(id as u32))
+            });
+            flat.push(high);
+            flat.push(low);
+            flat.push(f64::from(summary.shape.tag()));
+            summary.write_f64s(&mut flat);
+        }
+        Some(copy_f64_array(&flat))
+    }
+
     #[wasm_bindgen(js_name = readFilteredBatchedProperties)]
     pub fn read_filtered_batched_properties(
         &mut self,
