@@ -354,19 +354,67 @@ view.resize(1920, 1080, 2);
 view.resize(undefined, undefined, window.devicePixelRatio);
 ```
 
-### setCamera()
+### getCamera()
 
-カメラの位置と向きを即座に設定します。アニメーションなしで直接カメラを移動します。
+直前のフレームのカメラを、位置・向き・視野角を持つプレーンなオブジェクトとして返します。このオブジェクトは JSON にそのまま変換でき、`setCamera()` にそのまま渡せるため、ビューの保存と復元に使えます。
 
 **Syntax:**
 
 ```tsx
-setCamera(camPos: CameraPosition): void
+getCamera(): CameraState | undefined
+```
+
+**Returns:**
+
+```tsx
+type CameraState = {
+  lng: number;
+  lat: number;
+  height: number;
+  heading: number;
+  pitch: number;
+  roll: number;
+  fov: number;
+};
+```
+
+| フィールド | 型 | 説明 |
+|---|---|---|
+| `lng` | `number` | 経度（度） |
+| `lat` | `number` | 緯度（度） |
+| `height` | `number` | 楕円体からの高さ（メートル） |
+| `heading` | `number` | ヘディング角（度、0 = 北、時計回り） |
+| `pitch` | `number` | ピッチ角（度、負の値 = 下向き） |
+| `roll` | `number` | ロール角（度） |
+| `fov` | `number` | 垂直方向の視野角（度） |
+
+エンジンのカメラができるまでは `undefined` を返します。プラグインの `init()` の間と、`view.init()` が解決してから最初のフレームまでがこれにあたります。
+
+**Example:**
+
+```tsx
+// ビューを保存します（たとえば localStorage に）。
+const camera = view.getCamera();
+if (camera) localStorage.setItem("camera", JSON.stringify(camera));
+
+// あとで復元します。
+const saved = localStorage.getItem("camera");
+if (saved) view.setCamera(JSON.parse(saved));
+```
+
+### setCamera()
+
+カメラの位置と向きをアニメーションなしで設定します。エンジンは次のフレームで反映するため、それまでは [`getCamera()`](#getcamera) は前のカメラを返します。
+
+**Syntax:**
+
+```tsx
+setCamera(camPos: CameraPosition & { fov?: number }): void
 ```
 
 **Parameters:**
 
-- `camPos`: カメラ位置と向き
+- `camPos`: カメラの位置と向き、および任意で視野角。[`getCamera()`](#getcamera) の結果をそのまま渡せます。
 
 ```tsx
 type CameraPosition = {
@@ -389,6 +437,7 @@ type CameraPosition = {
 | `heading` | `number` | ヘディング角（度） |
 | `roll` | `number` | ロール角（度） |
 | `distance` | `number` | カメラの前方方向に沿ったターゲット地点からの距離（メートル）。指定した場合、カメラの前方レイが `lng`/`lat`/`height` のターゲット点をこの距離で通過するように配置されます。省略した場合は `height` がカメラ自身の高度（地表法線方向）として使用されます。 |
+| `fov` | `number` | 垂直方向の視野角（度、1〜179）。[`camera.fov`](../camera/#fov) を設定するのと同じです。範囲外の値（および `NaN`）は無視されます。省略した場合、視野角は変わりません。`fov` だけを渡した場合は視野角だけが変わり、飛行は止まりません。 |
 
 **Example:**
 

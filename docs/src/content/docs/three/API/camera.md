@@ -107,7 +107,7 @@ console.log(`Heading: ${heading}°, Pitch: ${pitch}°, Roll: ${roll}°`);
 
 The vertical field of view in degrees. The horizontal extent follows from the viewport aspect ratio.
 
-Setting accepts the range `1`–`180`. Values outside this range are ignored. Reading returns `undefined` if the engine is not yet initialized.
+Setting accepts the range `1`–`179`. Values outside this range (and `NaN`) are ignored. Reading returns `undefined` if the engine is not yet initialized.
 
 **Example:**
 

@@ -954,6 +954,15 @@ impl Core {
         None
     }
 
+    /// The whole camera in one call: `[lng, lat, height, heading, pitch,
+    /// roll, fov]`; angles in degrees (fov is the vertical field of view),
+    /// height in meters above the ellipsoid. `undefined` until the camera
+    /// exists.
+    #[wasm_bindgen(js_name = getCameraState)]
+    pub fn get_camera_state(&mut self) -> Option<Vec<f64>> {
+        self.app.get_camera_state().map(Vec::from)
+    }
+
     /// Vertical field of view in radians as set via `setFrustum`.
     #[wasm_bindgen(js_name = getCameraFOV)]
     pub fn get_camera_fov(&mut self) -> Option<FloatType> {
