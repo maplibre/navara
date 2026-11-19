@@ -7,7 +7,7 @@ import {
   Vector2,
   type WebGLRenderer,
 } from "three";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import { DrapedMesh } from "../mesh/DrapedMesh";
 import type { MeshCache } from "../type";
@@ -125,32 +125,6 @@ const createRendererStub = () => {
 };
 
 describe("PickHelper", () => {
-  let rafCallbacks: Map<number, FrameRequestCallback>;
-  let nextRafId: number;
-
-  beforeEach(() => {
-    rafCallbacks = new Map();
-    nextRafId = 0;
-    vi.stubGlobal("requestAnimationFrame", (cb: FrameRequestCallback) => {
-      rafCallbacks.set(++nextRafId, cb);
-      return nextRafId;
-    });
-    vi.stubGlobal("cancelAnimationFrame", (id: number) => {
-      rafCallbacks.delete(id);
-    });
-  });
-
-  afterEach(() => {
-    vi.unstubAllGlobals();
-  });
-
-  /** Runs every rAF callback queued so far (one simulated frame). */
-  const runFrame = () => {
-    const callbacks = [...rafCallbacks.values()];
-    rafCallbacks.clear();
-    for (const cb of callbacks) cb(0);
-  };
-
   const setup = (opts?: {
     clickable?: boolean;
     hoverable?: boolean;
@@ -380,68 +354,74 @@ describe("PickHelper", () => {
   });
 
   describe("hover picking", () => {
-    it("picks at most once per animation frame, at the latest position", () => {
-      const { state, hovers, pointer } = setup();
+    it("picks once per frame, at the latest pointermove position", () => {
+      const { helper, state, hovers, pointer } = setup();
       state.pixel = [0, 0, 7];
 
       pointer("pointermove", 10, 10);
       pointer("pointermove", 20, 20);
       pointer("pointermove", 30, 30);
-      expect(hovers).toEqual([]); // nothing until the frame fires
+      expect(hovers).toEqual([]); // nothing until the frame picks
 
-      runFrame();
+      helper.pickHover();
 
       expect(hovers).toEqual([[7]]);
       expect(state.renderCount).toBe(1);
       expect(state.scissors).toEqual([{ x: 27, y: 566, w: 7, h: 7 }]);
+
+      // No pointermove since: nothing to pick.
+      helper.pickHover();
+      expect(state.renderCount).toBe(1);
     });
 
     it("reports an empty hover for a miss", () => {
-      const { hovers, pointer } = setup();
+      const { helper, hovers, pointer } = setup();
 
       pointer("pointermove", 10, 10);
-      runFrame();
+      helper.pickHover();
 
       expect(hovers).toEqual([[]]);
     });
 
     it("is suppressed while a button is pressed (including touch contact)", () => {
-      const { state, hovers, pointer } = setup();
+      const { helper, state, hovers, pointer } = setup();
 
       pointer("pointermove", 10, 10, { buttons: 1 });
       pointer("pointermove", 10, 10, { buttons: 1, pointerType: "touch" });
-      runFrame();
+      helper.pickHover();
 
       expect(hovers).toEqual([]);
       expect(state.renderCount).toBe(0);
     });
 
-    it("re-checks the listener gate when the frame fires", () => {
-      const { state, hovers, gates, pointer } = setup();
+    it("re-checks the listener gate when the frame picks", () => {
+      const { helper, state, hovers, gates, pointer } = setup();
       state.pixel = [0, 0, 7];
 
       pointer("pointermove", 10, 10);
       // Listeners are removed between the pointermove and the frame.
       gates.hoverable = false;
-      runFrame();
+      helper.pickHover();
 
       expect(hovers).toEqual([]);
       expect(state.renderCount).toBe(0);
     });
 
-    it("schedules nothing when no hover listener is registered", () => {
-      const { state, hovers, pointer } = setup({ hoverable: false });
+    it("records nothing when no hover listener is registered", () => {
+      const { helper, state, hovers, gates, pointer } = setup({
+        hoverable: false,
+      });
 
       pointer("pointermove", 10, 10);
+      gates.hoverable = true;
+      helper.pickHover();
 
-      expect(rafCallbacks.size).toBe(0);
-      runFrame();
       expect(hovers).toEqual([]);
       expect(state.renderCount).toBe(0);
     });
 
-    it("pointerleave reports nothing hovered and cancels the pending pick", () => {
-      const { state, hovers, pointer } = setup();
+    it("pointerleave reports nothing hovered and drops the pending pick", () => {
+      const { helper, state, hovers, pointer } = setup();
       state.pixel = [0, 0, 7];
 
       pointer("pointermove", 10, 10);
@@ -449,8 +429,8 @@ describe("PickHelper", () => {
 
       expect(hovers).toEqual([[]]);
 
-      runFrame();
-      // The queued pick was cancelled: no render, no second callback.
+      helper.pickHover();
+      // The pending pick was dropped: no render, no second callback.
       expect(hovers).toEqual([[]]);
       expect(state.renderCount).toBe(0);
     });
@@ -465,18 +445,17 @@ describe("PickHelper", () => {
   });
 
   describe("enablePick(false)", () => {
-    it("detaches every handler and cancels pending hover picks", () => {
+    it("detaches every handler and drops the pending hover pick", () => {
       const { helper, state, picks, hovers, pointer } = setup();
       state.pixel = [0, 0, 7];
       pointer("pointermove", 10, 10);
 
       helper.enablePick(false);
 
-      expect(rafCallbacks.size).toBe(0);
       pointer("pointerdown", 100, 100);
       pointer("pointerup", 100, 100);
       pointer("pointermove", 20, 20);
-      runFrame();
+      helper.pickHover();
 
       expect(picks).toEqual([]);
       expect(hovers).toEqual([]);

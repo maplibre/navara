@@ -105,7 +105,8 @@ export const TOUCH_PICK_RADIUS = 10;
  *
  * Two gestures trigger a pick: a click or touch tap (pointerdown/pointerup
  * within {@link CLICK_PIXEL_TOLERANCE} / {@link TAP_PIXEL_TOLERANCE}) and
- * hovering, throttled to at most one pick per animation frame. Both are
+ * hovering, picked at most once per animation frame by
+ * {@link PickHelper.pickHover}. Both are
  * lazy: a pick runs only while the matching `shouldClickPick` /
  * `shouldHoverPick` gate returns true (i.e. someone is listening for the
  * result). The gestures are detected from pointer events, which fire for
@@ -149,7 +150,6 @@ export class PickHelper {
   private hoverLeaveHandler: () => void;
   /** Latest pointermove position awaiting a hover pick, in client coords. */
   private hoverPosition?: Vector2;
-  private hoverRafId?: number;
 
   constructor(
     element: HTMLElement,
@@ -259,55 +259,49 @@ export class PickHelper {
       );
       this.element.removeEventListener("pointermove", this.hoverMoveHandler);
       this.element.removeEventListener("pointerleave", this.hoverLeaveHandler);
-      this.cancelPendingHoverPick();
+      this.hoverPosition = undefined;
     }
   }
 
   /**
-   * Hover picking: schedules at most one GPU pick per animation frame from
-   * the latest pointermove position. Suppressed while any button is pressed
-   * (Camera drags would otherwise trigger a pick per frame. For touch,
-   * contact itself sets `buttons`, so touch never hover-picks) and while
-   * `shouldHoverPick` returns false, so pages without hover listeners pay
-   * nothing.
+   * Records the latest pointermove position for {@link pickHover}. Ignored
+   * while any button is pressed (camera drags would otherwise pick every
+   * frame; for touch, contact itself sets `buttons`, so touch never
+   * hover-picks) and while `shouldHoverPick` returns false, so pages without
+   * hover listeners pay nothing.
    */
   private onHoverPointerMove(event: PointerEvent) {
     if (event.buttons !== 0 || !this.shouldHoverPick()) return;
 
     if (!this.hoverPosition) this.hoverPosition = new Vector2();
     this.hoverPosition.set(event.clientX, event.clientY);
+  }
 
-    if (this.hoverRafId !== undefined) return;
-    this.hoverRafId = requestAnimationFrame(() => {
-      this.hoverRafId = undefined;
-      const position = this.hoverPosition;
-      if (!position) return;
-      this.hoverPosition = undefined;
+  /**
+   * Picks at the latest pointermove position since the previous call, if
+   * any, and reports the result. The view calls this at the start of a
+   * frame, before its render, so the readback waits for the pick render
+   * alone rather than for that frame's render.
+   */
+  pickHover() {
+    const position = this.hoverPosition;
+    if (!position) return;
+    this.hoverPosition = undefined;
 
-      // Listeners may have been removed between the pointermove that
-      // scheduled this frame and now. Re-check so no orphan pick runs.
-      if (!this.shouldHoverPick()) return;
+    // Listeners may have been removed since the pointermove.
+    if (!this.shouldHoverPick()) return;
 
-      const batchId = this.pickBatchIdAt(position.x, position.y);
-      this.onHoverCallback(batchId > 0 ? [batchId] : []);
-    });
+    const batchId = this.pickBatchIdAt(position.x, position.y);
+    this.onHoverCallback(batchId > 0 ? [batchId] : []);
   }
 
   private onHoverPointerLeave() {
-    this.cancelPendingHoverPick();
+    this.hoverPosition = undefined;
     // Report "nothing hovered" so diff-based enter/leave synthesis can
     // close out the current hover when the cursor exits the canvas.
     if (this.shouldHoverPick()) {
       this.onHoverCallback([]);
     }
-  }
-
-  private cancelPendingHoverPick() {
-    if (this.hoverRafId !== undefined) {
-      cancelAnimationFrame(this.hoverRafId);
-      this.hoverRafId = undefined;
-    }
-    this.hoverPosition = undefined;
   }
 
   /**

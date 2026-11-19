@@ -3492,6 +3492,11 @@ export default class ThreeView<
         this._handleResize();
       }
 
+      // Before this frame's render: the GPU has usually finished the previous
+      // frame by now, so the pick's synchronous readback waits for the pick
+      // alone.
+      this._pickHelper?.pickHover();
+
       this._forceFeatureUpdates(time);
 
       const updated = this._update(time);
