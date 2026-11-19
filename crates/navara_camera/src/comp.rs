@@ -51,6 +51,16 @@ impl CameraFrustum {
         this
     }
 
+    /// Whether `fov_deg` (vertical field of view in **degrees**) can be used
+    /// as a perspective fov: 1° up to (not including) 180°.
+    ///
+    /// 180° or more is not a perspective projection (`tan(fov / 2)` is
+    /// infinite), and NaN would poison the planes and the SSE. NaN fails
+    /// the range check, so it is rejected too.
+    pub fn is_valid_fov_deg(fov_deg: FloatType) -> bool {
+        (1.0..180.0).contains(&fov_deg)
+    }
+
     pub fn update_sse_denominator(&mut self) {
         self.sse_denominator = 2. * (self.fov * 0.5).tan();
     }
@@ -939,6 +949,20 @@ mod test {
             .distance,
             epsilon = EPSILON5
         );
+    }
+
+    #[test]
+    fn is_valid_fov_deg_accepts_only_perspective_range() {
+        assert!(CameraFrustum::is_valid_fov_deg(1.));
+        assert!(CameraFrustum::is_valid_fov_deg(60.));
+        assert!(CameraFrustum::is_valid_fov_deg(179.9));
+
+        assert!(!CameraFrustum::is_valid_fov_deg(0.));
+        assert!(!CameraFrustum::is_valid_fov_deg(0.5));
+        assert!(!CameraFrustum::is_valid_fov_deg(180.));
+        assert!(!CameraFrustum::is_valid_fov_deg(-60.));
+        assert!(!CameraFrustum::is_valid_fov_deg(f64::NAN as _));
+        assert!(!CameraFrustum::is_valid_fov_deg(f64::INFINITY as _));
     }
 
     #[test]

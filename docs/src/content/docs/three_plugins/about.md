@@ -21,7 +21,7 @@ navara_three (core: ThreeView, Plugin, addPlugin)
         ├── CesiumIonPlugin (Cesium Ion quantized-mesh terrain)
         ├── TileJsonPlugin (TileJSON 3.0.0 tile source registration)
         ├── StreetLightsPlugin (street lamps, roof beacons and traffic at night)
-        ├── DevtoolsPlugin (development tools: profiler and layer inspector)
+        ├── DevtoolsPlugin (development tools: profiler, layer and camera inspectors)
         └── MaterialSchemaPlugin (layer materials and styles as JSON for style UIs;
                                   the schema itself is @navaramap/material-schema)
 ```
@@ -67,7 +67,7 @@ Takes the roads and the buildings of a vector tile set, each with its source and
 
 ### DevtoolsPlugin :since[0.3.2]
 
-Development tools on one panel: a profiler (frame time, memory, downloads, render buffers) and a layer inspector (each layer's cost, visibility and a style form). For development builds only. See [DevtoolsPlugin](../devtoolsplugin/) for details.
+Development tools on one panel: a profiler (frame time, memory, downloads, render buffers) a layer inspector (each layer's cost, visibility and a style form) and a camera inspector (position, orientation and field of view, with copy and paste). For development builds only. See [DevtoolsPlugin](../devtoolsplugin/) for details.
 
 ### MaterialSchemaPlugin :since[0.3.2]
 

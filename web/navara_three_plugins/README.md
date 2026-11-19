@@ -7,7 +7,7 @@ Optional feature plugins for `@navaramap/three`. Each plugin packages a self-con
 - **`CesiumIonPlugin`**: resolves a Cesium Ion asset endpoint and registers the asset as a quantized-mesh terrain layer via `addTerrain()`.
 - **`TileJsonPlugin`**: fetches a TileJSON 3.0.0 document and registers it as a Navara source, surfacing its attribution through the view's built-in credit UI.
 - **`MaterialSchemaPlugin`**: every layer material the engine accepts as JSON (fields, kinds, defaults, options, when a change applies), and each layer's current values, for building a style UI (see [Material schema](#material-schema)).
-- **`DevtoolsPlugin`**: development-only tools on a tweakpane panel, a profiler and a layer inspector (see [Devtools](#devtools)).
+- **`DevtoolsPlugin`**: development-only tools on a tweakpane panel: a profiler, a layer inspector and a camera inspector (see [Devtools](#devtools)).
 - **`StreetLightsPlugin`**: street lamps, roof beacons and moving traffic at night, streamed in around the camera from vector tiles, read through the caller's readers for any schema.
 
 ## Usage
@@ -68,6 +68,9 @@ hover.
   memory, downloads), a visibility checkbox per layer, solo / wireframe /
   bounding-box toggles, and a style form for the selected layer with every
   setting its materials accept.
+- **Camera** (`CameraInspectorPlugin`): the camera's position, orientation and
+  field of view, updated as it moves. Edit a value to move the camera, and
+  copy or paste the camera as a JS object.
 
 ### Usage
 
@@ -91,9 +94,10 @@ devtools.profiler!.enabled = false; // detaches every listener and pass wrapper
 devtools.profiler!.enabled = true;
 ```
 
-`tools: ["profiler"]` picks the tools; `panel`, `profiler` and `layers` take
-each part's options. `ProfilerPlugin` and `LayerInspectorPlugin` are exported
-too: added alone, a tool opens a pane of its own.
+`tools: ["profiler"]` picks the tools; `panel`, `profiler`, `layers` and
+`camera` take each part's options. `ProfilerPlugin`, `LayerInspectorPlugin` and
+`CameraInspectorPlugin` are exported too: added alone, a tool opens a pane of
+its own.
 
 They also need `postprocessing` (a peer dependency) and bring `tweakpane`.
 

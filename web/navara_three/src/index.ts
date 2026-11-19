@@ -1,6 +1,7 @@
 import { JobDispatcher, EventHandler, Globe, Plugin } from "@navaramap/core";
 import type {
   CameraPosition,
+  CameraState,
   GlobeOptions,
   Nullable,
   XYZ,
@@ -64,6 +65,7 @@ import invariant from "tiny-invariant";
 import { Atmosphere, type AtmosphereOptions } from "./atmosphere";
 import { flushBatchTextureUpdates } from "./batchTexture";
 import { ThreeViewCamera } from "./camera";
+import { applyCameraState, readCameraState } from "./cameraState";
 import { Color } from "./Color";
 import { ColorMapAtlas } from "./colorMapAtlas";
 import { createDefaultConcurrencyManager } from "./concurrency";
@@ -231,6 +233,7 @@ export type {
   LatLngHeight,
   CameraOrientation,
   CameraPosition,
+  CameraState,
   ColorTuple,
   LUT,
   Globe,
@@ -3074,28 +3077,28 @@ export default class ThreeView<
   }
 
   /**
-   * Sets the camera position and orientation instantly.
-   * @param camPos - Camera position with lng (degrees), lat (degrees), height (meters), and optional pitch, heading, roll (degrees)
+   * The camera as of the last frame: `lng` / `lat` (degrees), `height`
+   * (meters above the ellipsoid), `heading` / `pitch` / `roll` (degrees) and
+   * `fov` (vertical field of view, degrees). A plain JSON-safe object that
+   * `setCamera()` takes back as is, for saving and restoring a view.
+   * A `setCamera()` shows here only after the next frame.
+   * @returns `undefined` until the engine camera exists: during plugin
+   *   `init()` and until the first frame after `init()` resolves.
    */
-  setCamera(camPos: CameraPosition) {
-    function checkFinite(value: number | undefined): value is number {
-      return Number.isFinite(value) && value != null;
-    }
+  getCamera(): CameraState | undefined {
+    return readCameraState(this._core);
+  }
 
-    const lng = camPos.lng;
-    const lat = camPos.lat;
-    const position =
-      checkFinite(lng) && checkFinite(lat)
-        ? new Float64Array([lng, lat, camPos.height ?? 0])
-        : null;
-
-    this._core?.changeCamera(
-      position,
-      camPos.pitch,
-      camPos.heading,
-      camPos.roll,
-      camPos.distance,
-    );
+  /**
+   * Sets the camera position and orientation without animation. The engine
+   * applies it on the next frame, so `getCamera()` returns the old camera
+   * until then.
+   * @param camPos - Camera position with lng (degrees), lat (degrees), height (meters), and optional pitch, heading, roll (degrees).
+   *   `fov` (vertical field of view, degrees, 1–179) also sets the field of view, so the result of `getCamera()` can be passed as is.
+   *   A `fov`-only call changes only the field of view: it does not stop a flight.
+   */
+  setCamera(camPos: CameraPosition & Partial<Pick<CameraState, "fov">>) {
+    applyCameraState(this._core, camPos);
   }
 
   /**
