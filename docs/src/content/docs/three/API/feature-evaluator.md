@@ -69,7 +69,13 @@ type FeatureGeometrySummary = {
 - `length`: Line length in meters.
 - `area`: Polygon area in square meters, holes excluded.
 
-Vector tiles cut geometry at tile edges, so a feature crossing an edge is summarized per tile, from the part that tile holds. Each tile reports its own bounds and area for that feature.
+The summary is computed per tile from the geometry that tile holds, which includes the buffer around the tile:
+
+- A feature crossing tile edges is summarized once per tile. Its per-tile `area` or `length` values overlap by the buffer, so their sum is larger than the whole feature.
+- A feature inside the buffer of a neighboring tile also reaches that tile's evaluator.
+- `bbox` and `centroid` are not clamped to the tile, and longitudes are not wrapped. In tiles at the antimeridian, a longitude can be less than -180 or greater than 180.
+
+Each read of `geometry` returns a new object.
 
 ### FeatureEvaluatorCallback
 
