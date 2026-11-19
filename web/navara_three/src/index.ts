@@ -968,6 +968,8 @@ export default class ThreeView<
       this._core?.readAllBatchedProperties(featureId, f),
     readFilteredBatchedProperties: (featureId, keys, f) =>
       this._core?.readFilteredBatchedProperties(featureId, keys, f),
+    readFeatureSummaries: (featureId) =>
+      this._core?.readFeatureSummaries(featureId),
   };
   private _meshHandler: MeshHandler = {
     setTileMeshPrepared: (handle: bigint) => {

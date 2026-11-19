@@ -321,7 +321,8 @@ export type MeshCache = Map<string, Mesh | Sprite | Object3D>;
 // Make a reference of TileMesh by TileHandle.
 export type TileMapByHandle = Map<TileHandle, TileMesh>;
 
-export type PickedFeature = FeatureInfo;
+// Picks do not resolve the source feature's id or geometry summary.
+export type PickedFeature = Omit<FeatureInfo, "id" | "geometry">;
 
 export type RenderFlag = {
   forceUpdate: boolean;

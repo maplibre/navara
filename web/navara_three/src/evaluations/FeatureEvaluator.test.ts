@@ -3,7 +3,11 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 import type { FeatureHandler } from "../event/context";
 
-import { FeatureEvaluator, type GeometryType } from "./FeatureEvaluator";
+import {
+  FeatureEvaluator,
+  type FeatureInfo,
+  type GeometryType,
+} from "./FeatureEvaluator";
 
 // Mock worker module to avoid os.cpus() error in test environment
 vi.mock("@navaramap/worker", () => ({}));
@@ -24,6 +28,7 @@ describe("FeatureEvaluator", () => {
         // Production code expects Record<string, unknown>, not an array
         callback(0, 0, {});
       }),
+      readFeatureSummaries: vi.fn(() => undefined),
     } as unknown as FeatureHandler;
 
     // Spy on console.warn to check for warnings
@@ -147,6 +152,162 @@ describe("FeatureEvaluator", () => {
         capturedGeometryType = gt;
       });
       expect(capturedGeometryType).toBe("text");
+    });
+  });
+
+  describe("id and geometry summary", () => {
+    // Two features of one MVT layer: a polygon whose id needs all 64 bits,
+    // and a line with no id, laid out as navara_wasm's readFeatureSummaries
+    // returns them.
+    const summaries = new Float64Array([
+      0xfedcba98,
+      0x76543210,
+      2,
+      139.7,
+      35.6,
+      139.8,
+      35.7,
+      139.75,
+      35.65,
+      1234.5,
+      NaN,
+      NaN,
+      1,
+      139.0,
+      35.0,
+      139.1,
+      35.1,
+      139.05,
+      35.05,
+      500,
+    ]);
+
+    const handlerWith = (flat: Float64Array | undefined): FeatureHandler =>
+      ({
+        readAllBatchedProperties: vi.fn((_, callback) => {
+          callback(0, 10, { name: "a" });
+          callback(1, 11, { name: "b" });
+        }),
+        readFilteredBatchedProperties: vi.fn((_, __, callback) => {
+          callback(0, 10, ["a"]);
+          callback(1, 11, ["b"]);
+        }),
+        readFeatureSummaries: vi.fn(() => flat),
+      }) as unknown as FeatureHandler;
+
+    const expected: Pick<FeatureInfo, "id" | "geometry">[] = [
+      {
+        id: 0xfedcba9876543210n,
+        geometry: {
+          type: "Polygon",
+          bbox: [139.7, 35.6, 139.8, 35.7],
+          centroid: [139.75, 35.65],
+          area: 1234.5,
+        },
+      },
+      {
+        id: undefined,
+        geometry: {
+          type: "LineString",
+          bbox: [139.0, 35.0, 139.1, 35.1],
+          centroid: [139.05, 35.05],
+          length: 500,
+        },
+      },
+    ];
+
+    const pick = ({ id, geometry }: FeatureInfo) => ({ id, geometry });
+
+    it("passes each batch its feature's id and summary", () => {
+      const evaluator = new FeatureEvaluator(
+        handlerWith(summaries),
+        "layer",
+        0n,
+        new Object3D(),
+      );
+      const all: Pick<FeatureInfo, "id" | "geometry">[] = [];
+      evaluator.readFeatureProperties((info) => all.push(pick(info)));
+      const filtered: Pick<FeatureInfo, "id" | "geometry">[] = [];
+      evaluator.readFilteredFeatureProperties(["name"], (info) =>
+        filtered.push(pick(info)),
+      );
+
+      expect(all).toEqual(expected);
+      expect(filtered).toEqual(expected);
+    });
+
+    it("passes the summary to evaluate callbacks on every re-evaluation", () => {
+      const evaluator = new FeatureEvaluator(
+        handlerWith(summaries),
+        "layer",
+        0n,
+        new Object3D(),
+      );
+      for (let run = 0; run < 2; run++) {
+        const seen: Pick<FeatureInfo, "id" | "geometry">[] = [];
+        evaluator.evaluate((info) => {
+          seen.push(pick(info));
+          return {};
+        });
+        expect(seen).toEqual(expected);
+      }
+    });
+
+    it("does not call the engine from inside its property callbacks", () => {
+      // The engine is borrowed while it runs a read callback, and a nested
+      // call throws ("recursive use of an object").
+      let reading = false;
+      const guarded = (read: (...args: unknown[]) => void) =>
+        vi.fn((...args: unknown[]) => {
+          reading = true;
+          try {
+            read(...args);
+          } finally {
+            reading = false;
+          }
+        });
+      const base = handlerWith(summaries);
+      const handler = {
+        readAllBatchedProperties: guarded(
+          base.readAllBatchedProperties as (...args: unknown[]) => void,
+        ),
+        readFilteredBatchedProperties: guarded(
+          base.readFilteredBatchedProperties as (...args: unknown[]) => void,
+        ),
+        readFeatureSummaries: vi.fn(() => {
+          if (reading) throw new Error("recursive use of an object");
+          return summaries;
+        }),
+      } as unknown as FeatureHandler;
+
+      const filtered = new FeatureEvaluator(
+        handler,
+        "layer",
+        0n,
+        new Object3D(),
+      );
+      const seen: Pick<FeatureInfo, "id" | "geometry">[] = [];
+      filtered.readFilteredFeatureProperties(["name"], (info) =>
+        seen.push(pick(info)),
+      );
+      const all = new FeatureEvaluator(handler, "layer", 0n, new Object3D());
+      all.readFeatureProperties((info) => seen.push(pick(info)));
+      expect(seen).toEqual([...expected, ...expected]);
+    });
+
+    it("leaves id and geometry undefined for sources without summaries", () => {
+      const evaluator = new FeatureEvaluator(
+        handlerWith(undefined),
+        "layer",
+        0n,
+        new Object3D(),
+      );
+      const seen: Pick<FeatureInfo, "id" | "geometry">[] = [];
+      evaluator.readFeatureProperties((info) => seen.push(pick(info)));
+      expect(seen).toEqual([
+        { id: undefined, geometry: undefined },
+        { id: undefined, geometry: undefined },
+      ]);
     });
   });
 });
