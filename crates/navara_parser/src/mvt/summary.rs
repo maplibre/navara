@@ -181,7 +181,8 @@ impl SummaryAccum {
         self.min = [self.min[0].min(x), self.min[1].min(y)];
         self.max = [self.max[0].max(x), self.max[1].max(y)];
         match self.kind {
-            Some(Kind::Point) | None => {
+            None => unreachable!("a geometry begins before its coordinates"),
+            Some(Kind::Point) => {
                 self.weight += 1.0;
                 self.mx += x;
                 self.my += y;
@@ -227,8 +228,9 @@ impl SummaryAccum {
     /// The summary of the walked feature. Only a feature that emitted
     /// geometry is summarized, so it has a kind and a coordinate.
     pub(crate) fn finish(&self, converter: &PosConverter, id: Option<u64>) -> FeatureSummary {
-        debug_assert!(self.kind.is_some() && self.min[0].is_finite());
-        let kind = self.kind.unwrap_or(Kind::Point);
+        let Some(kind) = self.kind else {
+            unreachable!("only a feature that emitted geometry is summarized");
+        };
         let (west, north) = converter.project_point(self.min[0], self.min[1]);
         let (east, south) = converter.project_point(self.max[0], self.max[1]);
 
