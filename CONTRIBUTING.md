@@ -40,6 +40,12 @@ If you are working only on the web side, use `web` instead. It builds the WASM m
 cargo make web
 ```
 
+`web` skips wasm-opt to shorten rebuilds. To run the same optimized WASM binaries as the shipped build (e.g. when measuring size or load time), use `web-release` instead:
+
+```console
+cargo make web-release
+```
+
 See [README.md](README.md) for more details, and the guides under [guide/](guide/) — in particular [guide/ARCHITECTURE.md](guide/ARCHITECTURE.md) — for how the Rust/WASM/TypeScript pieces fit together.
 
 ## Before submitting a pull request

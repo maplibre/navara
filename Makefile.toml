@@ -20,11 +20,15 @@ PROJ_NAME = "navara"
 # Then run wasm-bindgen for each output
 [tasks.build-all]
 description = "Build all WASM modules with shared compilation (release)"
-run_task = { name = ["build-rust-all-wasm", "bindgen-all"], parallel = false }
+run_task = { name = ["build-rust-all-wasm", "bindgen-all", "optimize-wasm-all"], parallel = false }
 
 [tasks.build-debug-all]
-description = "Build all WASM modules with shared compilation (release + debug)"
+description = "Build all WASM modules with shared compilation (release + debug, without wasm-opt)"
 run_task = { name = ["build-debug-rust-all-wasm", "bindgen-all"], parallel = false }
+
+[tasks.build-debug-release-all]
+description = "Build all WASM modules with shared compilation (release + debug, with wasm-opt)"
+run_task = { name = ["build-debug-rust-all-wasm", "bindgen-all", "optimize-wasm-all"], parallel = false }
 
 [tasks.build-dev-all]
 description = "Build all WASM modules with shared compilation (dev)"
@@ -72,7 +76,12 @@ run_task = { name = ["watch", "dev-web"], parallel = true }
 
 [tasks.web]
 # Build WASM in release mode, but web is built in dev mode to improve development experience on Web.
+# wasm-opt is skipped to shorten rebuilds; use `web-release` to run the optimized binaries.
 run_task = { name = ["watch-debug", "dev-web"], parallel = true }
+
+[tasks.web-release]
+# Same as `web`, but with the wasm-opt pass of the shipped binaries.
+run_task = { name = ["watch-debug-release", "dev-web"], parallel = true }
 
 [tasks.watch]
 script = ['''
@@ -83,6 +92,12 @@ cargo watch --watch "./web" -s "cargo make build-web" --poll
 [tasks.watch-debug]
 script = ['''
 cargo watch --watch "./crates" -s "cargo make build-debug-all" --poll
+cargo watch --watch "./web" -s "cargo make build-web" --poll
+''']
+
+[tasks.watch-debug-release]
+script = ['''
+cargo watch --watch "./crates" -s "cargo make build-debug-release-all" --poll
 cargo watch --watch "./web" -s "cargo make build-web" --poll
 ''']
 

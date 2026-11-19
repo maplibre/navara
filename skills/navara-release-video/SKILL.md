@@ -137,7 +137,7 @@ in post-production: they would not follow the data that is actually on screen.
 
 ## 5. Record
 
-Start the dev server (`cargo make web`, release WASM). Then, per shot:
+Start the dev server (`cargo make web-release`, optimized release WASM). Then, per shot:
 
 ```bash
 pnpm navara_three record-clip /demo/terrain/exaggeration \

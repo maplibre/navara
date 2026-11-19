@@ -106,6 +106,11 @@ Alternatively, use `web` if you are working on the web side (using release rust 
 cargo make web
 ```
 
+`web` skips wasm-opt to shorten rebuilds. Use `web-release` to run the same optimized WASM binaries as the shipped build.
+```console
+cargo make web-release
+```
+
 ### Screenshots
 
 Please take a screenshot when you add/update an example in `navara_three/example`.
