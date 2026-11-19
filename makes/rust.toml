@@ -31,23 +31,16 @@ cargo build --features debug  --target wasm32-unknown-unknown -p navara_wasm -p 
 # Generate JS bindings for each WASM module
 # Note: wasm-bindgen-cli version must match the wasm-bindgen dependency version (0.2.126)
 # Install with: cargo install wasm-bindgen-cli --version 0.2.126
-# Optional: Install binaryen for wasm-opt optimization: https://github.com/WebAssembly/binaryen
 [tasks.bindgen-rust]
 script = ['''
 #!/usr/bin/env bash
 
 wasm-bindgen target/wasm32-unknown-unknown/release/navara_wasm.wasm --out-dir web/wasm/navara_engine --target web
-if command -v wasm-opt &> /dev/null; then
-    wasm-opt -Oz --strip-debug --strip-producers web/wasm/navara_engine/navara_wasm_bg.wasm -o web/wasm/navara_engine/navara_wasm_bg.wasm
-  else 
-    echo "wasm-opt not found, skipping optimization"
-fi
 ''']
 
 [tasks.bindgen-rust.windows]
 script = ['''
 wasm-bindgen target/wasm32-unknown-unknown/release/navara_wasm.wasm --out-dir web/wasm/navara_engine --target web
-where wasm-opt >nul 2>&1 && wasm-opt -Oz --strip-debug --strip-producers web/wasm/navara_engine/navara_wasm_bg.wasm -o web/wasm/navara_engine/navara_wasm_bg.wasm || echo "wasm-opt not found, skipping optimization"
 ''']
 
 [tasks.bindgen-dev-rust]
@@ -60,6 +53,40 @@ wasm-bindgen target/wasm32-unknown-unknown/debug/navara_wasm.wasm --out-dir web/
 [tasks.bindgen-dev-rust.windows]
 script = ['''
 wasm-bindgen target/wasm32-unknown-unknown/debug/navara_wasm.wasm --out-dir web/wasm/navara_engine --target web --keep-debug
+''']
+
+# Optimize the bindgen output of every WASM module in place.
+# Optional: Install binaryen for wasm-opt optimization: https://github.com/WebAssembly/binaryen
+[tasks.optimize-wasm-all]
+script = ['''
+#!/usr/bin/env bash
+
+if ! command -v wasm-opt &> /dev/null; then
+    echo "wasm-opt not found, skipping optimization"
+    exit 0
+fi
+pids=()
+for f in \
+    web/wasm/navara_engine/navara_wasm_bg.wasm \
+    web/wasm/navara_engine_worker/navara_wasm_worker_bg.wasm \
+    web/wasm/navara_font_worker/navara_wasm_font_worker_bg.wasm \
+    web/wasm/navara_engine_api/navara_wasm_api_bg.wasm; do
+    wasm-opt -Oz --strip-debug --strip-producers "$f" -o "$f" &
+    pids+=($!)
+done
+status=0
+for pid in "${pids[@]}"; do
+    wait "$pid" || status=1
+done
+exit $status
+''']
+
+[tasks.optimize-wasm-all.windows]
+script = ['''
+where wasm-opt >nul 2>&1 && wasm-opt -Oz --strip-debug --strip-producers web/wasm/navara_engine/navara_wasm_bg.wasm -o web/wasm/navara_engine/navara_wasm_bg.wasm || echo "wasm-opt not found, skipping optimization"
+where wasm-opt >nul 2>&1 && wasm-opt -Oz --strip-debug --strip-producers web/wasm/navara_engine_worker/navara_wasm_worker_bg.wasm -o web/wasm/navara_engine_worker/navara_wasm_worker_bg.wasm || echo "wasm-opt not found, skipping optimization"
+where wasm-opt >nul 2>&1 && wasm-opt -Oz --strip-debug --strip-producers web/wasm/navara_font_worker/navara_wasm_font_worker_bg.wasm -o web/wasm/navara_font_worker/navara_wasm_font_worker_bg.wasm || echo "wasm-opt not found, skipping optimization"
+where wasm-opt >nul 2>&1 && wasm-opt -Oz --strip-debug --strip-producers web/wasm/navara_engine_api/navara_wasm_api_bg.wasm -o web/wasm/navara_engine_api/navara_wasm_api_bg.wasm || echo "wasm-opt not found, skipping optimization"
 ''']
 # ============================================================================
 #                               SIZE REPORT

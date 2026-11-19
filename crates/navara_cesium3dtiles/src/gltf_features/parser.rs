@@ -6,10 +6,12 @@ use navara_feature_component::batch::{
     BatchProperty, BatchTableValue, FeatureBatchId, GlobalBatchIds, GltfPropertyTable,
 };
 use navara_material::ModelInternalMaterial;
-use navara_math::{PI_OVER_TWO, Quat, Transform, Vec3};
+use navara_math::Vec3;
 use navara_parser::cesium3dtiles::property_table::GlbSchemaParser;
 
-use crate::tile_content_parser::{ParseContext, ParsedTileContent, TileContentParser};
+use crate::tile_content_parser::{
+    ParseContext, ParsedTileContent, TileContentParser, gltf_placement,
+};
 
 use super::{
     RenderedCesium3dTileContentGltfFeaturesMarker, requester::GltfFeaturesDataRequesterMarker,
@@ -32,7 +34,7 @@ impl TileContentParser for GltfFeaturesParser {
         let glb_parser = match GlbSchemaParser::new(glb_bin) {
             Some(parser) => parser,
             None => {
-                warn!("Failed to parse GLB binary. Plain .gltf files are not supported, only .glb");
+                warn!("Failed to parse GLB binary");
                 return None;
             }
         };
@@ -74,17 +76,10 @@ impl TileContentParser for GltfFeaturesParser {
         let batch_length = global_batch_ids.len();
         let ids_handle = ctx.buf.new_u32(global_batch_ids);
 
-        // Compose the accumulated tile world-transform (from tileset.json hierarchy)
-        // with the glTF-to-Navara Y-up→Z-up rotation. Inner rotation runs first in
-        // glTF local space, then `tile_transform` places the tile in world ECEF.
-        let y_up_to_z_up = Transform::from_rotation(Quat::from_rotation_x(PI_OVER_TWO));
-        let transform = match ctx.tile_transform {
-            Some(t) => t.mul_transform(y_up_to_z_up),
-            None => y_up_to_z_up,
-        };
+        let (coords, transform) = gltf_placement(ctx.tile_transform, Vec3::ZERO);
 
         Some(ParsedTileContent {
-            coords: Vec3::ZERO,
+            coords,
             crs: CRS::Geocentric,
             model_bin_handle: ctx.requester_handle,
             transform,

@@ -29,7 +29,7 @@ export type ModelBaseProps = {
   // Batch texture
   batchDataTexture?: UniformValue<Texture | null>;
 
-  // When batchColorEnabled is true, material.color is set to white and actual colors come from batch texture
+  // When batchColorEnabled is true, material.color is the untinted base color and actual colors come from batch texture
   batchColorEnabled?: boolean;
 };
 
@@ -43,7 +43,7 @@ export type ModelBaseState = Readonly<{
   emissiveColor: number;
   emissiveIntensity: number;
   effectIdsMask: number;
-  // Batch texture state - when true, material.color is white and colors come from batch texture
+  // Batch texture state - when true, material.color is the untinted base color and colors come from batch texture
   batchColorEnabled: boolean;
 }>;
 

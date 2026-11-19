@@ -48,13 +48,12 @@
 //! recursion proceeds normally. Runtime state for the nested tiles lives
 //! inline as `tile.children` of the JSON parent.
 
-use std::{collections::HashMap, sync::Arc};
+use std::sync::Arc;
 
 use bevy_ecs::{
     entity::Entity,
     system::{Commands, Query, ResMut},
 };
-use bevy_log::warn;
 
 use navara_buffer_store::BufferStore;
 use navara_camera::CameraFrustum;
@@ -79,7 +78,8 @@ use crate::{
 
 use super::{
     Cesium3dTileContent, Cesium3dTileContentMetadata, Cesium3dTilesMetadataDataRequesterMarker,
-    request_tile_content, types::Cesium3dTileContentRequesterQuery,
+    ContentKind, request_tile_content, resolve_content_url,
+    types::Cesium3dTileContentRequesterQuery,
 };
 
 use navara_data_requester::{DataRequester, DataRequesterExtension, RequestOrder};
@@ -260,13 +260,13 @@ fn mark_leaves(
 
     // Pivot to the loaded nested tileset's metadata when this is a JSON tile
     // and its tileset has been parsed into the resource map.
-    let nested = if !tile.is_renderable_content {
+    let nested = if !tile.is_renderable_content() {
         tile.data_requester_id.and_then(|id| nested_map.get(&id))
     } else {
         None
     };
 
-    let is_data_ready = if tile.is_renderable_content {
+    let is_data_ready = if tile.is_renderable_content() {
         let data_requester = match tile.data_requester_id {
             Some(id) => requesters.get(id).ok().map(
                 |d: (
@@ -287,7 +287,7 @@ fn mark_leaves(
 
     // Tiles with unrenderable content (JSON tilesets) should always be traversed through to find actual renderable content faster.
     let can_unconditionally_refine = matches!(tile.refine, Refine::Replace)
-        && (!tile.is_renderable_content || parent_geometric_error < tile_meta.geometric_error);
+        && (!tile.is_renderable_content() || parent_geometric_error < tile_meta.geometric_error);
 
     if !within_frustum && !can_unconditionally_refine {
         // To avoid showing an unexpected parent tile, select the direct culled tile.
@@ -376,7 +376,7 @@ fn mark_leaves(
                         child_tile.state.leaf = true;
                     }
 
-                    if !child_tile.is_renderable_content
+                    if !child_tile.is_renderable_content()
                         || !child_tile.is_rendered(rendered_tiles, features, renderable_features)
                     {
                         all_children_rendered = false;
@@ -430,7 +430,7 @@ fn mark_for_preload(tile: &mut Cesium3dTileContent) {
         return;
     }
 
-    if !tile.is_renderable_content
+    if !tile.is_renderable_content()
         && let Some(children) = tile.children.as_mut()
     {
         for child in children.iter_mut() {
@@ -490,7 +490,7 @@ fn mark_rendered_tiles(
 
     let priority = Priority::High;
 
-    if tile.is_renderable_content {
+    if tile.is_renderable_content() {
         if touched && leaf {
             if state.is_data_loaded {
                 let is_visible = state.is_visible;
@@ -533,11 +533,10 @@ fn mark_rendered_tiles(
         if !alive_requester
             && !subtree_loaded
             && let Some(uri) = tile.uri.as_ref()
+            // Fails only for a relative URI inside a `data:` tileset.
+            && let Ok(url) = resolve_content_url(base_url, uri.as_str())
         {
-            let url = construct_child_tile_url(base_url, uri.as_str())
-                .as_str()
-                .to_string();
-
+            let url = url.to_string();
             let e = commands
                 .spawn((
                     Cesium3dTilesMetadataDataRequesterMarker(layer_id),
@@ -563,7 +562,7 @@ fn mark_rendered_tiles(
     tile.state.is_rendered_last_frame = is_rendered;
 
     // Pivot for child base_url / is_v1_1 when descending into a loaded nested tileset.
-    let (child_base_url, child_is_v1_1) = if !tile.is_renderable_content
+    let (child_base_url, child_is_v1_1) = if !tile.is_renderable_content()
         && let Some(id) = tile.data_requester_id
         && let Some(sub) = nested_map.get(&id)
     {
@@ -657,7 +656,7 @@ fn remove_resources_if_no_rendered_tile(
         .get_entity(data_requester_id)
         .as_mut()
         .map(|e| e.insert(Deleted));
-    if !tile.is_renderable_content {
+    if !tile.is_renderable_content() {
         let _ = nested_map.remove(&data_requester_id);
     }
 }
@@ -732,10 +731,12 @@ fn toggle_rendered_tile_visible(
 /// It first tries to update an existing entity; if none exists and the tile
 /// should be visible, it spawns a new entity with the appropriate format marker:
 ///
-/// - `.pnts` → [`RenderedCesium3dTileContentPntsMarker`] + [`TileTransform`] + [`Aabb`]
+/// - `.pnts` → [`RenderedCesium3dTileContentPntsMarker`] + [`Aabb`]
 /// - `.b3dm` → [`RenderedCesium3dTileContentB3dmMarker`]
-/// - `.glb`  → [`RenderedCesium3dTileContentGlbMarker`]
-/// - `.glb` 3D Tiles 1.1 → [`RenderedCesium3dTileContentGltfFeaturesMarker`]
+/// - `.glb`, `.gltf` → [`RenderedCesium3dTileContentGlbMarker`]
+/// - `.glb`, `.gltf` 3D Tiles 1.1 → [`RenderedCesium3dTileContentGltfFeaturesMarker`] + [`Aabb`]
+///
+/// Every entity also gets a [`TileTransform`].
 ///
 /// # Important
 ///
@@ -754,128 +755,56 @@ fn update_or_spawn_rendered_tile(
         return;
     }
 
-    if visible {
-        if tile.uri.as_ref().unwrap().ends_with("pnts") {
-            let mut entity = commands.spawn((
-                RenderedCesium3dTileContentPntsMarker,
-                TileOrderByDistance {
-                    distance_from_camera: tile.state.distance_from_camera,
-                    sse: tile.state.sse,
-                },
-                RenderedCesium3dTileContent {
-                    layer_id,
-                    feature_id: None,
-                    data_requester_id: tile.data_requester_id.unwrap(),
-                    is_visible: true,
-                    touched: true,
-                },
-                super::TileTransform {
-                    transform: tile.transform.unwrap_or_default(),
-                },
-            ));
-
-            let aabb = tile.bounding_volume.as_ref();
-            if let Some(aabb) = aabb {
-                entity.insert(aabb.clone());
-            }
-
-            tile.rendered_tile_id = Some(entity.id());
-        } else if tile.uri.as_ref().unwrap().ends_with("b3dm") {
-            tile.rendered_tile_id = Some(
-                commands
-                    .spawn((
-                        RenderedCesium3dTileContentB3dmMarker,
-                        TileOrderByDistance {
-                            distance_from_camera: tile.state.distance_from_camera,
-                            sse: tile.state.sse,
-                        },
-                        RenderedCesium3dTileContent {
-                            layer_id,
-                            feature_id: None,
-                            data_requester_id: tile.data_requester_id.unwrap(),
-                            is_visible: true,
-                            touched: true,
-                        },
-                    ))
-                    .id(),
-            );
-        } else if tile.uri.as_ref().unwrap().contains("glb") && is_v1_1 {
-            let mut entity = commands.spawn((
-                RenderedCesium3dTileContentGltfFeaturesMarker,
-                TileOrderByDistance {
-                    distance_from_camera: tile.state.distance_from_camera,
-                    sse: tile.state.sse,
-                },
-                RenderedCesium3dTileContent {
-                    layer_id,
-                    feature_id: None,
-                    data_requester_id: tile.data_requester_id.unwrap(),
-                    is_visible: true,
-                    touched: true,
-                },
-                super::TileTransform {
-                    transform: tile.transform.unwrap_or_default(),
-                },
-            ));
-
-            let aabb = tile.bounding_volume.as_ref();
-            if let Some(aabb) = aabb {
-                entity.insert(aabb.clone());
-            }
-
-            tile.rendered_tile_id = Some(entity.id());
-        } else if tile.uri.as_ref().unwrap().contains("glb") {
-            tile.rendered_tile_id = Some(
-                commands
-                    .spawn((
-                        RenderedCesium3dTileContentGlbMarker,
-                        TileOrderByDistance {
-                            distance_from_camera: tile.state.distance_from_camera,
-                            sse: tile.state.sse,
-                        },
-                        RenderedCesium3dTileContent {
-                            layer_id,
-                            feature_id: None,
-                            data_requester_id: tile.data_requester_id.unwrap(),
-                            is_visible: true,
-                            touched: true,
-                        },
-                    ))
-                    .id(),
-            );
-        } else if tile.uri.as_ref().unwrap().ends_with("gltf") {
-            // Plain .gltf files (JSON + external .bin buffers) are not yet supported.
-            // Only GLB (binary glTF container) is supported.
-            warn!(
-                "Plain .gltf format is not yet supported, only .glb is supported. Skipping tile: {:?}",
-                tile.uri
-            );
-        } else {
-            // TODO: support other formats like i3dm, cmpt, etc.
-            unimplemented!("The tile format of {:?} isn't supported yet", tile.uri);
-        }
+    if !visible {
+        return;
     }
+    let Some(kind) = tile.kind else {
+        return;
+    };
+    let mut entity = commands.spawn((
+        TileOrderByDistance {
+            distance_from_camera: tile.state.distance_from_camera,
+            sse: tile.state.sse,
+        },
+        RenderedCesium3dTileContent {
+            layer_id,
+            feature_id: None,
+            data_requester_id: tile.data_requester_id.unwrap(),
+            is_visible: true,
+            touched: true,
+        },
+        super::TileTransform {
+            transform: tile.transform.unwrap_or_default(),
+        },
+    ));
+    let needs_aabb = match kind {
+        ContentKind::Pnts => {
+            entity.insert(RenderedCesium3dTileContentPntsMarker);
+            true
+        }
+        ContentKind::B3dm => {
+            entity.insert(RenderedCesium3dTileContentB3dmMarker);
+            false
+        }
+        ContentKind::Glb | ContentKind::Gltf if is_v1_1 => {
+            entity.insert(RenderedCesium3dTileContentGltfFeaturesMarker);
+            true
+        }
+        _ => {
+            entity.insert(RenderedCesium3dTileContentGlbMarker);
+            false
+        }
+    };
+    if needs_aabb && let Some(aabb) = tile.bounding_volume.as_ref() {
+        entity.insert(aabb.clone());
+    }
+    tile.rendered_tile_id = Some(entity.id());
 }
 
 /// Constructs the full URL for a child tile content.
 ///
 /// Handles relative URL resolution and query parameter inheritance from
 /// the parent tileset URL.
-fn construct_child_tile_url(base_url: &Url, child_url: &str) -> Url {
-    let mut new_url: Url = base_url.clone().join(child_url).unwrap();
-    let base_query = base_url.query_pairs().into_owned();
-    let new_query: HashMap<String, String> = new_url.query_pairs().into_owned().collect();
-    for (key, value) in base_query {
-        if new_query.contains_key(&key) {
-            continue;
-        }
-        new_url
-            .query_pairs_mut()
-            .append_pair(key.as_ref(), value.as_ref());
-    }
-    new_url
-}
-
 #[cfg(test)]
 mod prune_tests {
     use super::*;
@@ -893,7 +822,7 @@ mod prune_tests {
             rendered_tile_id: Some(rendered),
             children: None,
             refine: Refine::Replace,
-            is_renderable_content: true,
+            kind: Some(ContentKind::B3dm),
             bounding_volume: None,
             transform: Some(Transform::IDENTITY),
             state: Default::default(),
@@ -908,7 +837,7 @@ mod prune_tests {
             rendered_tile_id: None,
             children: Some(vec![child]),
             refine: Refine::Replace,
-            is_renderable_content: true,
+            kind: Some(ContentKind::B3dm),
             bounding_volume: None,
             transform: Some(Transform::IDENTITY),
             state: Default::default(),

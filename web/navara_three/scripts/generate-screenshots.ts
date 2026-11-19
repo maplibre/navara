@@ -137,7 +137,7 @@ const PAGE_CONFIGS: Record<string, PageConfig> = {
     // Vector tile buildings plus 25 road tiles streamed in around the camera.
     waitTime: 90000,
   },
-  "mesh/font-3d-object": {
+  "mesh/text-3d": {
     // Quantized-mesh terrain plus the Re:Earth Buildings 3D Tiles.
     waitTime: 30000,
   },

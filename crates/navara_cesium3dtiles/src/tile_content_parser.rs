@@ -11,7 +11,7 @@ use navara_buffer_store::{BufferStore, Handle};
 use navara_core::{Aabb, CRS};
 use navara_feature_component::batch::{BatchTable, FeatureBatchId, GlobalBatchIds};
 use navara_material::ModelMaterial;
-use navara_math::{Transform, Vec3};
+use navara_math::{PI_OVER_TWO, Quat, Transform, Vec3};
 
 /// Callback to modify the model appearance after creation.
 pub type AppearanceModifier = Box<dyn FnOnce(&mut ModelMaterial) + Send + Sync>;
@@ -89,4 +89,55 @@ pub trait TileContentParser: 'static + Send + Sync {
     ///
     /// Returns `None` to skip this tile (parse failure or unsupported data).
     fn parse(ctx: &mut ParseContext) -> Option<ParsedTileContent>;
+}
+
+/// Places glTF content as `tile_transform * T(rtc_center) * Y-up→Z-up`,
+/// split into the ECEF origin for `ModelGeometry::coords` and the transform
+/// applied around it.
+pub fn gltf_placement(tile_transform: Option<&Transform>, rtc_center: Vec3) -> (Vec3, Transform) {
+    let y_up_to_z_up = Transform::from_rotation(Quat::from_rotation_x(PI_OVER_TWO));
+    match tile_transform {
+        Some(tile) => {
+            let linear = Transform {
+                translation: Vec3::ZERO,
+                ..*tile
+            };
+            (
+                tile.transform_point(rtc_center),
+                linear.mul_transform(y_up_to_z_up),
+            )
+        }
+        None => (rtc_center, y_up_to_z_up),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use approx::assert_abs_diff_eq;
+    use navara_math::Mat4;
+
+    use super::*;
+
+    #[test]
+    fn gltf_placement_applies_rtc_inside_tile_transform() {
+        let tile = Transform::from_matrix(Mat4::from_cols_array(&[
+            0., 2., 0., 0., //
+            -2., 0., 0., 0., //
+            0., 0., 2., 0., //
+            100., 200., 300., 1.,
+        ]));
+        let rtc = Vec3::new(1., 2., 3.);
+        let (coords, transform) = gltf_placement(Some(&tile), rtc);
+
+        let p = Vec3::new(4., 5., 6.);
+        let expected = tile.transform_point(rtc + y_up_to_z_up_point(p));
+        let actual = coords + transform.transform_point(p);
+        assert_abs_diff_eq!(actual.x, expected.x, epsilon = 1e-9);
+        assert_abs_diff_eq!(actual.y, expected.y, epsilon = 1e-9);
+        assert_abs_diff_eq!(actual.z, expected.z, epsilon = 1e-9);
+    }
+
+    fn y_up_to_z_up_point(p: Vec3) -> Vec3 {
+        Vec3::new(p.x, -p.z, p.y)
+    }
 }

@@ -71,7 +71,7 @@ sidebar:
 
 **Type:** `Color | undefined`
 
-**Description:** モデルの色を`Color`インスタンスで指定します。
+**Description:** モデルの色を`Color`インスタンスで指定します。モデル自身の色（glTF の base color、テクスチャ、頂点カラー）に掛け合わされるため、白を指定すると元の色のまま表示されます。
 
 **Default:** `undefined`
 

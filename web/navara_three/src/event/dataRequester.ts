@@ -8,6 +8,7 @@ import type {
   DataRequesterRemovedEvent,
 } from "@navaramap/engine";
 
+import { packGltf } from "../loaders/packGltf";
 import { getImageDataFromBlob } from "../tasks/getImageDataFromBlob";
 
 import type { EventContext } from "./context";
@@ -147,7 +148,11 @@ async function processRequestedData(
   const val = await res.arrayBuffer();
   if (signal.aborted) return;
 
-  const bytes = new Uint8Array(val);
+  let bytes = new Uint8Array(val);
+  if (req.extension === "gltf") {
+    bytes = await packGltf(bytes, req.url, { signal, headers, priority });
+    if (signal.aborted) return;
+  }
   // MVT pbf: with the default delegated worker Rust never reads these
   // bytes — they only travel back out to `processParseMvtTile`. Adopt
   // them into the JS-side store (WASM tracks a byte-count-only `External`

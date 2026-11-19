@@ -71,7 +71,7 @@ For advanced animation features such as `animationAutoPlay`, `animationClips`, `
 
 **Type:** `Color | undefined`
 
-**Description:** Specifies the model color as a `Color` instance.
+**Description:** Specifies the model color as a `Color` instance. It multiplies the model's own colors (the glTF base color, textures, and vertex colors), so white keeps them as they are.
 
 **Default:** `undefined`
 

@@ -34,6 +34,7 @@ import { applyLitOption, createShadowDepthMaterial } from "../material";
 import {
   createModelMaterialEnhancer,
   createPntsEnhancer,
+  tintBaseColor,
 } from "../material/enhancer/model";
 import type { ModelMaterialProps, PntsProps } from "../material/enhancer/model";
 import type { CustomObject3DEventMap } from "../object3DEvent";
@@ -272,8 +273,8 @@ export class ModelMesh
 
     const enhancer = this._enhancers.get(mesh);
     if (enhancer && attribute === "color") {
-      // When batch color is first used, set material.color to white
-      // (multiplier identity: white * batch color = batch color).
+      // When batch color is first used, untint material.color back to the
+      // base color so the batch color multiplies it like a white layer color.
       if (!enhancer.states().base.batchColorEnabled) {
         enhancer.update({
           base: { batchColorEnabled: true, color: 0xffffff },
@@ -289,8 +290,43 @@ export class ModelMesh
     dataSize: number,
     initialProps: ModelMaterialProps,
   ) {
-    if (!batchIds) return;
+    // Content without features (e.g. GLB in a 1.0 tileset) has no batch IDs.
+    // The shader then reads `batchId` as 0, i.e. nothing to pick.
+    if (batchIds) {
+      this._setBatchIdAttribute(mesh, batchIds, dataSize);
+    }
 
+    // The enhancer supports standard/physical only. Unlit materials
+    // (`KHR_materials_unlit`, e.g. Google Photorealistic 3D Tiles) render as is.
+    if (!(mesh.material instanceof MeshStandardMaterial)) return;
+
+    mesh.castShadow = !!meshMaterial.castShadow;
+    mesh.receiveShadow = !!meshMaterial.receiveShadow;
+    applyLitOption(mesh.material, meshMaterial.lit);
+
+    mesh.material.depthTest = true;
+    mesh.material.depthWrite = true;
+
+    const enhancer = createModelMaterialEnhancer(mesh.material);
+    this._enhancers.set(mesh, enhancer);
+
+    enhancer.mount(initialProps);
+
+    mesh.material.customProgramCacheKey = () => enhancer.programCacheKey();
+    mesh.material.onBeforeCompile = enhancer.transformShader;
+
+    this._initBatchedMaterial(mesh);
+
+    this.initDepthMaterial(mesh, enhancer);
+
+    this.ctx.viewContext.applyShadowMaterial(mesh.material);
+  }
+
+  private _setBatchIdAttribute(
+    mesh: Mesh<BufferGeometry<NormalBufferAttributes>, ModelMaterial>,
+    batchIds: Uint32Array<ArrayBufferLike>,
+    dataSize: number,
+  ) {
     const vertCnt = mesh.geometry.attributes?.position?.count;
 
     const attrBatchIds = new Float32Array(vertCnt);
@@ -323,27 +359,6 @@ export class ModelMesh
       "batchId",
       new BufferAttribute(attrBatchIds, dataSize),
     );
-
-    mesh.castShadow = !!meshMaterial.castShadow;
-    mesh.receiveShadow = !!meshMaterial.receiveShadow;
-    applyLitOption(mesh.material, meshMaterial.lit);
-
-    mesh.material.depthTest = true;
-    mesh.material.depthWrite = true;
-
-    const enhancer = createModelMaterialEnhancer(mesh.material);
-    this._enhancers.set(mesh, enhancer);
-
-    enhancer.mount(initialProps);
-
-    mesh.material.customProgramCacheKey = () => enhancer.programCacheKey();
-    mesh.material.onBeforeCompile = enhancer.transformShader;
-
-    this._initBatchedMaterial(mesh);
-
-    this.initDepthMaterial(mesh, enhancer);
-
-    this.ctx.viewContext.applyShadowMaterial(mesh.material);
   }
 
   private _setupPointsNode(
@@ -382,7 +397,7 @@ export class ModelMesh
     const updateProps = this.buildUpdateProps(material);
     for (const [mesh, enhancer] of this._enhancers) {
       // Once per-feature batch colors own the material, `material.color` must
-      // not re-tint the white multiplier identity (mirrors polygon/polyline's
+      // not re-tint the untinted base color (mirrors polygon/polyline's
       // `batchColorEnabled ? undefined : material.color` guard).
       enhancer.update(
         enhancer.states().base.batchColorEnabled
@@ -452,7 +467,9 @@ export class ModelMesh
   }
 
   _setFeatureColor(color: Color, m?: ModelMaterial) {
-    m?.color.set(color);
+    if (m) {
+      tintBaseColor(m, color);
+    }
   }
 
   _getFeatureColor(): Color {
