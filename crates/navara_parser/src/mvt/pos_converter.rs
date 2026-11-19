@@ -111,10 +111,16 @@ impl PosConverter {
     /// Project a single point from tile coordinates (f64) to geographic coordinates.
     pub fn project_point(&self, px: f64, py: f64) -> (FloatType, FloatType) {
         let x = (px + self.x0) * self.scale_x - 180.0;
-        let exp_value = f64::exp((1.0 - (py + self.y0) * self.scale_y) * PI);
+        let exp_value = f64::exp(self.mercator_t(py));
         let y = 360.0 / PI * (f64::atan(exp_value)) - 90.0;
 
         (x as FloatType, y as FloatType)
+    }
+
+    /// The Web Mercator `t` of tile row `py`, whose latitude is `gd(t)`:
+    /// `sin(lat) = tanh(t)` and `cos(lat) = 1 / cosh(t)`.
+    pub fn mercator_t(&self, py: f64) -> f64 {
+        (1.0 - (py + self.y0) * self.scale_y) * PI
     }
 
     /// Project coordinates to geographic coordinates. Accepts any iterator of

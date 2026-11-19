@@ -3,6 +3,8 @@ use std::sync::Arc;
 use geozero::mvt::tile;
 use navara_property::PropertyValue;
 
+use super::summary::FeatureSummary;
+
 /// Raw MVT layer data for lazy property parsing.
 /// Properties are only parsed when accessed via `get_property`.
 ///
@@ -20,6 +22,8 @@ pub struct MvtLayerData {
     pub feature_tags_flat: Vec<u32>,
     /// Prefix-sum offsets into `feature_tags_flat`; length = feature count + 1.
     pub feature_tag_offsets: Vec<u32>,
+    /// Per-feature id and geometry summary, indexed like the features.
+    pub feature_summaries: Vec<FeatureSummary>,
 }
 
 /// Build prefix-sum offsets (length `sizes.len() + 1`) from per-feature sizes.
@@ -35,18 +39,22 @@ fn offsets_from_sizes(sizes: &[u32]) -> Vec<u32> {
 }
 
 impl MvtLayerData {
-    /// Construct from already-shared keys/values plus flat tags + per-feature sizes.
+    /// Construct from already-shared keys/values plus flat tags + per-feature
+    /// sizes and summaries.
     pub fn from_raw(
         keys: Arc<Vec<String>>,
         values: Arc<Vec<tile::Value>>,
         feature_tags_flat: Vec<u32>,
         feature_tag_sizes: &[u32],
+        feature_summaries: Vec<FeatureSummary>,
     ) -> Self {
+        debug_assert_eq!(feature_tag_sizes.len(), feature_summaries.len());
         Self {
             keys,
             values,
             feature_tags_flat,
             feature_tag_offsets: offsets_from_sizes(feature_tag_sizes),
+            feature_summaries,
         }
     }
 
@@ -61,10 +69,12 @@ impl MvtLayerData {
     // counted once per allocation (via [`Self::keys_ptr`]/[`Self::values_ptr`]),
     // while `feature_tags_flat`/`feature_tag_offsets` are owned per entry.
 
-    /// Bytes owned exclusively by this entry (the two flat tag buffers).
+    /// Bytes owned exclusively by this entry (the flat tag buffers and the
+    /// summaries).
     pub fn owned_bytes(&self) -> usize {
         self.feature_tags_flat.capacity() * size_of::<u32>()
             + self.feature_tag_offsets.capacity() * size_of::<u32>()
+            + self.feature_summaries.capacity() * size_of::<FeatureSummary>()
     }
 
     /// Stable identity of the shared keys allocation (dedup key).
@@ -332,7 +342,19 @@ mod tests {
         // Feature 1: name=building_b, height=100 (no visible) (4 tag ints)
         let feature_tags_flat = vec![0, 0, 1, 1, 2, 2, 0, 3, 1, 4];
         let feature_tag_sizes = [6, 4];
-        MvtLayerData::from_raw(keys, values, feature_tags_flat, &feature_tag_sizes)
+        let summary = crate::mvt::FeatureSummary {
+            id: None,
+            bbox: [0.0; 4],
+            centroid: [0.0; 2],
+            shape: crate::mvt::FeatureShape::Point,
+        };
+        MvtLayerData::from_raw(
+            keys,
+            values,
+            feature_tags_flat,
+            &feature_tag_sizes,
+            vec![summary; 2],
+        )
     }
 
     #[test]

@@ -19,6 +19,7 @@ use navara_math::{FloatType, Vec3};
 
 use super::config::{LayerParseConfig, LayerParseKind, LineAnchors, PointEmitter, PolygonAnchors};
 use super::pos_converter::PosConverter;
+use super::summary::{FeatureSummary, SummaryAccum};
 use crate::line_placement::{AlongLine, LinePath, push_anchor_line_data, tangent_to_bearing};
 
 // ============================================================================
@@ -91,6 +92,8 @@ pub struct ParsedLayerGroup {
     pub feature_tags_flat: Vec<u32>,
     /// Per-feature tag counts, parallel to `feature_count`.
     pub feature_tag_sizes: Vec<u32>,
+    /// Per-feature id and geometry summary, parallel to `feature_count`.
+    pub feature_summaries: Vec<FeatureSummary>,
     pub keys: Arc<Vec<String>>,
     pub values: Arc<Vec<tile::Value>>,
     pub geometry: ParsedGeometry,
@@ -269,6 +272,7 @@ struct GroupAccum {
     current_batch_index: u32,
     feature_tags_flat: Vec<u32>,
     feature_tag_sizes: Vec<u32>,
+    feature_summaries: Vec<FeatureSummary>,
     geom: GeomBuf,
 }
 
@@ -281,6 +285,7 @@ impl GroupAccum {
             current_batch_index: 0,
             feature_tags_flat: Vec::new(),
             feature_tag_sizes: Vec::new(),
+            feature_summaries: Vec::new(),
             geom: GeomBuf::new(kind),
         }
     }
@@ -415,6 +420,9 @@ struct MvtFeatureProcessor<'a> {
 
     /// Tags of the feature currently being processed (committed lazily per kind).
     pending_tags: Option<Vec<u32>>,
+    /// Summary of the feature currently being processed, appended to every
+    /// group it committed to once its geometry ends.
+    summary: SummaryAccum,
     /// Whether we are inside a point/multipoint geometry.
     in_point: bool,
     /// Whether `linestring_end` should push to rings (polygon) vs a polyline.
@@ -534,6 +542,7 @@ impl<'a> MvtFeatureProcessor<'a> {
             rtc_center,
             rings: Default::default(),
             pending_tags: None,
+            summary: SummaryAccum::new(),
             in_point: false,
             in_polygon: false,
             raw_ring: Vec::new(),
@@ -559,9 +568,24 @@ impl<'a> MvtFeatureProcessor<'a> {
 
     fn begin_feature(&mut self, tags: Vec<u32>) {
         self.pending_tags = Some(tags);
+        self.summary = SummaryAccum::new();
         for layer in &mut self.layers {
             for group in &mut layer.groups {
                 group.committed = false;
+            }
+        }
+    }
+
+    /// Append the walked feature's summary to every group it committed to.
+    fn end_feature(&mut self, id: Option<u64>) {
+        let mut summary = None;
+        for layer in &mut self.layers {
+            for group in &mut layer.groups {
+                if group.committed {
+                    let summary =
+                        *summary.get_or_insert_with(|| self.summary.finish(self.converter, id));
+                    group.feature_summaries.push(summary);
+                }
             }
         }
     }
@@ -998,6 +1022,7 @@ impl GeomProcessor for MvtFeatureProcessor<'_> {
         _tm: Option<u64>,
         _idx: usize,
     ) -> geozero::error::Result<()> {
+        self.summary.coordinate(self.converter, x, y);
         if self.in_point {
             self.emit_points(x, y, PointSource::Points);
         } else {
@@ -1027,6 +1052,7 @@ impl GeomProcessor for MvtFeatureProcessor<'_> {
 
     fn point_begin(&mut self, _idx: usize) -> geozero::error::Result<()> {
         self.in_point = true;
+        self.summary.begin_point();
         Ok(())
     }
 
@@ -1037,6 +1063,7 @@ impl GeomProcessor for MvtFeatureProcessor<'_> {
 
     fn multipoint_begin(&mut self, _size: usize, _idx: usize) -> geozero::error::Result<()> {
         self.in_point = true;
+        self.summary.begin_point();
         Ok(())
     }
 
@@ -1058,11 +1085,13 @@ impl GeomProcessor for MvtFeatureProcessor<'_> {
             }
         }
         self.raw_ring.clear();
+        self.summary.begin_linestring();
         Ok(())
     }
 
     fn linestring_end(&mut self, _tagged: bool, _idx: usize) -> geozero::error::Result<()> {
         if self.in_polygon {
+            self.summary.end_ring();
             // Derived representations read the ring before it moves into the
             // polygon buffers.
             let runs = self.ring_boundary_runs();
@@ -1104,6 +1133,7 @@ impl GeomProcessor for MvtFeatureProcessor<'_> {
         _idx: usize,
     ) -> geozero::error::Result<()> {
         self.in_polygon = true;
+        self.summary.begin_polygon();
         for projection in 0..PROJECTIONS {
             self.rings[projection].outer_ring.clear();
             self.rings[projection].holes.clear();
@@ -1199,6 +1229,7 @@ fn parse_layer(
         let tags = std::mem::take(&mut feature.tags);
         processor.begin_feature(tags);
         let _ = process_geom(feature, &mut processor);
+        processor.end_feature(feature.id);
     }
 
     for layer in processor.layers {
@@ -1213,6 +1244,7 @@ fn parse_layer(
                 feature_count: group.feature_count,
                 feature_tags_flat: group.feature_tags_flat,
                 feature_tag_sizes: group.feature_tag_sizes,
+                feature_summaries: group.feature_summaries,
                 keys: Arc::clone(&keys),
                 values: Arc::clone(&values),
                 geometry,
@@ -1229,6 +1261,7 @@ fn parse_layer(
 mod test {
     use super::*;
     use crate::line_placement::{PATH_META_STRIDE, PATH_SAMPLES, PointPlacement};
+    use crate::mvt::FeatureShape;
 
     /// Encode a zigzag integer (MVT spec parameter encoding).
     fn zigzag(n: i32) -> u32 {
@@ -1561,6 +1594,136 @@ mod test {
             }
             _ => panic!("expected polygons"),
         }
+    }
+
+    fn with_id(mut feature: tile::Feature, id: u64) -> tile::Feature {
+        feature.id = Some(id);
+        feature
+    }
+
+    fn polygon_summaries(features: Vec<tile::Feature>) -> Vec<FeatureSummary> {
+        let bin = encode_tile(vec![make_layer("l", features)]);
+        let tile = TileXYZ {
+            x: 14552,
+            y: 6451,
+            z: 14,
+        };
+        let groups = parse_mvt_tile(&bin, tile, Vec3::ZERO, &[polygon_config()]);
+        assert_eq!(groups.len(), 1);
+        let g = &groups[0];
+        assert_eq!(g.feature_summaries.len(), g.feature_count as usize);
+        g.feature_summaries.clone()
+    }
+
+    #[test]
+    fn summarizes_ids_and_polygon_areas_per_feature() {
+        let square_a: &[(i32, i32)] = &[(0, 0), (1000, 0), (1000, 1000), (0, 1000)];
+        // Reversed winding marks a hole.
+        let hole: &[(i32, i32)] = &[(250, 250), (250, 750), (750, 750), (750, 250)];
+        let square_b: &[(i32, i32)] = &[(2000, 0), (2500, 0), (2500, 500), (2000, 500)];
+
+        let parts = polygon_summaries(vec![
+            polygon_feature(square_a, vec![]),
+            polygon_feature(&[(250, 250), (750, 250), (750, 750), (250, 750)], vec![]),
+            polygon_feature(square_b, vec![]),
+        ]);
+        let [a, h, b] = [0, 1, 2].map(|i| parts[i].shape.measure());
+
+        let summaries = polygon_summaries(vec![
+            with_id(polygon_feature(square_a, vec![]), 42),
+            polygon_with_holes_feature(&[square_a, hole, square_b], vec![]),
+        ]);
+        assert_eq!(summaries[0].id, Some(42));
+        assert_eq!(summaries[1].id, None);
+
+        let FeatureShape::Polygon { area } = summaries[1].shape else {
+            panic!("expected a polygon, got {:?}", summaries[1].shape);
+        };
+        assert!(
+            ((area - (a - h + b)) / area).abs() < 1e-9,
+            "{area} vs {}",
+            a - h + b
+        );
+        let side = PosConverter::new(
+            TileXYZ {
+                x: 14552,
+                y: 6451,
+                z: 14,
+            },
+            4096,
+        )
+        .ground_meters_per_unit(parts[0].centroid[1])
+            * 1000.0;
+        assert!(
+            ((a - side * side) / a).abs() < 1e-3,
+            "area {a} vs {}",
+            side * side
+        );
+
+        let [w, s, e, n] = summaries[1].bbox;
+        let [west_a, south_a, _, north_a] = summaries[0].bbox;
+        assert_eq!((w, n), (west_a, north_a));
+        assert!(e > summaries[0].bbox[2] && s == south_a);
+        let [cx, cy] = summaries[1].centroid;
+        assert!(cx > w && cx < e && cy > s && cy < n);
+    }
+
+    #[test]
+    fn every_group_of_a_feature_carries_its_summary() {
+        let config = LayerParseConfig {
+            polyline_from_polygons: true,
+            ..polygon_config()
+        };
+        let bin = encode_tile(vec![make_layer(
+            "l",
+            vec![with_id(
+                polygon_feature(&[(0, 0), (100, 0), (100, 100), (0, 100)], vec![]),
+                7,
+            )],
+        )]);
+        let groups = parse_mvt_tile(&bin, xyz(), Vec3::ZERO, &[config]);
+        assert_eq!(groups.len(), 2);
+        assert_eq!(groups[0].feature_summaries, groups[1].feature_summaries);
+        assert_eq!(groups[0].feature_summaries[0].id, Some(7));
+        assert!(matches!(
+            groups[0].feature_summaries[0].shape,
+            FeatureShape::Polygon { .. }
+        ));
+    }
+
+    #[test]
+    fn summarizes_lines_and_points() {
+        let bin = encode_tile(vec![make_layer(
+            "l",
+            vec![
+                with_id(linestring_feature(&[(0, 2048), (4096, 2048)], vec![]), 1),
+                point_feature(1024, 1024, vec![]),
+            ],
+        )]);
+        let config = LayerParseConfig {
+            polyline: true,
+            ..point_config()
+        };
+        let groups = parse_mvt_tile(&bin, xyz(), Vec3::ZERO, &[config]);
+        let line = groups
+            .iter()
+            .find(|g| g.kind == LayerParseKind::Polyline)
+            .unwrap();
+        let point = groups
+            .iter()
+            .find(|g| g.kind == LayerParseKind::Point)
+            .unwrap();
+        let FeatureShape::LineString { length } = line.feature_summaries[0].shape else {
+            panic!("expected a line, got {:?}", line.feature_summaries[0].shape);
+        };
+        // The equator, end to end of the z0 tile.
+        assert!(
+            (length - 40_075_016.685_578_49).abs() < 1e-3,
+            "length {length}"
+        );
+        assert_eq!(line.feature_summaries[0].id, Some(1));
+        assert_eq!(point.feature_summaries[0].shape, FeatureShape::Point);
+        assert_eq!(point.feature_summaries[0].id, None);
     }
 
     #[test]

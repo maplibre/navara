@@ -393,6 +393,12 @@ mod accounting_tests {
             keys,
             vec![0, 0, 1, 1],
             &[4],
+            vec![navara_parser::mvt::FeatureSummary {
+                id: None,
+                bbox: [0.0; 4],
+                centroid: [0.0; 2],
+                shape: navara_parser::mvt::FeatureShape::Point,
+            }],
         )
     }
 
