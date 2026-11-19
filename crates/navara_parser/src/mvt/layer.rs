@@ -2,7 +2,6 @@ use std::sync::Arc;
 
 use geozero::mvt::tile;
 use navara_property::PropertyValue;
-use rustc_hash::FxHashMap;
 
 /// Raw MVT layer data for lazy property parsing.
 /// Properties are only parsed when accessed via `get_property`.
@@ -251,33 +250,47 @@ impl MvtLayerData {
         Some(V::finalize_map(props))
     }
 
+    /// Resolve `keys` against this layer's key table once, for reading many
+    /// features with [`Self::get_filtered_properties`].
+    pub fn key_filter(&self, keys: &[String]) -> MvtKeyFilter {
+        MvtKeyFilter {
+            positions: self
+                .keys
+                .iter()
+                .map(|layer_key| keys.iter().rposition(|k| k == layer_key))
+                .collect(),
+            len: keys.len(),
+        }
+    }
+
     /// Get only the requested properties for a specific feature index.
-    /// Returns `Vec<Option<V>>` in the same order as `keys` (None for missing keys).
+    /// Returns `Vec<Option<V>>` in the order of the keys `filter` was built
+    /// from (None for missing keys).
     pub fn get_filtered_properties<V: PropertyValue>(
         &self,
         feature_index: usize,
-        keys: &[String],
+        filter: &MvtKeyFilter,
     ) -> Option<Vec<Option<V>>> {
         let tags = self.feature_tags(feature_index)?;
 
-        let mut result: Vec<Option<V>> = keys.iter().map(|_| None).collect();
-        let mut indexed_keys = FxHashMap::default();
-        for (i, k) in keys.iter().enumerate() {
-            indexed_keys.insert(k, i);
-        }
+        let mut result: Vec<Option<V>> = (0..filter.len).map(|_| None).collect();
 
-        for pair in tags.chunks(2) {
-            if let [key_idx, value_idx] = pair {
-                let key = self.keys.get(*key_idx as usize)?;
-                if let Some(pos) = indexed_keys.get(key) {
-                    let value = self.values.get(*value_idx as usize)?;
-                    result[*pos] = Some(tile_value_to_property(value));
-                }
+        for &[key_idx, value_idx] in tags.as_chunks::<2>().0 {
+            if let Some(pos) = *filter.positions.get(key_idx as usize)? {
+                let value = self.values.get(value_idx as usize)?;
+                result[pos] = Some(tile_value_to_property(value));
             }
         }
 
         Some(result)
     }
+}
+
+/// Requested keys resolved against one layer's key table: the output
+/// position of each layer key index. Built by [`MvtLayerData::key_filter`].
+pub struct MvtKeyFilter {
+    positions: Vec<Option<usize>>,
+    len: usize,
 }
 
 #[cfg(test)]
@@ -360,8 +373,9 @@ mod tests {
             "name".to_string(),
         ];
 
-        let result: Vec<Option<serde_json::Value>> =
-            layer.get_filtered_properties(0, &keys).unwrap();
+        let result: Vec<Option<serde_json::Value>> = layer
+            .get_filtered_properties(0, &layer.key_filter(&keys))
+            .unwrap();
 
         assert_eq!(result.len(), 3);
         assert_eq!(result[0], Some(json!(true)));
@@ -374,8 +388,9 @@ mod tests {
         let layer = make_layer_data();
         // Feature 1 has no "visible" tag
         let keys = vec!["visible".to_string(), "name".to_string()];
-        let result: Vec<Option<serde_json::Value>> =
-            layer.get_filtered_properties(1, &keys).unwrap();
+        let result: Vec<Option<serde_json::Value>> = layer
+            .get_filtered_properties(1, &layer.key_filter(&keys))
+            .unwrap();
 
         assert_eq!(result[0], None);
         assert_eq!(result[1], Some(json!("building_b")));

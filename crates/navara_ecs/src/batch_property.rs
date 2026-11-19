@@ -4,6 +4,7 @@ use navara_feature_component::{
     batch::{BatchProperty, BatchTable, GlobalBatchIds},
     render::RenderableFeature,
 };
+use navara_parser::b3dm::BatchTable as B3dmBatchTable;
 use navara_property::{PropertyValue, json_value_to_filtered_properties, json_value_to_property};
 
 use crate::App;
@@ -213,7 +214,7 @@ impl App {
         // map each feature to its first instance's id via the instance ->
         // feature index buffer; without that buffer, positions already are
         // feature ordinals.
-        let global_batch_id_array: Option<Vec<Option<u32>>> =
+        let global_batch_ids: Option<FeatureGlobalBatchIds> =
             global_batch_ids_opt.and_then(|ids| {
                 let store = world.get_resource::<BufferStore>()?;
                 let instance_ids = store.get_u32(&ids.handle)?;
@@ -230,11 +231,17 @@ impl App {
                             }
                             per_feature[feature].get_or_insert(id);
                         }
-                        Some(per_feature)
+                        Some(FeatureGlobalBatchIds::FirstInstance(per_feature))
                     }
-                    None => Some(instance_ids.iter().map(|&id| Some(id)).collect()),
+                    None => Some(FeatureGlobalBatchIds::Direct(instance_ids)),
                 }
             });
+        let global_batch_id = |batch_idx: usize, fallback: u32| {
+            global_batch_ids
+                .as_ref()
+                .and_then(|ids| ids.get(batch_idx))
+                .unwrap_or(fallback)
+        };
 
         match batch_prop {
             BatchProperty::Cesium3dTileset(in_batch_table) => {
@@ -249,28 +256,25 @@ impl App {
                         };
                         for batch_idx in 0..batch_length {
                             let props = in_batch_table.get_property(&batch_table_json, batch_idx);
-                            let global_batch_id = global_batch_id_array
-                                .as_ref()
-                                .and_then(|arr| arr.get(batch_idx).copied().flatten())
-                                .unwrap_or(batch_idx as u32);
-                            callback(batch_idx, global_batch_id, BatchProperties::All(props))?;
+                            callback(
+                                batch_idx,
+                                global_batch_id(batch_idx, batch_idx as u32),
+                                BatchProperties::All(props),
+                            )?;
                         }
                     }
                     Some(keys) => {
                         let Some(batch_table_json) = in_batch_table.json_filtered(keys).ok() else {
                             return Ok(None);
                         };
+                        let columns = B3dmBatchTable::filtered_columns(&batch_table_json, keys);
                         for batch_idx in 0..batch_length {
-                            let props = in_batch_table.get_filtered_properties(
-                                &batch_table_json,
+                            let props = in_batch_table.get_filtered_properties(&columns, batch_idx);
+                            callback(
                                 batch_idx,
-                                keys,
-                            );
-                            let global_batch_id = global_batch_id_array
-                                .as_ref()
-                                .and_then(|arr| arr.get(batch_idx).copied().flatten())
-                                .unwrap_or(batch_idx as u32);
-                            callback(batch_idx, global_batch_id, BatchProperties::Filtered(props))?;
+                                global_batch_id(batch_idx, batch_idx as u32),
+                                BatchProperties::Filtered(Some(props)),
+                            )?;
                         }
                     }
                 }
@@ -289,35 +293,33 @@ impl App {
                         for batch_idx in 0..batch_length {
                             let props: Option<V> =
                                 binary.and_then(|b| gltf_table.table.get_properties(batch_idx, b));
-                            let global_batch_id = global_batch_id_array
-                                .as_ref()
-                                .and_then(|arr| arr.get(batch_idx).copied().flatten())
-                                .unwrap_or(batch_idx as u32);
-                            callback(batch_idx, global_batch_id, BatchProperties::All(props))?;
+                            callback(
+                                batch_idx,
+                                global_batch_id(batch_idx, batch_idx as u32),
+                                BatchProperties::All(props),
+                            )?;
                         }
                     }
                     Some(keys) => {
+                        let columns = binary.map(|b| gltf_table.table.filtered_columns(keys, b));
                         for batch_idx in 0..batch_length {
-                            let props = binary.and_then(|b| {
+                            let props = columns.as_ref().and_then(|columns| {
                                 gltf_table
                                     .table
-                                    .get_filtered_properties::<V>(batch_idx, keys, b)
+                                    .get_filtered_properties::<V>(batch_idx, columns)
                             });
-                            let global_batch_id = global_batch_id_array
-                                .as_ref()
-                                .and_then(|arr| arr.get(batch_idx).copied().flatten())
-                                .unwrap_or(batch_idx as u32);
-                            callback(batch_idx, global_batch_id, BatchProperties::Filtered(props))?;
+                            callback(
+                                batch_idx,
+                                global_batch_id(batch_idx, batch_idx as u32),
+                                BatchProperties::Filtered(props),
+                            )?;
                         }
                     }
                 }
             }
             BatchProperty::Values(values) => {
                 for (batch_idx, value) in values.iter().enumerate() {
-                    let global_batch_id = global_batch_id_array
-                        .as_ref()
-                        .and_then(|arr| arr.get(batch_idx).copied().flatten())
-                        .unwrap_or(feature_batch_id);
+                    let global_batch_id = global_batch_id(batch_idx, feature_batch_id);
                     match keys {
                         None => {
                             let props: Option<V> = json_value_to_property(value);
@@ -331,19 +333,17 @@ impl App {
                 }
             }
             BatchProperty::Mvt(mvt_layer_data) => {
+                let key_filter = keys.map(|keys| mvt_layer_data.key_filter(keys));
                 for batch_idx in 0..mvt_layer_data.feature_count() {
-                    let global_batch_id = global_batch_id_array
-                        .as_ref()
-                        .and_then(|arr| arr.get(batch_idx).copied().flatten())
-                        .unwrap_or(feature_batch_id);
-                    match keys {
+                    let global_batch_id = global_batch_id(batch_idx, feature_batch_id);
+                    match &key_filter {
                         None => {
                             let props: Option<V> = mvt_layer_data.get_properties(batch_idx);
                             callback(batch_idx, global_batch_id, BatchProperties::All(props))?;
                         }
-                        Some(keys) => {
+                        Some(key_filter) => {
                             let props =
-                                mvt_layer_data.get_filtered_properties::<V>(batch_idx, keys);
+                                mvt_layer_data.get_filtered_properties::<V>(batch_idx, key_filter);
                             callback(batch_idx, global_batch_id, BatchProperties::Filtered(props))?;
                         }
                     }
@@ -352,5 +352,22 @@ impl App {
         }
 
         Ok(Some(()))
+    }
+}
+
+/// Global batch ids indexed by feature (property row).
+enum FeatureGlobalBatchIds<'a> {
+    /// One instance per feature.
+    Direct(&'a [u32]),
+    /// Each feature's first instance id.
+    FirstInstance(Vec<Option<u32>>),
+}
+
+impl FeatureGlobalBatchIds<'_> {
+    fn get(&self, feature: usize) -> Option<u32> {
+        match self {
+            Self::Direct(ids) => ids.get(feature).copied(),
+            Self::FirstInstance(ids) => ids.get(feature).copied().flatten(),
+        }
     }
 }

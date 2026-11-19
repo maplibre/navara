@@ -172,6 +172,29 @@ pub struct BatchTable {
     pub binary_data: Vec<u8>,
 }
 
+/// One batch table property, resolved by [`BatchTable::filtered_columns`].
+pub enum BatchTableColumn<'a> {
+    Binary(BinaryColumn),
+    Json(&'a [serde_json::Value]),
+}
+
+/// A property stored in the batch table binary body.
+pub struct BinaryColumn {
+    byte_offset: usize,
+    component_type: ComponentType,
+    data_type: DataType,
+}
+
+impl BinaryColumn {
+    fn from_json(prop: &serde_json::Value) -> Self {
+        Self {
+            byte_offset: prop["byteOffset"].as_u64().unwrap() as usize,
+            component_type: ComponentType::from_str(prop["componentType"].as_str().unwrap()),
+            data_type: DataType::from_str(prop["type"].as_str().unwrap()),
+        }
+    }
+}
+
 /// Deserializes a JSON object into only its entries named in the keys.
 struct FilteredKeys<'a>(&'a [String]);
 
@@ -210,12 +233,15 @@ impl BatchTable {
 
     /// Parse the batch table JSON, retaining only the specified top-level keys.
     /// The other properties are skipped without being built.
-    pub fn json_filtered(&self, keys: &[String]) -> Result<serde_json::Value, serde_json::Error> {
+    pub fn json_filtered(
+        &self,
+        keys: &[String],
+    ) -> Result<serde_json::Map<String, serde_json::Value>, serde_json::Error> {
         let mut deserializer =
             serde_json::Deserializer::from_slice(trim_json_padding(&self.json_data));
         let filtered = FilteredKeys(keys).deserialize(&mut deserializer)?;
         deserializer.end()?;
-        Ok(serde_json::Value::Object(filtered))
+        Ok(filtered)
     }
 
     /// Get all properties for a batch index as a single PropertyValue map.
@@ -247,32 +273,37 @@ impl BatchTable {
         Some(V::finalize_map(prop))
     }
 
-    /// Get filtered properties for a batch index, returning `Vec<Option<V>>` matching key order.
+    /// Resolve `keys` to their columns once, for reading many batches with
+    /// [`Self::get_filtered_properties`].
+    pub fn filtered_columns<'a>(
+        batch_table_json: &'a serde_json::Map<String, serde_json::Value>,
+        keys: &[String],
+    ) -> Vec<Option<BatchTableColumn<'a>>> {
+        keys.iter()
+            .map(|key| match batch_table_json.get(key)? {
+                value @ serde_json::Value::Object(_) => {
+                    Some(BatchTableColumn::Binary(BinaryColumn::from_json(value)))
+                }
+                serde_json::Value::Array(arr) => Some(BatchTableColumn::Json(arr)),
+                _ => None,
+            })
+            .collect()
+    }
+
+    /// Get filtered properties for a batch index, in the order of the keys
+    /// `columns` was resolved from.
     pub fn get_filtered_properties<V: PropertyValue>(
         &self,
-        batch_table_json: &serde_json::Value,
+        columns: &[Option<BatchTableColumn>],
         batch_idx: usize,
-        keys: &[String],
-    ) -> Option<Vec<Option<V>>> {
-        if let serde_json::Value::Object(map) = batch_table_json {
-            let result = keys
-                .iter()
-                .map(|key| {
-                    map.get(key).and_then(|value| match value {
-                        serde_json::Value::Object(_) => {
-                            self.read_property_from_binary::<V>(batch_idx, value).ok()
-                        }
-                        serde_json::Value::Array(arr) => {
-                            json_value_to_property_value::<V>(&arr[batch_idx])
-                        }
-                        _ => None,
-                    })
-                })
-                .collect();
-            Some(result)
-        } else {
-            None
-        }
+    ) -> Vec<Option<V>> {
+        columns
+            .iter()
+            .map(|column| match column.as_ref()? {
+                BatchTableColumn::Binary(col) => self.read_binary_column(col, batch_idx).ok(),
+                BatchTableColumn::Json(arr) => json_value_to_property_value::<V>(&arr[batch_idx]),
+            })
+            .collect()
     }
 
     pub fn read_property_from_binary<V: PropertyValue>(
@@ -280,14 +311,18 @@ impl BatchTable {
         idx: usize,
         prop: &serde_json::Value,
     ) -> Result<V, &'static str> {
-        let offset = prop["byteOffset"].as_u64().unwrap() as usize;
-        let component_type = ComponentType::from_str(prop["componentType"].as_str().unwrap());
-        let data_type = DataType::from_str(prop["type"].as_str().unwrap());
+        self.read_binary_column(&BinaryColumn::from_json(prop), idx)
+    }
 
-        match data_type {
-            DataType::Scalar => self.read_scalar(offset, idx, component_type),
+    fn read_binary_column<V: PropertyValue>(
+        &self,
+        col: &BinaryColumn,
+        idx: usize,
+    ) -> Result<V, &'static str> {
+        match col.data_type {
+            DataType::Scalar => self.read_scalar(col.byte_offset, idx, &col.component_type),
             DataType::Vec2 | DataType::Vec3 | DataType::Vec4 => {
-                self.read_vector(offset, idx, data_type, component_type)
+                self.read_vector(col.byte_offset, idx, &col.data_type, &col.component_type)
             }
         }
     }
@@ -296,22 +331,22 @@ impl BatchTable {
         &self,
         byte_offset: usize,
         idx: usize,
-        component_type: ComponentType,
+        component_type: &ComponentType,
     ) -> Result<V, &'static str> {
         let offset = byte_offset + idx * component_type.size();
-        self.read_value(offset, &component_type)
+        self.read_value(offset, component_type)
     }
 
     fn read_vector<V: PropertyValue>(
         &self,
         byte_offset: usize,
         idx: usize,
-        data_type: DataType,
-        component_type: ComponentType,
+        data_type: &DataType,
+        component_type: &ComponentType,
     ) -> Result<V, &'static str> {
         let offset = byte_offset + idx * data_type.size() * component_type.size();
         let values = (0..data_type.size())
-            .map(|j| self.read_value::<V>(offset + j * component_type.size(), &component_type))
+            .map(|j| self.read_value::<V>(offset + j * component_type.size(), component_type))
             .collect::<Result<Vec<_>, _>>()?;
         Ok(V::from_array(values))
     }
@@ -642,18 +677,15 @@ mod tests {
     fn it_should_get_filtered_properties_with_ordering_and_missing() {
         let data = create_mock_b3dm_data();
         let b3dm = B3dm::from_data(&data).unwrap();
-        let batch_table_json = b3dm.batch_table.json().unwrap();
-
         let keys = vec![
             "test_property_float".to_string(),
             "nonexistent".to_string(),
             "some_property".to_string(),
         ];
+        let batch_table_json = b3dm.batch_table.json_filtered(&keys).unwrap();
 
-        let result: Vec<Option<Value>> = b3dm
-            .batch_table
-            .get_filtered_properties(&batch_table_json, 0, &keys)
-            .unwrap();
+        let columns = BatchTable::filtered_columns(&batch_table_json, &keys);
+        let result: Vec<Option<Value>> = b3dm.batch_table.get_filtered_properties(&columns, 0);
 
         assert_eq!(result.len(), 3);
         // Matches key order
@@ -679,20 +711,9 @@ mod tests {
         ];
         let filtered = b3dm.batch_table.json_filtered(&keys).unwrap();
 
-        let map = filtered.as_object().unwrap();
-        assert_eq!(map.len(), 2);
-        assert_eq!(map["test_property_vec3"], full["test_property_vec3"]);
-        assert_eq!(map["some_property"], full["some_property"]);
-    }
-
-    #[test]
-    fn it_should_return_none_for_filtered_properties_on_non_object() {
-        let data = create_mock_b3dm_data();
-        let b3dm = B3dm::from_data(&data).unwrap();
-        let result: Option<Vec<Option<Value>>> =
-            b3dm.batch_table
-                .get_filtered_properties(&Value::Array(vec![]), 0, &["a".into()]);
-        assert!(result.is_none());
+        assert_eq!(filtered.len(), 2);
+        assert_eq!(filtered["test_property_vec3"], full["test_property_vec3"]);
+        assert_eq!(filtered["some_property"], full["some_property"]);
     }
 
     #[test]
