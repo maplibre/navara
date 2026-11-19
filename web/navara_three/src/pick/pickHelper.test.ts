@@ -1,7 +1,8 @@
 import {
+  BoxGeometry,
   Mesh,
   MeshBasicMaterial,
-  type Object3D,
+  Object3D,
   PerspectiveCamera,
   Scene,
   Vector2,
@@ -272,6 +273,90 @@ describe("PickHelper", () => {
       expect(drapedRenders.length).toBeGreaterThan(0);
       expect(standingRender).toBeGreaterThan(lastDraped);
       expect(draped.parent).toBe(standing.parent);
+    });
+  });
+
+  describe("culling to the search window", () => {
+    const pickable = (raw: Object3D) => ({
+      batchId: 1,
+      onBeforePicking: () => undefined,
+      onAfterPicking: () => undefined,
+      getRenderable: () => raw,
+    });
+    /** A unit box at `x`, 10 units in front of the default camera. */
+    const box = (x: number) => {
+      const mesh = new Mesh(new BoxGeometry());
+      mesh.geometry.computeBoundingSphere();
+      mesh.position.set(x, 0, -10);
+      return mesh;
+    };
+    const rendered = (calls: ReturnType<typeof setup>["state"]["calls"]) =>
+      calls.flatMap((call) => ("render" in call ? call.render : []));
+
+    it("leaves out meshes that cannot reach the window", () => {
+      const inside = box(0);
+      const outside = box(50);
+      const neverCulled = box(50);
+      neverCulled.frustumCulled = false;
+      const scene = new Scene().add(inside, outside, neverCulled);
+      scene.updateMatrixWorld();
+      const meshes = new Map([
+        ["inside", pickable(inside)],
+        ["outside", pickable(outside)],
+        ["neverCulled", pickable(neverCulled)],
+      ]) as unknown as MeshCache;
+      const { state, pointer } = setup({ meshes });
+
+      // The screen center, where the camera looks.
+      pointer("pointerdown", 400, 300);
+      pointer("pointerup", 400, 300);
+
+      const drawn = rendered(state.calls);
+      expect(drawn).toContain(inside);
+      expect(drawn).toContain(neverCulled);
+      expect(drawn).not.toContain(outside);
+      expect(outside.parent).toBe(scene);
+    });
+
+    it("judges a container by the meshes inside it", () => {
+      const container = (...xs: number[]) => {
+        const group = new Object3D();
+        group.add(...xs.map(box));
+        return group;
+      };
+      const outside = container(50, -50);
+      const straddling = container(50, 0);
+      const scene = new Scene().add(outside, straddling);
+      scene.updateMatrixWorld();
+      const meshes = new Map([
+        ["outside", pickable(outside)],
+        ["straddling", pickable(straddling)],
+      ]) as unknown as MeshCache;
+      const { state, pointer } = setup({ meshes });
+
+      pointer("pointerdown", 400, 300);
+      pointer("pointerup", 400, 300);
+
+      const drawn = rendered(state.calls);
+      expect(drawn).toContain(straddling);
+      expect(drawn).not.toContain(outside);
+    });
+
+    it("keeps meshes within the margin around the window", () => {
+      // About 20 px right of the window's edge (one unit spans ~86 px here).
+      const nearby = box(0.28);
+      nearby.scale.setScalar(0.01);
+      const scene = new Scene().add(nearby);
+      scene.updateMatrixWorld();
+      const meshes = new Map([
+        ["nearby", pickable(nearby)],
+      ]) as unknown as MeshCache;
+      const { state, pointer } = setup({ meshes });
+
+      pointer("pointerdown", 400, 300);
+      pointer("pointerup", 400, 300);
+
+      expect(rendered(state.calls)).toContain(nearby);
     });
   });
 
