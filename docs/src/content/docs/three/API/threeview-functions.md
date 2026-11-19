@@ -430,19 +430,67 @@ view.resize(1920, 1080, 2);
 view.resize(undefined, undefined, window.devicePixelRatio);
 ```
 
-### setCamera()
+### getCamera()
 
-Sets the camera position and orientation immediately. Moves the camera directly without animation.
+Returns the camera as of the last frame, as a plain object: position, orientation and field of view. The object is JSON-safe, and `setCamera()` takes it back as is, so it can save and restore a view.
 
 **Syntax:**
 
 ```tsx
-setCamera(camPos: CameraPosition): void
+getCamera(): CameraState | undefined
+```
+
+**Returns:**
+
+```tsx
+type CameraState = {
+  lng: number;
+  lat: number;
+  height: number;
+  heading: number;
+  pitch: number;
+  roll: number;
+  fov: number;
+};
+```
+
+| Field | Type | Description |
+|---|---|---|
+| `lng` | `number` | Longitude (degrees) |
+| `lat` | `number` | Latitude (degrees) |
+| `height` | `number` | Height above the ellipsoid (meters) |
+| `heading` | `number` | Heading angle (degrees, 0 = North, clockwise) |
+| `pitch` | `number` | Pitch angle (degrees, negative = looking down) |
+| `roll` | `number` | Roll angle (degrees) |
+| `fov` | `number` | Vertical field of view (degrees) |
+
+Returns `undefined` until the engine camera exists: during a plugin's `init()`, and until the first frame after `view.init()` resolves.
+
+**Example:**
+
+```tsx
+// Save the view, for example to localStorage.
+const camera = view.getCamera();
+if (camera) localStorage.setItem("camera", JSON.stringify(camera));
+
+// Restore it later.
+const saved = localStorage.getItem("camera");
+if (saved) view.setCamera(JSON.parse(saved));
+```
+
+### setCamera()
+
+Sets the camera position and orientation without animation. The engine applies it on the next frame, so [`getCamera()`](#getcamera) returns the old camera until then.
+
+**Syntax:**
+
+```tsx
+setCamera(camPos: CameraPosition & { fov?: number }): void
 ```
 
 **Parameters:**
 
-- `camPos`: Camera position and orientation
+- `camPos`: Camera position and orientation, and optionally the field of view. The result of [`getCamera()`](#getcamera) can be passed as is.
 
 ```tsx
 type CameraPosition = {
@@ -465,6 +513,7 @@ type CameraPosition = {
 | `heading` | `number` | Heading angle (degrees) |
 | `roll` | `number` | Roll angle (degrees) |
 | `distance` | `number` | Distance from the target point along the camera forward direction (meters). When specified, the camera is placed so that its forward ray reaches the `lng`/`lat`/`height` target from this distance. If omitted, `height` is used as the camera's own altitude above the surface normal. |
+| `fov` | `number` | Vertical field of view (degrees, 1–179), the same as setting [`camera.fov`](../camera/#fov). Values outside this range (and `NaN`) are ignored. If omitted, the field of view does not change. A call with only `fov` changes only the field of view: it does not stop a flight. |
 
 **Example:**
 

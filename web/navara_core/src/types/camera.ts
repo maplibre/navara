@@ -14,3 +14,13 @@ export type CameraPosition = Partial<LatLngHeight> &
      *  If `height` is omitted, the target elevation defaults to 0 (sea level). */
     distance?: number;
   };
+
+/**
+ * The whole camera as plain, JSON-safe data: `ThreeView.getCamera()`
+ * returns it and `ThreeView.setCamera()` takes it back as is.
+ */
+export type CameraState = LatLngHeight &
+  Required<CameraOrientation> & {
+    /** Vertical field of view in degrees. */
+    fov: number;
+  };
