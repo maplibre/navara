@@ -16,7 +16,7 @@ import type { PntsMutates, PntsProps, PntsState } from "./types";
  *
  * This enhancer handles:
  * - Point size
- * - Color
+ * - Color, opacity and blending, tinting the base color
  * - Height offset via geodetic normal
  * - PNTS color range normalization (1/65535)
  *
@@ -51,14 +51,14 @@ export function createPntsEnhancer(
       state = updateState(mergedProps, DEFAULT_PNTS_STATE);
       mutates = createPntsMutates();
       mutates.update(state);
-      updateMaterialProps(material, mergedProps);
+      updateMaterialProps(material, mergedProps, state);
     },
 
     update: (props: PntsProps): void => {
       invariant(state && mutates, "mount() must be called before update");
       state = updateState(props, state);
       mutates.update(state);
-      updateMaterialProps(material, props);
+      updateMaterialProps(material, props, state);
     },
 
     states: (): PntsState => {
@@ -72,8 +72,9 @@ export function createPntsEnhancer(
     },
 
     programCacheKey: (): string => {
-      // PNTS has no state that affects shader defines
-      return "";
+      invariant(state, "mount() must be called before programCacheKey");
+      // `transformShader` adds the sRGB decode only for PNTS colors.
+      return `pnts:${state.srgbVertexColor}`;
     },
   };
 }

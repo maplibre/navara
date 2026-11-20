@@ -31,17 +31,17 @@ Google Photorealistic 3D Tiles from Google Maps Platform are supported. A tile w
 
 ### PNTS attributes
 
-Navara reads only part of the pnts feature table. Point colors are interpreted as sRGB. A tile that stores its positions only as `POSITION_QUANTIZED` is not rendered.
+Navara reads only part of the pnts feature table. Point colors are interpreted as sRGB. A tile without colors is drawn in the layer color. Point alpha (from `RGBA` or `CONSTANT_RGBA`) applies only when the layer material sets `transparent: true`; otherwise points are drawn opaque. Translucent points blend without being sorted, so where they overlap, the result can depend on the drawing order.
 
 | Semantic                          | Support                               |
 | --------------------------------- | ------------------------------------- |
 | `POSITION`                        | ✅                                    |
-| `POSITION_QUANTIZED`              | ❌                                    |
+| `POSITION_QUANTIZED`              | ✅                                    |
 | `RTC_CENTER`                      | ✅                                    |
-| `RGB`                             | ⚠️ Draco-compressed tiles only        |
-| `RGBA`                            | ⚠️ Draco-compressed tiles only        |
-| `RGB565`                          | ❌                                    |
-| `CONSTANT_RGBA`                   | ❌                                    |
+| `RGB`                             | ✅                                    |
+| `RGBA`                            | ✅                                    |
+| `RGB565`                          | ✅                                    |
+| `CONSTANT_RGBA`                   | ✅                                    |
 | `NORMAL` / `NORMAL_OCT16P`        | ❌                                    |
 | `BATCH_ID` and the batch table    | ❌                                    |
 | `3DTILES_draco_point_compression` | ⚠️ `POSITION`, `RGB`, and `RGBA` only |

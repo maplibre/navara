@@ -31,17 +31,17 @@ Google Maps Platform の Google Photorealistic 3D Tiles に対応しています
 
 ### PNTS の属性
 
-Navara が読み取るのは pnts の feature table の一部です。点の色は sRGB として扱われます。位置を `POSITION_QUANTIZED` でしか持たないタイルは描画されません。
+Navara が読み取るのは pnts の feature table の一部です。点の色は sRGB として扱われます。色を持たないタイルはレイヤーの色で描画されます。点の alpha（`RGBA` や `CONSTANT_RGBA`）は、レイヤーの material で `transparent: true` を指定したときだけ適用されます。指定がなければ点は不透明で描画されます。半透明の点は並べ替えずにブレンドするため、点が重なる箇所では描画順によって結果が変わることがあります。
 
 | セマンティクス                    | 対応状況                          |
 | --------------------------------- | --------------------------------- |
 | `POSITION`                        | ✅                                |
-| `POSITION_QUANTIZED`              | ❌                                |
+| `POSITION_QUANTIZED`              | ✅                                |
 | `RTC_CENTER`                      | ✅                                |
-| `RGB`                             | ⚠️ Draco 圧縮されたタイルのみ     |
-| `RGBA`                            | ⚠️ Draco 圧縮されたタイルのみ     |
-| `RGB565`                          | ❌                                |
-| `CONSTANT_RGBA`                   | ❌                                |
+| `RGB`                             | ✅                                |
+| `RGBA`                            | ✅                                |
+| `RGB565`                          | ✅                                |
+| `CONSTANT_RGBA`                   | ✅                                |
 | `NORMAL` / `NORMAL_OCT16P`        | ❌                                |
 | `BATCH_ID` と batch table         | ❌                                |
 | `3DTILES_draco_point_compression` | ⚠️ `POSITION`、`RGB`、`RGBA` のみ |

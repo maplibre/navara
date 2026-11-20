@@ -4,7 +4,7 @@ extern crate alloc;
 pub use navara_bin::*;
 
 use alloc::vec::Vec;
-use binrw::BinRead;
+use binrw::{BinRead, io::Cursor};
 
 pub const PNTS_HEADER_SIZE: usize = 28;
 
@@ -28,6 +28,14 @@ pub struct PntsHeader {
     pub feature_table_binary_byte_length: u32,
     pub batch_table_json_byte_length: u32,
     pub batch_table_binary_byte_length: u32,
+}
+
+impl PntsHeader {
+    /// Reads the header at the start of `tile`; `None` when it is too short
+    /// or not a PNTS tile.
+    pub fn parse(tile: &[u8]) -> Option<Self> {
+        Self::read(&mut Cursor::new(tile.get(..PNTS_HEADER_SIZE)?)).ok()
+    }
 }
 
 #[derive(BinRead)]

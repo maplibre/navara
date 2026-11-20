@@ -1295,6 +1295,55 @@ pub struct ModelInternalMaterial {
     /// is Draco-compressed.
     pub draco_attributes: Option<Vec<DracoAttributeId>>,
     pub point_cloud_geodetic_normal: Vec3,
+    /// Where the points sit in the bin; `Some` for PNTS.
+    pub point_cloud_layout: Option<PointCloudLayout>,
+}
+
+/// Where the points of a PNTS tile sit in its bin, which is the whole tile.
+///
+/// ref: https://github.com/CesiumGS/3d-tiles/blob/main/specification/TileFormats/PointCloud/README.adoc#semantics
+#[derive(Debug, Clone, PartialEq)]
+pub struct PointCloudLayout {
+    /// `POINTS_LENGTH`.
+    pub point_count: u32,
+    pub positions_format: PointPositionsFormat,
+    /// Byte range of the positions; empty for [`PointPositionsFormat::Draco`].
+    pub positions_byte_offset: u32,
+    pub positions_byte_length: u32,
+    /// Subtracted from every `Float32` position: the first point when the
+    /// tile has absolute positions, zero otherwise.
+    pub positions_origin: Vec3,
+    /// `QUANTIZED_VOLUME_SCALE` of `Uint16` positions.
+    pub quantized_volume_scale: Vec3,
+    /// Byte range of the `3DTILES_draco_point_compression` blob; empty
+    /// without it.
+    pub draco_byte_offset: u32,
+    pub draco_byte_length: u32,
+    pub colors_format: PointColorsFormat,
+    pub colors_byte_offset: u32,
+    /// `CONSTANT_RGBA` as `0xRRGGBBAA` for [`PointColorsFormat::Constant`].
+    pub constant_color: u32,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PointPositionsFormat {
+    /// `POSITION`.
+    Float32,
+    /// `POSITION_QUANTIZED`, normalized to the quantized volume.
+    Uint16,
+    /// In the `3DTILES_draco_point_compression` blob.
+    Draco,
+}
+
+/// Per-point colors outside the Draco blob.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PointColorsFormat {
+    /// No colors, or Draco decodes them.
+    None,
+    Rgba8,
+    Rgb8,
+    Rgb565,
+    Constant,
 }
 
 /// Maps a 3D Tiles feature table semantic (`POSITION`, `RGB`, ...) to its

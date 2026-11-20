@@ -77,20 +77,17 @@ describe("pntsEnhancer", () => {
   });
 
   describe("programCacheKey", () => {
-    it("should return empty string (no shader-affecting state)", () => {
-      enhancer.mount({});
-      expect(enhancer.programCacheKey()).toBe("");
-    });
-
-    it("should return same key regardless of state", () => {
-      enhancer.mount({ height: 100 });
+    it("should differ by srgbVertexColor only", () => {
+      enhancer.mount({ height: 100, srgbVertexColor: true });
       const key1 = enhancer.programCacheKey();
 
       const enhancer2 = createPntsEnhancer(new PointsMaterial());
-      enhancer2.mount({ height: 200 });
-      const key2 = enhancer2.programCacheKey();
+      enhancer2.mount({ height: 200, srgbVertexColor: true });
+      expect(enhancer2.programCacheKey()).toBe(key1);
 
-      expect(key1).toBe(key2);
+      const enhancer3 = createPntsEnhancer(new PointsMaterial());
+      enhancer3.mount({ height: 100, srgbVertexColor: false });
+      expect(enhancer3.programCacheKey()).not.toBe(key1);
     });
   });
 });

@@ -1,14 +1,10 @@
-import type {
-  DracoAttributeId,
-  ModelMesh as NavaraModelMesh,
-} from "@navaramap/engine";
+import type { ModelMesh as NavaraModelMesh } from "@navaramap/engine";
 import { degreeToRadian } from "@navaramap/three-api";
 import {
   BufferGeometry,
   Points,
   Group,
   LoadingManager,
-  Float32BufferAttribute,
   PointsMaterial,
   Box3,
   Vector3,
@@ -17,11 +13,11 @@ import {
 } from "three";
 
 import { createGltfLoader, mergeQuery } from "../../loaders";
-import type { DracoDecodeConfig } from "../../loaders/dracoGeometry";
 import { ModelMesh } from "../../mesh/model";
-import { decodeDracoAsync } from "../../tasks/decodeDracoAsync";
 import { toCreasedNormalsAsync } from "../../tasks/toCreasedNormalsAsync";
 import type { EventContext } from "../context";
+
+import { createPntsGeometry } from "./pnts";
 
 /**
  * Recompute vertex normals via `toCreasedNormalsAsync` for every Mesh in the
@@ -46,79 +42,48 @@ async function applyCreasedNormals(
   );
 }
 
-// ref: https://github.com/CesiumGS/3d-tiles/blob/main/specification/TileFormats/PointCloud/README.adoc#semantics
-const PNTS_DRACO_ATTRIBUTES: Record<
-  string,
-  [name: string, type: DracoDecodeConfig["attributeTypes"][string]]
-> = {
-  POSITION: ["position", "Float32Array"],
-  RGB: ["color", "Uint8Array"],
-  RGBA: ["color", "Uint8Array"],
-  NORMAL: ["normal", "Float32Array"],
-};
-
-/**
- * Maps PNTS feature table semantics to three.js attributes; others are
- * skipped. Frees the given attribute ids.
- */
-function pntsDracoDecodeConfig(
-  dracoAttributes: DracoAttributeId[],
-): DracoDecodeConfig {
-  const config: DracoDecodeConfig = { attributeIDs: {}, attributeTypes: {} };
-  for (const dracoAttribute of dracoAttributes) {
-    const attribute = PNTS_DRACO_ATTRIBUTES[dracoAttribute.semantic];
-    if (attribute) {
-      const [name, type] = attribute;
-      config.attributeIDs[name] = dracoAttribute.uniqueId;
-      config.attributeTypes[name] = type;
-    }
-    dracoAttribute.free();
-  }
-  return config;
-}
-
 export async function renderModel(ctx: EventContext, m: NavaraModelMesh) {
   const { rawScene, credit } = await (async () => {
     if (m.bin) {
-      // buf.u8 returns a short-lived view into WASM memory; copy it since the
-      // bin is consumed asynchronously (Draco / GLTFLoader) via its `.buffer`.
-      const bin = ctx.buf.u8(m.bin)?.slice();
-      if (!bin) {
+      // Every getter of a WASM object may allocate and grow WASM memory,
+      // which detaches the `buf.u8` view below, so read them all first.
+      const material = m.material;
+      const internal = material.__internal__;
+      const layout = internal?.pointCloudLayout;
+      const dracoAttributes = internal?.dracoAttributes;
+      const query = m.resource_query;
+      const resourcePath = m.resource_path ?? "";
+      // buf.u8 returns a short-lived view into WASM memory; copy out of it
+      // since the bin is consumed asynchronously (Draco / GLTFLoader) via its
+      // `.buffer`.
+      const view = ctx.buf.u8(m.bin);
+      if (!view) {
         return {};
       }
 
-      const internal = m.material.__internal__;
-      // PNTS legacy bin path: only the PNTS parser sets `pointCloud=true`, and the
-      // bin here is the extracted position buffer (Draco blob or raw f32), not glTF.
-      // 3D Tiles 1.1 glTF tiles (point cloud or not) take the GLTFLoader path below.
-      if (internal?.pointCloud) {
-        let geometry: BufferGeometry;
-        const material = new PointsMaterial({
-          size: m.material.pointSize,
-          vertexColors: true,
+      // PNTS legacy bin path: only the PNTS parser sets a point cloud layout,
+      // and the bin here is the whole PNTS tile, not glTF. 3D Tiles 1.1 glTF
+      // tiles (point cloud or not) take the GLTFLoader path below.
+      if (layout) {
+        const { geometry, scale } = await createPntsGeometry(
+          view,
+          layout,
+          dracoAttributes,
+        );
+
+        // Without colors, points take the layer color alone.
+        const pointsMaterial = new PointsMaterial({
+          size: material.pointSize,
+          vertexColors: geometry.hasAttribute("color"),
           sizeAttenuation: false,
         });
 
-        const dracoAttributes = internal.dracoAttributes;
-        if (dracoAttributes) {
-          geometry = await decodeDracoAsync(
-            bin.buffer as ArrayBuffer,
-            pntsDracoDecodeConfig(dracoAttributes),
-          );
-        } else {
-          geometry = new BufferGeometry();
-          geometry.setAttribute(
-            "position",
-            new Float32BufferAttribute(new Float32Array(bin.buffer), 3),
-          );
-        }
-
         const group = new Group();
-        const points: Points = new Points(geometry, material);
+        const points: Points = new Points(geometry, pointsMaterial);
         group.add(points);
 
         // Bounding volumes from the precomputed AABB (`ModelMesh` draws the
-        // `showBoundingBox` helper from it).
+        // `showBoundingBox` helper from it), in the scaled node's space.
         const aabb_center = new Vector3(
           m.aabb.center.x,
           m.aabb.center.y,
@@ -130,21 +95,35 @@ export async function renderModel(ctx: EventContext, m: NavaraModelMesh) {
           m.aabb.extent.z,
         );
 
-        geometry.boundingBox = new Box3(
-          aabb_center.clone().sub(aabb_extent),
-          aabb_center.clone().add(aabb_extent),
-        );
-
-        geometry.boundingSphere = new Sphere(aabb_center, aabb_extent.length());
+        if (scale) {
+          points.scale.copy(scale);
+        }
+        if (scale && (scale.x === 0 || scale.y === 0 || scale.z === 0)) {
+          // A flat quantized volume has no node space to map the AABB into.
+          geometry.computeBoundingBox();
+          geometry.computeBoundingSphere();
+        } else {
+          if (scale) {
+            aabb_center.divide(scale);
+            aabb_extent.divide(scale);
+          }
+          geometry.boundingBox = new Box3(
+            aabb_center.clone().sub(aabb_extent),
+            aabb_center.clone().add(aabb_extent),
+          );
+          geometry.boundingSphere = new Sphere(
+            aabb_center,
+            aabb_extent.length(),
+          );
+        }
         return { rawScene: group };
       }
 
+      const bin = view.slice();
       const loader = createGltfLoader();
-      const query = m.resource_query;
       if (query) {
         loader.manager = new LoadingManager().setURLModifier(mergeQuery(query));
       }
-      const resourcePath = m.resource_path ?? "";
       let model;
       try {
         model = await loader.parseAsync(

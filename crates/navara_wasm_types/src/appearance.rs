@@ -2306,6 +2306,9 @@ pub struct ModelInternalMaterial {
     #[wasm_bindgen(js_name = pointCloudGeodeticNormal)]
     #[serde(rename = "pointCloudGeodeticNormal")]
     pub point_cloud_geodetic_normal: WasmVec3,
+    #[wasm_bindgen(getter_with_clone, js_name = pointCloudLayout)]
+    #[serde(rename = "pointCloudLayout")]
+    pub point_cloud_layout: Option<PointCloudLayout>,
 }
 
 impl<'a> From<&'a navara_material::ModelInternalMaterial> for ModelInternalMaterial {
@@ -2321,6 +2324,7 @@ impl<'a> From<&'a navara_material::ModelInternalMaterial> for ModelInternalMater
             point_cloud: value.point_cloud,
             draco_attributes,
             point_cloud_geodetic_normal: value.point_cloud_geodetic_normal.into(),
+            point_cloud_layout: value.point_cloud_layout.as_ref().map(Into::into),
         }
     }
 }
@@ -2338,6 +2342,137 @@ impl From<ModelInternalMaterial> for navara_material::ModelInternalMaterial {
             point_cloud: value.point_cloud,
             draco_attributes,
             point_cloud_geodetic_normal: value.point_cloud_geodetic_normal.into(),
+            point_cloud_layout: value.point_cloud_layout.map(Into::into),
+        }
+    }
+}
+
+/// Where the points of a PNTS tile sit in its bin, which is the whole tile.
+#[wasm_bindgen]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PointCloudLayout {
+    #[wasm_bindgen(js_name = pointCount)]
+    pub point_count: u32,
+    #[wasm_bindgen(js_name = positionsFormat)]
+    pub positions_format: PointPositionsFormat,
+    #[wasm_bindgen(js_name = positionsByteOffset)]
+    pub positions_byte_offset: u32,
+    #[wasm_bindgen(js_name = positionsByteLength)]
+    pub positions_byte_length: u32,
+    /// Subtracted from every `Float32` position.
+    #[wasm_bindgen(js_name = positionsOrigin)]
+    pub positions_origin: WasmVec3,
+    #[wasm_bindgen(js_name = quantizedVolumeScale)]
+    pub quantized_volume_scale: WasmVec3,
+    /// Byte range of the Draco blob; empty without it.
+    #[wasm_bindgen(js_name = dracoByteOffset)]
+    pub draco_byte_offset: u32,
+    #[wasm_bindgen(js_name = dracoByteLength)]
+    pub draco_byte_length: u32,
+    #[wasm_bindgen(js_name = colorsFormat)]
+    pub colors_format: PointColorsFormat,
+    #[wasm_bindgen(js_name = colorsByteOffset)]
+    pub colors_byte_offset: u32,
+    /// `CONSTANT_RGBA` as `0xRRGGBBAA`.
+    #[wasm_bindgen(js_name = constantColor)]
+    pub constant_color: u32,
+}
+
+impl From<&navara_material::PointCloudLayout> for PointCloudLayout {
+    fn from(value: &navara_material::PointCloudLayout) -> Self {
+        PointCloudLayout {
+            point_count: value.point_count,
+            positions_format: value.positions_format.into(),
+            positions_byte_offset: value.positions_byte_offset,
+            positions_byte_length: value.positions_byte_length,
+            positions_origin: value.positions_origin.into(),
+            quantized_volume_scale: value.quantized_volume_scale.into(),
+            draco_byte_offset: value.draco_byte_offset,
+            draco_byte_length: value.draco_byte_length,
+            colors_format: value.colors_format.into(),
+            colors_byte_offset: value.colors_byte_offset,
+            constant_color: value.constant_color,
+        }
+    }
+}
+
+impl From<PointCloudLayout> for navara_material::PointCloudLayout {
+    fn from(value: PointCloudLayout) -> Self {
+        navara_material::PointCloudLayout {
+            point_count: value.point_count,
+            positions_format: value.positions_format.into(),
+            positions_byte_offset: value.positions_byte_offset,
+            positions_byte_length: value.positions_byte_length,
+            positions_origin: value.positions_origin.into(),
+            quantized_volume_scale: value.quantized_volume_scale.into(),
+            draco_byte_offset: value.draco_byte_offset,
+            draco_byte_length: value.draco_byte_length,
+            colors_format: value.colors_format.into(),
+            colors_byte_offset: value.colors_byte_offset,
+            constant_color: value.constant_color,
+        }
+    }
+}
+
+#[wasm_bindgen]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum PointPositionsFormat {
+    Float32,
+    Uint16,
+    Draco,
+}
+
+impl From<navara_material::PointPositionsFormat> for PointPositionsFormat {
+    fn from(value: navara_material::PointPositionsFormat) -> Self {
+        match value {
+            navara_material::PointPositionsFormat::Float32 => PointPositionsFormat::Float32,
+            navara_material::PointPositionsFormat::Uint16 => PointPositionsFormat::Uint16,
+            navara_material::PointPositionsFormat::Draco => PointPositionsFormat::Draco,
+        }
+    }
+}
+
+impl From<PointPositionsFormat> for navara_material::PointPositionsFormat {
+    fn from(value: PointPositionsFormat) -> Self {
+        match value {
+            PointPositionsFormat::Float32 => navara_material::PointPositionsFormat::Float32,
+            PointPositionsFormat::Uint16 => navara_material::PointPositionsFormat::Uint16,
+            PointPositionsFormat::Draco => navara_material::PointPositionsFormat::Draco,
+        }
+    }
+}
+
+#[wasm_bindgen]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum PointColorsFormat {
+    None,
+    Rgba8,
+    Rgb8,
+    Rgb565,
+    Constant,
+}
+
+impl From<navara_material::PointColorsFormat> for PointColorsFormat {
+    fn from(value: navara_material::PointColorsFormat) -> Self {
+        match value {
+            navara_material::PointColorsFormat::None => PointColorsFormat::None,
+            navara_material::PointColorsFormat::Rgba8 => PointColorsFormat::Rgba8,
+            navara_material::PointColorsFormat::Rgb8 => PointColorsFormat::Rgb8,
+            navara_material::PointColorsFormat::Rgb565 => PointColorsFormat::Rgb565,
+            navara_material::PointColorsFormat::Constant => PointColorsFormat::Constant,
+        }
+    }
+}
+
+impl From<PointColorsFormat> for navara_material::PointColorsFormat {
+    fn from(value: PointColorsFormat) -> Self {
+        match value {
+            PointColorsFormat::None => navara_material::PointColorsFormat::None,
+            PointColorsFormat::Rgba8 => navara_material::PointColorsFormat::Rgba8,
+            PointColorsFormat::Rgb8 => navara_material::PointColorsFormat::Rgb8,
+            PointColorsFormat::Rgb565 => navara_material::PointColorsFormat::Rgb565,
+            PointColorsFormat::Constant => navara_material::PointColorsFormat::Constant,
         }
     }
 }
