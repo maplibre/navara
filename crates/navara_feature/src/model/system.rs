@@ -112,6 +112,10 @@ pub fn transfer_mesh(
             None => transform,
         };
 
+        // The tile's center when it has one: a model origin at the Earth's
+        // center (absolute Draco positions) has no geodetic normal.
+        let surface_point =
+            aabb.map_or_else(|| transform.transform_point(Vec3::ZERO), |aabb| aabb.center);
         let model_transform_inv = transform.compute_matrix().inverse();
         let aabb = match aabb {
             Some(aabb) => Aabb {
@@ -121,11 +125,11 @@ pub fn transfer_mesh(
             None => Aabb::default(),
         };
         if let Some(material_internal) = material.internal.as_mut() {
-            let geodetic_normal = WGS84_64
-                .geodetic_surface_normal_from_vec3(transform.transform_point(Vec3::ZERO).into())
+            let geodetic_normal: Vec3 = WGS84_64
+                .geodetic_surface_normal_from_vec3(surface_point.into())
                 .into();
 
-            material_internal.point_cloud_geodetic_normal = Vec3::normalize(geodetic_normal);
+            material_internal.point_cloud_geodetic_normal = geodetic_normal.normalize_or_zero();
         }
 
         let entity = commands.spawn((

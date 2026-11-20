@@ -94,6 +94,7 @@ impl TileContentParser for GltfFeaturesParser {
                     draco_attributes: None,
                     point_cloud: false,
                     point_cloud_geodetic_normal: Vec3::ZERO,
+                    point_cloud_layout: None,
                 });
             })),
             extra_components: None,

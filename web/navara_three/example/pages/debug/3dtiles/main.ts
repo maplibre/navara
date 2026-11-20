@@ -35,6 +35,19 @@ const params = {
   picked: "",
 };
 
+// Kept across dataset switches.
+const material = {
+  pointSize: 4,
+  color: 0xffffff,
+  opacity: 1,
+  transparent: false,
+  depthWrite: true,
+};
+const modelProps = () => ({
+  ...material,
+  color: new Color().setHex(material.color),
+});
+
 // Emissive, so the highlight does not hide the feature's own color.
 const HIGHLIGHT = new Color().setHex(0x00ffff);
 const NONE = new Color().setHex(0x000000);
@@ -108,7 +121,7 @@ async function load(url: string, note = "") {
   pane.refresh();
 
   source = view.addSource({ type: "3d-tiles", url });
-  layer = view.addLayer({ type: "3d-tiles", source });
+  layer = view.addLayer({ type: "3d-tiles", source, model: modelProps() });
   layer.on("featureCreated", () => {
     params.features++;
   });
@@ -159,6 +172,13 @@ pane.addBinding(params, "picked", {
   rows: 10,
   label: "clicked",
 });
+const materialFolder = pane.addFolder({ title: "Material" });
+materialFolder.addBinding(material, "pointSize", { min: 1, max: 20, step: 1 });
+materialFolder.addBinding(material, "color", { color: { type: "int" } });
+materialFolder.addBinding(material, "opacity", { min: 0, max: 1, step: 0.01 });
+materialFolder.addBinding(material, "transparent");
+materialFolder.addBinding(material, "depthWrite");
+materialFolder.on("change", () => layer?.update({ model: modelProps() }));
 pane.addBinding(params, "url", { label: "custom url" });
 pane.addButton({ title: "Load custom url" }).on("click", () => {
   if (!params.url) {

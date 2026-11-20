@@ -5,7 +5,7 @@
 
 use bevy_ecs::{
     entity::Entity,
-    query::{Added, Changed, With, Without},
+    query::{Added, Changed, Without},
     system::{Commands, Query, Res, ResMut},
 };
 
@@ -20,8 +20,8 @@ use navara_feature_component::{
     render::RenderableFeature,
 };
 use navara_layer::{DeletePntsLayerMarker, LayerId, LayerStore, PntsLayer, UpdatePntsLayerMarker};
-use navara_material::{Appearance, ModelInternalMaterial, ModelMaterial};
-use navara_math::{Transform, Vec3};
+use navara_material::Appearance;
+use navara_math::Transform;
 
 use super::parser::get_geometry_info_from_pnts;
 use super::requester::PntsLayerDataRequesterMarker;
@@ -76,17 +76,12 @@ pub fn construct_model_by_pnts_layer(
         let mut appearance = Appearance::clone_model_or_default(&layer.appearances);
         appearance.should_rotate_in_default = false;
 
-        let (draco_attributes, positions_center, positions_handle) =
-            match get_geometry_info_from_pnts(&mut buf, req.handle) {
-                Some(r) => r,
-                None => continue,
-            };
+        let (internal, positions_center) = match get_geometry_info_from_pnts(&mut buf, req.handle) {
+            Some(r) => r,
+            None => continue,
+        };
 
-        appearance.internal = Some(ModelInternalMaterial {
-            draco_attributes,
-            point_cloud: true,
-            point_cloud_geodetic_normal: Vec3::ZERO,
-        });
+        appearance.internal = Some(internal);
 
         commands.spawn((
             LayerId(layer.layer_id.to_owned()),
@@ -103,14 +98,14 @@ pub fn construct_model_by_pnts_layer(
                 crs: CRS::Geocentric,
             },
             appearance,
+            // The tile itself is the bin; `PointCloudLayout` says where its
+            // points are.
             ModelBin {
-                handle: positions_handle,
+                handle: req.handle,
                 gltf_resource: None,
             },
             Transform::IDENTITY,
         ));
-
-        buf.remove(&req.handle);
     }
 }
 
@@ -137,22 +132,13 @@ pub fn update_model_by_pnts_layer(
     }
 }
 
-#[allow(clippy::type_complexity, clippy::too_many_arguments)]
 pub fn delete_model_by_pnts_layer(
     mut commands: Commands,
     mut buf: ResMut<BufferStore>,
     mut layer_store: ResMut<LayerStore>,
     deleted: Query<(Entity, &DeletePntsLayerMarker)>,
     pnts_layers: Query<(Entity, &PntsLayer)>,
-    features: Query<
-        &ModelBin,
-        (
-            With<LayerId>,
-            With<ModelGeometry>,
-            With<ModelMaterial>,
-            With<Transform>,
-        ),
-    >,
+    features: Query<&RenderableFeature>,
 ) {
     for (e, d) in &deleted {
         let entities = match layer_store.get(&d.0.clone()) {
@@ -160,10 +146,20 @@ pub fn delete_model_by_pnts_layer(
             None => continue,
         };
 
+        // The layer store holds the rendered features; the model bin and
+        // its `ModelGeometry` entity hang off each one.
         for e in entities {
-            if let Ok(f) = features.get(*e) {
-                buf.remove(&f.handle);
-            };
+            if let Ok(RenderableFeature::Model {
+                bin, feature_id, ..
+            }) = features.get(*e)
+            {
+                if let Some(bin) = bin {
+                    buf.remove(&bin.handle);
+                }
+                if let Ok(mut source) = commands.get_entity(*feature_id) {
+                    source.despawn();
+                }
+            }
             commands.entity(*e).despawn();
         }
 

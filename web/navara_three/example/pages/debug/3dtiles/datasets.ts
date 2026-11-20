@@ -83,7 +83,7 @@ export const DATASETS: Dataset[] = [
   ...specs(
     "PointCloud",
     ["PointCloudQuantized", "PointCloudQuantizedOctEncoded"],
-    "POSITION_QUANTIZED: not supported, nothing renders",
+    "POSITION_QUANTIZED; normals are not read",
   ),
   ...specs("GltfContent", ["glb"], "3D Tiles 1.1 glTF content"),
   ...specs("GltfContent", ["glTF"], "Plain .gltf content"),

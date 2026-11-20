@@ -2,6 +2,7 @@ import { Unimplemented } from "@navaramap/core";
 import {
   ModelMaterial as NavaraModelMaterial,
   ModelMesh as NavaraModelMesh,
+  PointColorsFormat,
   Vec3,
 } from "@navaramap/engine";
 import {
@@ -46,6 +47,16 @@ import type { PickableMesh } from "./pickableMesh";
 import { releaseGeometryArraysAfterUpload } from "./releaseGeometryArrays";
 
 export type ModelMaterial = MeshStandardMaterial | MeshPhysicalMaterial;
+
+/** `CONSTANT_RGBA` (`0xRRGGBBAA`, sRGB) as the PNTS base color. */
+function constantRgba(
+  rgba: number,
+): Pick<PntsProps, "baseColor" | "baseOpacity"> {
+  return {
+    baseColor: new Color().setHex(rgba >>> 8),
+    baseOpacity: (rgba & 0xff) / 0xff,
+  };
+}
 
 // TODO: Height to adjust the height based on its property.
 export type ModelBatchedAttributeName =
@@ -142,14 +153,22 @@ export class ModelMesh
       },
     };
 
+    const internal = meshMaterial.__internal__;
     const geodeticNormal: Vec3 =
-      meshMaterial.__internal__?.pointCloudGeodeticNormal ?? new Vec3(0, 0, 0);
+      internal?.pointCloudGeodeticNormal ?? new Vec3(0, 0, 0);
+    const layout = internal?.pointCloudLayout;
     const pntsInitialProps: PntsProps = {
       color: meshMaterial.color ?? 0,
       pointSize: meshMaterial.pointSize ?? 1,
       height: meshMaterial.height ?? 0,
+      opacity: meshMaterial.opacity,
+      transparent: meshMaterial.transparent,
+      depthWrite: meshMaterial.depthWrite,
       geodeticNormal,
-      srgbVertexColor: meshMaterial.__internal__?.pointCloud,
+      srgbVertexColor: internal?.pointCloud,
+      ...(layout?.colorsFormat === PointColorsFormat.Constant
+        ? constantRgba(layout.constantColor)
+        : {}),
     };
 
     this.traverse((object: Object3D) => {
@@ -357,7 +376,14 @@ export class ModelMesh
     const enhancer = createPntsEnhancer(points.material);
     this._pntsEnhancers.set(points, enhancer);
 
-    enhancer.mount(initialProps);
+    // glTF points: the layer tints their own base color and alpha instead of
+    // replacing them, as `tintBaseColor` does for meshes.
+    const { color, opacity } = points.material;
+    enhancer.mount(
+      initialProps.srgbVertexColor
+        ? initialProps
+        : { ...initialProps, baseColor: color.clone(), baseOpacity: opacity },
+    );
 
     points.material.customProgramCacheKey = () => enhancer.programCacheKey();
     points.material.onBeforeCompile = enhancer.transformShader;
@@ -402,6 +428,9 @@ export class ModelMesh
       color: material.color,
       pointSize: material.pointSize,
       height: material.height,
+      opacity: material.opacity,
+      transparent: material.transparent,
+      depthWrite: material.depthWrite,
     };
     for (const enhancer of this._pntsEnhancers.values()) {
       enhancer.update(pntsProps);
