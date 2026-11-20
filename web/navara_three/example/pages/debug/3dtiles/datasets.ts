@@ -19,6 +19,24 @@ const specs = (group: string, names: string[], note?: string): Dataset[] =>
     note,
   }));
 
+/**
+ * Wraps a tileset without a transform, which would sit at the Earth's center,
+ * as the external tileset of a root placed by `transform`.
+ */
+const placed = (url: string, transform: number[], box: number[]) =>
+  `data:application/json,${encodeURIComponent(
+    JSON.stringify({
+      asset: { version: "1.1" },
+      geometricError: 2,
+      root: {
+        transform,
+        boundingVolume: { box },
+        geometricError: 2,
+        content: { uri: url },
+      },
+    }),
+  )}`;
+
 export const DATASETS: Dataset[] = [
   ...specs("Batched", [
     "BatchedColors",
@@ -107,7 +125,7 @@ export const DATASETS: Dataset[] = [
     group: "MultipleContents",
     name: "MultipleContents",
     url: `${CESIUM_SPECS}/MultipleContents/MultipleContents/tileset_1.1.json`,
-    note: "Tile `contents`: not supported, nothing renders",
+    note: "Tile `contents`: the B3DM renders, the I3DM is skipped",
   },
   ...specs(
     "Instanced",
@@ -135,5 +153,21 @@ export const DATASETS: Dataset[] = [
     name: "TilesetWithTreeBillboards",
     url: `${SAMPLES}/1.0/TilesetWithTreeBillboards/tileset.json`,
     note: "I3DM: not supported, skipped",
+  },
+  {
+    group: "3d-tiles-samples 1.1",
+    name: "MultipleContents",
+    url: placed(
+      `${SAMPLES}/1.1/MultipleContents/tileset.json`,
+      // The sample's Sandcastle placement: ENU at (-75.152408, 39.9471, 1 m), scaled 15x.
+      [
+        14.499163085582246, 3.8437312364015646, 0, 0, -2.4679831941768637,
+        9.309623546506499, 11.499563834145725, 0, 2.9467488476199777,
+        -11.115603429622823, 9.631200944036403, 0, 1254717.3449038235,
+        -4732992.577051421, 4073484.9527697754, 1,
+      ],
+      [0.5, -0.5, 0, 0.5, 0, 0, 0, 0.5, 0, 0, 0, 0.1],
+    ),
+    note: "Tile `contents`: two GLBs (triangles and points) render together",
   },
 ];

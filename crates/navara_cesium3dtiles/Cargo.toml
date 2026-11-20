@@ -28,6 +28,7 @@ navara_fog.workspace = true
 navara_frame.workspace = true
 navara_memory.workspace = true
 rustc-hash.workspace = true
+smallvec.workspace = true
 
 [dev-dependencies]
 approx.workspace = true

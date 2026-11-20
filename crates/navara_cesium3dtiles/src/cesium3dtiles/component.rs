@@ -11,9 +11,10 @@
 //!     ↓
 //! Cesium3dTilesTree (root tile tree, attached to entity)
 //!     └── Cesium3dTileContent (recursive tile state, stored in tree)
-//!         ├── data_requester_id → DataRequester entity
-//!         └── rendered_tile_id → RenderedCesium3dTileContent entity
-//!                                     └── feature_id → Model entity
+//!         └── ContentSlot (one per content)
+//!             ├── data_requester_id → DataRequester entity
+//!             └── rendered_tile_id → RenderedCesium3dTileContent entity
+//!                                         └── feature_id → Model entity
 //! ```
 //!
 //! # Key Concepts
@@ -36,6 +37,7 @@ use navara_layer::Cesium3dTilesLayer;
 use navara_material::Appearance;
 use navara_math::{FloatType, Mat4, Transform, Vec3};
 use navara_parser::cesium3dtiles::{self, tileset::Refine};
+use smallvec::SmallVec;
 use std::{collections::HashMap, sync::Arc};
 use url::{ParseError, Url};
 
@@ -134,23 +136,13 @@ impl Cesium3dTilesTree {
 /// out of view. This prevents memory accumulation for deep tile hierarchies.
 #[derive(Debug)]
 pub struct Cesium3dTileContent {
-    /// Relative URL to tile content (may be a path, not full URL).
-    pub uri: Option<String>,
-    /// Entity with [`DataRequester`] for this tile's content.
-    ///
-    /// For renderable tiles this points to the content data requester
-    /// (b3dm/glb/pnts). For non-renderable JSON tiles this points to the
-    /// metadata data requester that fetched the nested `tileset.json` —
-    /// it is also the key into [`Cesium3dTilesNestedTreeMap`](super::Cesium3dTilesNestedTreeMap).
-    pub data_requester_id: Option<Entity>,
-    /// Entity with [`RenderedCesium3dTileContent`] when tile is rendered.
-    pub rendered_tile_id: Option<Entity>,
+    /// One slot for `content`, one per supported entry of `contents`; empty
+    /// for an empty tile. A [`ContentKind::Json`] slot is always the only one.
+    pub contents: SmallVec<[ContentSlot; 1]>,
     /// Child tiles (lazily allocated, cleared when out of view).
     pub children: Option<Vec<Cesium3dTileContent>>,
     /// Refinement strategy (REPLACE or ADD).
     pub refine: Refine,
-    /// Format of `uri`; `None` for an empty tile.
-    pub kind: Option<ContentKind>,
     /// Bounding volume for frustum culling and SSE distance. Built as an OBB
     /// for both region (ENU-aligned at patch center) and box (preserves the
     /// source orientation) sources, so the envelope stays tight against
@@ -164,22 +156,24 @@ pub struct Cesium3dTileContent {
 
 impl Cesium3dTileContent {
     pub fn new(tile: &cesium3dtiles::tileset::Tile, parent: Option<&Self>) -> Self {
-        // Legacy tilesets name the content URI `url`.
-        let uri = tile
-            .content
-            .as_ref()
-            .and_then(|c| c.uri.as_ref().or(c.url.as_ref()));
-        let (uri, kind) = match uri.map(|u| (u, ContentKind::from_uri(u))) {
-            Some((uri, Some(kind))) => (Some(uri.clone()), Some(kind)),
-            Some((uri, None)) if !uri.is_empty() => {
-                // TODO: support other formats like i3dm, cmpt, plain glTF, etc.
-                // Kept as an empty tile so its children still render.
-                // A data URI can be megabytes long.
-                let uri: String = uri.chars().take(128).collect();
-                warn!("Unsupported 3D Tiles content, skipping: {uri}");
-                (None, None)
-            }
-            _ => (None, None),
+        let contents = match (&tile.content, &tile.contents) {
+            (Some(content), _) => ContentSlot::new(content).into_iter().collect(),
+            (None, Some(contents)) => contents
+                .iter()
+                .filter_map(ContentSlot::new)
+                .filter(|slot| {
+                    // As in CesiumJS, which rejects an external tileset here.
+                    let is_tileset = slot.kind == ContentKind::Json;
+                    if is_tileset {
+                        warn!(
+                            "External tileset in 3D Tiles `contents`, skipping: {}",
+                            truncate_uri(&slot.uri)
+                        );
+                    }
+                    !is_tileset
+                })
+                .collect(),
+            (None, None) => SmallVec::new(),
         };
 
         // Per 3D Tiles 1.1 spec, `tile.transform` is defined relative to the parent
@@ -263,11 +257,8 @@ impl Cesium3dTileContent {
         };
         let default_refine = Refine::Replace;
         Self {
-            uri,
-            data_requester_id: None,
-            rendered_tile_id: None,
+            contents,
             children: None,
-            kind,
             bounding_volume,
             refine: match tile
                 .refine
@@ -284,48 +275,118 @@ impl Cesium3dTileContent {
 
     /// True for B3DM/PNTS/GLB, false for nested tileset.json or an empty tile.
     pub fn is_renderable_content(&self) -> bool {
-        self.kind.is_some_and(|kind| kind != ContentKind::Json)
+        self.contents
+            .first()
+            .is_some_and(|slot| slot.kind != ContentKind::Json)
+    }
+
+    /// The slot of a nested tileset.json.
+    pub fn tileset_slot(&self) -> Option<&ContentSlot> {
+        self.contents
+            .first()
+            .filter(|slot| slot.kind == ContentKind::Json)
+    }
+
+    /// Key of the loaded nested tileset in
+    /// [`Cesium3dTilesNestedTreeMap`](super::Cesium3dTilesNestedTreeMap).
+    pub fn tileset_requester_id(&self) -> Option<Entity> {
+        self.tileset_slot().and_then(|slot| slot.data_requester_id)
     }
 
     pub fn reset_state(&mut self) {
         self.state.reset();
     }
 
+    /// Whether every content has been drawn.
     pub fn is_rendered(
         &self,
         rendered_tiles: &mut Query<&mut RenderedCesium3dTileContent>,
         features: &Query<&FeatureId>,
         renderable_features: &Query<&RenderableFeature>,
     ) -> bool {
-        let Some(renderable_feature) = self
-            .rendered_tile_id
-            .and_then(|e| rendered_tiles.get(e).ok().and_then(|t| t.feature_id))
-            .and_then(|feature_id| features.get(feature_id).ok().and_then(|f| f.0))
-            .and_then(|renderable_feature_id| renderable_features.get(renderable_feature_id).ok())
-        else {
-            return false;
-        };
-
-        matches!(renderable_feature, RenderableFeature::Model { render_info, .. } if render_info.is_rendered)
+        self.all_contents_match(rendered_tiles, features, renderable_features, |f| {
+            matches!(f, RenderableFeature::Model { render_info, .. } if render_info.is_rendered)
+        })
     }
 
+    /// Whether every content is active.
     pub fn is_active(
         &self,
         rendered_tiles: &mut Query<&mut RenderedCesium3dTileContent>,
         features: &Query<&FeatureId>,
         renderable_features: &Query<&RenderableFeature>,
     ) -> bool {
-        let Some(renderable_feature) = self
-            .rendered_tile_id
-            .and_then(|e| rendered_tiles.get(e).ok().and_then(|t| t.feature_id))
-            .and_then(|feature_id| features.get(feature_id).ok().and_then(|f| f.0))
-            .and_then(|renderable_feature_id| renderable_features.get(renderable_feature_id).ok())
-        else {
-            return false;
-        };
-
-        matches!(renderable_feature, RenderableFeature::Model { active, .. } if *active)
+        self.all_contents_match(
+            rendered_tiles,
+            features,
+            renderable_features,
+            |f| matches!(f, RenderableFeature::Model { active, .. } if *active),
+        )
     }
+
+    fn all_contents_match(
+        &self,
+        rendered_tiles: &mut Query<&mut RenderedCesium3dTileContent>,
+        features: &Query<&FeatureId>,
+        renderable_features: &Query<&RenderableFeature>,
+        f: impl Fn(&RenderableFeature) -> bool,
+    ) -> bool {
+        !self.contents.is_empty()
+            && self.contents.iter().all(|slot| {
+                slot.rendered_tile_id
+                    .and_then(|e| rendered_tiles.get(e).ok().and_then(|t| t.feature_id))
+                    .and_then(|feature_id| features.get(feature_id).ok().and_then(|f| f.0))
+                    .and_then(|id| renderable_features.get(id).ok())
+                    .is_some_and(&f)
+            })
+    }
+}
+
+/// One content of a tile, with the entities that load and render it.
+#[derive(Debug)]
+pub struct ContentSlot {
+    /// Relative URL to the content (may be a path, not full URL).
+    pub uri: String,
+    pub kind: ContentKind,
+    /// Entity with [`DataRequester`](navara_data_requester::DataRequester)
+    /// for this content.
+    ///
+    /// For a [`ContentKind::Json`] slot this is the metadata data requester
+    /// that fetched the nested `tileset.json` — it is also the key into
+    /// [`Cesium3dTilesNestedTreeMap`](super::Cesium3dTilesNestedTreeMap).
+    pub data_requester_id: Option<Entity>,
+    /// Entity with [`RenderedCesium3dTileContent`] when the content is rendered.
+    pub rendered_tile_id: Option<Entity>,
+}
+
+impl ContentSlot {
+    /// `None` for a content without a URI or in an unsupported format.
+    fn new(content: &cesium3dtiles::tileset::Content) -> Option<Self> {
+        // Legacy tilesets name the content URI `url`.
+        let uri = content.uri.as_ref().or(content.url.as_ref())?;
+        let Some(kind) = ContentKind::from_uri(uri) else {
+            // TODO: support other formats like i3dm, cmpt, plain glTF, etc.
+            // The tile is kept so its children still render.
+            if !uri.is_empty() {
+                warn!(
+                    "Unsupported 3D Tiles content, skipping: {}",
+                    truncate_uri(uri)
+                );
+            }
+            return None;
+        };
+        Some(Self {
+            uri: uri.clone(),
+            kind,
+            data_requester_id: None,
+            rendered_tile_id: None,
+        })
+    }
+}
+
+/// A data URI can be megabytes long.
+fn truncate_uri(uri: &str) -> String {
+    uri.chars().take(128).collect()
 }
 
 /// Supported format of a tile's content.
@@ -586,6 +647,26 @@ mod tests {
         );
         let data = "data:application/octet-stream;base64,YjNkbQEAAAA=";
         assert_eq!(resolve_content_url(&base, data).unwrap().as_str(), data);
+    }
+
+    #[test]
+    fn contents_keep_supported_renderable_slots() {
+        let tile = |json: &str| {
+            let tile: cesium3dtiles::tileset::Tile = serde_json::from_str(json).unwrap();
+            Cesium3dTileContent::new(&tile, None)
+        };
+        let kinds = |t: &Cesium3dTileContent| t.contents.iter().map(|s| s.kind).collect::<Vec<_>>();
+
+        let multi = tile(
+            r#"{"contents": [{"uri": "a.b3dm"}, {"uri": "b.i3dm"}, {"uri": "c.glb"}, {"uri": "d.json"}]}"#,
+        );
+        assert_eq!(kinds(&multi), [ContentKind::B3dm, ContentKind::Glb]);
+        assert!(multi.is_renderable_content());
+
+        // A single `content` may still be a nested tileset.
+        let nested = tile(r#"{"content": {"uri": "d.json"}}"#);
+        assert_eq!(kinds(&nested), [ContentKind::Json]);
+        assert!(!nested.is_renderable_content());
     }
 
     #[test]
