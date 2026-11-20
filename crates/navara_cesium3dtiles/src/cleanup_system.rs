@@ -602,12 +602,9 @@ mod memory_budget_tests {
             layer_id,
             base_url: std::sync::Arc::new(url::Url::parse("https://example.com/t.json").unwrap()),
             root: crate::cesium3dtiles::Cesium3dTileContent {
-                uri: None,
-                data_requester_id: None,
-                rendered_tile_id: None,
+                contents: Default::default(),
                 children: None,
                 refine: navara_parser::cesium3dtiles::tileset::Refine::Replace,
-                kind: None,
                 bounding_volume: None,
                 transform: None,
                 state: Default::default(),

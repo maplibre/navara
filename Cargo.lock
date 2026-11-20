@@ -1824,6 +1824,7 @@ dependencies = [
  "navara_window",
  "rustc-hash 2.1.3",
  "serde_json",
+ "smallvec",
  "url",
 ]
 

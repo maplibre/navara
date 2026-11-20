@@ -60,7 +60,7 @@ Navara が読み取るのは pnts の feature table の一部です。点の色�
 | `EXT_meshopt_compression`    | meshopt 圧縮バッファのデコード。                                                              |
 
 :::note
-Implicit tiling には対応していないため、タイルセットは `tileset.json` で明示的なタイル階層を記述する必要があります。複数のコンテンツ（`contents`）を持つタイルは何も描画されません。読み取るのは単一の `content` のみです。
+Implicit tiling には対応していないため、タイルセットは `tileset.json` で明示的なタイル階層を記述する必要があります。
 :::
 
 ### タイルセットの機能
@@ -71,6 +71,7 @@ Implicit tiling には対応していないため、タイルセットは `tiles
 | タイルの `transform`                                            | ✅                   |
 | b3dm の `RTC_CENTER` と glTF の `CESIUM_RTC`                    | ✅                   |
 | `data:` URI のコンテンツ                                        | ✅                   |
+| タイルごとの複数のコンテンツ（`contents`）                      | ✅                   |
 | 1.0 以前のタイルセット（`content.url`、旧形式の b3dm ヘッダー） | ✅                   |
 | `viewerRequestVolume`                                           | ❌                   |
 | `asset.gltfUpAxis`                                              | ⚠️ `Y`（既定値）のみ |

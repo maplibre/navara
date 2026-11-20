@@ -60,7 +60,7 @@ Navara reads only part of the pnts feature table. Point colors are interpreted a
 | `EXT_meshopt_compression`    | Decoding of meshopt-compressed buffers.                                               |
 
 :::note
-Implicit tiling is not supported, so a tileset must describe its tile hierarchy explicitly in `tileset.json`. A tile with multiple contents (`contents`) renders nothing; only a single `content` is read.
+Implicit tiling is not supported, so a tileset must describe its tile hierarchy explicitly in `tileset.json`.
 :::
 
 ### Tileset features
@@ -71,6 +71,7 @@ Implicit tiling is not supported, so a tileset must describe its tile hierarchy 
 | Tile `transform`                                      | ✅                        |
 | b3dm `RTC_CENTER` and glTF `CESIUM_RTC`               | ✅                        |
 | `data:` URI content                                   | ✅                        |
+| Multiple contents per tile (`contents`)               | ✅                        |
 | Pre-1.0 tilesets (`content.url`, legacy b3dm headers) | ✅                        |
 | `viewerRequestVolume`                                 | ❌                        |
 | `asset.gltfUpAxis`                                    | ⚠️ `Y` (the default) only |
