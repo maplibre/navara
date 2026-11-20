@@ -12,7 +12,8 @@ export type PassSample = {
   cpuMs: number;
   /**
    * GPU time of the latest tick whose queries resolved, summed over every
-   * run of the pass in that tick; `undefined` without timer-query support.
+   * run of the pass in that tick; `undefined` without timer-query support,
+   * and once a frame was drawn without the pass.
    */
   gpuMs: number | undefined;
   calls: number;
@@ -43,6 +44,10 @@ export class PassProfiler {
   /** Per pass, the GPU time summed so far for the newest tick resolved. */
   private readonly gpuSums = new Map<string, { tick: number; ms: number }>();
   private tick = 0;
+  /** Per pass, the tick it last ran in. */
+  private readonly lastRun = new Map<string, number>();
+  /** The last tick any pass ran in. */
+  private lastDrawn = -1;
   private enabled = false;
 
   constructor(
@@ -66,6 +71,8 @@ export class PassProfiler {
     for (const pass of Array.from(this.wrapped.keys())) this.unwrap(pass);
     this.samples.clear();
     this.gpuSums.clear();
+    this.lastRun.clear();
+    this.lastDrawn = -1;
   }
 
   /** Starts a tick: clears the per-tick counters and collects GPU results. */
@@ -91,6 +98,13 @@ export class PassProfiler {
       }
       sum.ms += result.ms;
       sample.gpuMs = sum.ms;
+    }
+    // A pass left out of a later drawn frame (disabled) has stopped
+    // running; its last time would otherwise stay forever, also in sums.
+    for (const [name, sample] of this.samples) {
+      if ((this.lastRun.get(name) ?? -1) < this.lastDrawn) {
+        sample.gpuMs = undefined;
+      }
     }
   }
 
@@ -136,6 +150,10 @@ export class PassProfiler {
     this.wrapped.set(pass, { name, own });
     const gpu = this.gpu;
     const currentTick = () => this.tick;
+    const ran = () => {
+      this.lastRun.set(name, this.tick);
+      this.lastDrawn = this.tick;
+    };
     const renderer = this.renderer;
     pass.render = function (
       this: Pass,
@@ -156,6 +174,7 @@ export class PassProfiler {
         if (timed) gpu.end();
 
         sample.ran = true;
+        ran();
         sample.cpuMs += performance.now() - start;
         sample.calls += info.calls - calls;
         sample.triangles += info.triangles - triangles;
@@ -171,5 +190,6 @@ export class PassProfiler {
     this.wrapped.delete(pass);
     this.samples.delete(entry.name);
     this.gpuSums.delete(entry.name);
+    this.lastRun.delete(entry.name);
   }
 }
