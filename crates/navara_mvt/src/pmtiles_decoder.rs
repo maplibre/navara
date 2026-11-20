@@ -87,4 +87,10 @@ impl TilePayloadDecoder for MvtPmtilesDecoder {
             )
         }
     }
+
+    fn max_feature_height(&self) -> f64 {
+        navara_vector_tile::max_feature_height(
+            self.layers.iter().flat_map(|l| l.appearances.iter()),
+        )
+    }
 }

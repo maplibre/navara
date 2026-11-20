@@ -368,10 +368,7 @@ impl VectorTileSource for PmtilesSource {
                             DataRequesterExtension::Mvt,
                         )
                         .with_byte_range(request.offset, request.length),
-                        OrderByDistance {
-                            sse: tile.sse,
-                            distance: tile.distance_from_camera,
-                        },
+                        tile.load_order(),
                         priority,
                     ))
                     .id();
@@ -386,10 +383,7 @@ impl VectorTileSource for PmtilesSource {
                 if !self.leaf_reqs.contains_key(&leaf_offset) {
                     // Order this leaf by the tile that needs it, so leaves for
                     // the view center are fetched before peripheral ones.
-                    let order = PmtilesMetaOrder(OrderByDistance {
-                        sse: tile.sse,
-                        distance: tile.distance_from_camera,
-                    });
+                    let order = PmtilesMetaOrder(tile.load_order());
                     let req = self.spawn_meta(commands, buf, request, order);
                     self.leaf_reqs.insert(leaf_offset, req);
                 }
@@ -456,5 +450,9 @@ impl VectorTileSource for PmtilesSource {
             Resolution::NeedLeaf { .. } => ReadyState::Pending,
             Resolution::Tile { .. } => self.tile_ready_state(tile, data_requesters),
         }
+    }
+
+    fn max_feature_height(&self) -> f64 {
+        self.decoder.max_feature_height()
     }
 }

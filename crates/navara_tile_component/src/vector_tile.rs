@@ -1,5 +1,5 @@
 use bevy_ecs::prelude::*;
-use navara_component::Deleted;
+use navara_component::{Deleted, OrderByDistance};
 use navara_core::{
     Aabb, Ellipsoid, Extent, Radians, TileXYZ, TilingScheme, WGS84_64,
     get_ellipsoid_terrain_level_zero_maximum_geometric_error, get_level_maximum_geometric_error,
@@ -90,6 +90,15 @@ impl VectorTile {
             were_children_rendered: false,
             is_rendered: false,
             ready_parent_tile_handle: None,
+        }
+    }
+
+    /// The order this tile's data is requested and built in: nearest first,
+    /// whatever its screen-space error.
+    pub fn load_order(&self) -> OrderByDistance {
+        OrderByDistance {
+            sse: 0.,
+            distance: self.distance_from_camera,
         }
     }
 

@@ -33,8 +33,8 @@ use crate::{
 
 use super::render::{OwningVectorTile, RenderedTile, VectorTileGpuCost};
 use super::traverse::{
-    PendingActivations, TraversalResult, activate_if_changed, are_all_renderable_features_active,
-    spawn_tile_entity, traverse_tile, write_activation,
+    FEATURE_HEIGHT_MARGIN, PendingActivations, TraversalResult, activate_if_changed,
+    are_all_renderable_features_active, spawn_tile_entity, traverse_tile, write_activation,
 };
 
 /// Generic tile update system that delegates to `TileSource::prepare_tile`.
@@ -64,7 +64,7 @@ pub fn update_tiles(
     window: Res<Window>,
     mut source_query: Query<(Ref<VectorTileSourceResources>, &mut TileSource), Without<Deleted>>,
     mut camera_set: ParamSet<(
-        Query<(&CameraMarker, Ref<Transform>, &CameraFrustum)>,
+        Query<(&CameraMarker, Ref<Transform>, Ref<CameraFrustum>)>,
         Query<(Ref<Fog>, Ref<DynamicSse>)>,
     )>,
     mut data_requester: ParamSet<(
@@ -120,11 +120,23 @@ pub fn update_tiles(
             continue;
         };
 
+        // A layer update can raise its features, so tiles culled below them
+        // are tested again.
+        let feature_height_margin = tile_source
+            .0
+            .max_feature_height()
+            .max(FEATURE_HEIGHT_MARGIN);
+        if tc.feature_height_margin != feature_height_margin {
+            tc.feature_height_margin = feature_height_margin;
+            tc.needs_update = true;
+        }
+
         for (_, camera, frustum) in &camera {
             let needs_update = is_data_requester_changed
                 || tc.needs_update
                 || camera.is_added()
                 || camera.is_changed()
+                || frustum.is_changed()
                 || are_features_changed
                 || are_renderable_features_rendered
                 || source.is_added()
@@ -195,7 +207,7 @@ pub fn update_tiles(
                 &mut tc,
                 &frame,
                 &camera,
-                frustum,
+                &frustum,
                 &window,
                 &WGS84_64,
                 occluder,
@@ -1354,7 +1366,7 @@ mod keep_drawn_descendants_tests {
     use navara_feature_component::render::PointRenderInformation;
     use navara_frame::FramePlugin;
     use navara_math::Vec3;
-    use navara_tile_component::MinZoomDescentBudget;
+    use navara_tile_component::{MinZoomDescentBudget, Tile};
     use std::any::Any;
 
     type Coords = (usize, usize, usize);
@@ -1367,10 +1379,12 @@ mod keep_drawn_descendants_tests {
     const DRAWN_CHILD: Coords = (2, 1, 2);
     const NEW_CHILD: Coords = (3, 1, 2);
 
-    /// Every tile is loaded, except the `pending` ones.
+    /// Every tile is loaded, except the `pending` and `failed` ones.
     #[derive(Default)]
     struct MockSource {
         pending: FxHashSet<Coords>,
+        failed: FxHashSet<Coords>,
+        max_feature_height: f64,
         /// Every `prepare_tile` call, in order.
         requests: Vec<(Coords, Priority)>,
     }
@@ -1417,9 +1431,15 @@ mod keep_drawn_descendants_tests {
             let coords = (tile.coords.x, tile.coords.y, tile.coords.z);
             if self.pending.contains(&coords) {
                 ReadyState::Pending
+            } else if self.failed.contains(&coords) {
+                ReadyState::Failed
             } else {
                 ReadyState::Success
             }
+        }
+
+        fn max_feature_height(&self) -> f64 {
+            self.max_feature_height
         }
     }
 
@@ -1504,13 +1524,18 @@ mod keep_drawn_descendants_tests {
 
     /// Moves the camera above the equator at `lng` degrees.
     fn look_from(app: &mut App, scene: &Scene, lng: f64) {
+        look_with_fov(app, scene, lng, 90.);
+    }
+
+    /// Like [`look_from`], with a `fov` degrees wide view.
+    fn look_with_fov(app: &mut App, scene: &Scene, lng: f64, fov: f64) {
         let lng = lng.to_radians();
         let position = Vec3::new(lng.cos(), lng.sin(), 0.) * (WGS84_A_64 * 2.);
         let transform = Transform::from_translation(position).looking_at(Vec3::ZERO, Vec3::Z);
         let world = app.world_mut();
         world.entity_mut(scene.camera).insert((
             transform,
-            CameraFrustum::new(&transform, 0.1, 1e9, 90f64.to_radians(), 1.),
+            CameraFrustum::new(&transform, 0.1, 1e9, fov.to_radians(), 1.),
         ));
         world
             .entity_mut(scene.occluder)
@@ -1527,12 +1552,24 @@ mod keep_drawn_descendants_tests {
         }
     }
 
+    fn set_failed(app: &mut App, scene: &Scene, coords: Coords) {
+        let mut source = app.world_mut().get_mut::<TileSource>(scene.source).unwrap();
+        let mock = source.0.as_any_mut().downcast_mut::<MockSource>().unwrap();
+        mock.failed.insert(coords);
+    }
+
     fn set_max_sse(app: &mut App, scene: &Scene, max_sse: f64) {
-        let mut source = app
+        traversal_config(app, scene).max_sse_bits = (max_sse as f32).to_bits();
+    }
+
+    fn traversal_config<'a>(app: &'a mut App, scene: &Scene) -> &'a mut TraversalConfig {
+        &mut app
             .world_mut()
             .get_mut::<VectorTileSourceResources>(scene.source)
-            .unwrap();
-        source.source_id.traversal_config.max_sse_bits = (max_sse as f32).to_bits();
+            .unwrap()
+            .into_inner()
+            .source_id
+            .traversal_config
     }
 
     fn traverse(app: &mut App, scene: &Scene) {
@@ -1644,10 +1681,11 @@ mod keep_drawn_descendants_tests {
         assert!(!is_drawn(&app, &scene, PARENT));
     }
 
-    /// A drawn child that leaves the view in the pass where another one comes
-    /// into it is not a tile to keep: the parent takes over in that same pass.
+    /// A drawn child leaves the view in the pass where a loading one comes
+    /// into it. The parent is not on screen, so it does not take over: the
+    /// area stays empty until the child loads.
     #[test]
-    fn it_should_fall_back_when_the_drawn_child_leaves_the_view() {
+    fn it_should_leave_the_area_empty_when_the_drawn_child_leaves_the_view() {
         let (mut app, scene) = setup();
         settle(&mut app, &scene);
         set_pending(&mut app, &scene, NEW_CHILD, true);
@@ -1656,7 +1694,12 @@ mod keep_drawn_descendants_tests {
         traverse(&mut app, &scene);
 
         assert!(!is_drawn(&app, &scene, DRAWN_CHILD));
-        assert!(is_drawn(&app, &scene, PARENT));
+        assert!(!is_drawn(&app, &scene, PARENT));
+
+        set_pending(&mut app, &scene, NEW_CHILD, false);
+        settle(&mut app, &scene);
+        assert!(is_drawn(&app, &scene, NEW_CHILD));
+        assert!(!is_drawn(&app, &scene, PARENT));
     }
 
     /// The parent is not loaded when a zoom-out selects it: the kept tiles
@@ -1797,5 +1840,248 @@ mod keep_drawn_descendants_tests {
             .get::<VectorTileQuadtree>(scene.quadtree)
             .unwrap();
         assert!(qt.qt.leaf(DRAWN_CHILD).is_none());
+    }
+
+    /// Under `DRAWN_CHILD`, seen through a narrow view at lng 0°: the tile in
+    /// view (lng 0°..45°), and its sibling east of it (lng 45°..90°), outside
+    /// the frustum but above the horizon.
+    const IN_VIEW: Coords = (4, 3, 3);
+    const OUT_OF_VIEW: Coords = (5, 3, 3);
+    /// In view, under another z2 tile (lng 0°..45°, south).
+    const OTHER_IN_VIEW: Coords = (4, 4, 3);
+
+    fn narrow_scene(max_zoom: usize) -> (App, Scene) {
+        let (mut app, scene) = setup();
+        traversal_config(&mut app, &scene).max_zoom = max_zoom;
+        look_with_fov(&mut app, &scene, 0., 20.);
+        (app, scene)
+    }
+
+    fn is_only_outside_the_frustum(app: &App, scene: &Scene, coords: Coords) -> bool {
+        let world = app.world();
+        let tile = tile(app, scene, coords);
+        !tile.intersect_with_camera_frustum(world.get::<CameraFrustum>(scene.camera).unwrap())
+            && !tile
+                .is_occluded_by_horizon(world.get::<EllipsoidalOccluder>(scene.occluder).unwrap())
+    }
+
+    fn requested(app: &mut App, scene: &Scene) -> Vec<Coords> {
+        take_requests(app, scene)
+            .into_iter()
+            .map(|(coords, _)| coords)
+            .collect()
+    }
+
+    #[test]
+    fn it_should_not_draw_a_tile_outside_the_frustum() {
+        let (mut app, scene) = narrow_scene(3);
+        settle(&mut app, &scene);
+
+        assert!(is_only_outside_the_frustum(&app, &scene, OUT_OF_VIEW));
+        assert!(!is_drawn(&app, &scene, OUT_OF_VIEW));
+        assert!(is_drawn(&app, &scene, IN_VIEW));
+        assert!(!is_drawn(&app, &scene, DRAWN_CHILD));
+    }
+
+    /// On a zoom-in, the drawn tile gives way once its children in view are
+    /// ready, without requesting or waiting for the one outside the frustum.
+    #[test]
+    fn it_should_hand_over_without_waiting_for_a_child_outside_the_frustum() {
+        let (mut app, scene) = narrow_scene(2);
+        settle(&mut app, &scene);
+        assert!(is_drawn(&app, &scene, DRAWN_CHILD));
+
+        set_pending(&mut app, &scene, OUT_OF_VIEW, true);
+        traversal_config(&mut app, &scene).max_zoom = 3;
+        take_requests(&mut app, &scene);
+        settle(&mut app, &scene);
+
+        assert!(is_drawn(&app, &scene, IN_VIEW));
+        assert!(!is_drawn(&app, &scene, DRAWN_CHILD));
+        assert!(!requested(&mut app, &scene).contains(&OUT_OF_VIEW));
+    }
+
+    #[test]
+    fn it_should_keep_the_drawn_tile_on_a_zoom_in_until_its_children_in_view_are_ready() {
+        let (mut app, scene) = narrow_scene(2);
+        settle(&mut app, &scene);
+
+        set_pending(&mut app, &scene, IN_VIEW, true);
+        traversal_config(&mut app, &scene).max_zoom = 3;
+        settle(&mut app, &scene);
+        assert!(is_drawn(&app, &scene, DRAWN_CHILD));
+        assert!(!is_drawn(&app, &scene, IN_VIEW));
+
+        set_pending(&mut app, &scene, IN_VIEW, false);
+        settle(&mut app, &scene);
+        assert!(is_drawn(&app, &scene, IN_VIEW));
+        assert!(!is_drawn(&app, &scene, DRAWN_CHILD));
+    }
+
+    /// Nothing is on screen, so no ancestor stands in for a loading tile: the
+    /// tiles meeting the error are the only ones requested, and each is drawn
+    /// once it is ready.
+    #[test]
+    fn it_should_request_only_the_tiles_meeting_the_error_on_a_cold_start() {
+        // The error `IN_VIEW` has, read from another scene's pass.
+        let in_view_sse = {
+            let (mut app, scene) = narrow_scene(5);
+            traverse(&mut app, &scene);
+            let sse = tile(&app, &scene, IN_VIEW).sse;
+            assert!(sse < tile(&app, &scene, DRAWN_CHILD).sse * 0.9);
+            sse
+        };
+        let (mut app, scene) = narrow_scene(5);
+        set_max_sse(&mut app, &scene, in_view_sse * 1.01);
+        for coords in [ROOT, PARENT, DRAWN_CHILD, IN_VIEW] {
+            set_pending(&mut app, &scene, coords, true);
+        }
+        settle(&mut app, &scene);
+
+        let requests = take_requests(&mut app, &scene);
+        assert!(requests.contains(&(IN_VIEW, Priority::Medium)));
+        for coords in [ROOT, PARENT, DRAWN_CHILD] {
+            assert!(!requests.iter().any(|(requested, _)| *requested == coords));
+            assert!(!is_drawn(&app, &scene, coords));
+        }
+        assert!(!requests.iter().any(|((_, _, z), _)| *z > 3));
+
+        set_pending(&mut app, &scene, IN_VIEW, false);
+        settle(&mut app, &scene);
+        assert!(is_drawn(&app, &scene, IN_VIEW));
+    }
+
+    /// A layer update that draws the features higher tests the tiles again
+    /// with the AABB raised that far, without a camera move.
+    #[test]
+    fn it_should_traverse_again_when_the_features_are_drawn_higher() {
+        let (mut app, scene) = setup();
+        settle(&mut app, &scene);
+        // The margin, and the frame of the last traversal.
+        let tc = |app: &App| {
+            let tc = app
+                .world()
+                .get::<TileCacheManager>(scene.tile_cache_manager)
+                .unwrap();
+            (tc.feature_height_margin, tc.last_rendered_frame)
+        };
+        let (margin, traversed_at) = tc(&app);
+        assert_eq!(margin, FEATURE_HEIGHT_MARGIN);
+        app.update();
+        assert_eq!(tc(&app).1, traversed_at);
+
+        let mut source = app.world_mut().get_mut::<TileSource>(scene.source).unwrap();
+        let mock = source.0.as_any_mut().downcast_mut::<MockSource>().unwrap();
+        mock.max_feature_height = 2000.;
+        app.update();
+
+        let (margin, now) = tc(&app);
+        assert_eq!(margin, 2000.);
+        assert!(now > traversed_at);
+    }
+
+    /// Every child of `DRAWN_CHILD` in view failed, and the other one is
+    /// outside the frustum: `DRAWN_CHILD` is the finest data there, so it is
+    /// requested and drawn.
+    #[test]
+    fn it_should_draw_the_tile_whose_children_in_view_failed_on_a_cold_start() {
+        let (mut app, scene) = narrow_scene(3);
+        for coords in [(4, 2, 3), (5, 2, 3), IN_VIEW, OUT_OF_VIEW] {
+            set_failed(&mut app, &scene, coords);
+        }
+        set_pending(&mut app, &scene, DRAWN_CHILD, true);
+        settle(&mut app, &scene);
+        assert!(is_only_outside_the_frustum(&app, &scene, OUT_OF_VIEW));
+        assert!(requested(&mut app, &scene).contains(&DRAWN_CHILD));
+        assert!(!is_drawn(&app, &scene, DRAWN_CHILD));
+
+        set_pending(&mut app, &scene, DRAWN_CHILD, false);
+        settle(&mut app, &scene);
+        assert!(is_drawn(&app, &scene, DRAWN_CHILD));
+        assert!(!is_drawn(&app, &scene, PARENT));
+        assert!(is_drawn(&app, &scene, OTHER_IN_VIEW));
+    }
+
+    /// On a zoom-in, the drawn tile stays when its children in view failed.
+    #[test]
+    fn it_should_keep_the_drawn_tile_when_its_children_in_view_failed() {
+        let (mut app, scene) = narrow_scene(2);
+        settle(&mut app, &scene);
+        assert!(is_drawn(&app, &scene, DRAWN_CHILD));
+
+        for coords in [(4, 2, 3), (5, 2, 3), IN_VIEW, OUT_OF_VIEW] {
+            set_failed(&mut app, &scene, coords);
+        }
+        traversal_config(&mut app, &scene).max_zoom = 3;
+        settle(&mut app, &scene);
+        assert!(is_drawn(&app, &scene, DRAWN_CHILD));
+        assert!(is_drawn(&app, &scene, OTHER_IN_VIEW));
+    }
+
+    /// The error wants tiles past `max_zoom`: the tile at `max_zoom` is the
+    /// finest data, so it is requested and drawn.
+    #[test]
+    fn it_should_request_the_max_zoom_tile_when_the_error_wants_finer() {
+        let (mut app, scene) = setup();
+        set_pending(&mut app, &scene, DRAWN_CHILD, true);
+        settle(&mut app, &scene);
+        assert!(requested(&mut app, &scene).contains(&DRAWN_CHILD));
+
+        set_pending(&mut app, &scene, DRAWN_CHILD, false);
+        settle(&mut app, &scene);
+        assert!(is_drawn(&app, &scene, DRAWN_CHILD));
+    }
+
+    /// The tiles load nearest first whatever their error, clamp-to-ground
+    /// layers included.
+    #[test]
+    fn it_should_load_the_tiles_nearest_first() {
+        for has_clamp_to_ground in [false, true] {
+            let (mut app, scene) = narrow_scene(3);
+            traversal_config(&mut app, &scene).has_clamp_to_ground = has_clamp_to_ground;
+            traverse(&mut app, &scene);
+
+            let world = app.world_mut();
+            let mut orders: Vec<(f64, OrderByDistance)> = world
+                .query::<(&RenderedTile, &OrderByDistance)>()
+                .iter(world)
+                .map(|(rendered, order)| {
+                    let qt = world.get::<VectorTileQuadtree>(scene.quadtree).unwrap();
+                    (
+                        qt.qt
+                            .get(rendered.tile_handle)
+                            .unwrap()
+                            .distance_from_camera,
+                        order.clone(),
+                    )
+                })
+                .collect();
+            assert!(orders.len() > 1);
+            orders.sort_by(|(_, a), (_, b)| a.cmp(b));
+            assert!(orders.is_sorted_by(|(a, _), (b, _)| a <= b));
+        }
+    }
+
+    /// A clamp-to-ground layer backs the drape of terrain tiles outside the
+    /// frustum too.
+    #[test]
+    fn it_should_draw_a_texturized_tile_outside_the_frustum() {
+        let (mut app, scene) = narrow_scene(3);
+        traversal_config(&mut app, &scene).has_clamp_to_ground = true;
+        settle(&mut app, &scene);
+
+        let world = app.world_mut();
+        let drawn: Vec<Coords> = world
+            .query::<&RenderedTile>()
+            .iter(world)
+            .map(|tile| {
+                let qt = world.get::<VectorTileQuadtree>(scene.quadtree).unwrap();
+                let coords = qt.qt.get(tile.tile_handle).unwrap().coords;
+                (coords.x, coords.y, coords.z)
+            })
+            .collect();
+        assert!(drawn.into_iter().any(|coords| {
+            is_drawn(&app, &scene, coords) && is_only_outside_the_frustum(&app, &scene, coords)
+        }));
     }
 }

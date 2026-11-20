@@ -1,6 +1,6 @@
 use bevy_ecs::{entity::Entity, system::Commands};
 use navara_buffer_store::BufferStore;
-use navara_component::{OrderByDistance, Priority};
+use navara_component::Priority;
 use navara_core::TilingScheme;
 use navara_data_requester::{DataRequester, DataRequesterExtension};
 use navara_tile_component::{TileHandle, VectorTile};
@@ -29,10 +29,7 @@ pub(crate) fn request_mvt_data(
                 buf,
                 DataRequesterExtension::Mvt,
             ),
-            OrderByDistance {
-                sse: tile.sse,
-                distance: tile.distance_from_camera,
-            },
+            tile.load_order(),
             priority,
         ))
         .id();

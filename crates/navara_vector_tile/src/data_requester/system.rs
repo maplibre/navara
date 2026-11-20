@@ -5,7 +5,7 @@ use bevy_ecs::{
 };
 use navara_component::{Deleted, Ignored, OrderByDistance, Priority, Requested, Resumed, Waiting};
 use navara_data_requester::DataRequester;
-use navara_tile_component::{TileHandle, VectorTileQuadtree};
+use navara_tile_component::{TileHandle, VectorTile, VectorTileQuadtree};
 use rustc_hash::FxHashMap;
 
 use crate::{
@@ -160,14 +160,11 @@ pub fn filter_requestable_data_requester(
         };
 
         // The tile was visited by the traversal that wants it, so its
-        // screen-space error and distance are current.
-        let wanted_order = qt.qt.get(handle).map_or_else(
-            || order.clone(),
-            |tile| OrderByDistance {
-                sse: tile.sse,
-                distance: tile.distance_from_camera,
-            },
-        );
+        // distance is current.
+        let wanted_order = qt
+            .qt
+            .get(handle)
+            .map_or_else(|| order.clone(), VectorTile::load_order);
         candidates.push(Candidate {
             entity,
             source,

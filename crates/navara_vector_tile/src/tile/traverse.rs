@@ -1,8 +1,8 @@
 use bevy_ecs::prelude::*;
-use navara_component::{OrderByDistance, Priority};
+use navara_component::Priority;
 use std::ops::Range;
 
-use navara_core::Ellipsoid;
+use navara_core::{Aabb, Ellipsoid};
 
 use navara_buffer_store::BufferStore;
 use navara_feature_component::{id::FeatureId, render::RenderableFeature};
@@ -28,16 +28,26 @@ use crate::{
 use super::render::RenderedTile;
 
 // This process works in the following steps.
-// 1. Check if the AABB of the tile is within the camera's frustum.(Frustum culling)
-// 2. Check horizon culling because the frustum culling isn't enough.
+// 1. Check horizon culling.
+// 2. Check if the AABB of the tile, raised by how high its features are drawn, is within the camera's
+//    frustum. A tile outside it is neither requested nor drawn, except for texturized layers.
 // 3. Check SSE is within max SSE.
 // 4. If SSE works and the tile is ready, the tile should be rendered.
 // 5. On the other hand, if SSE works but the tile isn't loaded, the tile should be requested, not rendered.
 // 6. If above steps aren't matched, traverse children.
-// 7. If children couldn't be rendered completely, use this tile instead. But if this tile isn't on screen
-//    and tiles under it are, keep those drawn and leave the missing children's area empty until they load.
+// 7. If children couldn't be rendered completely and this tile is on screen, keep this tile until they are.
+//    If it isn't on screen, it is neither requested nor drawn while a child is loading: each ready child is
+//    drawn on its own and the missing children's area stays empty until they load.
 // 8. If all children is rendered, use children.
-// 9. If the tile is overscaled, it's leaf is marked just in quadtree, but it isn't actually rendered. It reuses a parent tile.
+// 9. If no child in view has data (each is past `max_zoom`, failed or culled), this tile is the finest data
+//    there, so it is requested and drawn like a leaf.
+// 10. If the tile is overscaled, it's leaf is marked just in quadtree, but it isn't actually rendered. It reuses a parent tile.
+
+/// How far above its terrain the features of a non-texturized tile are at least assumed to reach
+/// when it is tested against the frustum: data-driven heights, such as building extrusions, stand
+/// above the ground the tile's AABB covers and are not known before the tile loads. A source whose
+/// layer materials draw higher raises it (`TileCacheManager::feature_height_margin`).
+pub const FEATURE_HEIGHT_MARGIN: FloatType = 500.;
 
 #[allow(clippy::too_many_arguments)]
 pub fn traverse_tile(
@@ -100,7 +110,7 @@ pub fn traverse_tile(
         .for_max_sse(max_sse);
 
     if tile.coords.z > traversal_config.max_zoom && !is_texturized {
-        return TraversalResult::NotFound;
+        return TraversalResult::NoData;
     }
 
     // Borrow the terrain elevation so the SSE matches the terrain's subdivision
@@ -114,7 +124,17 @@ pub fn traverse_tile(
         return TraversalResult::Culled;
     }
 
-    let is_culled_by_frustum = !tile.intersect_with_camera_frustum(frustum);
+    // A texturized tile backs the drape of the terrain tiles in its area, and
+    // terrain tiles outside the frustum are drawn too, so it is still selected.
+    let is_culled_by_frustum = if is_texturized {
+        !tile.intersect_with_camera_frustum(frustum)
+    } else {
+        let aabb = raise_aabb(tile.aabb(), tc.feature_height_margin);
+        if !tile.is_root() && !frustum.intersection_with_aabb(&aabb) {
+            return TraversalResult::Culled;
+        }
+        false
+    };
 
     let is_overscaled = ready_parent_tile_handle.is_some()
         && tile.coords.z > traversal_config.max_zoom
@@ -223,6 +243,13 @@ pub fn traverse_tile(
     }
 
     let is_renderable = is_rendered_last_frame || is_tile_ready;
+    // Frustum-culled (texturized) tiles still request but demoted, so in-view
+    // tiles win the pending-request slots.
+    let request_priority = if is_culled_by_frustum {
+        Priority::Medium.demote()
+    } else {
+        Priority::Medium
+    };
 
     if meets_sse || meets_sse_ancestors {
         // The overscaled tile means that the tiles reached the max zoom level,
@@ -243,8 +270,6 @@ pub fn traverse_tile(
         // once, below, after its children.
         let is_requested_below = were_children_rendered && !is_renderable;
         if !meets_sse_ancestors && !is_requested_below {
-            // Frustum-culled tiles still request (parent backfill) but
-            // demoted, so in-view tiles win the pending-request slots.
             request_tile_data(
                 command,
                 source,
@@ -253,11 +278,7 @@ pub fn traverse_tile(
                 handle,
                 buf,
                 data_requesters,
-                if is_culled_by_frustum {
-                    Priority::Low.demote()
-                } else {
-                    Priority::Low
-                },
+                request_priority,
             );
         }
 
@@ -266,14 +287,14 @@ pub fn traverse_tile(
             // parent waits on this tile forever and never hands over to its
             // other children.
             return if is_tile_failed {
-                TraversalResult::Failed
+                TraversalResult::NoData
             } else {
                 TraversalResult::NotFound
             };
         }
     }
 
-    // Culled tiles do not traverse children, but they are rendered to prevent parent tiles from flickering.
+    // A frustum-culled (texturized) tile is drawn without descending.
     if !is_culled_by_frustum && let Some(children) = VectorTile::traversable_children(qt, handle) {
         let mut any_children_rendered = false;
 
@@ -293,8 +314,12 @@ pub fn traverse_tile(
         let mut queued_descendants: Vec<Range<usize>> = Vec::with_capacity(children.len());
         // Children that can be drawn as they are: selected, with every mesh built.
         let mut ready_children = vec![false; children.len()];
-        // Children on screen, or that keep the tiles on screen under them.
+        // Children on screen.
         let mut drawn_children = vec![false; children.len()];
+        // Whether a child is past `max_zoom` or failed, and whether one is
+        // neither that nor culled: drawn, ready or loading.
+        let mut any_child_without_data = false;
+        let mut any_child_with_data = false;
 
         // Overscaled tile is actually not rendered, since parent tile is reused in the rendering engine side.
         let mut overscaled_children_indices = vec![];
@@ -337,6 +362,12 @@ pub fn traverse_tile(
             );
             queued_descendants.push(queued_start..activations.mark());
 
+            match traversal_result {
+                TraversalResult::NoData => any_child_without_data = true,
+                TraversalResult::Culled => {}
+                _ => any_child_with_data = true,
+            }
+
             if matches!(
                 traversal_result,
                 TraversalResult::NotFound | TraversalResult::DescendantsKept
@@ -346,13 +377,9 @@ pub fn traverse_tile(
                 are_all_children_activated = false;
             }
 
-            if matches!(traversal_result, TraversalResult::DescendantsKept) {
-                drawn_children[i] = true;
-            }
-
             if matches!(
                 traversal_result,
-                TraversalResult::NotFound | TraversalResult::Culled | TraversalResult::Failed
+                TraversalResult::NotFound | TraversalResult::Culled | TraversalResult::NoData
             ) {
                 hidden_children_indices.push(i);
             }
@@ -423,33 +450,41 @@ pub fn traverse_tile(
             }
         }
 
+        // No child in view has data, so this tile is the finest data there.
+        let is_finest_data = any_child_without_data && !any_child_with_data;
+        // While a child is missing and this tile isn't on screen, each ready
+        // child is drawn on its own instead of this tile, and the missing
+        // children's area stays empty until they load. Falling back to this
+        // tile would trade them for a coarser tile: low zoom tiles often drop
+        // most features or have none, and while the memory load gate is
+        // closed nothing new loads to replace it, so the working set stays
+        // frozen rather than coarsened. A texturized tile still falls back
+        // unless tiles under it are on screen: the drape takes the nearest
+        // built ancestor where a finer tile is missing.
+        let leaves_missing_children_empty = !is_drawn && !is_texturized;
+
         // This condition should be avoided when overscaled children are selected.
         // We assume vector tiles is continuous data, so a tile that is over `max_zoom` is assumed an overscaled tile.
-        if any_children_rendered && overscaled_children_indices.is_empty() {
+        if any_children_rendered && !is_finest_data && overscaled_children_indices.is_empty() {
             // If the children are rendered to fill the parent, the parent tile replaces them when it is ready.
             let hide_children = (meets_sse_ancestors && is_ancestor_rendered)
                 || (meets_sse && is_rendered_last_frame);
 
-            // While a child is missing and this tile isn't on screen, the tiles
-            // on screen under it stay drawn instead of this tile, and the
-            // missing children's area stays empty until they load. Falling
-            // back to this tile would trade them for a coarser tile: low zoom
-            // tiles often drop most features or have none, and while the
-            // memory load gate is closed nothing new loads to replace it, so
-            // the working set stays frozen rather than coarsened.
-            let keeps_drawn_descendants = !hide_children
-                && !are_all_children_mesh_prepared
+            let is_child_missing = !hide_children && !are_all_children_mesh_prepared;
+            let has_drawn_descendants = is_child_missing
                 && !is_drawn
                 && queued_descendants
                     .iter()
                     .enumerate()
                     .any(|(i, range)| drawn_children[i] || activations.any_drawn(range.clone()));
+            let draws_children_alone =
+                is_child_missing && (leaves_missing_children_empty || has_drawn_descendants);
 
             let tile = qt.qt.get_mut(handle).unwrap();
             // The kept tiles are visited on a zoom-out like a complete group,
             // or the cache would drop them before this tile is ready.
             tile.were_children_rendered =
-                (are_all_children_activated && !hide_children) || keeps_drawn_descendants;
+                (are_all_children_activated && !hide_children) || has_drawn_descendants;
 
             if !meets_sse && !meets_sse_ancestors {
                 for (i, child) in children.iter().enumerate() {
@@ -494,9 +529,7 @@ pub fn traverse_tile(
                     continue;
                 }
 
-                // While keeping the drawn tiles, each ready child is drawn
-                // without waiting for the others.
-                let draws_child = if keeps_drawn_descendants {
+                let draws_child = if draws_children_alone {
                     ready_children[i]
                 } else {
                     are_all_children_mesh_prepared && !hide_children
@@ -533,7 +566,7 @@ pub fn traverse_tile(
                     return TraversalResult::ChildrenMeshPrepared;
                 }
 
-                if keeps_drawn_descendants {
+                if draws_children_alone {
                     return TraversalResult::DescendantsKept;
                 }
 
@@ -543,6 +576,12 @@ pub fn traverse_tile(
                 }
             }
         }
+
+        // The children are loading and none is ready yet: as above, this
+        // tile stays out.
+        if leaves_missing_children_empty && !meets_sse && !meets_sse_ancestors && !is_finest_data {
+            return TraversalResult::NotFound;
+        }
     }
 
     if is_overscaled {
@@ -550,7 +589,7 @@ pub fn traverse_tile(
     }
 
     if is_tile_failed {
-        return TraversalResult::Failed;
+        return TraversalResult::NoData;
     }
 
     if !is_renderable {
@@ -571,11 +610,7 @@ pub fn traverse_tile(
                 handle,
                 buf,
                 data_requesters,
-                if is_culled_by_frustum {
-                    Priority::Medium.demote()
-                } else {
-                    Priority::Medium
-                },
+                request_priority,
             );
         }
 
@@ -893,10 +928,7 @@ pub fn spawn_tile_entity(
             tile_handle,
             ..Default::default()
         },
-        OrderByDistance {
-            sse: tile.sse,
-            distance: tile.distance_from_camera,
-        },
+        tile.load_order(),
     ));
     tc.rendered_tile_caches.insert(tile_handle, e.id());
 }
@@ -926,16 +958,29 @@ fn begin_traverse_tile(
     tile.update_tile_occludee_point(ellipsoid, occluder);
 }
 
+/// `aabb` extended by `height` along the up direction at its center.
+fn raise_aabb(aabb: &Aabb, height: FloatType) -> Aabb {
+    let up = aabb.center.normalize() * height;
+    let min = aabb.min().min(aabb.min() + up);
+    let max = aabb.max().max(aabb.max() + up);
+    Aabb {
+        center: (min + max) * 0.5,
+        extents: (max - min) * 0.5,
+    }
+}
+
 pub enum TraversalResult {
     TileRendered,
     ChildrenRendered,
     ChildrenMeshPrepared,
-    /// A child is missing, and the tiles on screen under this tile stay drawn
-    /// around its empty area instead of this tile.
+    /// A child is missing and this tile is not drawn: the ready tiles under
+    /// it are drawn around the missing child's empty area.
     DescendantsKept,
     Culled,
     NotFound,
-    Failed,
+    /// Nothing is drawn for this tile and nothing waits for it: it is past
+    /// `max_zoom`, or its request failed (a failed request is not retried).
+    NoData,
     Overscaled,
 }
 
@@ -1105,5 +1150,38 @@ mod test {
         record_drape_source(&mut tile, &mut tc, Some(1));
         assert!(tc.drape_sources_changed);
         assert_eq!(tile.ready_parent_tile_handle, Some(1));
+    }
+
+    /// The camera stands 10 m above the equator at lng 0° and looks north,
+    /// 10° up, through a 10° wide view. The z16 tile about 5 km north lies
+    /// below the view, but its features up to `FEATURE_HEIGHT_MARGIN` reach
+    /// into it.
+    #[test]
+    fn it_should_raise_the_tile_aabb_by_the_feature_height() {
+        use navara_core::{Angle, LLE, Meters, TileXYZ, WGS84_64, xyz_to_vec3};
+
+        let at = |lat: FloatType, height: FloatType| {
+            xyz_to_vec3(WGS84_64.lle_to_xyz(LLE {
+                lng: Angle::new(0.),
+                lat: Angle::new(lat.to_radians()),
+                height: Meters::new(height),
+            }))
+        };
+        let position = at(0., 10.);
+        let target = at(0.045, 10. + 5000. * 10f64.to_radians().tan());
+        let camera = Transform::from_translation(position).looking_at(target, position.normalize());
+        let frustum = navara_camera::CameraFrustum::new(&camera, 0.1, 1e6, 10f64.to_radians(), 1.);
+        let tile = VectorTile::new(
+            TileXYZ {
+                x: 32768,
+                y: 32759,
+                z: 16,
+            },
+            0.,
+            0.,
+        );
+
+        assert!(!frustum.intersection_with_aabb(tile.aabb()));
+        assert!(frustum.intersection_with_aabb(&raise_aabb(tile.aabb(), FEATURE_HEIGHT_MARGIN)));
     }
 }
