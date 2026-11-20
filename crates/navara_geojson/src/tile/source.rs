@@ -10,6 +10,7 @@ use navara_material::Appearance;
 use navara_tile_component::{TileHandle, VectorTile};
 use navara_vector_tile::{
     ReadyState, TileCacheManager, VectorTileSource, data_requester::VectorTileDataRequesterQuery,
+    max_feature_height,
 };
 use rustc_hash::FxHashSet;
 
@@ -143,5 +144,9 @@ impl VectorTileSource for GeoJsonTileSource {
     fn evict_tile(&mut self, handle: TileHandle) {
         self.vt.remove_tile(handle);
         self.prepared.remove(&handle);
+    }
+
+    fn max_feature_height(&self) -> f64 {
+        max_feature_height(&self.appearances)
     }
 }

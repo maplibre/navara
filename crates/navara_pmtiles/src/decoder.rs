@@ -46,4 +46,9 @@ pub trait TilePayloadDecoder: Send + Sync + 'static {
         rendered_tile: Entity,
         order: &OrderByDistance,
     ) -> Option<Vec<Entity>>;
+
+    /// Mirrors [`VectorTileSource::max_feature_height`](navara_vector_tile::VectorTileSource::max_feature_height).
+    fn max_feature_height(&self) -> f64 {
+        0.
+    }
 }

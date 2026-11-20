@@ -65,13 +65,14 @@ fn commit(
 
 fn handle_resize(
     mut events: ResMut<EventStore>,
-    mut camera: Query<(Entity, &CameraMarker, &mut CameraFrustum)>,
+    mut camera: Query<(Entity, &CameraMarker, &mut CameraFrustum, &Transform)>,
     mut ev: MessageReader<WindowResizeEvent>,
 ) {
     for w in ev.read() {
-        for (e, _, mut frustum) in &mut camera {
+        for (e, _, mut frustum, transform) in &mut camera {
             frustum.aspect_ratio = w.width / w.height;
             frustum.update_sse_denominator();
+            frustum.update_planes(transform);
 
             // Emit camera frustum updated event when aspect ratio changes
             events.camera_frustum_updated = Some(e);
@@ -149,5 +150,44 @@ fn handle_camera_control_update(
                 controller.enable_tilt = enable_tilt;
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use bevy_app::{App, Update};
+    use navara_event_store::EventStore;
+    use navara_math::{Transform, Vec3};
+    use navara_window::WindowResizeEvent;
+
+    use super::handle_resize;
+    use crate::{CameraFrustum, CameraMarker};
+
+    #[test]
+    fn it_should_widen_the_frustum_planes_on_a_resize() {
+        let mut app = App::new();
+        app.init_resource::<EventStore>()
+            .add_message::<WindowResizeEvent>()
+            .add_systems(Update, handle_resize);
+        let transform = Transform::from_xyz(0., 0., -10.).looking_at(Vec3::ZERO, Vec3::Y);
+        let camera = app
+            .world_mut()
+            .spawn((
+                CameraMarker,
+                transform,
+                CameraFrustum::new(&transform, 0.1, 1000., 1., 1.),
+            ))
+            .id();
+
+        app.world_mut().write_message(WindowResizeEvent {
+            width: 2.,
+            height: 1.,
+            pixel_ratio: 1.,
+        });
+        app.update();
+
+        let frustum = app.world().get::<CameraFrustum>(camera).unwrap();
+        let expected = CameraFrustum::new(&transform, 0.1, 1000., 1., 2.);
+        assert_eq!(frustum.planes, expected.planes);
     }
 }

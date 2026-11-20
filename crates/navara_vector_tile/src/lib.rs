@@ -19,7 +19,7 @@ pub use navara_parser::mvt::{AsXYZ, PosConverter};
 pub use resolve::{
     ResolvedVectorTile, ResolvedVectorTileState, resolve_vector_tile_states, resolve_vector_tiles,
 };
-pub use source::{ReadyState, TileSource, VectorTileSource};
+pub use source::{ReadyState, TileSource, VectorTileSource, max_feature_height};
 pub use source_cache::{
     CLAMP_TO_GROUND_DYNAMIC_SSE_SCALE, GEOMETRY_DYNAMIC_SSE_SCALE, SourceId, TraversalConfig,
     VectorTileSourceCache, VectorTileSourceResources,

@@ -24,6 +24,9 @@ pub struct TileCacheManager {
     /// Set by a traverse that changed a tile's drape source
     /// (`ready_parent_tile_handle`).
     pub drape_sources_changed: bool,
+    /// How far above its terrain a tile's AABB is raised for frustum culling,
+    /// in meters. Set by `update_tiles` before each traversal.
+    pub feature_height_margin: f64,
 }
 
 impl TileCacheManager {

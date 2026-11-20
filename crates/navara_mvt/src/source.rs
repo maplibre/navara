@@ -10,6 +10,7 @@ use navara_material::Appearance;
 use navara_tile_component::{TileHandle, VectorTile};
 use navara_vector_tile::{
     ReadyState, TileCacheManager, VectorTileSource, data_requester::VectorTileDataRequesterQuery,
+    max_feature_height,
 };
 
 use crate::data_requester::request_mvt_data;
@@ -141,5 +142,9 @@ impl VectorTileSource for MvtSource {
             Some((_, dr)) if matches!(dr.status, DataRequesterStatus::Fail) => ReadyState::Failed,
             _ => ReadyState::Pending,
         }
+    }
+
+    fn max_feature_height(&self) -> f64 {
+        max_feature_height(self.layers.iter().flat_map(|l| l.appearances.iter()))
     }
 }
