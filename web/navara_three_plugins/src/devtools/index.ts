@@ -32,6 +32,13 @@ export {
   type BlitMode,
 } from "./profiler/DebugBlitPass";
 export {
+  OverdrawCounter,
+  type OverdrawFrameStats,
+  type OverdrawMode,
+} from "./profiler/overdrawCounter";
+export { OverdrawView } from "./profiler/overdrawView";
+export { writesFragDepth } from "./profiler/fragDepthWrite";
+export {
   LayerInspectorPlugin,
   type LayerInspectorPluginOptions,
 } from "./layers/LayerInspectorPlugin";

@@ -63,7 +63,8 @@ hover.
   rate, frame time on CPU and GPU, draw calls, engine memory against its
   budget, downloads, workers), then where each frame's time goes step by step,
   memory by kind, downloads per source, background work, draw details, screen
-  buffers, a buffer viewer, and frame recording to JSON.
+  buffers, a buffer viewer, an overdraw heat map (fragments drawn per pixel,
+  hidden ones included), and frame recording to JSON.
 - **Layers** (`LayerInspectorPlugin`): the view's layers with what each costs (meshes,
   memory, downloads), a visibility checkbox per layer, solo / wireframe /
   bounding-box toggles, and a style form for the selected layer with every

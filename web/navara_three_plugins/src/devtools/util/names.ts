@@ -49,6 +49,10 @@ const PASSES: Record<string, Described> = {
     name: "Buffer viewer",
     hint: "The devtools' picture-in-picture buffer view.",
   },
+  overdraw: {
+    name: "Overdraw view",
+    hint: "The devtools' overdraw heat map: turns the fragment counts into colors.",
+  },
 };
 
 /** A pass's display name; unknown passes keep their key. */
