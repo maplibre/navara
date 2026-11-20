@@ -369,6 +369,8 @@ float nvrWaterShore;
 float nvr_waterGroundEyeDistance(float depth) {
 #ifdef USE_LOGARITHMIC_DEPTH_BUFFER
   return exp2(2.0 * depth / logDepthBufFC) - 1.0;
+#elif defined(USE_REVERSED_DEPTH_BUFFER)
+  return projectionMatrix[3][2] / (depth + projectionMatrix[2][2]);
 #else
   return projectionMatrix[3][2] / (depth * 2.0 - 1.0 + projectionMatrix[2][2]);
 #endif
@@ -428,14 +430,22 @@ const FRAGMENT_SHOW_UNDERGROUND = /* glsl */ `
 #ifndef USE_LOGARITHMIC_DEPTH_BUFFER
   gl_FragDepth = gl_FragCoord.z;
 #endif
-  float groundDepth = unpackRGBAToDepth(
-    texture2D(uWaterGroundDepth, gl_FragCoord.xy / vec2(textureSize(uWaterGroundDepth, 0)))
-  );
+    vec2 groundUv = gl_FragCoord.xy / vec2(textureSize(uWaterGroundDepth, 0));
+  // The globe depth copy holds floats under a reversed depth, RGBA otherwise.
+#ifdef USE_REVERSED_DEPTH_BUFFER
+  float groundDepth = texture2D(uWaterGroundDepth, groundUv).r;
+#else
+  float groundDepth = unpackRGBAToDepth(texture2D(uWaterGroundDepth, groundUv));
+#endif
   float behind = vViewPosition.z - nvr_waterGroundEyeDistance(groundDepth);
   float below = behind * length(vViewPosition) / vViewPosition.z
     * abs(dot(normalize(vViewPosition), normal));
   if (behind > 0.0 && below < uWaterShowUnderground) {
+    #ifdef USE_REVERSED_DEPTH_BUFFER
+    gl_FragDepth = min(groundDepth * (1.0 + 1e-6), 1.0);
+#else
     gl_FragDepth = groundDepth * (1.0 - 1e-6);
+#endif
   }
 }
 #endif

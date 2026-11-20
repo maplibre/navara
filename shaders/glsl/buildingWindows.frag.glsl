@@ -4,8 +4,8 @@
 // walls fade so they do not flare into a white sheet.
 //
 // Prepended by the pass: three's <packing>, NORMAL_PACKING_SHADER,
-// selective_effect_mask.glsl, takram's depth chunk (reverseLogDepth) and the
-// NVR_* defines carrying the atlas layout.
+// selective_effect_mask.glsl, chunks/depth_convention.glsl, takram's depth
+// chunk (reverseLogDepth) and the NVR_* defines carrying the atlas layout.
 
 uniform sampler2D nvrDiffuse;
 uniform sampler2D nvrEffectIds;
@@ -73,9 +73,9 @@ float nvrLitMask(vec4 m, float ratio) {
 // its mip level, which need uniform control flow.
 void main() {
   vec4 base = texture2D(nvrDiffuse, nvrUv);
-  float rawDepth = unpackRGBAToDepth(texture2D(nvrDepth, nvrUv));
+  float rawDepth = nvr_readDepthCopy(nvrDepth, nvrUv);
   // Pixels at the far plane (the sky) are never walls.
-  float selected = extractEffectBit(texture2D(nvrEffectIds, nvrUv).r, nvrSlot) * (1.0 - step(1.0 - 1.0 / 8388608.0, rawDepth));
+  float selected = extractEffectBit(texture2D(nvrEffectIds, nvrUv).r, nvrSlot) * (nvr_isFarDepth(rawDepth) ? 0.0 : 1.0);
 
   vec3 normalWorld = nvrCameraRotation * unpackVec2ToNormal(texture2D(nvrNormal, nvrUv).xy);
   // Roofs and floors get no windows.

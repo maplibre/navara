@@ -1,9 +1,11 @@
 import { Globe } from "@navaramap/core";
 import { DepthCopyPass } from "postprocessing";
 import {
+  BasicDepthPacking,
   Color,
   DepthStencilFormat,
   DepthTexture,
+  FloatType,
   RGBADepthPacking,
   Scene,
   UnsignedInt248Type,
@@ -52,6 +54,12 @@ export type CustomRenderPassOptions = {
    * @defaultValue true
    */
   lit?: boolean;
+  /**
+   * The renderer's depth buffer is reversed. Depth is then kept in 32-bit
+   * floats, the G-buffer's and its copies alike, which hold it unpacked
+   * (`BasicDepthPacking`).
+   */
+  reversedDepth?: boolean;
 };
 
 export class CustomRenderPass extends RenderPass {
@@ -150,10 +158,11 @@ export class CustomRenderPass extends RenderPass {
     // (postprocessing >= 6.39 no longer exposes a writable shared depth
     // texture). Depth is propagated to the composer's input buffer explicitly
     // by the copy pass below. Stencil is required for draped-mesh rendering.
+    const reversedDepth = !!options?.reversedDepth;
     const gbufferDepthTexture = new DepthTexture(
       this.gbufferRenderTarget.width,
       this.gbufferRenderTarget.height,
-      UnsignedInt248Type,
+      reversedDepth ? FloatType : UnsignedInt248Type,
     );
     gbufferDepthTexture.format = DepthStencilFormat;
     this.gbufferRenderTarget.depthTexture = gbufferDepthTexture;
@@ -162,10 +171,10 @@ export class CustomRenderPass extends RenderPass {
     this.copyPass.setDepthTexture(gbufferDepthTexture);
 
     this.globeDepthCopyPass = new DepthCopyPass({
-      depthPacking: RGBADepthPacking,
+      depthPacking: reversedDepth ? BasicDepthPacking : RGBADepthPacking,
     });
 
-    this.allDepthCopyPass = new AllDepthCopyPass();
+    this.allDepthCopyPass = new AllDepthCopyPass(undefined, reversedDepth);
 
     this.disableShadow = !!options?.disableShadow;
     this.allowTransparent = options?.allowTransparent ?? true;
@@ -441,7 +450,7 @@ export class CustomRenderPass extends RenderPass {
       // Copy globe depth to the all depth buffer
       this.allDepthCopyPass.setDepthTexture(
         this.globeDepthCopyPass.texture,
-        RGBADepthPacking,
+        this.globeDepthCopyPass.depthPacking,
       );
       this.allDepthCopyPass.copyDepth(false);
       this.allDepthCopyPass.render(renderer, null, null);

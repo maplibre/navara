@@ -8,8 +8,10 @@ import {
   STBN_URL,
   CustomEffectPass,
   Pass,
+  createReplacer,
   type EffectOptions,
 } from "@navaramap/three";
+import { FrustumCorners } from "@navaramap/three-csm";
 import { type PrecomputedTextures } from "@takram/three-atmosphere";
 import {
   CLOUD_SHAPE_DETAIL_TEXTURE_SIZE,
@@ -158,6 +160,60 @@ export const DEFAULT_CLOUDS_OPTIONS: ResolvedCloudsOptions = {
   cloudLayers: null,
 };
 
+const CLOUDS_SCENE_DEPTH_TEST = "if (depth < 1.0 - 1e-7) {";
+
+/**
+ * Teaches the clouds material a reversed depth buffer. It is a
+ * `RawShaderMaterial`, so three gives it no depth-mode define (takram mirrors
+ * only the logarithmic one), and its scene-depth test takes 1 for the sky.
+ * Throws when an upstream change moves the anchor.
+ */
+function patchReversedDepth(
+  material: CloudsEffect["cloudsPass"]["currentMaterial"],
+): void {
+  material.defines.USE_REVERSED_DEPTH_BUFFER = "1";
+  material.fragmentShader = createReplacer(material.fragmentShader).replace(
+    CLOUDS_SCENE_DEPTH_TEST,
+    `
+  #ifdef USE_REVERSED_DEPTH_BUFFER
+  if (depth > 1.0 / 8388608.0) {
+  #else
+  ${CLOUDS_SCENE_DEPTH_TEST}
+  #endif
+`,
+  ).source;
+}
+
+/** The part of takram's private frustum corners the cascades read. */
+type TakramFrustumCorners = {
+  near: Vector3[];
+  far: Vector3[];
+  setFromCamera(camera: Camera, far: number): unknown;
+};
+
+/**
+ * takram's cloud shadow cascades take the camera frustum's corners at NDC z
+ * -1 and 1, which a reversed depth puts behind the camera and at the near
+ * plane. They are taken from Navara's `FrustumCorners` instead, which knows
+ * a reversed depth.
+ */
+function patchReversedFrustumCorners(
+  shadowMaps: CloudsEffect["shadowMaps"],
+): void {
+  const corners = (
+    shadowMaps as unknown as { cameraFrustum: TakramFrustumCorners }
+  ).cameraFrustum;
+  const scratch = new FrustumCorners();
+  corners.setFromCamera = (camera, far) => {
+    scratch.setFromCamera(camera, far);
+    for (let i = 0; i < 4; ++i) {
+      corners.near[i].copy(scratch.near[i]);
+      corners.far[i].copy(scratch.far[i]);
+    }
+    return corners;
+  };
+}
+
 export class Clouds extends Pass<
   CustomEffectPass,
   CloudsEffect,
@@ -173,8 +229,20 @@ export class Clouds extends Pass<
   private disposed = false;
   private cancelTexturesReady?: () => void;
 
-  constructor(camera: Camera, atmosphere: Atmosphere, options?: CloudsOptions) {
+  /**
+   * @param reversedDepth - The renderer's depth buffer is reversed.
+   */
+  constructor(
+    camera: Camera,
+    atmosphere: Atmosphere,
+    options?: CloudsOptions,
+    reversedDepth = false,
+  ) {
     const effect = new CloudsEffect(camera);
+    if (reversedDepth) {
+      patchReversedDepth(effect.cloudsPass.currentMaterial);
+      patchReversedFrustumCorners(effect.shadowMaps);
+    }
     const pass = new CustomEffectPass(camera, effect);
     super(pass, effect, {
       ...DEFAULT_CLOUDS_OPTIONS,

@@ -185,6 +185,7 @@ import {
   positionIfStatic,
   type TextureSlot,
 } from "./utils";
+import { supportsReversedDepthBuffer } from "./utils/depthBuffer";
 import { WaterState } from "./water/waterState";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 /** @ts-ignore ignore: https://v3.vitejs.dev/guide/features.html#import-with-query-suffixes  */
@@ -397,7 +398,21 @@ export type Options = {
   multisampling?: number;
   /** Uses half-float precision for post-processing. Higher quality when true. @defaultValue true */
   halfFloat?: boolean;
-  /** Enables logarithmic depth buffer for improved depth precision at large scales. @defaultValue true */
+  /**
+   * Renders depth reversed (1 at the near plane, 0 at the far plane) into
+   * floating-point depth buffers, which keeps precision from street level to
+   * space and lets the GPU skip hidden fragments before shading them. Needs
+   * `EXT_clip_control`; without it the view falls back to
+   * `logarithmicDepthBuffer`. Must be set at initialization time.
+   * @defaultValue true
+   */
+  reversedDepthBuffer?: boolean;
+  /**
+   * Uses a logarithmic depth buffer where the reversed depth buffer is off or
+   * unsupported. Every shader then writes its depth per fragment, so hidden
+   * fragments are shaded too.
+   * @defaultValue true
+   */
   logarithmicDepthBuffer?: boolean;
   /** Enables shadow mapping. Must be set at initialization time. */
   shadow?: boolean;
@@ -1110,9 +1125,6 @@ export default class ThreeView<
       this.addPlugin(this._attribution);
     }
 
-    // Initialize terrain picker
-    this._terrainPicker = new TerrainPicker();
-
     // disable right-click
     options.canvas?.addEventListener(
       "contextmenu",
@@ -1122,10 +1134,14 @@ export default class ThreeView<
       { signal: this._canvasListeners.signal },
     );
 
+    const reversedDepthBuffer =
+      (options.reversedDepthBuffer ?? true) && supportsReversedDepthBuffer();
     const renderer = new WebGLRenderer({
       // If it's true, some noise will happen. So use other AA algorithm instead.
       antialias: (options.multisampling ?? 0) > 0,
-      logarithmicDepthBuffer: options.logarithmicDepthBuffer ?? true,
+      reversedDepthBuffer,
+      logarithmicDepthBuffer:
+        !reversedDepthBuffer && (options.logarithmicDepthBuffer ?? true),
       canvas: options.canvas,
       stencil: true,
     });
@@ -1135,6 +1151,10 @@ export default class ThreeView<
     renderer.autoClearDepth = false;
 
     this._renderer = renderer;
+
+    this._terrainPicker = new TerrainPicker(
+      renderer.capabilities.reversedDepthBuffer,
+    );
 
     renderer.shadowMap.enabled = !!options.shadow;
     this._renderer.shadowMap.type = PCFShadowMap;

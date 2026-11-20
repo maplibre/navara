@@ -34,23 +34,26 @@ export class FrustumCorners {
   ): this {
     const isOrthographic = camera.isOrthographicCamera === true;
     const inverseProjectionMatrix = camera.projectionMatrixInverse;
+    // NDC z of the near and far planes: a reversed depth puts them at 1 and
+    // 0, three's standard WebGL projection at -1 and 1.
+    const nearZ = camera.reversedDepth ? 1 : -1;
+    const farZ = camera.reversedDepth ? 0 : 1;
 
     // 3 --- 0
     // |     |
     // 2 --- 1
-    // Clip space spans from [-1, 1]
-    this.near[0].set(1, 1, -1);
-    this.near[1].set(1, -1, -1);
-    this.near[2].set(-1, -1, -1);
-    this.near[3].set(-1, 1, -1);
+    this.near[0].set(1, 1, nearZ);
+    this.near[1].set(1, -1, nearZ);
+    this.near[2].set(-1, -1, nearZ);
+    this.near[3].set(-1, 1, nearZ);
     for (let i = 0; i < 4; ++i) {
       this.near[i].applyMatrix4(inverseProjectionMatrix);
     }
 
-    this.far[0].set(1, 1, 1);
-    this.far[1].set(1, -1, 1);
-    this.far[2].set(-1, -1, 1);
-    this.far[3].set(-1, 1, 1);
+    this.far[0].set(1, 1, farZ);
+    this.far[1].set(1, -1, farZ);
+    this.far[2].set(-1, -1, farZ);
+    this.far[3].set(-1, 1, farZ);
     for (let i = 0; i < 4; ++i) {
       const corner = this.far[i];
       corner.applyMatrix4(inverseProjectionMatrix);

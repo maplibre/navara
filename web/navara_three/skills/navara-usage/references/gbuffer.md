@@ -62,7 +62,10 @@ Navara renders into a multi-render-target (MRT) G-buffer, so custom work can bot
 - **Read the G-buffer back on the CPU** — `BufferView` (from `@navaramap/three`) reads MRT attachments off a render target, e.g. for debug visualization. Use `renderFromPixels()` for HalfFloat attachments (plain `render()` reads `Uint8Array` data only). Reference: `example/pages/debug/selective-effect/debugView.ts` (Navara repo).
 - Depth-position queries from app code (no custom descriptor needed): `view.pickDepthPosition(x, y)` returns the ECEF position under a pixel using the full depth buffer.
 
-Gotchas: some effects don't support `logarithmicDepthBuffer` (set it `false` when using them) and `hideUnderground: false` can break effect descriptors.
+Gotchas:
+
+- Depth is reversed by default (1 at the near plane, 0 at the far plane, so the sky is 0, and the copies are floats with `BasicDepthPacking`), and logarithmic where `EXT_clip_control` is missing (`renderer.capabilities.reversedDepthBuffer` / `logarithmicDepthBuffer` say which). A custom effect reads the copy with `mrtPass.depthBufferPacking`, tests for the sky under `USE_REVERSED_DEPTH_BUFFER` (three defines it in a `ShaderMaterial`, not a `RawShaderMaterial`), and decodes with three's `perspectiveDepthToViewZ`, which handles reversed depth itself, after undoing log depth (takram's `reverseLogDepth`). Never take `depth >= 1.0` as the sky.
+- `hideUnderground: false` can break effect descriptors.
 
 ## Optional buffers: declare, never assume
 

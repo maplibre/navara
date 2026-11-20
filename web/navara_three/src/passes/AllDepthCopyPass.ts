@@ -3,12 +3,15 @@ import { CopyPass, Pass } from "postprocessing";
 import {
   BasicDepthPacking,
   DepthTexture,
+  FloatType,
   LinearFilter,
+  NearestFilter,
   NoBlending,
   RGBADepthPacking,
   RGBAFormat,
   ShaderMaterial,
   Texture,
+  UnsignedByteType,
   WebGLRenderTarget,
   type DepthPackingStrategies,
   type WebGLRenderer,
@@ -36,16 +39,30 @@ float readDepth() {
   #endif
 }
 
+// A reversed depth is copied as a float: RGBA packing is fixed-point and
+// would lose the small values of distant surfaces.
+#ifdef USE_REVERSED_DEPTH_BUFFER
+  #define WRITE_DEPTH(depth) vec4(depth)
+  #define READ_COPY(uv) texture2D(tExistingDepth, uv).r
+#else
+  #define WRITE_DEPTH(depth) packDepthToRGBA(depth)
+  #define READ_COPY(uv) unpackRGBAToDepth(texture2D(tExistingDepth, uv))
+#endif
+
 void main() {
   float depth = readDepth();
 
   #ifdef MERGE_DEPTH
-  float existingDepth = unpackRGBAToDepth(texture2D(tExistingDepth, vUv));
-  // Keep the minimum depth (closest to camera)
+  float existingDepth = READ_COPY(vUv);
+  // Keep the depth closest to the camera.
+  #ifdef USE_REVERSED_DEPTH_BUFFER
+  depth = max(depth, existingDepth);
+  #else
   depth = min(depth, existingDepth);
   #endif
+  #endif
 
-  gl_FragColor = packDepthToRGBA(depth);
+  gl_FragColor = WRITE_DEPTH(depth);
 }
 `;
 
@@ -57,19 +74,34 @@ export class AllDepthCopyPass extends Pass {
   private _renderTarget: WebGLRenderTarget;
   private _material: ShaderMaterial;
   private _merge: boolean;
+  private readonly _reversedDepth: boolean;
 
-  private _copyPassRenderTarget = new WebGLRenderTarget(1, 1, {
-    minFilter: LinearFilter,
-    magFilter: LinearFilter,
-    stencilBuffer: false,
-    depthBuffer: false,
-  });
-  private _copyPass = new CopyPass(this._copyPassRenderTarget);
+  private _copyPassRenderTarget: WebGLRenderTarget;
+  private _copyPass: CopyPass;
 
-  constructor(renderTarget?: WebGLRenderTarget) {
+  /**
+   * @param reversedDepth - The depth is reversed: the copy holds it as a
+   * float (`BasicDepthPacking`) instead of RGBA-packed.
+   */
+  constructor(renderTarget?: WebGLRenderTarget, reversedDepth = false) {
     super("AllDepthCopyPass");
 
     this.needsSwap = false;
+    this._reversedDepth = reversedDepth;
+
+    const targetOptions = reversedDepth
+      ? { type: FloatType, minFilter: NearestFilter, magFilter: NearestFilter }
+      : {
+          type: UnsignedByteType,
+          minFilter: LinearFilter,
+          magFilter: LinearFilter,
+        };
+    this._copyPassRenderTarget = new WebGLRenderTarget(1, 1, {
+      ...targetOptions,
+      stencilBuffer: false,
+      depthBuffer: false,
+    });
+    this._copyPass = new CopyPass(this._copyPassRenderTarget);
 
     this._material = new ShaderMaterial({
       uniforms: {
@@ -90,8 +122,7 @@ export class AllDepthCopyPass extends Pass {
     } else {
       this._renderTarget = new WebGLRenderTarget(1, 1, {
         format: RGBAFormat,
-        minFilter: LinearFilter,
-        magFilter: LinearFilter,
+        ...targetOptions,
         generateMipmaps: false,
         stencilBuffer: false,
         depthBuffer: false,
@@ -107,7 +138,7 @@ export class AllDepthCopyPass extends Pass {
   }
 
   get depthPacking(): DepthPackingStrategies {
-    return RGBADepthPacking; // This depth texture is always packed as RGBA.
+    return this._reversedDepth ? BasicDepthPacking : RGBADepthPacking;
   }
 
   /**

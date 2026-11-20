@@ -2,6 +2,7 @@ import {
   EventHandler,
   type Observed,
   SKY_RENDER_ORDER,
+  createReplacer,
 } from "@navaramap/three";
 import {
   SkyMaterial,
@@ -47,6 +48,8 @@ export type SkyMeshOptions = {
 // https://github.com/takram-design-engineering/three-geospatial/blob/2536eb9ea9ff6690d304aa744a777c2f11b06178/packages/atmosphere/src/SkyMaterial.ts#L53
 const BASE_MOON_ANGULAR_RADIUS = 0.0045;
 
+const SKY_FAR_PLANE = "gl_Position = vec4(position.xy, 1.0, 1.0);";
+
 export class SkyMesh extends EventHandler<SkyMeshEvents> {
   raw: Mesh<PlaneGeometry, SkyMaterial>;
   private options: SkyMeshOptions;
@@ -54,7 +57,10 @@ export class SkyMesh extends EventHandler<SkyMeshEvents> {
     v: AtmosphereShadowLength | null,
   ) => void;
 
-  constructor(options: SkyMeshOptions = {}) {
+  /**
+   * @param reversedDepth - The renderer's depth buffer is reversed.
+   */
+  constructor(options: SkyMeshOptions = {}, reversedDepth = false) {
     super();
 
     this.options = options;
@@ -65,6 +71,16 @@ export class SkyMesh extends EventHandler<SkyMeshEvents> {
       depthWrite: false,
       sunAngularRadius: options.sunAngularRadius,
     });
+    if (reversedDepth) {
+      // The sky sits at clip z = w, the far plane of a standard depth but
+      // the near plane of a reversed one, whose far plane is z = 0.
+      skyMaterial.vertexShader = createReplacer(
+        skyMaterial.vertexShader,
+      ).replace(
+        SKY_FAR_PLANE,
+        "gl_Position = vec4(position.xy, 0.0, 1.0);",
+      ).source;
+    }
 
     this.raw = new Mesh(new PlaneGeometry(2, 2), skyMaterial);
     this.raw.frustumCulled = false;

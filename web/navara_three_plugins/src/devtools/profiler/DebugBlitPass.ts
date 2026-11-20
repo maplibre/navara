@@ -56,15 +56,24 @@ uniform sampler2D tSource;
 uniform int uMode;
 uniform int uChannel;
 uniform float uBrightness;
-uniform bool uLogDepth;
-uniform float uLogFar;
+uniform int uDepthMode;
+uniform float uNear;
+uniform float uFar;
 uniform float uRefDistance;
 varying vec2 vUv;
 
-// three's logarithmic depth stores log2(1 + w) / log2(far + 1).
+// Mode 1: three's logarithmic depth, log2(1 + w) / log2(far + 1).
+// Mode 2: a reversed depth, 1 at the near plane and 0 at the far plane.
+// Mode 0: shown raw.
 float depthShade(float d) {
-  if (!uLogDepth) return d;
-  float distance = exp2(d * uLogFar) - 1.0;
+  float distance;
+  if (uDepthMode == 1) {
+    distance = exp2(d * log2(uFar + 1.0)) - 1.0;
+  } else if (uDepthMode == 2) {
+    distance = uNear * uFar / (d * (uFar - uNear) + uNear);
+  } else {
+    return d;
+  }
   return clamp(log(max(distance, 1e-3) / uRefDistance) / log(50.0), 0.0, 1.0);
 }
 
@@ -124,8 +133,9 @@ export class DebugBlitPass extends Pass {
         uMode: { value: 0 },
         uChannel: { value: 0 },
         uBrightness: { value: 1 },
-        uLogDepth: { value: true },
-        uLogFar: { value: 20 },
+        uDepthMode: { value: 1 },
+        uNear: { value: 1 },
+        uFar: { value: 1e6 },
         uRefDistance: { value: 100 },
       },
       vertexShader,
@@ -148,14 +158,21 @@ export class DebugBlitPass extends Pass {
   }
 
   /**
-   * How the depth modes read depth. With a logarithmic depth buffer (the
-   * view's default) depth is turned back into distance and shaded from
-   * `refDistance` (black) to 50× it (white); otherwise it is shown raw.
+   * How the depth modes read depth. A logarithmic or reversed depth is
+   * turned back into distance and shaded from `refDistance` (black) to 50×
+   * it (white); a standard depth is shown raw.
    */
-  setDepthScale(logDepth: boolean, far: number, refDistance: number): void {
+  setDepthScale(
+    encoding: "logarithmic" | "reversed" | "standard",
+    near: number,
+    far: number,
+    refDistance: number,
+  ): void {
     const u = this.material.uniforms;
-    u.uLogDepth.value = logDepth;
-    u.uLogFar.value = Math.log2(far + 1);
+    u.uDepthMode.value =
+      encoding === "logarithmic" ? 1 : encoding === "reversed" ? 2 : 0;
+    u.uNear.value = near;
+    u.uFar.value = far;
     u.uRefDistance.value = Math.max(refDistance, 1);
   }
 

@@ -212,7 +212,10 @@ export class SpherePoints extends Points {
         varying vec3  vCenterView;
         varying float vRadiusPx;
 
-        float viewZToDepth(float viewZ, float near, float far){
+                float viewZToDepth(float viewZ, float near, float far){
+          #ifdef USE_REVERSED_DEPTH_BUFFER
+            return near * (far + viewZ) / (-viewZ * (far - near));
+          #endif
           float A = (far + near) / (near - far);
           float B = (2.0 * far * near) / (near - far);
           float ndcZ = (A * viewZ + B) / (-viewZ);

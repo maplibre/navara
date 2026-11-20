@@ -1,5 +1,7 @@
+import DepthConventionChunk from "@shaders/glsl/chunks/depth_convention.glsl?raw";
 import vertexShader from "@shaders/glsl/coneTracing.vert.glsl?raw";
 import fragmentShader from "@shaders/glsl/coneTracingPrefilter.frag.glsl?raw";
+import { resolveIncludes } from "@takram/three-geospatial";
 import { ShaderPass } from "postprocessing";
 import {
   LinearMipmapLinearFilter,
@@ -78,7 +80,9 @@ export class ConeTracingPass extends ShaderPass {
     material.colorBuffer = this.mippedRenderTarget.texture;
     this.prefilterMaterial = new ShaderMaterial({
       name: "ConeTracingPrefilterMaterial",
-      fragmentShader,
+      fragmentShader: resolveIncludes(fragmentShader, {
+        nvr: { depthConvention: DepthConventionChunk },
+      }),
       vertexShader,
       uniforms: {
         inputBuffer: new Uniform(null),

@@ -39,7 +39,10 @@ export class SkyMeshDesc extends MeshDesc<
   createMesh() {
     const skyOptions: SkyMeshOptions = this.config.sky ?? {};
 
-    const skyMesh = new SkyMesh(skyOptions);
+    const skyMesh = new SkyMesh(
+      skyOptions,
+      this.ctx.getRenderer().capabilities.reversedDepthBuffer,
+    );
     skyMesh.raw.material.ellipsoid = this.view.atmosphere.ellipsoid;
     this._skyMesh = skyMesh;
 

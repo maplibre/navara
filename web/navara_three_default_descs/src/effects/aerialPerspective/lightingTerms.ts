@@ -34,15 +34,28 @@ export const DEFAULT_AERIAL_PERSPECTIVE_LIGHTING_OPTIONS: Required<AerialPerspec
 
 const MAIN_IMAGE_SIGNATURE =
   "void mainImage(const vec4 inputColor, const vec2 uv, out vec4 outputColor) {";
+const SKY_DEPTH_TEST = "if (depth >= 1.0 - 1e-8) {";
 const SUN_SKY_IRRADIANCE_CALL =
   "radiance = getSunSkyIrradiance(positionECEF, normalECEF, inputColor.rgb, sunTransmittance);";
 
 /**
  * Injects the shadow and specular terms into the aerial perspective's
- * fragment shader. Throws when an upstream change moves an anchor.
+ * fragment shader, and teaches its sky test a reversed depth buffer (the far
+ * plane, where the sky is, is 0 there). Throws when an upstream change moves
+ * an anchor.
  */
 export function patchLightingTermsShader(source: string): string {
   return createReplacer(source)
+    .replace(
+      SKY_DEPTH_TEST,
+      `
+  #ifdef USE_REVERSED_DEPTH_BUFFER
+  if (depth <= 1.0 / 8388608.0) {
+  #else
+  ${SKY_DEPTH_TEST}
+  #endif
+`,
+    )
     .replace(
       MAIN_IMAGE_SIGNATURE,
       `
