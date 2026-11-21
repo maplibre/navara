@@ -1,0 +1,30 @@
+{
+  "face": {
+    "width": 330,
+    "height": 306,
+    "x": 0,
+    "y": 0,
+    "pixelRatio": 2
+  },
+  "sad": {
+    "width": 330,
+    "height": 306,
+    "x": 330,
+    "y": 0,
+    "pixelRatio": 2
+  },
+  "surprised": {
+    "width": 330,
+    "height": 306,
+    "x": 0,
+    "y": 306,
+    "pixelRatio": 2
+  },
+  "wink": {
+    "width": 330,
+    "height": 306,
+    "x": 330,
+    "y": 306,
+    "pixelRatio": 2
+  }
+}

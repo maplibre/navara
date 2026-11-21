@@ -64,6 +64,8 @@ import MapLibreSupportTable from "@components/MapLibreSupportTable.astro";
 
 <MapLibreSupportTable category="sprite" />
 
+**注意:** スプライトの URL には、絶対 URL またはオリジンからの相対パス(`/path/to/sprite`)を指定します。`../sprite` のようなパスはスタイルの URL を基準には解決されません。MapLibre と同様に、高 DPI の画面では `@2x` のシートを使用します。いずれかのスプライトの読み込みに失敗した場合、すべてのスプライトが使用されません。MapLibre と同様に、スプライトに含まれない `icon-image` の名前は何も描画されません。`sprite` を持たないスタイルでは、Navara はその名前を画像の URL として読み込みます。スプライトのアイコンは `data:` URL としてビルボードに渡されるため、Content Security Policy では `img-src` で `data:` を許可する必要があります。
+
 ## State
 
 <MapLibreSupportTable category="state" />
