@@ -127,6 +127,31 @@ pub enum RenderableFeature {
 }
 
 impl RenderableFeature {
+    /// Key of this feature's entry in the `BatchTable`.
+    pub fn feature_batch_id(&self) -> Option<u32> {
+        match self {
+            RenderableFeature::Point {
+                feature_batch_id, ..
+            }
+            | RenderableFeature::Billboard {
+                feature_batch_id, ..
+            }
+            | RenderableFeature::Text {
+                feature_batch_id, ..
+            }
+            | RenderableFeature::Polyline {
+                feature_batch_id, ..
+            }
+            | RenderableFeature::Polygon {
+                feature_batch_id, ..
+            }
+            | RenderableFeature::Model {
+                feature_batch_id, ..
+            } => Some(*feature_batch_id),
+            RenderableFeature::Unknown => None,
+        }
+    }
+
     pub fn activate(&mut self, v: bool) {
         match self {
             RenderableFeature::Point { active, .. } => *active = v,

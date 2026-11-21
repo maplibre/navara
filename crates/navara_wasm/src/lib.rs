@@ -20,6 +20,7 @@ use navara_buffer_store::Handle;
 use navara_ecs::{App, BatchProperties};
 use navara_input::Key;
 use navara_math::FloatType;
+use navara_parser::mvt::WASM_SUMMARY_STRIDE;
 use navara_tile_component::TileHandle;
 use navara_wasm_utils::set_panic_hook;
 use polygon::TransferablePolygonBatchedFeature;
@@ -815,6 +816,22 @@ impl Core {
                 },
             )?;
         Ok(())
+    }
+
+    /// Per-feature ids and geometry summaries of a batched MVT feature, as an
+    /// owned copy laid out by `FeatureSummary::write_wasm_f64s`, one summary
+    /// per batch index. `undefined` for features of other sources.
+    #[wasm_bindgen(js_name = readFeatureSummaries)]
+    pub fn read_feature_summaries(
+        &mut self,
+        renderable_feature_bits: u64,
+    ) -> Option<js_sys::Float64Array> {
+        let summaries = self.app.read_feature_summaries(renderable_feature_bits)?;
+        let mut flat = Vec::with_capacity(summaries.len() * WASM_SUMMARY_STRIDE);
+        for summary in summaries {
+            summary.write_wasm_f64s(&mut flat);
+        }
+        Some(copy_f64_array(&flat))
     }
 
     #[wasm_bindgen(js_name = readFilteredBatchedProperties)]

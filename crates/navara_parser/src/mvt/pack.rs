@@ -10,14 +10,17 @@
 //! per-group geometry with [`PackedMvtStreamsCursor`].
 //!
 //! Segment order is fixed and must match between pack and unpack. Per group:
-//! - `f64_stream`: `coords` (flattened) | `points` | `outer_rings`, `holes`
+//! - `f64_stream`: `coords` (flattened) | `points` | `outer_rings`, `holes`,
+//!   then the summaries' bbox, centroid and measure
 //! - `f32_stream`: `encoded_coords`, `bearings`, `scale_bands`, `path_samples`,
 //!   `path_meta`
 //! - `u32_stream`: `batch_indices`, then the kind's size arrays
 //!   (`points_sizes` for polylines; `outer_ring_sizes`, `holes_total_sizes`,
 //!   `holes_sizes`, `holes_boundaries` for polygons), then
-//!   `feature_tags_flat`, `feature_tag_sizes`
-//! - `u8_stream`: `expected_winding_orders`, `ring_flags`
+//!   `feature_tags_flat`, `feature_tag_sizes`, then the summaries' ids as
+//!   (low, high) word pairs
+//! - `u8_stream`: `expected_winding_orders`, `ring_flags`, then one byte per
+//!   summary: the shape tag, with [`SUMMARY_HAS_ID`] set when it has an id
 
 use std::sync::Arc;
 
@@ -26,6 +29,10 @@ use serde::{Deserialize, Serialize};
 use super::config::LayerParseKind;
 use super::layer::ParsedLayerPropertiesMeta;
 use super::parse::{ParsedGeometry, ParsedLayerGroup, unflatten_vec3};
+use super::summary::{FeatureSummary, SUMMARY_F64_STRIDE};
+
+/// Flag in a summary's u8 marking that its id words are meaningful.
+const SUMMARY_HAS_ID: u8 = 0x80;
 
 /// Element counts of one packed group's segments within the shared streams.
 /// Segments not used by the group's kind stay 0.
@@ -57,6 +64,9 @@ pub struct ParsedMvtSegmentLens {
     // Property tags (u32 stream).
     pub feature_tags_flat: u32,
     pub feature_tag_sizes: u32,
+    /// Number of feature summaries; they take `SUMMARY_F64_STRIDE` f64s, two
+    /// u32s and one u8 each.
+    pub feature_summaries: u32,
 }
 
 /// Per-group metadata carried alongside the packed streams (structured clone /
@@ -107,6 +117,9 @@ pub fn pack_parsed_mvt_groups(groups: Vec<ParsedLayerGroup>) -> PackedMvtParseRe
     let mut u8_cap = 0usize;
     for group in &groups {
         u32_cap += group.feature_tags_flat.len() + group.feature_tag_sizes.len();
+        f64_cap += group.feature_summaries.len() * SUMMARY_F64_STRIDE;
+        u32_cap += group.feature_summaries.len() * 2;
+        u8_cap += group.feature_summaries.len();
         match &group.geometry {
             ParsedGeometry::Points {
                 coords,
@@ -196,6 +209,7 @@ pub fn pack_parsed_mvt_groups(groups: Vec<ParsedLayerGroup>) -> PackedMvtParseRe
         let mut lens = ParsedMvtSegmentLens {
             feature_tags_flat: group.feature_tags_flat.len() as u32,
             feature_tag_sizes: group.feature_tag_sizes.len() as u32,
+            feature_summaries: group.feature_summaries.len() as u32,
             ..Default::default()
         };
 
@@ -276,6 +290,18 @@ pub fn pack_parsed_mvt_groups(groups: Vec<ParsedLayerGroup>) -> PackedMvtParseRe
         let mut feature_tag_sizes = group.feature_tag_sizes;
         result.u32_stream.append(&mut feature_tags_flat);
         result.u32_stream.append(&mut feature_tag_sizes);
+        for summary in &group.feature_summaries {
+            summary.write_f64s(&mut result.f64_stream);
+            let id = summary.id.unwrap_or(0);
+            result.u32_stream.push(id as u32);
+            result.u32_stream.push((id >> 32) as u32);
+            let has_id = if summary.id.is_some() {
+                SUMMARY_HAS_ID
+            } else {
+                0
+            };
+            result.u8_stream.push(summary.shape.tag() | has_id);
+        }
 
         result.meta.headers.push(ParsedMvtGroupHeader {
             layer_id: group.layer_id,
@@ -295,6 +321,7 @@ pub struct UnpackedMvtGroup {
     pub geometry: ParsedGeometry,
     pub feature_tags_flat: Vec<u32>,
     pub feature_tag_sizes: Vec<u32>,
+    pub feature_summaries: Vec<FeatureSummary>,
 }
 
 /// Slices groups back out of the four packed streams, advancing cumulative
@@ -407,6 +434,22 @@ impl PackedMvtStreamsCursor {
         Some(out)
     }
 
+    fn take_summaries(&mut self, count: u32) -> Option<Vec<FeatureSummary>> {
+        let ids = self.take_u32(count * 2)?;
+        let flags = self.take_u8(count)?;
+        let f64s = self.take_f64_slice(count * SUMMARY_F64_STRIDE as u32)?;
+        f64s.as_chunks::<SUMMARY_F64_STRIDE>()
+            .0
+            .iter()
+            .zip(ids.as_chunks::<2>().0)
+            .zip(&flags)
+            .map(|((f64s, &[lo, hi]), &flag)| {
+                let id = (flag & SUMMARY_HAS_ID != 0).then_some((hi as u64) << 32 | lo as u64);
+                FeatureSummary::from_parts(f64s, id, flag & !SUMMARY_HAS_ID)
+            })
+            .collect()
+    }
+
     /// Slice the next group's segments out of the streams. Returns `None` when
     /// the header's kind tag is unknown or a segment exceeds the stream bounds
     /// (corrupt/mismatched headers); the cursor must not be reused after that.
@@ -469,11 +512,13 @@ impl PackedMvtStreamsCursor {
 
         let feature_tags_flat = self.take_u32(lens.feature_tags_flat)?;
         let feature_tag_sizes = self.take_u32(lens.feature_tag_sizes)?;
+        let feature_summaries = self.take_summaries(lens.feature_summaries)?;
 
         Some(UnpackedMvtGroup {
             geometry,
             feature_tags_flat,
             feature_tag_sizes,
+            feature_summaries,
         })
     }
 }
@@ -486,6 +531,16 @@ mod test {
     use navara_math::Vec3;
 
     use super::*;
+    use crate::mvt::FeatureShape;
+
+    fn summary(id: Option<u64>, shape: FeatureShape) -> FeatureSummary {
+        FeatureSummary {
+            id,
+            bbox: [139.0, 35.0, 139.5, 35.5],
+            centroid: [139.25, 35.25],
+            shape,
+        }
+    }
 
     fn points_group() -> ParsedLayerGroup {
         ParsedLayerGroup {
@@ -494,6 +549,10 @@ mod test {
             feature_count: 2,
             feature_tags_flat: vec![0, 0, 1, 1],
             feature_tag_sizes: vec![2, 2],
+            feature_summaries: vec![
+                summary(Some(1), FeatureShape::Point),
+                summary(None, FeatureShape::Point),
+            ],
             keys: Arc::new(vec!["name".to_string()]),
             values: Arc::new(vec![tile::Value {
                 string_value: Some("a".to_string()),
@@ -520,6 +579,7 @@ mod test {
             feature_count: 1,
             feature_tags_flat: vec![],
             feature_tag_sizes: vec![0],
+            feature_summaries: vec![summary(None, FeatureShape::LineString { length: 12.5 })],
             keys: Arc::new(vec![]),
             values: Arc::new(vec![]),
             geometry: ParsedGeometry::Polylines {
@@ -538,6 +598,11 @@ mod test {
             feature_count: 2,
             feature_tags_flat: vec![0, 1, 0, 2],
             feature_tag_sizes: vec![2, 2],
+            // An id past 32 bits pins that both words cross.
+            feature_summaries: vec![
+                summary(Some(1 << 40 | 5), FeatureShape::Polygon { area: 300.0 }),
+                summary(Some(0), FeatureShape::Polygon { area: 4.0 }),
+            ],
             keys: Arc::new(vec!["height".to_string()]),
             values: Arc::new(vec![
                 tile::Value {
@@ -639,6 +704,7 @@ mod test {
                     geometry,
                     feature_tags_flat: g.feature_tags_flat.clone(),
                     feature_tag_sizes: g.feature_tag_sizes.clone(),
+                    feature_summaries: g.feature_summaries.clone(),
                 },
                 ParsedLayerPropertiesMeta::from_parts(&g.keys, &g.values),
             ));

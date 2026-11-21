@@ -40,8 +40,42 @@ type FeatureInfo = {
   batchId: number;
   properties: Record<string, unknown> | undefined;
   layerId: string | undefined;
+  id?: bigint;
+  geometry?: FeatureGeometrySummary;
 };
 ```
+
+- `id`: The vector tile feature's id, an unsigned 64-bit integer as a `bigint`. `undefined` when the feature has none, and for other sources.
+- `geometry`: A summary of the feature's geometry, for vector tile sources only. `undefined` for other sources.
+
+`readFeatureProperties()`, `readFilteredFeatureProperties()` and `evaluate()` all pass `id` and `geometry`, also with `filters`. Pick events (`featureClick`, `featureHover`) do not.
+
+### FeatureGeometrySummary
+
+```typescript
+type FeatureGeometrySummary = {
+  bbox: [west: number, south: number, east: number, north: number];
+  centroid: [lng: number, lat: number];
+} & (
+  | { type: "Point" }
+  | { type: "LineString"; length: number }
+  | { type: "Polygon"; area: number }
+);
+```
+
+- `bbox`: The bounds of the feature's geometry, in degrees.
+- `centroid`: The area-weighted centroid of a polygon, the length-weighted centroid of a line, or the mean of points, in degrees. A concave polygon can have its centroid outside itself.
+- `type`: The feature's vector tile geometry type. A polygon rendered as a line or a label keeps `"Polygon"`.
+- `length`: Line length in meters.
+- `area`: Polygon area in square meters, holes excluded.
+
+The summary is computed per tile from the geometry that tile holds, which includes the buffer around the tile:
+
+- A feature crossing tile edges is summarized once per tile. Its per-tile `area` or `length` values overlap by the buffer, so their sum is larger than the whole feature.
+- A feature inside the buffer of a neighboring tile also reaches that tile's evaluator.
+- `bbox` and `centroid` are not clamped to the tile, and longitudes are not wrapped. In tiles at the antimeridian, a longitude can be less than -180 or greater than 180.
+
+Each read of `geometry` returns a new object.
 
 ### FeatureEvaluatorCallback
 
@@ -289,6 +323,19 @@ layer.on("featureUpdated", ({ evaluator }) => {
 
     return {
       color: new Color().setHex(selectedId === id ? 0xff0000 : 0xffffff),
+    };
+  });
+});
+```
+
+```typescript
+// Hide sheds and color large buildings by footprint area (vector tile source)
+layer.on("featureUpdated", ({ evaluator }) => {
+  evaluator.evaluate(({ geometry }) => {
+    const area = geometry?.type === "Polygon" ? geometry.area : 0;
+    return {
+      show: area >= 20,
+      color: new Color().setStyle(area >= 1000 ? "#ff6b2c" : "#0091ff"),
     };
   });
 });

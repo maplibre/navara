@@ -214,6 +214,7 @@ fn finalize_parsed_group(
                 group.values,
                 group.feature_tags_flat,
                 &group.feature_tag_sizes,
+                group.feature_summaries,
             ),
         )
         .unwrap_or(0);

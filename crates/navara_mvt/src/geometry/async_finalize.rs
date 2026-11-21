@@ -357,6 +357,7 @@ fn finalize_group(
                 values,
                 group.feature_tags_flat,
                 &group.feature_tag_sizes,
+                group.feature_summaries,
             ),
         )
         .unwrap_or(0);
@@ -479,6 +480,15 @@ mod test {
             feature_count: 2,
             feature_tags_flat: vec![],
             feature_tag_sizes: vec![0, 0],
+            feature_summaries: vec![
+                navara_parser::mvt::FeatureSummary {
+                    id: None,
+                    bbox: [0.0; 4],
+                    centroid: [0.0; 2],
+                    shape: navara_parser::mvt::FeatureShape::Point,
+                };
+                2
+            ],
             keys: Arc::new(vec![]),
             values: Arc::new(vec![] as Vec<tile::Value>),
             geometry: ParsedGeometry::Points {

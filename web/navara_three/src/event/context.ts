@@ -178,6 +178,10 @@ export type FeatureHandler = {
     keys: string[],
     callback: (batchIdx: number, batchId: number, filtered?: unknown[]) => void,
   ): void;
+  /** Ids and geometry summaries of a batched MVT feature, `FEATURE_SUMMARY_STRIDE`
+   * numbers per batch index (see `decodeFeatureSummaries`); `undefined` for
+   * other sources. */
+  readFeatureSummaries(bits: bigint): Float64Array | undefined;
 };
 
 export type MeshHandler = {

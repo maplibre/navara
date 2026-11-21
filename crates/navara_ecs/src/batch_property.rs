@@ -5,6 +5,7 @@ use navara_feature_component::{
     render::RenderableFeature,
 };
 use navara_parser::b3dm::BatchTable as B3dmBatchTable;
+use navara_parser::mvt::FeatureSummary;
 use navara_property::{PropertyValue, json_value_to_filtered_properties, json_value_to_property};
 
 use crate::App;
@@ -75,29 +76,7 @@ impl App {
 
         let batch_table = world.get_resource::<BatchTable>()?;
 
-        let renderable_feature = query.get(world, entity).ok()?;
-
-        let feature_batch_id = match renderable_feature {
-            RenderableFeature::Model {
-                feature_batch_id, ..
-            }
-            | RenderableFeature::Polyline {
-                feature_batch_id, ..
-            }
-            | RenderableFeature::Polygon {
-                feature_batch_id, ..
-            }
-            | RenderableFeature::Point {
-                feature_batch_id, ..
-            }
-            | RenderableFeature::Billboard {
-                feature_batch_id, ..
-            }
-            | RenderableFeature::Text {
-                feature_batch_id, ..
-            } => *feature_batch_id,
-            RenderableFeature::Unknown => return None,
-        };
+        let feature_batch_id = query.get(world, entity).ok()?.feature_batch_id()?;
 
         let buf_store = world.get_resource::<BufferStore>()?;
         let batch_value = batch_table.get(&feature_batch_id)?;
@@ -116,6 +95,24 @@ impl App {
         }?;
 
         Some((properties, batch_value.layer_id.clone()?))
+    }
+
+    /// Per-feature id and geometry summaries of a batched MVT feature,
+    /// indexed by batch index. `None` for features of other sources.
+    pub fn read_feature_summaries(
+        &mut self,
+        renderable_feature_bits: u64,
+    ) -> Option<&[FeatureSummary]> {
+        let entity = Entity::from_bits(renderable_feature_bits);
+        let world = self.app.world_mut();
+        let mut query = world.query::<&RenderableFeature>();
+        let world = &*world;
+        let feature_batch_id = query.get(world, entity).ok()?.feature_batch_id()?;
+        let batch_table = world.get_resource::<BatchTable>()?;
+        match batch_table.get(&feature_batch_id)?.properties.as_ref()? {
+            BatchProperty::Mvt(data) => Some(&data.feature_summaries),
+            _ => None,
+        }
     }
 
     /// Read properties from a batched feature.

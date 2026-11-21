@@ -168,6 +168,38 @@ export type EvaluatedValue = {
 export type { GeometryType };
 
 /**
+ * Summary of a vector tile feature's geometry, computed once per feature when
+ * its tile is decoded, from the geometry that tile holds: the tile and the
+ * buffer around it. A feature in the buffer reaches the neighboring tile's
+ * evaluator too, and a feature crossing tile edges is summarized once per
+ * tile, so its per-tile areas or lengths overlap by the buffer. Nothing is
+ * clamped to the tile or wrapped: in tiles at the antimeridian, longitudes can
+ * fall below -180 or above 180.
+ */
+export type FeatureGeometrySummary = {
+  /** `[west, south, east, north]` in degrees. */
+  bbox: [west: number, south: number, east: number, north: number];
+  /**
+   * `[lng, lat]` in degrees: the area-weighted centroid of a polygon, the
+   * length-weighted centroid of a line, or the mean of points. A concave
+   * polygon can have its centroid outside itself.
+   */
+  centroid: [lng: number, lat: number];
+} & (
+  | { type: "Point" }
+  | {
+      type: "LineString";
+      /** Length in meters. */
+      length: number;
+    }
+  | {
+      type: "Polygon";
+      /** Area in square meters, holes excluded. */
+      area: number;
+    }
+);
+
+/**
  * Information about a feature batch, passed to evaluation callbacks.
  */
 export type FeatureInfo = {
@@ -181,6 +213,60 @@ export type FeatureInfo = {
   layerId: LayerId | undefined;
   /** Mesh geometry type (e.g., "billboard", "text"). Not GeoJSON geometry ("Point", "Polygon"). */
   meshGeomType?: GeometryType;
+  /**
+   * The vector tile feature's id, an unsigned 64-bit integer. `undefined`
+   * when the feature has none, and for other sources.
+   */
+  id?: bigint;
+  /**
+   * Summary of the feature's geometry, decoded into a new object on each
+   * read. Vector tile sources only.
+   */
+  geometry?: FeatureGeometrySummary;
+};
+
+// Layout of `FeatureHandler.readFeatureSummaries`, set by
+// `FeatureSummary::write_wasm_f64s` in the navara_parser crate: the id's high
+// and low 32 bits (NaN when absent), shape tag, west, south, east, north,
+// centroid lng, centroid lat, length or area.
+const FEATURE_SUMMARY_STRIDE = 10;
+
+const decodeFeatureId = (
+  flat: Float64Array,
+  batchIndex: number,
+): bigint | undefined => {
+  const o = batchIndex * FEATURE_SUMMARY_STRIDE;
+  return Number.isNaN(flat[o])
+    ? undefined
+    : (BigInt(flat[o]) << 32n) | BigInt(flat[o + 1]);
+};
+
+const decodeFeatureGeometry = (
+  flat: Float64Array,
+  batchIndex: number,
+): FeatureGeometrySummary => {
+  const o = batchIndex * FEATURE_SUMMARY_STRIDE;
+  const bbox: FeatureGeometrySummary["bbox"] = [
+    flat[o + 3],
+    flat[o + 4],
+    flat[o + 5],
+    flat[o + 6],
+  ];
+  const centroid: FeatureGeometrySummary["centroid"] = [
+    flat[o + 7],
+    flat[o + 8],
+  ];
+  const tag = flat[o + 2];
+  switch (tag) {
+    case 0:
+      return { type: "Point", bbox, centroid };
+    case 1:
+      return { type: "LineString", bbox, centroid, length: flat[o + 9] };
+    case 2:
+      return { type: "Polygon", bbox, centroid, area: flat[o + 9] };
+    default:
+      throw new Error(`Unknown feature summary shape tag: ${tag}`);
+  }
 };
 
 /**
@@ -253,6 +339,8 @@ export class FeatureEvaluator {
     Record<string, unknown> | undefined
   >;
   private batchIds: number[] = [];
+  /** Fetched on first read; `null` for sources without summaries. */
+  private summaries?: Float64Array | null;
 
   /**
    * The underlying Three.js object representing this feature.
@@ -317,6 +405,42 @@ export class FeatureEvaluator {
   }
 
   /**
+   * Must run before the handler's property reads: their callbacks run while
+   * the engine is borrowed, so the engine cannot be called from inside them.
+   */
+  private loadSummaries() {
+    if (this.summaries === undefined) {
+      this.summaries =
+        this.handler.readFeatureSummaries(this.featureSetId) ?? null;
+    }
+  }
+
+  private info(
+    batchIndex: number,
+    batchId: number,
+    properties: Record<string, unknown> | undefined,
+    meshGeomType: GeometryType | undefined,
+  ): FeatureInfo {
+    const summaries = this.summaries;
+    if (!summaries) {
+      return { layerId: this.layerId, batchId, properties, meshGeomType };
+    }
+    // Decoded on read: the evaluator keeps only the fetched array.
+    return {
+      layerId: this.layerId,
+      batchId,
+      properties,
+      meshGeomType,
+      get id() {
+        return decodeFeatureId(summaries, batchIndex);
+      },
+      get geometry() {
+        return decodeFeatureGeometry(summaries, batchIndex);
+      },
+    };
+  }
+
+  /**
    * Gets the unique identifier of this feature set.
    */
   get id() {
@@ -347,16 +471,17 @@ export class FeatureEvaluator {
   readFeatureProperties(f: (info: FeatureInfo, batchIndex: number) => void) {
     // Read geometry type dynamically to handle cases where it changes after evaluator creation
     const meshGeomType = this.determineGeometryType(this.obj);
+    this.loadSummaries();
 
     if (this.cachedBatchedProperties) {
       for (const [batchIdx, properties] of this.cachedBatchedProperties) {
         f(
-          {
-            layerId: this.layerId,
-            batchId: this.batchIds[batchIdx],
+          this.info(
+            batchIdx,
+            this.batchIds[batchIdx],
             properties,
             meshGeomType,
-          },
+          ),
           batchIdx,
         );
       }
@@ -371,15 +496,7 @@ export class FeatureEvaluator {
         ) => {
           this.cachedBatchedProperties?.set(batchIdx, properties);
           this.batchIds[batchIdx] = batchId;
-          f(
-            {
-              layerId: this.layerId,
-              batchId,
-              properties,
-              meshGeomType,
-            },
-            batchIdx,
-          );
+          f(this.info(batchIdx, batchId, properties, meshGeomType), batchIdx);
         },
       );
     }
@@ -405,17 +522,18 @@ export class FeatureEvaluator {
   ) {
     // Read geometry type dynamically to handle cases where it changes after evaluator creation
     const meshGeomType = this.determineGeometryType(this.obj);
+    this.loadSummaries();
 
     const cacheKey = keys.join("|");
     if (this.filterCacheKey === cacheKey && this.cachedFilteredProperties) {
       for (const [batchIndex, filtered] of this.cachedFilteredProperties) {
         f(
-          {
-            layerId: this.layerId,
-            batchId: this.batchIds[batchIndex],
-            properties: filtered,
+          this.info(
+            batchIndex,
+            this.batchIds[batchIndex],
+            filtered,
             meshGeomType,
-          },
+          ),
           batchIndex,
         );
       }
@@ -434,12 +552,7 @@ export class FeatureEvaluator {
           this.cachedFilteredProperties?.set(batchIndex, properties);
           this.batchIds[batchIndex] = batchId;
           f(
-            {
-              layerId: this.layerId,
-              batchId,
-              properties,
-              meshGeomType,
-            },
+            this.info(batchIndex, batchId, properties, meshGeomType),
             batchIndex,
           );
         },

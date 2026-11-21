@@ -40,8 +40,42 @@ type FeatureInfo = {
   batchId: number;
   properties: Record<string, unknown> | undefined;
   layerId: string | undefined;
+  id?: bigint;
+  geometry?: FeatureGeometrySummary;
 };
 ```
+
+- `id`: ベクタータイルの地物 ID（符号なし 64 ビット整数の `bigint`）。地物が ID を持たない場合と、ベクタータイル以外のソースでは `undefined`。
+- `geometry`: 地物のジオメトリの要約。ベクタータイルのソースのみで、ほかのソースでは `undefined`。
+
+`readFeatureProperties()`、`readFilteredFeatureProperties()`、`evaluate()` のいずれも、`filters` を指定した場合も含めて `id` と `geometry` を渡します。ピックイベント（`featureClick`、`featureHover`）には含まれません。
+
+### FeatureGeometrySummary
+
+```typescript
+type FeatureGeometrySummary = {
+  bbox: [west: number, south: number, east: number, north: number];
+  centroid: [lng: number, lat: number];
+} & (
+  | { type: "Point" }
+  | { type: "LineString"; length: number }
+  | { type: "Polygon"; area: number }
+);
+```
+
+- `bbox`: 地物のジオメトリの範囲（度）。
+- `centroid`: ポリゴンは面積で重み付けした重心、ラインは長さで重み付けした重心、ポイントは座標の平均（度）。凹んだポリゴンでは重心が形の外に出ることがあります。
+- `type`: 地物のベクタータイル上のジオメトリタイプ。ラインやラベルとして描画したポリゴンも `"Polygon"` です。
+- `length`: ラインの長さ（メートル）。
+- `area`: ポリゴンの面積（平方メートル）。穴の部分は含みません。
+
+要約はタイルごとに、そのタイルが持つジオメトリから計算します。このジオメトリにはタイルの周囲のバッファーも含まれます。
+
+- タイルの境界をまたぐ地物は、タイルごとに要約されます。タイルごとの `area` や `length` はバッファーの分だけ重なるため、合計すると地物全体より大きくなります。
+- 隣のタイルのバッファー内にある地物は、そのタイルの評価にも渡されます。
+- `bbox` と `centroid` はタイルの範囲に切り詰めず、経度も折り返しません。日付変更線に接するタイルでは、経度が -180 未満や 180 より大きくなることがあります。
+
+`geometry` は読むたびに新しいオブジェクトを返します。
 
 ### FeatureEvaluatorCallback
 
@@ -277,6 +311,19 @@ layer.on("featureUpdated", ({ evaluator }) => {
 
     return {
       color: new Color().setHex(selectedId === id ? 0xff0000 : 0xffffff),
+    };
+  });
+});
+```
+
+```typescript
+// 面積で小屋を隠し、大きな建物に色を付ける（ベクタータイルのソース）
+layer.on("featureUpdated", ({ evaluator }) => {
+  evaluator.evaluate(({ geometry }) => {
+    const area = geometry?.type === "Polygon" ? geometry.area : 0;
+    return {
+      show: area >= 20,
+      color: new Color().setStyle(area >= 1000 ? "#ff6b2c" : "#0091ff"),
     };
   });
 });
