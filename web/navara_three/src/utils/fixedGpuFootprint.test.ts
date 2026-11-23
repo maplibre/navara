@@ -1,5 +1,12 @@
 import type { EffectComposer, Pass } from "postprocessing";
-import { DepthTexture, HalfFloatType, WebGLRenderTarget } from "three";
+import {
+  DepthStencilFormat,
+  DepthTexture,
+  FloatType,
+  HalfFloatType,
+  RedFormat,
+  WebGLRenderTarget,
+} from "three";
 import { describe, expect, it } from "vitest";
 
 import { estimateFixedGpuBytes, listRenderTargets } from "./fixedGpuFootprint";
@@ -82,6 +89,34 @@ describe("estimateFixedGpuBytes", () => {
     // mrt: RGBA8 (4) + RGBA16F (8) + depth texture (4)
     //      + 2 samples × (4 + 8 + 4); output: 4
     expect(bytes).toBe(PX * (4 + 8 + 4 + 2 * 16) + PX * 4);
+  });
+
+  it("counts channels from the format: an R32F depth copy is 4 bytes", () => {
+    const rgba32f = new WebGLRenderTarget(W, H, {
+      type: FloatType,
+      depthBuffer: false,
+    });
+    const r32f = new WebGLRenderTarget(W, H, {
+      format: RedFormat,
+      type: FloatType,
+      depthBuffer: false,
+    });
+    const bytes = estimateFixedGpuBytes(composerWith(rgba32f, r32f), []);
+    // RGBA32F (16) + R32F (4)
+    expect(bytes).toBe(PX * (16 + 4));
+  });
+
+  it("counts a float depth-stencil texture as DEPTH32F_STENCIL8", () => {
+    const target = rgba8Target();
+    const depth = new DepthTexture(W, H, FloatType);
+    depth.format = DepthStencilFormat;
+    target.depthTexture = depth;
+    const bytes = estimateFixedGpuBytes(
+      composerWith(target, rgba8Target()),
+      [],
+    );
+    // RGBA8 (4) + DEPTH32F_STENCIL8 (8); output: 4
+    expect(bytes).toBe(PX * (4 + 8) + PX * 4);
   });
 
   it("skips render targets that are not GL-allocated yet", () => {

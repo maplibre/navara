@@ -1,39 +1,73 @@
 import type { EffectComposer, Pass } from "postprocessing";
 import {
+  DepthStencilFormat,
   FloatType,
   HalfFloatType,
   Material,
   Object3D,
+  RGFormat,
+  RGIntegerFormat,
+  RedFormat,
+  RedIntegerFormat,
   Texture,
   WebGLRenderTarget,
 } from "three";
 
-const DEPTH_BYTES_PER_TEXEL = 4; // DEPTH24_STENCIL8 / DEPTH_COMPONENT32F
+// DEPTH24_STENCIL8, DEPTH_COMPONENT24 or DEPTH_COMPONENT32F.
+const DEPTH_BYTES_PER_TEXEL = 4;
+// DEPTH32F_STENCIL8: 5 bytes of data, which GPUs store in 8.
+const FLOAT_DEPTH_STENCIL_BYTES_PER_TEXEL = 8;
 const MIPMAP_FACTOR = 1.33;
 
-function bytesPerTexel(type: number): number {
+function channelCount(format: number): number {
+  switch (format) {
+    case RedFormat:
+    case RedIntegerFormat:
+      return 1;
+    case RGFormat:
+    case RGIntegerFormat:
+      return 2;
+    default:
+      return 4;
+  }
+}
+
+function bytesPerChannel(type: number): number {
   switch (type) {
     case FloatType:
-      return 16; // RGBA32F
+      return 4;
     case HalfFloatType:
-      return 8; // RGBA16F
+      return 2;
     default:
-      return 4; // RGBA8 and friends
+      return 1; // 8-bit and friends
   }
+}
+
+/** e.g. 16 for RGBA32F, 8 for RGBA16F, 4 for RGBA8 or R32F. */
+function bytesPerTexel(texture: Texture): number {
+  return channelCount(texture.format) * bytesPerChannel(texture.type);
+}
+
+/** A float depth texture with stencil is DEPTH32F_STENCIL8 (reversed depth). */
+function depthBytesPerTexel(target: WebGLRenderTarget): number {
+  const texture = target.depthTexture;
+  return texture?.type === FloatType && texture.format === DepthStencilFormat
+    ? FLOAT_DEPTH_STENCIL_BYTES_PER_TEXEL
+    : DEPTH_BYTES_PER_TEXEL;
 }
 
 function renderTargetBytes(target: WebGLRenderTarget): number {
   const pixels = target.width * target.height;
   let bytes = 0;
   for (const texture of target.textures) {
-    let textureBytes = pixels * bytesPerTexel(texture.type);
+    let textureBytes = pixels * bytesPerTexel(texture);
     if (texture.generateMipmaps) {
       textureBytes = Math.floor(textureBytes * MIPMAP_FACTOR);
     }
     bytes += textureBytes;
   }
   if (target.depthBuffer || target.depthTexture) {
-    bytes += pixels * DEPTH_BYTES_PER_TEXEL;
+    bytes += pixels * depthBytesPerTexel(target);
   }
   if (target.samples > 0) {
     // MSAA renderbuffers exist alongside the resolve textures: one per color
@@ -41,10 +75,10 @@ function renderTargetBytes(target: WebGLRenderTarget): number {
     // or a depth texture.
     let msaaBytesPerPixel = 0;
     for (const texture of target.textures) {
-      msaaBytesPerPixel += bytesPerTexel(texture.type);
+      msaaBytesPerPixel += bytesPerTexel(texture);
     }
     if (target.depthBuffer || target.depthTexture) {
-      msaaBytesPerPixel += DEPTH_BYTES_PER_TEXEL;
+      msaaBytesPerPixel += depthBytesPerTexel(target);
     }
     bytes += target.samples * pixels * msaaBytesPerPixel;
   }

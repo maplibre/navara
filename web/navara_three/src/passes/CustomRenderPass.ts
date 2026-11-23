@@ -7,6 +7,7 @@ import {
   DepthTexture,
   FloatType,
   RGBADepthPacking,
+  RedFormat,
   Scene,
   UnsignedInt248Type,
   WebGLRenderTarget,
@@ -173,6 +174,9 @@ export class CustomRenderPass extends RenderPass {
     this.globeDepthCopyPass = new DepthCopyPass({
       depthPacking: reversedDepth ? BasicDepthPacking : RGBADepthPacking,
     });
+    // postprocessing makes a float copy RGBA32F; one channel (R32F) holds the
+    // depth in a quarter of the memory. Set before the target is allocated.
+    if (reversedDepth) this.globeDepthCopyPass.texture.format = RedFormat;
 
     this.allDepthCopyPass = new AllDepthCopyPass(undefined, reversedDepth);
 

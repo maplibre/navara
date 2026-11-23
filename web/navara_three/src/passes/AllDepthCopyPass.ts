@@ -9,6 +9,7 @@ import {
   NoBlending,
   RGBADepthPacking,
   RGBAFormat,
+  RedFormat,
   ShaderMaterial,
   Texture,
   UnsignedByteType,
@@ -39,8 +40,9 @@ float readDepth() {
   #endif
 }
 
-// A reversed depth is copied as a float: RGBA packing is fixed-point and
-// would lose the small values of distant surfaces.
+// A reversed depth is copied as a float into a one-channel target (R32F):
+// RGBA packing is fixed-point and would lose the small values of distant
+// surfaces.
 #ifdef USE_REVERSED_DEPTH_BUFFER
   #define WRITE_DEPTH(depth) vec4(depth)
   #define READ_COPY(uv) texture2D(tExistingDepth, uv).r
@@ -81,7 +83,7 @@ export class AllDepthCopyPass extends Pass {
 
   /**
    * @param reversedDepth - The depth is reversed: the copy holds it as a
-   * float (`BasicDepthPacking`) instead of RGBA-packed.
+   * one-channel float (R32F, `BasicDepthPacking`) instead of RGBA-packed.
    */
   constructor(renderTarget?: WebGLRenderTarget, reversedDepth = false) {
     super("AllDepthCopyPass");
@@ -90,7 +92,12 @@ export class AllDepthCopyPass extends Pass {
     this._reversedDepth = reversedDepth;
 
     const targetOptions = reversedDepth
-      ? { type: FloatType, minFilter: NearestFilter, magFilter: NearestFilter }
+      ? {
+          format: RedFormat,
+          type: FloatType,
+          minFilter: NearestFilter,
+          magFilter: NearestFilter,
+        }
       : {
           type: UnsignedByteType,
           minFilter: LinearFilter,

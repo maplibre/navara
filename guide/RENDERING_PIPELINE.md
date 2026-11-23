@@ -248,7 +248,7 @@ which, and shaders see three's `USE_REVERSED_DEPTH_BUFFER` /
 |                                       | reversed                           | logarithmic / standard            |
 | ------------------------------------- | ---------------------------------- | --------------------------------- |
 | depth buffers (G-buffer, composer)    | `DEPTH32F_STENCIL8`                | `DEPTH24_STENCIL8`                |
-| depth copies (globe depth, all depth) | float, `BasicDepthPacking`         | RGBA8, `RGBADepthPacking`         |
+| depth copies (globe depth, all depth) | R32F, `BasicDepthPacking`          | RGBA8, `RGBADepthPacking`         |
 | far plane, cleared depth, sky         | 0                                  | 1                                 |
 | nearer surface                        | larger depth                       | smaller depth                     |
 
