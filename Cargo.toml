@@ -38,7 +38,7 @@ itertools = "=0.15.0"
 rustc-hash = "=2.1.3"
 smallvec = "=1.15.2"
 num = "=0.4.3"
-regex = "=1.13.1"
+regex = "=1.13.2"
 
 # --- Geo ---
 geo-types = "=0.7.20"
@@ -48,7 +48,7 @@ maplibre-expr = "=0.5.4"
 # geozero = { version = "0.15.1", default-features = false, features = ["with-mvt", "with-geo"] }
 # TODO: Replace to original later
 geozero = { git = "https://github.com/keiya01/geozero.git", branch = "fix/ccw-mvt", default-features = false, features = ["with-mvt", "with-geo"] }
-prost = "=0.14.5"
+prost = "=0.14.6"
 
 # --- PMTiles ---
 # We parse the PMTiles v3 container ourselves (fixed-layout header + varint
@@ -63,13 +63,13 @@ flate2 = "=1.1.11"
 instant = { version = "=0.1.13", features = ["wasm-bindgen", "inaccurate"] }
 
 # --- Random ---
-rand = "=0.10.3"
+rand = "=0.10.4"
 getrandom = { version = "=0.4.3", features = ["wasm_js"] }
 
 # --- WASM ---
 wasm-bindgen = "=0.2.127"
 js-sys = "=0.3.104"
-gloo-utils = { version = "=0.3.0", features = ["serde"] }
+gloo-utils = { version = "=0.3.1", features = ["serde"] }
 web-sys = { version = "=0.3.104", features = ["console"] }
 console_error_panic_hook = "=0.1.7"
 
