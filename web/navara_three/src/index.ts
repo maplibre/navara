@@ -402,15 +402,17 @@ export type Options = {
    * Renders depth reversed (1 at the near plane, 0 at the far plane) into
    * floating-point depth buffers, which keeps precision from street level to
    * space and lets the GPU skip hidden fragments before shading them. Needs
-   * `EXT_clip_control`; without it the view falls back to
-   * `logarithmicDepthBuffer`. Must be set at initialization time.
+   * `EXT_clip_control` and `EXT_color_buffer_float`; without them the view
+   * falls back to `logarithmicDepthBuffer`. Must be set at initialization time.
    * @defaultValue true
    */
   reversedDepthBuffer?: boolean;
   /**
    * Uses a logarithmic depth buffer where the reversed depth buffer is off or
    * unsupported. Every shader then writes its depth per fragment, so hidden
-   * fragments are shaded too.
+   * fragments are shaded too. Has no effect while the reversed depth buffer
+   * is in use (a warning is logged when set to `true`); set
+   * `reversedDepthBuffer: false` to use it.
    * @defaultValue true
    */
   logarithmicDepthBuffer?: boolean;
@@ -1136,6 +1138,11 @@ export default class ThreeView<
 
     const reversedDepthBuffer =
       (options.reversedDepthBuffer ?? true) && supportsReversedDepthBuffer();
+    if (reversedDepthBuffer && options.logarithmicDepthBuffer === true) {
+      console.warn(
+        "ThreeView: `logarithmicDepthBuffer: true` is ignored because the reversed depth buffer is in use. Set `reversedDepthBuffer: false` to use a logarithmic depth buffer.",
+      );
+    }
     const renderer = new WebGLRenderer({
       // If it's true, some noise will happen. So use other AA algorithm instead.
       antialias: (options.multisampling ?? 0) > 0,

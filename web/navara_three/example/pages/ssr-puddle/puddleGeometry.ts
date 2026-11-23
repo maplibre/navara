@@ -75,8 +75,13 @@ const fragmentShader = /* glsl */ `
     vec4 geometry = texture2D(normalBuffer, vUv);
     float depth = readDepth(vUv);
 
-    // Skip the sky.
-    if (depth >= 1.0 - 1e-7) {
+    // Skip the sky: the far plane is 0 under a reversed depth, 1 otherwise.
+    #ifdef USE_REVERSED_DEPTH_BUFFER
+    bool sky = depth <= 1.0 / 8388608.0;
+    #else
+    bool sky = depth >= 1.0 - 1e-7;
+    #endif
+    if (sky) {
       gl_FragColor = geometry;
       return;
     }

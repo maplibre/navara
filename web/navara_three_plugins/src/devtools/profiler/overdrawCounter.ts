@@ -506,7 +506,11 @@ export class OverdrawCounter {
 
 const scratchColor = new Color();
 
-/** `undefined` when the fragment source cannot be read back. */
+/**
+ * `undefined` when the fragment source cannot be read back or parsed (the
+ * `#if` evaluator throws on tokens it does not know); the error must not
+ * escape into the wrapped draw call.
+ */
 function readWritesDepth(
   gl: WebGL2RenderingContext,
   program: WebGLProgram,
@@ -516,7 +520,12 @@ function readWritesDepth(
       continue;
     }
     const source = gl.getShaderSource(shader);
-    return source ? writesFragDepth(source) : undefined;
+    if (!source) return undefined;
+    try {
+      return writesFragDepth(source);
+    } catch {
+      return undefined;
+    }
   }
   return undefined;
 }

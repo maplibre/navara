@@ -135,11 +135,60 @@ describe("PassProfiler", () => {
     b.render(timed, null, null);
     profiler.beginTick(2);
     expect(profiler.samples.get("b")?.gpuMs).toBe(1);
-    // "b" is disabled from tick 2 on; "a" keeps running.
+    // "b" is disabled from tick 2 on; "a" keeps running. "b" keeps its time
+    // for a few drawn frames, then loses it.
+    let tick = 2;
+    for (; tick < 11; tick++) {
+      a.render(timed, null, null);
+      profiler.beginTick(tick + 1);
+      expect(profiler.samples.get("b")?.gpuMs).toBe(1);
+    }
     a.render(timed, null, null);
-    profiler.beginTick(3);
+    profiler.beginTick(tick + 1);
     expect(profiler.samples.get("a")?.gpuMs).toBe(1);
     expect(profiler.samples.get("b")?.gpuMs).toBeUndefined();
+    profiler.dispose();
+  });
+
+  it("keeps the GPU time of a pass that skips a frame", () => {
+    const passes = new Map([
+      ["a", new FakePass()],
+      ["b", new FakePass()],
+    ]);
+    const ctx = fakeContext(passes);
+    const queries: object[] = [];
+    const resolved = new Set<object>();
+    const gl = {
+      QUERY_RESULT_AVAILABLE: 1,
+      QUERY_RESULT: 2,
+      getExtension: () => ({ TIME_ELAPSED_EXT: 1, GPU_DISJOINT_EXT: 2 }),
+      createQuery: () => {
+        const query = {};
+        queries.push(query);
+        return query;
+      },
+      deleteQuery: () => {},
+      beginQuery: () => {},
+      endQuery: () => {},
+      getQueryParameter: (q: object, p: number) =>
+        p === 1 ? resolved.has(q) : 2e6,
+      getParameter: () => false,
+    };
+    const timed = { info, getContext: () => gl } as unknown as WebGLRenderer;
+    const profiler = new PassProfiler(ctx, timed);
+    profiler.enable();
+    const a = passes.get("a") as unknown as Pass;
+    const b = passes.get("b") as unknown as Pass;
+
+    profiler.beginTick(1);
+    a.render(timed, null, null);
+    b.render(timed, null, null);
+    // "b" skips tick 2; its tick-1 query resolves only after that.
+    profiler.beginTick(2);
+    a.render(timed, null, null);
+    queries.forEach((q) => resolved.add(q));
+    profiler.beginTick(3);
+    expect(profiler.samples.get("b")?.gpuMs).toBe(2);
     profiler.dispose();
   });
 

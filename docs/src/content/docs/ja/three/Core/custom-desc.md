@@ -294,7 +294,7 @@ export class MyEffectDesc extends EffectDesc<MyEffectConfig, MyEffectUpdate, MyP
 
 - 法線バッファの RG チャンネルは**ビュー空間法線の octahedral エンコード**です。`@navaramap/three` がエクスポートする `NORMAL_PACKING_SHADER` GLSL 文字列の `unpackVec2ToNormal()` でデコードしてください（単純な `xy * 2 - 1` の再構成では誤った陰影になります）。
 - シャドウバッファは `R = 影の量`（0=非影..1=完全な影）、`G = albedo 出力フラグ`（[`lit`](../../../three/api/threeview-properties/#lit) オプションで color が素の albedo のとき 1。deferred lighting パスが「このピクセルを照らす」マスクとして使います）を保持します。
-- 深度テクスチャは Three.js の packing 規約に従います。MRT パスの `depthBufferPacking` / `globeDepthBufferPacking` を確認し、`@navaramap/three` がエクスポートする `DEPTH_PACKING_SHADER` GLSL 文字列（Three.js の `packing` チャンク）のヘルパーでアンパックしてください。
+- 深度テクスチャは Three.js の packing 規約に従います。MRT パスの `depthBufferPacking` / `globeDepthBufferPacking` を確認し、`@navaramap/three` がエクスポートする `DEPTH_PACKING_SHADER` GLSL 文字列（Three.js の `packing` チャンク）のヘルパーで読み取ってください。反転深度バッファ（デフォルト）では深度コピーは浮動小数点（`BasicDepthPacking`）なので `.r` を読み、`0` を空として扱います。それ以外では `RGBADepthPacking` なので `unpackRGBAToDepth` でデコードします。
 
 ## カスタムメッシュ
 

@@ -235,9 +235,10 @@ effects once and tune them via `update()`, don't add/remove per frame.
 ### Depth convention
 
 `ThreeView` renders depth reversed by default (`reversedDepthBuffer`, through
-three's `EXT_clip_control` support): window depth 1 at the near plane and 0 at
+three's `EXT_clip_control` support, and only with `EXT_color_buffer_float`
+for the float depth copies): window depth 1 at the near plane and 0 at
 the far plane, clip z in `[0, w]`. three flips depth functions, the depth
-clear value and polygon offset itself. Without the extension the view falls
+clear value and polygon offset itself. Without the extensions the view falls
 back to the logarithmic depth buffer, where every shader writes
 `gl_FragDepth`; with both options off, depth is three's standard one.
 `renderer.capabilities.reversedDepthBuffer` / `logarithmicDepthBuffer` say

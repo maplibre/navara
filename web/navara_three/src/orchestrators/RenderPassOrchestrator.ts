@@ -28,10 +28,11 @@ type ComposerDepthTextures = {
  *   depth buffer is only precise in floating point and the composer gives
  *   buffers with stencil 24-bit depth. This covers the ones it already has,
  *   before anything is drawn, and the ones it creates later.
- * - The input and output buffers are allocated right away. The composer
- *   copies the input buffer's depth into the stable copy before the first
- *   pass draws into it; unallocated, that copy reads the canvas instead,
- *   whose depth format a float one cannot be copied from.
+ * - The input and output buffers are allocated right away (and again after
+ *   each resize, see {@link allocateBuffers}). The composer copies the input
+ *   buffer's depth into the stable copy before the first pass draws into it;
+ *   unallocated, that copy reads the canvas instead, whose depth format a
+ *   float one cannot be copied from.
  */
 function setupDepthTextures(
   composer: EffectComposer,
@@ -54,9 +55,23 @@ function setupDepthTextures(
   c.createDepthTexture = () => {
     create();
     toFloat();
-    renderer.initRenderTarget(composer.inputBuffer);
-    renderer.initRenderTarget(composer.outputBuffer);
+    allocateBuffers(composer, renderer);
   };
+}
+
+/**
+ * Allocates the composer's input and output buffers while it keeps a stable
+ * depth copy (see {@link setupDepthTextures}). Resizing disposes them, so
+ * this runs after each resize too.
+ */
+function allocateBuffers(
+  composer: EffectComposer,
+  renderer: WebGLRenderer,
+): void {
+  const c = composer as unknown as ComposerDepthTextures;
+  if (!c.depthRenderTarget) return;
+  renderer.initRenderTarget(composer.inputBuffer);
+  renderer.initRenderTarget(composer.outputBuffer);
 }
 
 export type RenderPassOrchestratorOptions = {
@@ -99,7 +114,10 @@ export class RenderPassOrchestrator {
 
   private passMap = new NamedIndexMap<NamedPass>();
 
-  constructor(renderer: WebGLRenderer, options: RenderPassOrchestratorOptions) {
+  constructor(
+    private readonly renderer: WebGLRenderer,
+    options: RenderPassOrchestratorOptions,
+  ) {
     // Setup render pass
     this.effectComposer = new EffectComposer(renderer, {
       stencilBuffer: true,
@@ -115,6 +133,7 @@ export class RenderPassOrchestrator {
 
   setSize(width: number, height: number) {
     this.effectComposer.setSize(width, height);
+    allocateBuffers(this.effectComposer, this.renderer);
   }
 
   render() {

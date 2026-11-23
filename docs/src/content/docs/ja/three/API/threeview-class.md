@@ -19,7 +19,6 @@ const view = new ThreeView({
   shadow: true,
   animation: true,
   backgroundColor: 0x0a0a0f,
-  logarithmicDepthBuffer: true,
 });
 const plugin = new DefaultPlugin();
 view.addPlugin(plugin);
@@ -310,7 +309,7 @@ const view = new ThreeView({
 
 **Type:** `boolean | undefined`
 
-**Description:** 深度を反転して（ニア面で 1、ファー面で 0）32 ビット浮動小数点の深度バッファに描画するかどうか。地上の視点から宇宙まで深度の精度を保ち、GPU が隠れたフラグメントをシェーディングの前に省けるようになります（対数深度バッファではこれができません）。WebGL 拡張 `EXT_clip_control` が必要で、ない場合は代わりに `logarithmicDepthBuffer` を使います。初期化時に指定する必要があります。
+**Description:** 深度を反転して（ニア面で 1、ファー面で 0）32 ビット浮動小数点の深度バッファに描画するかどうか。地上の視点から宇宙まで深度の精度を保ち、GPU が隠れたフラグメントをシェーディングの前に省けるようになります（対数深度バッファではこれができません）。WebGL 拡張 `EXT_clip_control` と `EXT_color_buffer_float` が必要で、ない場合は代わりに `logarithmicDepthBuffer` を使います。初期化時に指定する必要があります。
 
 **Default:** `true`
 
@@ -326,7 +325,7 @@ const view = new ThreeView({
 
 **Type:** `boolean | undefined`
 
-**Description:** 反転深度バッファが無効またはサポートされていない場合に、対数深度バッファを使用するかどうか。大規模なスケールでも深度の精度を保ちますが、すべてのシェーダーが自分で深度を書き込むため、GPU は隠れたフラグメントもシェーディングします。両方のオプションが `false` の場合は three.js の標準の深度バッファを使い、カメラから遠い場所で精度が落ちます。
+**Description:** 反転深度バッファが無効またはサポートされていない場合に、対数深度バッファを使用するかどうか。大規模なスケールでも深度の精度を保ちますが、すべてのシェーダーが自分で深度を書き込むため、GPU は隠れたフラグメントもシェーディングします。両方のオプションが `false` の場合は three.js の標準の深度バッファを使い、カメラから遠い場所で精度が落ちます。反転深度バッファを使用している間はこのオプションは効果がありません（`true` を指定すると警告が出ます）。対数深度バッファを使うには `reversedDepthBuffer: false` を指定してください。
 
 **Default:** `true`
 

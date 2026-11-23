@@ -366,6 +366,17 @@ uniform float uPropMix;
 #endif
 float nvrWaterShore;
 
+// The globe depth copy under this fragment: floats under a reversed depth,
+// RGBA-packed otherwise.
+float nvr_waterGroundDepth() {
+  vec2 uv = gl_FragCoord.xy / vec2(textureSize(uWaterGroundDepth, 0));
+#ifdef USE_REVERSED_DEPTH_BUFFER
+  return texture2D(uWaterGroundDepth, uv).r;
+#else
+  return unpackRGBAToDepth(texture2D(uWaterGroundDepth, uv));
+#endif
+}
+
 float nvr_waterGroundEyeDistance(float depth) {
 #ifdef USE_LOGARITHMIC_DEPTH_BUFFER
   return exp2(2.0 * depth / logDepthBufFC) - 1.0;
@@ -407,9 +418,7 @@ ${slotFragmentPars(1)}
 // takes the deep color and opacity.
 const FRAGMENT_COLOR = /* glsl */ `
 {
-  float groundW = nvr_waterGroundEyeDistance(unpackRGBAToDepth(
-    texture2D(uWaterGroundDepth, gl_FragCoord.xy / vec2(textureSize(uWaterGroundDepth, 0)))
-  ));
+  float groundW = nvr_waterGroundEyeDistance(nvr_waterGroundDepth());
   float thickness = gl_FrontFacing
     ? max(groundW - vViewPosition.z, 0.0) * length(vViewPosition) / vViewPosition.z
     : length(vViewPosition);
@@ -430,18 +439,12 @@ const FRAGMENT_SHOW_UNDERGROUND = /* glsl */ `
 #ifndef USE_LOGARITHMIC_DEPTH_BUFFER
   gl_FragDepth = gl_FragCoord.z;
 #endif
-    vec2 groundUv = gl_FragCoord.xy / vec2(textureSize(uWaterGroundDepth, 0));
-  // The globe depth copy holds floats under a reversed depth, RGBA otherwise.
-#ifdef USE_REVERSED_DEPTH_BUFFER
-  float groundDepth = texture2D(uWaterGroundDepth, groundUv).r;
-#else
-  float groundDepth = unpackRGBAToDepth(texture2D(uWaterGroundDepth, groundUv));
-#endif
+  float groundDepth = nvr_waterGroundDepth();
   float behind = vViewPosition.z - nvr_waterGroundEyeDistance(groundDepth);
   float below = behind * length(vViewPosition) / vViewPosition.z
     * abs(dot(normalize(vViewPosition), normal));
   if (behind > 0.0 && below < uWaterShowUnderground) {
-    #ifdef USE_REVERSED_DEPTH_BUFFER
+#ifdef USE_REVERSED_DEPTH_BUFFER
     gl_FragDepth = min(groundDepth * (1.0 + 1e-6), 1.0);
 #else
     gl_FragDepth = groundDepth * (1.0 - 1e-6);
