@@ -1,5 +1,5 @@
 import PostProcessingCommon from "@shaders/glsl/postprocessingCommon.vert.glsl";
-import { CopyPass, Pass } from "postprocessing";
+import { Pass, ShaderPass } from "postprocessing";
 import {
   BasicDepthPacking,
   DepthTexture,
@@ -19,6 +19,18 @@ import {
 } from "three";
 
 import { packing } from "../shaders";
+
+// Copies the previous result for a merge. postprocessing's CopyPass reads
+// through a lowp sampler (mediump only inside a composer), which phone GPUs
+// honor: a float depth would be rounded to 16 bits or less.
+const copyFragmentShader = `
+uniform highp sampler2D inputBuffer;
+varying vec2 vUv;
+
+void main() {
+  gl_FragColor = texture2D(inputBuffer, vUv);
+}
+`;
 
 const fragmentShader = `
 #include <packing>
@@ -79,7 +91,7 @@ export class AllDepthCopyPass extends Pass {
   private readonly _reversedDepth: boolean;
 
   private _copyPassRenderTarget: WebGLRenderTarget;
-  private _copyPass: CopyPass;
+  private _copyPass: ShaderPass;
 
   /**
    * @param reversedDepth - The depth is reversed: the copy holds it as a
@@ -108,7 +120,17 @@ export class AllDepthCopyPass extends Pass {
       stencilBuffer: false,
       depthBuffer: false,
     });
-    this._copyPass = new CopyPass(this._copyPassRenderTarget);
+    this._copyPass = new ShaderPass(
+      new ShaderMaterial({
+        uniforms: { inputBuffer: { value: null } },
+        vertexShader: PostProcessingCommon,
+        fragmentShader: copyFragmentShader,
+        blending: NoBlending,
+        toneMapped: false,
+        depthWrite: false,
+        depthTest: false,
+      }),
+    );
 
     this._material = new ShaderMaterial({
       uniforms: {
@@ -167,7 +189,8 @@ export class AllDepthCopyPass extends Pass {
     this._merge = merge;
     if (merge) {
       // Store the current texture as the existing depth
-      this._material.uniforms.tExistingDepth.value = this._copyPass.texture;
+      this._material.uniforms.tExistingDepth.value =
+        this._copyPassRenderTarget.texture;
       this._material.defines.MERGE_DEPTH = "1";
     } else {
       delete this._material.defines.MERGE_DEPTH;
@@ -178,7 +201,7 @@ export class AllDepthCopyPass extends Pass {
 
   setSize(width: number, height: number): void {
     this._renderTarget.setSize(width, height);
-    this._copyPass.setSize(width, height);
+    this._copyPassRenderTarget.setSize(width, height);
   }
 
   render(
@@ -189,7 +212,7 @@ export class AllDepthCopyPass extends Pass {
     const renderTarget = this._renderTarget;
 
     if (this._merge) {
-      this._copyPass.render(renderer, renderTarget, null);
+      this._copyPass.render(renderer, renderTarget, this._copyPassRenderTarget);
     }
 
     renderer.setRenderTarget(renderTarget);
@@ -199,7 +222,7 @@ export class AllDepthCopyPass extends Pass {
   dispose(): void {
     this._renderTarget.dispose();
     this._material.dispose();
-    this._copyPass.dispose();
+    this._copyPass.dispose(); // also its material
     this._copyPassRenderTarget.dispose();
   }
 }
