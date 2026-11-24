@@ -149,7 +149,7 @@ export class RustStyleEngine implements StyleEngine {
         // Return result as-is; maplibre-expr handles type conversion
         return result as T;
       } catch (e) {
-        console.error("Expression evaluation error:", e);
+        console.warn("Expression evaluation error:", e);
         // Return default on evaluation error
         return (spec.default ?? getTypeDefault(spec.type)) as T;
       }

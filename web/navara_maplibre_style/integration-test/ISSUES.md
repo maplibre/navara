@@ -5,6 +5,8 @@ expected images) for 224 supported cases at maplibre-gl-js `397dd408`.
 Marking `projection`, `transition`, `sky.atmosphere-blend`, and
 `raster-fade-duration` as ignored (⚠️) in supported.json has since made 38
 more cases, mostly raster, supported; those are not reviewed yet.
+Supporting `sprite` has made 110 more cases supported; the entries below cover
+the ones reviewed (`sprites/*`, `icon-*`, `symbol-*`, `visibility/*`).
 
 Each entry lists representative case ids (directories under
 `maplibre-gl-js/test/integration/render/tests/`). "Verified" marks
@@ -83,20 +85,41 @@ only means both images are mostly background.
 - Cases: `text-anchor/*`, `text-offset/*`, `text-variable-anchor/*`,
   `text-variable-anchor-offset/*`, `text-radial-offset/basic`.
 
+### Vector-tile symbol layers draw no icons
+
+Every case that draws `icon-image` from a vector tile source is blank, while
+the same style from a GeoJSON source draws (`icon-image/property-function`,
+`sprites/array-multiple`).
+
+- Verified: the layer's billboard description is built correctly, but the
+  plugin's evaluator never runs for these features (`featureCreated` does not
+  fire, not even before the filter). A variant with no `sprite` and an image
+  URL as `icon-image` is blank too, so sprites are not the cause. The cause is
+  not found.
+- Cases: `icon-offset/*`, `icon-translate/*`, `icon-translate-anchor/*`,
+  `icon-pixelratio-mismatch/default`, `symbol-placement/*`,
+  `symbol-spacing/*`, `linear-filter-opacity-edge/literal`,
+  `visibility/icon/visible`, `visibility/symbol/visible`. A low `diffRatio`
+  here only means both images are mostly background.
+- `visibility/*/none` match because both images are blank.
+
+### SDF sprite icons are not drawn as SDF
+
+The plugin ignores `"sdf": true` in the sprite index, so the icon's distance
+field is drawn as a plain image.
+
+- Verified: `dot.sdf` has white RGB everywhere and its shape only in alpha. It
+  is invisible on a white background, where MapLibre draws it in its default
+  `icon-color`, black. With `icon-color` set, Navara draws a soft-edged blob
+  where MapLibre draws a crisp shape (`icon-color/literal`).
+- Cases that use `dot.sdf`: `icon-anchor/*`, `icon-color/*`,
+  `icon-image/literal`, `icon-overlap/*`, `within/paint-icon`,
+  `combinations/*symbol-translucent*`, `regressions/mapbox-gl-js#5576`,
+  `regressions/mapbox-gl-native#11451`.
+- `icon-halo-*`, `icon-text-fit`, and the index's `stretchX`/`stretchY`/
+  `content` are not supported either (see supported.json).
+
 ## Style parsing and evaluation
-
-### CSS named colors are only partially supported
-
-- `pink` (`fill-extrusion-multiple/interleaved-layers`) and `forestgreen`
-  (`sparse-tileset/*`) fail with `Could not parse color from value '…'`.
-- The evaluator or background layer is dropped as a result.
-
-### Invalid color results raise errors instead of falling back to the default
-
-- Expressions evaluating to `null`, `0`, or `"invalid"` log
-  `Expression evaluation error: … CouldNotParse { ty: "color" … }`.
-- MapLibre uses the property default instead.
-- Cases: `global-state/default`, `regressions/mapbox-gl-js#4124`, `#4150`.
 
 ## Packaging and docs
 

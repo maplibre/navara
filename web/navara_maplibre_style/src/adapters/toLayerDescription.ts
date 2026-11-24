@@ -15,6 +15,7 @@ import {
 import { PAINT_SPECS_BY_TYPE } from "../engine/paintSpecs";
 import type { StyleEngine } from "../engine/StyleEngine";
 import { type StyleLayer, type ValueExpression } from "../engine/types";
+import { resolveIconImage, type SpriteImages } from "../sprite";
 import {
   expressionUsesGeometryType,
   expressionUsesZoom,
@@ -673,16 +674,17 @@ function getTransparentPlaceholder(): string {
 
 /**
  * Get icon URL from layout.
- * For constant strings, returns the URL directly.
- * For expressions, returns a transparent placeholder - the actual image will be set
- * dynamically via the `image` property during feature evaluation.
+ * A constant string resolves with {@link resolveIconImage}. For expressions,
+ * or a name with no image, returns a transparent placeholder - the actual
+ * image will be set dynamically via the `image` property during feature
+ * evaluation.
  */
-function getIconUrl(iconImage: unknown): string {
-  // If icon-image is a constant string, use it directly
-  // If it's an expression, use transparent placeholder (will be overridden via feature.image)
-  return typeof iconImage === "string" && iconImage
-    ? iconImage
-    : getTransparentPlaceholder();
+function getIconUrl(iconImage: unknown, sprite?: SpriteImages): string {
+  return (
+    (typeof iconImage === "string" && iconImage
+      ? resolveIconImage(iconImage, sprite)?.url
+      : undefined) ?? getTransparentPlaceholder()
+  );
 }
 
 /**
@@ -696,6 +698,7 @@ function createSymbolLayer(
   engine?: StyleEngine,
   zoom = CONSTRUCTION_ZOOM,
   rank = 0,
+  sprite?: SpriteImages,
 ): LayerDescription | null {
   const layout = styleLayer.layout;
 
@@ -747,7 +750,7 @@ function createSymbolLayer(
       sizeInMeters: false,
       clampToGround: true,
       depthTest: true,
-      url: getIconUrl(layout?.["icon-image"]),
+      url: getIconUrl(layout?.["icon-image"], sprite),
       offsetDepth: true,
       transparent: true,
     };
@@ -841,6 +844,8 @@ function createSymbolLayer(
  *   {@link CONSTRUCTION_ZOOM}
  * @param rank - Symbol placement rank: the layer's index in the style, as
  *   MapLibre places symbols from the top-most layer down
+ * @param sprite - The style's sprite icons, which `icon-image` names refer
+ *   to; undefined when the style has no sprite (names are image URLs)
  * @returns Navara layer description, or null if the layer cannot be processed
  *
  * Note: Returns null for unsupported/misconfigured layers instead of throwing,
@@ -856,6 +861,7 @@ export function toLayerDescription(
   engine?: StyleEngine,
   zoom?: number,
   rank?: number,
+  sprite?: SpriteImages,
 ): LayerDescription | null {
   switch (styleLayer.type) {
     case "fill":
@@ -880,6 +886,7 @@ export function toLayerDescription(
         engine,
         zoom,
         rank,
+        sprite,
       );
     default:
       // Warn but don't throw - allows loading third-party styles with unsupported layers

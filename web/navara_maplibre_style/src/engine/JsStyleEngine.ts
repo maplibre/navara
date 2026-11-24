@@ -150,7 +150,7 @@ export class JsStyleEngine implements StyleEngine {
 
         return value as T;
       } catch (e) {
-        console.error("Expression evaluation error:", e);
+        console.warn("Expression evaluation error:", e);
         return (spec.default ?? getTypeDefault(spec.type)) as T;
       }
     };

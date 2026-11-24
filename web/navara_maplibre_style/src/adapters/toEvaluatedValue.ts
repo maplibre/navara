@@ -20,6 +20,7 @@ import {
   type SymbolLayer,
   type ValueExpression,
 } from "../engine/types";
+import { resolveIconImage, type SpriteImages } from "../sprite";
 import { expressionUsesFeatureData } from "../utils/expressionHelpers";
 
 import {
@@ -551,6 +552,7 @@ function processSymbolLayer(
   meshGeomType: GeometryType | undefined,
   styleLayer: SymbolLayer,
   warnedLayers?: Set<string>, // Set to track layers that have already warned (prevents log spam)
+  sprite?: SpriteImages,
 ): void {
   // Determine what this specific feature has based on evaluated layout values
   // Extract string values from MapLibre internal types (ResolvedImage, Formatted)
@@ -580,7 +582,13 @@ function processSymbolLayer(
 
   // Process icon properties for billboard geometry
   if (meshGeomType === "billboard" && hasIcon) {
-    result.image = iconImage;
+    const icon = resolveIconImage(iconImage, sprite);
+    // MapLibre draws nothing for an image the sprite lacks.
+    if (!icon) {
+      result.show = false;
+      return;
+    }
+    result.image = icon.url;
 
     applyColorAndOpacity(
       result,
@@ -594,18 +602,14 @@ function processSymbolLayer(
     const iconSize = layoutValues?.["icon-size"] ?? 1;
     const validIconSize =
       typeof iconSize === "number" && Number.isFinite(iconSize);
-    if (validIconSize) {
-      result.size = iconSize;
-    }
+    const scale = validIconSize ? iconSize : 1;
+    // The billboard's size scales the image's pixels; a sprite icon's CSS
+    // size is its pixel size divided by the sheet's pixel ratio.
+    result.size = scale / icon.pixelRatio;
 
     // `icon-offset` is scaled by `icon-size` into pixels, the billboard's
     // size unit.
-    applySymbolPlacement(
-      result,
-      layoutValues,
-      "icon",
-      validIconSize ? iconSize : 1,
-    );
+    applySymbolPlacement(result, layoutValues, "icon", scale);
   }
 
   // Process text properties for text geometry
@@ -679,6 +683,8 @@ function processSymbolLayer(
  * @param layoutValues - Evaluated layout property values (for symbol layers)
  * @param meshGeomType - Mesh geometry type (e.g., "billboard", "text"). Not GeoJSON geometry type.
  * @param warnedLayers - Set to track layers that have warned (prevents log spam, optional)
+ * @param sprite - The style's sprite icons, which `icon-image` names refer
+ *   to; undefined when the style has no sprite (names are image URLs)
  * @returns Navara EvaluatedValue object
  */
 export function toEvaluatedValue(
@@ -687,6 +693,7 @@ export function toEvaluatedValue(
   layoutValues?: Record<string, unknown>,
   meshGeomType?: GeometryType,
   warnedLayers?: Set<string>,
+  sprite?: SpriteImages,
 ): EvaluatedResult {
   const result: EvaluatedResult = {};
 
@@ -712,6 +719,7 @@ export function toEvaluatedValue(
         meshGeomType,
         styleLayer,
         warnedLayers,
+        sprite,
       );
       break;
   }
