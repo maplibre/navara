@@ -58,6 +58,6 @@
     "@types/three": "0.187.0",
     "postprocessing": "6.39.6",
     "three": "0.187.0",
-    "vite-plugin-glsl": "1.6.2"
+    "vite-plugin-glsl": "1.6.3"
   }
 }

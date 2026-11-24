@@ -70,10 +70,10 @@
   },
   "dependencies": {
     "@navaramap/engine-api": "workspace:*",
-    "@zarrita/storage": "0.2.0",
+    "@zarrita/storage": "0.2.1",
     "delaunator": "5.1.0",
     "earcut": "3.2.4",
-    "zarrita": "0.7.5"
+    "zarrita": "0.7.6"
   },
   "devDependencies": {
     "@navaramap/three": "workspace:*",
