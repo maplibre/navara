@@ -156,9 +156,9 @@
     "colors": {
       "h2": "Rənglər",
       "names": {
-        "primary": "Primary Color",
-        "secondary": "Secondary Color",
-        "accent": "Accent Color"
+        "primary": "Əsas rəng",
+        "secondary": "İkincidərəcəli rəng",
+        "accent": "Vurğu rəngi"
       }
     }
   },
