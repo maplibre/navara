@@ -55,6 +55,7 @@ Navara reads only part of the pnts feature table. Point colors are interpreted a
 | GLB POINTS primitive         | Point cloud rendering for glTF meshes with `mode: POINTS` (3D Tiles 1.1 point cloud). |
 | `EXT_mesh_features`          | Feature identification via FeatureId sets in glTF meshes.                             |
 | `EXT_structural_metadata`    | Access to per-feature metadata via property tables embedded in glTF assets.           |
+| Tileset metadata             | Tileset, tile, content and group `metadata`, see [Metadata](#metadata).               |
 | `KHR_draco_mesh_compression` | Decoding of Draco-compressed mesh data.                                               |
 | `KHR_mesh_quantization`      | Quantized vertex attributes for compact glTF assets.                                  |
 | `EXT_meshopt_compression`    | Decoding of meshopt-compressed buffers.                                               |
@@ -75,6 +76,30 @@ Implicit tiling is not supported, so a tileset must describe its tile hierarchy 
 | Pre-1.0 tilesets (`content.url`, legacy b3dm headers) | ✅                        |
 | `viewerRequestVolume`                                 | ❌                        |
 | `asset.gltfUpAxis`                                    | ⚠️ `Y` (the default) only |
+
+## Metadata
+
+Navara reads the metadata of the tileset, tiles, contents and groups, written in the 3D Tiles 1.1 core or in the 1.0 `3DTILES_metadata` extension, and resolves each value with the tileset `schema`: `normalized`, `offset` and `scale` are applied, a `noData` value becomes the property's `default` (or `null`), and an omitted property gets its `default`.
+
+- Tile, content and group metadata arrive with each feature set in the layer's `featureCreated` event, as `content.metadata: { tile?, content?, group? }` where `content.type` is `"3d-tiles"`. Each picked feature carries the same `content` in the view's `featureClick` / `featureHover` / `featureEnter` events.
+- Tileset metadata and the schema arrive once per load in the layer's `tilesetLoaded` event, and stay readable as `layer.tileset`.
+
+The schema must be inline in the root tileset JSON: `schemaUri` is not fetched. As in CesiumJS, every tile resolves against the root tileset's `schema` and `groups`, and those of an external (nested) tileset are ignored. Metadata in implicit tiling subtrees is not read.
+
+```typescript
+const layer = view.addLayer({ type: "3d-tiles", source: tileset });
+
+layer.on("tilesetLoaded", ({ metadata }) => {
+  console.log("Tileset metadata:", metadata?.properties);
+});
+
+view.on("featureClick", (info) => {
+  const content = info?.content;
+  if (content?.type === "3d-tiles") {
+    console.log("Tile metadata:", content.metadata?.tile);
+  }
+});
+```
 
 ## Example
 

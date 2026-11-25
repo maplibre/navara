@@ -122,6 +122,8 @@ type PickedFeature = {
   batchId: number; // バッチ ID
   properties: Record<string, unknown> | undefined; // 地物のプロパティ
   layerId: string | undefined; // レイヤー ID
+  featureSetId?: FeatureSetId; // フィーチャーセット ID。レイヤーの featureCreated と同じ値（フィーチャーセットに属さない場合は undefined）
+  content?: FeatureSetContent; // フィーチャーセットの読み込み元コンテンツ（3D Tiles の credit とメタデータ）。featureCreated と同じ値
 };
 ```
 

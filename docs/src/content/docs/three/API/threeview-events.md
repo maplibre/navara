@@ -122,6 +122,8 @@ type PickedFeature = {
   batchId: number; // Batch ID
   properties: Record<string, unknown> | undefined; // Feature properties
   layerId: string | undefined; // Layer ID
+  featureSetId?: FeatureSetId; // Feature set ID, as in the layer's featureCreated event (undefined outside a feature set)
+  content?: FeatureSetContent; // Source content of the feature set (3D Tiles credit and metadata), as in featureCreated
 };
 ```
 

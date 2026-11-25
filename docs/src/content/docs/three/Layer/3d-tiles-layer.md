@@ -54,7 +54,7 @@ const layer = view.addLayer({ type: "3d-tiles", source: tileset, model: { maxSse
 ```
 
 :::note
-The `Layer` handle emits `featureCreated` / `featureRemoved` / `featureVisibilityChanged` events, which carry `credit` information. Use them to display attribution for sources such as Google Photorealistic 3D Tiles, as required by their [terms of service](https://cloud.google.com/maps-platform/terms). See the [3D Tiles Source](../../../three/source/3d-tiles-source/) page for supported specifications (b3dm, pnts, glTF extensions).
+The `Layer` handle emits `featureCreated` / `featureRemoved` / `featureVisibilityChanged` events. `featureCreated` carries each tile's credit as `content.credit`. Use them to display attribution for sources such as Google Photorealistic 3D Tiles, as required by their [terms of service](https://cloud.google.com/maps-platform/terms). See the [3D Tiles Source](../../../three/source/3d-tiles-source/) page for supported specifications (b3dm, pnts, glTF extensions).
 :::
 
 ## Related Resources

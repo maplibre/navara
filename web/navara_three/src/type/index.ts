@@ -1,4 +1,8 @@
-import type { NormalizeWASMClass, TileHandle } from "@navaramap/core";
+import type {
+  FeatureSetId,
+  NormalizeWASMClass,
+  TileHandle,
+} from "@navaramap/core";
 import type {
   VectorLayerDescription,
   RasterLayerDescription,
@@ -17,6 +21,7 @@ import type { Mesh, Sprite, Object3D } from "three";
 
 import type { Color } from "../Color";
 import type { FeatureInfo } from "../evaluations";
+import type { FeatureSetContent } from "../layer";
 import type {
   FinalCopyPassConfig,
   MRTPassConfig,
@@ -321,7 +326,16 @@ export type MeshCache = Map<string, Mesh | Sprite | Object3D>;
 // Make a reference of TileMesh by TileHandle.
 export type TileMapByHandle = Map<TileHandle, TileMesh>;
 
-export type PickedFeature = FeatureInfo;
+export type PickedFeature = FeatureInfo & {
+  /**
+   * The feature set the feature belongs to, as in the layer's
+   * `featureCreated` / `featureRemoved` events. `undefined` when the feature
+   * is not in a feature set.
+   */
+  featureSetId?: FeatureSetId;
+  /** Source content of the feature set, as in `featureCreated`. */
+  content?: FeatureSetContent;
+};
 
 export type RenderFlag = {
   forceUpdate: boolean;

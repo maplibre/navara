@@ -54,7 +54,7 @@ const layer = view.addLayer({ type: "3d-tiles", source: tileset, model: { maxSse
 ```
 
 :::note
-`Layer` ハンドルは `featureCreated` / `featureRemoved` / `featureVisibilityChanged` イベントを発行します。これらは `credit` 情報を含んでいます。Google Photorealistic 3D Tiles のような Source では、[利用規約](https://cloud.google.com/maps-platform/terms)で要求されるとおり、これらを使って帰属表示（アトリビューション）を表示してください。対応する仕様（b3dm、pnts、glTF 拡張）については [3D Tiles Source](../../../three/source/3d-tiles-source/) のページを参照してください。
+`Layer` ハンドルは `featureCreated` / `featureRemoved` / `featureVisibilityChanged` イベントを発行します。`featureCreated` は各タイルの credit を `content.credit` として含んでいます。Google Photorealistic 3D Tiles のような Source では、[利用規約](https://cloud.google.com/maps-platform/terms)で要求されるとおり、これらを使って帰属表示（アトリビューション）を表示してください。対応する仕様（b3dm、pnts、glTF 拡張）については [3D Tiles Source](../../../three/source/3d-tiles-source/) のページを参照してください。
 :::
 
 ## 関連リソース

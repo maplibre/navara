@@ -26,6 +26,12 @@ A handle class for controlling resource layers (imagery, terrain, GeoJSON, 3D Ti
 
 **Description:** The unique identifier of the layer.
 
+#### tileset
+
+**Type:** `Tiles3dTileset | undefined`
+
+**Description:** The root tileset JSON of a `3d-tiles` layer, once it has loaded (see [`tilesetLoaded`](#tilesetloaded)). `undefined` until then, while a source update reloads it, and for other layer types. See [3D Tiles metadata](../../source/3d-tiles-source/#metadata).
+
 ### Methods
 
 #### update()
@@ -97,6 +103,28 @@ forceUpdate(): void
 layer.forceUpdate();
 ```
 
+#### getFeatureSetContent()
+
+Returns the source content a feature set was loaded from: the same value as `content` in its [`featureCreated`](#featurecreated) event. Returns `undefined` for a feature set without source content information, and once the feature set is removed.
+
+**Syntax:**
+
+```typescript
+getFeatureSetContent(featureSetId: FeatureSetId): FeatureSetContent | undefined
+```
+
+**Example:**
+
+```typescript
+view.on("featureClick", (info) => {
+  if (info?.featureSetId === undefined) return;
+  const content = layer.getFeatureSetContent(info.featureSetId);
+  if (content?.type === "3d-tiles") {
+    console.log(content.credit, content.metadata?.tile);
+  }
+});
+```
+
 ### Events
 
 :::note
@@ -119,7 +147,7 @@ For the data structure behind these events (Layer, FeatureSet, Feature, Batch), 
 |----------|------|-------------|
 | `featureSetId` | `FeatureSetId` | Unique identifier of the created feature set |
 | `evaluator` | `FeatureEvaluator` | Evaluator class used for feature styling |
-| `credit` | `string \| undefined` | Data source credit information (optional) |
+| `content` | `FeatureSetContent \| undefined` | The source content the feature set was loaded from, discriminated by `type`. For 3D Tiles, `{ type: "3d-tiles", credit?, metadata? }`: `credit` is the glTF `asset.copyright`, and `metadata` is the 3D Tiles metadata of the tile, content and group (see [3D Tiles metadata](../../source/3d-tiles-source/#metadata)). `undefined` for other layers |
 
 **Example:**
 
@@ -192,6 +220,23 @@ layer.on("featureUpdated", ({ evaluator }) => {
 | Property | Type | Description |
 |----------|------|-------------|
 | `featureSetId` | `FeatureSetId` | Identifier of the removed feature set |
+
+#### tilesetLoaded
+
+**Description:** Fires when a `3d-tiles` layer loads its root tileset JSON, and again when a source update reloads it. The value is also available as [`tileset`](#tileset).
+
+**Handler Type:**
+
+```typescript
+(tileset: Tiles3dTileset) => void
+```
+
+**Tiles3dTileset:**
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `metadata` | `Tiles3dMetadataEntity \| undefined` | The tileset's own metadata entity |
+| `schema` | `Record<string, unknown> \| undefined` | The `schema` object of the tileset JSON |
 
 #### updated
 

@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::ops::Range;
 use std::sync::Arc;
 
-use navara_property::PropertyValue;
+use navara_property::{PropertyValue, json_value_to_property_value};
 
 /// Stores property table metadata from EXT_structural_metadata for lazy decoding.
 /// Binary data is not owned; callers must provide the BIN chunk slice at read time.
@@ -30,6 +30,8 @@ pub struct PropertyColumnData {
     /// Sentinel string value from schema `noData` property for STRING types.
     /// When a decoded string matches this, the value is treated as null.
     pub string_no_data: Option<String>,
+    /// Schema `default`, in final form: replaces a `noData` value (null without it).
+    pub default: Option<serde_json::Value>,
     /// Byte range within the GLB BIN chunk for string offsets (if STRING type).
     /// Per spec, this is an array of `count + 1` offsets marking string boundaries.
     pub string_offsets_range: Option<Range<usize>>,
@@ -131,11 +133,13 @@ fn read_column_value<V: PropertyValue>(
     index: usize,
 ) -> Option<V> {
     if is_no_data(col, values, index) {
-        return Some(V::null());
+        return Some(no_data_value(col));
     }
     if col.element_type == "STRING" {
         return match read_string_value(values, index, string_offsets, &col.string_offset_type) {
-            Some(s) if col.string_no_data.as_deref() == Some(s.as_str()) => Some(V::null()),
+            Some(s) if col.string_no_data.as_deref() == Some(s.as_str()) => {
+                Some(no_data_value(col))
+            }
             Some(s) => Some(V::from_string(s)),
             None => None,
         };
@@ -150,22 +154,7 @@ fn read_column_value<V: PropertyValue>(
         if elem_count == 1 {
             // SCALAR path
             let raw = read_raw_f64(values, index, &col.component_type)?;
-            let norm = if col.normalized {
-                normalize_value(raw, &col.component_type)
-            } else {
-                raw
-            };
-            let scale = col
-                .scale
-                .as_ref()
-                .and_then(|s| s.first().copied())
-                .unwrap_or(1.0);
-            let offset = col
-                .offset
-                .as_ref()
-                .and_then(|o| o.first().copied())
-                .unwrap_or(0.0);
-            return Some(V::from_f64(offset + scale * norm));
+            return Some(V::from_f64(transform_column_component(col, raw, 0)));
         }
 
         // VEC/MAT path: per-component transform
@@ -173,27 +162,44 @@ fn read_column_value<V: PropertyValue>(
         for i in 0..elem_count {
             let byte_off = base_offset + i * comp_size;
             let raw = read_raw_f64_at(values, byte_off, &col.component_type)?;
-            let norm = if col.normalized {
-                normalize_value(raw, &col.component_type)
-            } else {
-                raw
-            };
-            let scale = col
-                .scale
-                .as_ref()
-                .and_then(|s| s.get(i).copied())
-                .unwrap_or(1.0);
-            let offset = col
-                .offset
-                .as_ref()
-                .and_then(|o| o.get(i).copied())
-                .unwrap_or(0.0);
-            arr.push(V::from_f64(offset + scale * norm));
+            arr.push(V::from_f64(transform_column_component(col, raw, i)));
         }
         return Some(V::from_array(arr));
     }
 
     read_value::<V>(values, index, &col.component_type, &col.element_type)
+}
+
+/// [`transform_component`] for component `i` of a column value.
+fn transform_column_component(col: &PropertyColumnData, raw: f64, i: usize) -> f64 {
+    let component = |v: &Option<Vec<f64>>| v.as_ref().and_then(|v| v.get(i).copied());
+    transform_component(
+        raw,
+        col.normalized.then_some(col.component_type.as_str()),
+        component(&col.offset),
+        component(&col.scale),
+    )
+}
+
+/// `offset + scale * normalize(raw)` for one component, per 3D Tiles 1.1.
+/// `normalized_type` is the component type of a `normalized` property.
+pub(crate) fn transform_component(
+    raw: f64,
+    normalized_type: Option<&str>,
+    offset: Option<f64>,
+    scale: Option<f64>,
+) -> f64 {
+    let value = normalized_type.map_or(raw, |ct| normalize_value(raw, ct));
+    offset.unwrap_or(0.0) + scale.unwrap_or(1.0) * value
+}
+
+/// The value of a `noData` entry: the schema `default`, or null. As in CesiumJS:
+/// <https://github.com/CesiumGS/cesium/blob/main/packages/engine/Source/Scene/MetadataTableProperty.js>
+fn no_data_value<V: PropertyValue>(col: &PropertyColumnData) -> V {
+    col.default
+        .as_ref()
+        .and_then(json_value_to_property_value)
+        .unwrap_or_else(V::null)
 }
 
 /// Check if the raw bytes at the given index match the noData sentinel value.
@@ -513,6 +519,7 @@ mod tests {
                 element_type: "SCALAR".to_string(),
                 no_data: None,
                 string_no_data: None,
+                default: None,
                 string_offsets_range: None,
                 string_offset_type: String::new(),
                 normalized: false,
@@ -535,6 +542,7 @@ mod tests {
                 element_type: "SCALAR".to_string(),
                 no_data: None,
                 string_no_data: None,
+                default: None,
                 string_offsets_range: None,
                 string_offset_type: String::new(),
                 normalized: false,
@@ -561,6 +569,7 @@ mod tests {
                 element_type: "STRING".to_string(),
                 no_data: None,
                 string_no_data: None,
+                default: None,
                 string_offsets_range: Some(offsets_start..offsets_end),
                 string_offset_type: "UINT32".to_string(),
                 normalized: false,
@@ -627,6 +636,7 @@ mod tests {
                 element_type: "SCALAR".to_string(),
                 no_data: Some((-9999.0f32).to_le_bytes().to_vec()),
                 string_no_data: None,
+                default: None,
                 string_offsets_range: None,
                 string_offset_type: String::new(),
                 normalized: false,
@@ -651,6 +661,37 @@ mod tests {
     }
 
     #[test]
+    fn test_get_properties_no_data_returns_default() {
+        let binary: Vec<u8> = [7u8, 255].to_vec();
+        let mut properties = HashMap::new();
+        properties.insert(
+            "level".to_string(),
+            PropertyColumnData {
+                values_range: 0..2,
+                component_type: "UINT8".to_string(),
+                element_type: "SCALAR".to_string(),
+                no_data: Some(vec![255]),
+                string_no_data: None,
+                default: Some(serde_json::json!(-1)),
+                string_offsets_range: None,
+                string_offset_type: String::new(),
+                normalized: false,
+                offset: None,
+                scale: None,
+            },
+        );
+        let table = PropertyTableData {
+            count: 2,
+            properties: Arc::new(properties),
+        };
+
+        let props: Value = table.get_properties(0, &binary).unwrap();
+        assert_eq!(props["level"], serde_json::json!(7));
+        let props: Value = table.get_properties(1, &binary).unwrap();
+        assert_eq!(props["level"], serde_json::json!(-1));
+    }
+
+    #[test]
     fn test_get_properties_no_data_uint32() {
         let mut binary = Vec::new();
         let mut properties = HashMap::new();
@@ -667,6 +708,7 @@ mod tests {
                 element_type: "SCALAR".to_string(),
                 no_data: Some(0u32.to_le_bytes().to_vec()),
                 string_no_data: None,
+                default: None,
                 string_offsets_range: None,
                 string_offset_type: String::new(),
                 normalized: false,
@@ -847,6 +889,7 @@ mod tests {
             element_type: "STRING".to_string(),
             no_data: None,
             string_no_data: None,
+            default: None,
             string_offsets_range: Some(offsets_start..offsets_end),
             string_offset_type: "UINT32".to_string(),
             normalized: false,
@@ -885,6 +928,7 @@ mod tests {
             element_type: "STRING".to_string(),
             no_data: None,
             string_no_data: None,
+            default: None,
             string_offsets_range: Some(offsets_start..offsets_end),
             string_offset_type: "UINT16".to_string(),
             normalized: false,
@@ -913,6 +957,7 @@ mod tests {
             element_type: "STRING".to_string(),
             no_data: None,
             string_no_data: None,
+            default: None,
             string_offsets_range: None,
             string_offset_type: String::new(),
             normalized: false,
@@ -937,6 +982,7 @@ mod tests {
             element_type: "STRING".to_string(),
             no_data: None,
             string_no_data: None,
+            default: None,
             string_offsets_range: None,
             string_offset_type: String::new(),
             normalized: false,
@@ -961,6 +1007,7 @@ mod tests {
             element_type: "STRING".to_string(),
             no_data: None,
             string_no_data: Some("\u{FFFF}".to_string()),
+            default: None,
             string_offsets_range: None,
             string_offset_type: String::new(),
             normalized: false,
@@ -1010,6 +1057,7 @@ mod tests {
             element_type: "SCALAR".to_string(),
             no_data: None,
             string_no_data: None,
+            default: None,
             string_offsets_range: None,
             string_offset_type: String::new(),
             normalized: true,
@@ -1037,6 +1085,7 @@ mod tests {
             element_type: "SCALAR".to_string(),
             no_data: None,
             string_no_data: None,
+            default: None,
             string_offsets_range: None,
             string_offset_type: String::new(),
             normalized: false,
@@ -1063,6 +1112,7 @@ mod tests {
             element_type: "SCALAR".to_string(),
             no_data: None,
             string_no_data: None,
+            default: None,
             string_offsets_range: None,
             string_offset_type: String::new(),
             normalized: true,
@@ -1089,6 +1139,7 @@ mod tests {
             element_type: "VEC3".to_string(),
             no_data: None,
             string_no_data: None,
+            default: None,
             string_offsets_range: None,
             string_offset_type: String::new(),
             normalized: false,
@@ -1114,6 +1165,7 @@ mod tests {
             element_type: "VEC3".to_string(),
             no_data: None,
             string_no_data: None,
+            default: None,
             string_offsets_range: None,
             string_offset_type: String::new(),
             normalized: true,

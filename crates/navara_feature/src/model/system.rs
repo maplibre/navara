@@ -16,7 +16,7 @@ use navara_layer::{LayerId, LayerStore};
 use navara_material::ModelMaterial;
 use navara_math::{Quat, Transform, Vec3};
 
-use navara_feature_component::model::{ModelBin, ModelGeometry, ModelMarker};
+use navara_feature_component::model::{ModelBin, ModelGeometry, ModelMarker, TileContentMetadata};
 
 use navara_geometry::TransferableFloatAttribute;
 
@@ -35,6 +35,7 @@ pub fn transfer_mesh(
             &mut ModelMaterial,
             // For GLB
             Option<&ModelBin>,
+            Option<&TileContentMetadata>,
             Option<&Transform>,
             Option<&Aabb>,
             // For glTF
@@ -54,6 +55,7 @@ pub fn transfer_mesh(
         geometry,
         mut material,
         bin,
+        metadata,
         adjustment_transform,
         aabb,
         deleted_marker,
@@ -143,6 +145,7 @@ pub fn transfer_mesh(
                 feature_id: entity,
                 render_info: ModelRenderInformation { is_rendered: false },
                 bin: bin.cloned(),
+                metadata: metadata.map(|m| m.0.clone()),
                 geometry: TransferableModelGeometry {
                     batch_ids: Some(TransferableFloatAttribute {
                         data: global_batch_ids.handle,

@@ -6,10 +6,13 @@ import {
   type Transform,
   type ObjectTransformEvent,
   type CameraFrustum,
+  type TilesetLoadedEvent,
   Events,
 } from "@navaramap/engine";
 import { radianToDegree } from "@navaramap/three-api";
 import { Object3D } from "three";
+
+import { Layer, type Tiles3dTileset } from "../layer";
 
 import { type EventContext } from "./context";
 import { dataRequesterJobHandler } from "./dataRequester";
@@ -88,6 +91,14 @@ export function registerEventHandlers(ctx: EventContext): {
   dispatcher.registerSync("vector_drape_changed", (handles) =>
     processVectorDrapeChanged(ctx, handles),
   );
+  // Before `tileset_loaded`: a reload's new tileset must not be cleared.
+  dispatcher.registerSync("tileset_unloaded", (layerId) => {
+    const layer = ctx.layersManager.get(layerId);
+    if (layer instanceof Layer) layer._setTileset(undefined);
+  });
+  dispatcher.registerSync("tileset_loaded", (ev) =>
+    processTilesetLoaded(ctx, ev),
+  );
 
   dispatcher.register(tileMeshJobHandler(ctx));
   const workerTasks = dispatcher.register(workerTaskJobHandler(ctx));
@@ -124,6 +135,18 @@ function processCameraFrustumUpdated(
   ctx.camera.raw.fov = radianToDegree(frustum.fov);
   ctx.camera.raw.updateProjectionMatrix();
   ctx.camera.emit("frustumChanged");
+}
+
+function processTilesetLoaded(ctx: EventContext, ev: TilesetLoadedEvent) {
+  const layer = ctx.layersManager.get(ev.layer_id);
+  if (!(layer instanceof Layer)) return;
+  const { metadata, schema } = ev;
+  const tileset: Tiles3dTileset = {
+    metadata: metadata ? JSON.parse(metadata) : undefined,
+    schema: schema ? JSON.parse(schema) : undefined,
+  };
+  layer._setTileset(tileset);
+  ctx.viewEvents.emit("layer", "tilesetLoaded", ev.layer_id, tileset);
 }
 
 function processObjectTransformUpdated(

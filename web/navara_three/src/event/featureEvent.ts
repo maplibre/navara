@@ -21,21 +21,21 @@ export const handleFeatureCreatedEventByLayerId = (
   // Create the evaluator
   const evaluator = new FeatureEvaluator(handler, layerId, featureSetId, obj);
 
+  const model = obj instanceof ModelMesh ? obj : undefined;
+
   // Register the feature evaluator with the layer if it exists
   if (layer && layer instanceof Layer) {
-    layer._registerFeatureEvaluator(featureSetId, evaluator);
-  }
-
-  let credit = undefined;
-  if (obj instanceof ModelMesh && obj.credit) {
-    credit = obj.credit;
+    layer._registerFeatureEvaluator(featureSetId, evaluator, model);
   }
 
   // Emit the evaluator
   viewEvents.emit("layer", "featureCreated", layerId, {
     featureSetId,
     evaluator,
-    credit,
+    // Built only when a listener reads it.
+    get content() {
+      return model?.content;
+    },
   });
 
   return layer;

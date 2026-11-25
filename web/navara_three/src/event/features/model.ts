@@ -43,7 +43,8 @@ async function applyCreasedNormals(
 }
 
 export async function renderModel(ctx: EventContext, m: NavaraModelMesh) {
-  const { rawScene, credit } = await (async () => {
+  const { rawScene, credit, isTiles3d } = await (async () => {
+    // Only 3D Tiles content carries a bin.
     if (m.bin) {
       // Every getter of a WASM object may allocate and grow WASM memory,
       // which detaches the `buf.u8` view below, so read them all first.
@@ -116,7 +117,7 @@ export async function renderModel(ctx: EventContext, m: NavaraModelMesh) {
             aabb_extent.length(),
           );
         }
-        return { rawScene: group };
+        return { rawScene: group, isTiles3d: true };
       }
 
       const bin = view.slice();
@@ -138,6 +139,7 @@ export async function renderModel(ctx: EventContext, m: NavaraModelMesh) {
       return {
         rawScene: model.scene,
         credit: model.asset.copyright,
+        isTiles3d: true,
       };
     } else {
       if (!m.material.url) {
@@ -165,7 +167,7 @@ export async function renderModel(ctx: EventContext, m: NavaraModelMesh) {
     );
   }
 
-  const scene = new ModelMesh(ctx, { scene: rawScene, credit }, m);
+  const scene = new ModelMesh(ctx, { scene: rawScene, credit, isTiles3d }, m);
 
   return scene;
 }

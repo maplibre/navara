@@ -59,7 +59,9 @@ use navara_buffer_store::BufferStore;
 use navara_camera::CameraFrustum;
 use navara_component::{Deleted, Priority};
 use navara_data_requester::DataRequesterStatus;
-use navara_feature_component::{id::FeatureId, render::RenderableFeature};
+use navara_feature_component::{
+    id::FeatureId, model::TileContentMetadata, render::RenderableFeature,
+};
 use navara_fog::{DynamicSseTerm, Fog};
 use navara_math::Vec3;
 use navara_memory::SseDegrade;
@@ -78,7 +80,7 @@ use crate::{
 
 use super::{
     Cesium3dTileContent, Cesium3dTileContentMetadata, Cesium3dTilesMetadataDataRequesterMarker,
-    ContentKind, ContentSlot, request_tile_content, resolve_content_url,
+    ContentKind, ContentSlot, TilesetMetadataScope, request_tile_content, resolve_content_url,
     types::Cesium3dTileContentRequesterQuery,
 };
 
@@ -125,6 +127,7 @@ pub fn select_tiles(
     dynamic_sse: DynamicSseTerm,
     degrade: SseDegrade,
     is_v1_1: bool,
+    scope: &TilesetMetadataScope,
 ) {
     let mut rendered_tiles_count = 0;
     let dynamic_sse = dynamic_sse.for_max_sse(max_sse as f64);
@@ -147,6 +150,7 @@ pub fn select_tiles(
         renderable_features,
         f64::MAX, // Root tile has no parent
         is_v1_1,
+        scope,
         false,
         false,
     );
@@ -213,6 +217,7 @@ fn mark_leaves(
     renderable_features: &Query<&RenderableFeature>,
     parent_geometric_error: f64,
     is_v1_1: bool,
+    scope: &TilesetMetadataScope,
     is_ancestor_activated: bool,
     meets_sse_ancestors: bool,
 ) -> TraversalResult {
@@ -326,7 +331,7 @@ fn mark_leaves(
             match tile.children.as_ref().unwrap().get(i) {
                 Some(_) => {}
                 None => {
-                    let c = Cesium3dTileContent::new(child_tile_meta, Some(tile));
+                    let c = Cesium3dTileContent::new(child_tile_meta, Some(tile), scope);
                     let tile_children = tile.children.as_mut().unwrap();
                     tile_children.push(c);
                 }
@@ -353,6 +358,7 @@ fn mark_leaves(
                 renderable_features,
                 tile_meta.geometric_error,
                 child_is_v1_1,
+                scope,
                 if meets_sse_ancestors {
                     is_ancestor_activated
                 } else {
@@ -793,6 +799,9 @@ fn update_or_spawn_rendered_tile(
         if needs_aabb && let Some(aabb) = tile.bounding_volume.as_ref() {
             entity.insert(aabb.clone());
         }
+        if let Some(metadata) = &slot.metadata {
+            entity.insert(TileContentMetadata(Arc::clone(metadata)));
+        }
         slot.rendered_tile_id = Some(entity.id());
     }
 }
@@ -818,6 +827,7 @@ mod prune_tests {
                 kind: ContentKind::B3dm,
                 data_requester_id: None,
                 rendered_tile_id: Some(rendered),
+                metadata: None,
             }],
             children: None,
             refine: Refine::Replace,
@@ -835,6 +845,7 @@ mod prune_tests {
                 kind: ContentKind::B3dm,
                 data_requester_id: None,
                 rendered_tile_id: None,
+                metadata: None,
             }],
             children: Some(vec![child]),
             refine: Refine::Replace,
@@ -985,6 +996,7 @@ mod prune_tests {
             kind,
             data_requester_id: Some(app.world_mut().spawn_empty().id()),
             rendered_tile_id: None,
+            metadata: None,
         };
         let mut root = Cesium3dTileContent {
             contents: smallvec::smallvec![

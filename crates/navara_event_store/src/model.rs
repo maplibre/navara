@@ -14,6 +14,16 @@ pub struct CameraFlightEnded {
     pub completed: bool,
 }
 
+/// A 3D Tiles layer's root tileset JSON was loaded.
+#[derive(Debug, Clone, PartialEq)]
+pub struct TilesetLoaded {
+    pub layer_id: String,
+    /// JSON of the resolved tileset metadata entity.
+    pub metadata: Option<String>,
+    /// JSON of the tileset schema.
+    pub schema: Option<String>,
+}
+
 /// The terrain exaggeration in effect from this frame on.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct TerrainExaggerationUpdated {

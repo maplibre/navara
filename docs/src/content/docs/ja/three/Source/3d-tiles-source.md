@@ -55,6 +55,7 @@ Navara が読み取るのは pnts の feature table の一部です。点の色�
 | GLB POINTS プリミティブ      | `mode: POINTS` の glTF メッシュを点群として描画（3D Tiles 1.1 の点群対応）。                  |
 | `EXT_mesh_features`          | glTF メッシュ内の FeatureId セットによるフィーチャー識別。                                    |
 | `EXT_structural_metadata`    | glTF アセットに埋め込まれたプロパティテーブルによるフィーチャーごとのメタデータへのアクセス。 |
+| tileset のメタデータ         | tileset・タイル・コンテンツ・グループの `metadata`。[メタデータ](#メタデータ)を参照。         |
 | `KHR_draco_mesh_compression` | Draco 圧縮されたメッシュデータのデコード。                                                    |
 | `KHR_mesh_quantization`      | 量子化された頂点属性によるコンパクトな glTF アセットへの対応。                                |
 | `EXT_meshopt_compression`    | meshopt 圧縮バッファのデコード。                                                              |
@@ -75,6 +76,30 @@ Implicit tiling には対応していないため、タイルセットは `tiles
 | 1.0 以前のタイルセット（`content.url`、旧形式の b3dm ヘッダー） | ✅                   |
 | `viewerRequestVolume`                                           | ❌                   |
 | `asset.gltfUpAxis`                                              | ⚠️ `Y`（既定値）のみ |
+
+## メタデータ
+
+Navara は tileset・タイル・コンテンツ・グループのメタデータを、3D Tiles 1.1 の core と 1.0 の `3DTILES_metadata` 拡張のどちらで書かれていても読み、各値を tileset の `schema` で解決します。`normalized`・`offset`・`scale` を適用し、`noData` の値はそのプロパティの `default`（なければ `null`）に置き換え、省略されたプロパティには `default` を補います。
+
+- タイル・コンテンツ・グループのメタデータは、レイヤーの `featureCreated` イベントでフィーチャーセットごとに `content.metadata: { tile?, content?, group? }` として届きます（`content.type` は `"3d-tiles"`）。ビューの `featureClick` / `featureHover` / `featureEnter` イベントでも、ピックしたフィーチャーに同じ `content` が付きます。
+- tileset のメタデータと schema は、読み込みごとに 1 回レイヤーの `tilesetLoaded` イベントで届き、その後も `layer.tileset` から読めます。
+
+schema はルート tileset JSON 内に書かれている必要があります（`schemaUri` は取得しません）。CesiumJS と同じく、すべてのタイルはルート tileset の `schema` と `groups` で解決し、外部（ネストした）tileset の `schema` と `groups` は無視します。implicit tiling の subtree にあるメタデータは読みません。
+
+```typescript
+const layer = view.addLayer({ type: "3d-tiles", source: tileset });
+
+layer.on("tilesetLoaded", ({ metadata }) => {
+  console.log("Tileset metadata:", metadata?.properties);
+});
+
+view.on("featureClick", (info) => {
+  const content = info?.content;
+  if (content?.type === "3d-tiles") {
+    console.log("Tile metadata:", content.metadata?.tile);
+  }
+});
+```
 
 ## 使用例
 

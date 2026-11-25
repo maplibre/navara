@@ -22,7 +22,6 @@ pub struct Cesium3dTilesNestedSubtreeMetadata {
     pub base_url: Arc<Url>,
     pub metadata: navara_parser::cesium3dtiles::tileset::Tileset,
     pub is_v1_1: bool,
-    pub schema: Option<serde_json::Value>,
 }
 
 /// Map of loaded nested tileset metadata keyed by the parent JSON tile's

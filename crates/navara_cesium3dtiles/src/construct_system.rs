@@ -16,7 +16,7 @@ use navara_data_requester::{DataRequester, DataRequesterStatus};
 use navara_feature_component::{
     batch::BatchTable,
     id::FeatureId,
-    model::{ModelBin, ModelGeometry},
+    model::{ModelBin, ModelGeometry, TileContentMetadata},
 };
 use navara_layer::{Cesium3dTilesLayer, LayerId};
 use navara_material::Appearance;
@@ -52,6 +52,7 @@ pub fn construct_model_by_cesium3dtiles_layer<T: TileContentParser>(
             &mut RenderedCesium3dTileContent,
             Option<&TileTransform>,
             Option<&Aabb>,
+            Option<&TileContentMetadata>,
             &TileOrderByDistance,
         ),
         (With<T::RenderedMarker>, Added<RenderedCesium3dTileContent>),
@@ -61,7 +62,7 @@ pub fn construct_model_by_cesium3dtiles_layer<T: TileContentParser>(
     mut estimates: ResMut<navara_memory::ReserveEstimates>,
     mut model_index: ResMut<crate::cleanup_system::ModelContentIndex>,
 ) {
-    for (rendered_tile_entity, mut tile, tile_transform, tile_aabb, _) in
+    for (rendered_tile_entity, mut tile, tile_transform, tile_aabb, metadata, _) in
         rendered_tiles.iter_mut().sort::<&TileOrderByDistance>()
     {
         let (_, _, req) = match requesters.get(tile.data_requester_id) {
@@ -79,14 +80,11 @@ pub fn construct_model_by_cesium3dtiles_layer<T: TileContentParser>(
         let mut appearance = Appearance::clone_model_or_default(&layer.appearances);
         appearance.should_rotate_in_default = false;
 
-        // Find tileset-level schema (needed for glTF Features)
-        let tileset_schema = trees.iter().find_map(|tree| {
-            if tree.layer_id == tile.layer_id {
-                tree.schema.as_ref()
-            } else {
-                None
-            }
-        });
+        // Tileset-level schema (needed for glTF Features)
+        let tileset_schema = trees
+            .iter()
+            .find(|tree| tree.layer_id == tile.layer_id)
+            .and_then(|tree| tree.scope.schema.as_deref());
 
         // Copy handle before borrowing buf mutably (Handle is Copy/i32)
         let requester_handle = req.handle;
@@ -144,6 +142,9 @@ pub fn construct_model_by_cesium3dtiles_layer<T: TileContentParser>(
         // Apply format-specific extra components (e.g., Aabb for PNTS)
         if let Some(extra) = parsed.extra_components {
             extra(&mut entity_commands);
+        }
+        if let Some(metadata) = metadata {
+            entity_commands.insert(metadata.clone());
         }
 
         let model_geometry = entity_commands.id();

@@ -9,6 +9,7 @@ bevy_app.workspace = true
 bevy_ecs.workspace = true
 bevy_log.workspace = true
 url.workspace = true
+serde.workspace = true
 serde_json.workspace = true
 navara_core.workspace = true
 navara_layer.workspace = true

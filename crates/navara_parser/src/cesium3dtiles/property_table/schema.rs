@@ -237,6 +237,7 @@ impl<'a> GlbSchemaParser<'a> {
             } else {
                 None
             };
+            let default = schema_prop.and_then(|sp| sp.get("default")).cloned();
 
             // Spec: normalized, offset, and scale transform raw values.
             let normalized = schema_prop
@@ -259,6 +260,7 @@ impl<'a> GlbSchemaParser<'a> {
                     element_type,
                     no_data,
                     string_no_data,
+                    default,
                     string_offsets_range,
                     string_offset_type,
                     normalized,

@@ -117,6 +117,8 @@ pub enum RenderableFeature {
         feature_id: Entity,
         render_info: ModelRenderInformation,
         bin: Option<ModelBin>,
+        /// [`TileContentMetadata`](crate::model::TileContentMetadata) JSON.
+        metadata: Option<std::sync::Arc<str>>,
         geometry: TransferableModelGeometry,
         aabb: Aabb,
         feature_batch_id: u32,

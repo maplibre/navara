@@ -778,16 +778,15 @@ impl Core {
 
     #[wasm_bindgen(js_name = readPropertyByGlobalBatchId)]
     pub fn read_property_by_global_batch_id(&mut self, batch_id: u32) -> BatchPropResult {
-        let (properties, layer_id, canonical_batch_id) = self
+        let picked = self
             .app
             .read_property_by_global_batch_id::<JsPropertyValue>(&batch_id);
 
-        let properties_js = properties.map(|v| v.0).unwrap_or(JsValue::NULL);
-
         BatchPropResult {
-            properties: properties_js,
-            layer_id,
-            batch_id: canonical_batch_id,
+            properties: picked.properties.map(|v| v.0).unwrap_or(JsValue::NULL),
+            layer_id: picked.layer_id,
+            batch_id: picked.batch_id,
+            feature_set_id: picked.feature_set.map(|e| e.to_bits()),
         }
     }
 

@@ -49,7 +49,7 @@ use bevy_ecs::{
     system::{Commands, ParamSet, Query, Res, ResMut},
     world::Ref,
 };
-use bevy_log::error;
+use bevy_log::{error, warn};
 use navara_buffer_store::BufferStore;
 use navara_camera::{CameraFrustum, CameraMarker};
 use navara_component::{Deleted, Priority};
@@ -57,6 +57,7 @@ use navara_component::{Deleted, Priority};
 use navara_data_requester::{
     DataRequester, DataRequesterExtension, DataRequesterStatus, RequestOrder,
 };
+use navara_event_store::{EventStore, TilesetLoaded};
 use navara_feature_component::{
     id::FeatureId,
     model::{ModelBin, ModelGeometry, ModelMarker},
@@ -70,7 +71,7 @@ use navara_layer::{
 use navara_material::{Appearance, ModelMaterial};
 use navara_math::{Transform, Vec3};
 use navara_memory::{SseDegrade, SsePressure};
-use navara_parser::cesium3dtiles;
+use navara_parser::cesium3dtiles::{self, metadata_entity::resolve_metadata_entity};
 use navara_window::Window;
 use std::sync::Arc;
 use url::Url;
@@ -145,6 +146,7 @@ pub fn construct_cesium_3d_tiles_tree(
         (Changed<DataRequester>, Without<Deleted>),
     >,
     layers: Query<&Cesium3dTilesLayer>,
+    mut events: ResMut<EventStore>,
 ) {
     for (e, marker, req, is_nested) in &requesters {
         // TODO: Handle fail
@@ -153,8 +155,7 @@ pub fn construct_cesium_3d_tiles_tree(
         }
 
         let json_bin = buf.get_u8(&req.handle).unwrap();
-        let tileset_json = match serde_json::from_slice::<cesium3dtiles::tileset::Tileset>(json_bin)
-        {
+        let tileset_json = match cesium3dtiles::tileset::Tileset::from_slice(json_bin) {
             Ok(d) => d,
             Err(e) => {
                 error!("tileset.json is incorrect: {}", e);
@@ -176,18 +177,19 @@ pub fn construct_cesium_3d_tiles_tree(
                     continue;
                 }
             };
+            if tileset_json.schema.is_some() || tileset_json.groups.is_some() {
+                warn!(
+                    "The schema and groups of a nested tileset are ignored; define them in the root tileset: {}",
+                    req.url
+                );
+            }
             let is_v1_1 = tileset_json.asset.version == "1.1";
-            let schema = tileset_json
-                .schema
-                .as_ref()
-                .and_then(|s| serde_json::to_value(s).ok());
             nested_map.insert(
                 e,
                 Cesium3dTilesNestedSubtreeMetadata {
                     base_url,
                     metadata: tileset_json,
                     is_v1_1,
-                    schema,
                 },
             );
         } else {
@@ -203,6 +205,18 @@ pub fn construct_cesium_3d_tiles_tree(
                 }
             };
 
+            events.tileset_loaded.push(TilesetLoaded {
+                layer_id: layer.layer_id.clone(),
+                metadata: metadata.0.metadata.as_ref().map(|m| {
+                    resolve_metadata_entity(
+                        tree.scope.schema.as_deref(),
+                        &m.class_,
+                        m.properties.as_ref(),
+                    )
+                    .to_string()
+                }),
+                schema: tree.scope.schema.as_ref().map(|s| s.to_string()),
+            });
             commands.spawn((LayerId(layer.layer_id.clone()), metadata, tree));
         }
     }
@@ -318,15 +332,15 @@ pub fn traverse_cesium_3d_tiles_tree(
                 pressure.max,
             );
             let dynamic_sse = dynamic_sse.term(camera_pos, camera.forward(), camera_height);
-            let is_v1_1 = tree.is_v1_1;
-            let base_url = Arc::clone(&tree.base_url);
+            // Reborrow so the fields borrow disjointly.
+            let tree = &mut *tree;
             select_tiles(
                 &mut commands,
                 &mut buf,
                 &mut nested_map,
                 tree.layer_id,
                 tree.max_sse,
-                &base_url,
+                &tree.base_url,
                 &metadata.0.root,
                 &mut tree.root,
                 camera_pos,
@@ -340,7 +354,8 @@ pub fn traverse_cesium_3d_tiles_tree(
                 &fog,
                 dynamic_sse,
                 degrade,
-                is_v1_1,
+                tree.is_v1_1,
+                &tree.scope,
             );
         }
     }
@@ -443,7 +458,7 @@ pub fn update_cesium3dtiles_layer(
 /// By marking tiles as invisible via [`mark_rendered_tiles_invisible`], the
 /// subsequent `remove_invisible_rendered_tiles` and `remove_batched_feature`
 /// systems will clean up all associated resources.
-#[allow(clippy::type_complexity)]
+#[allow(clippy::type_complexity, clippy::too_many_arguments)]
 pub fn delete_cesium3dtiles_layer(
     mut commands: Commands,
     mut layer_store: ResMut<LayerStore>,
@@ -452,8 +467,10 @@ pub fn delete_cesium3dtiles_layer(
     layers: Query<(Entity, &Cesium3dTilesLayer)>,
     mut tiles: Query<(Entity, &LayerId, &mut Cesium3dTilesTree)>,
     mut rendered_tiles: Query<&mut RenderedCesium3dTileContent>,
+    mut events: ResMut<EventStore>,
 ) {
     for (e, d) in &deleted {
+        events.tileset_unloaded.push(d.0.clone());
         for (e, layer_id, mut tree) in &mut tiles {
             if layer_id.0 != d.0 {
                 continue;
