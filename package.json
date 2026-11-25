@@ -53,9 +53,9 @@
     "@types/react": "19.3.0",
     "@types/react-dom": "19.3.0",
     "@typescript/typescript6": "6.0.2",
-    "@typescript-eslint/utils": "8.72.2",
+    "@typescript-eslint/utils": "8.73.0",
     "@vitejs/plugin-react": "6.3.0",
-    "eslint": "10.14.0",
+    "eslint": "10.15.0",
     "eslint-config-reearth": "0.4.0",
     "jsdom": "31.0.1",
     "prettier": "3.10.1",
@@ -69,6 +69,6 @@
     "vite-plugin-wasm": "3.6.0",
     "vite-tsconfig-paths": "6.1.1",
     "vitest": "5.1.1",
-    "wrangler": "^4.160.1"
+    "wrangler": "^4.165.0"
   }
 }
