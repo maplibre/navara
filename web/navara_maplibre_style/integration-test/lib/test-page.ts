@@ -63,6 +63,27 @@ const SUN_INTENSITY = 1.8;
 const AMBIENT_INTENSITY = 1.6;
 
 /**
+ * MapLibre loads a raster source at tile level `round(zoom + log2(512 / tileSize))`,
+ * so a 256 px source is one level deeper than the map zoom. Navara descends until a
+ * tile's screen-space error is within `maxSse`, which for the default 512 px
+ * calibration is `error ≈ (128 / 65) * 2^(zoom - level)` (0.25 heightmap quality x
+ * 512 px / 65 samples, with terrain). Solving `level = round(zoom + levelsDeeper)`
+ * gives `maxSse = (128 / 65) * 2^(0.5 - levelsDeeper)`: 1.39 for a 256 px source.
+ *
+ * Only sources smaller than 512 px are tuned; the rest keep the default.
+ */
+function rasterMaxSse(style: StyleSpecification): number | undefined {
+  const sizes = Object.values(style.sources ?? {}).flatMap((source) =>
+    source.type === "raster" && typeof source.tileSize === "number"
+      ? [source.tileSize]
+      : [],
+  );
+  const smallest = Math.min(...sizes.filter((size) => size > 0 && size < 512));
+  if (!Number.isFinite(smallest)) return undefined;
+  return (128 / 65) * 2 ** (0.5 - Math.log2(512 / smallest));
+}
+
+/**
  * Takes the style itself (the spec reads it from disk) or, for manual runs in
  * the dev server, a case id (a directory under render/tests/) without `#`.
  */
@@ -90,6 +111,8 @@ async function run(input: object | string) {
     defaultAttribution: false,
     picking: false,
     idleThreshold: 300,
+    // Raster sources smaller than 512 px load one level deeper, as in MapLibre.
+    ...(rasterMaxSse(style) !== undefined && { maxSse: rasterMaxSse(style) }),
     // The DEM fixtures ship only the level MapLibre loads, one below the map
     // zoom for a 256 px source. Navara picks a level by screen-space error and
     // would stop one or two levels above it: the default maxSse of 2 is just

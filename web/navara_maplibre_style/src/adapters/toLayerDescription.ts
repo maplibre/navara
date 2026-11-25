@@ -19,6 +19,7 @@ import {
   expressionUsesGeometryType,
   expressionUsesZoom,
 } from "../utils/expressionHelpers";
+import { hasZoomRange, inZoomRange } from "../utils/zoomRange";
 
 import { parseColorReliefStops, toColorReliefRamp } from "./colorRelief";
 import { CONSTRUCTION_ZOOM, resolveSymbolOrientation } from "./symbolAlignment";
@@ -96,6 +97,34 @@ export function colorReliefLayerFollowsZoom(styleLayer: StyleLayer): boolean {
     expressionUsesZoom(paint["color-relief-opacity"]) ||
     expressionUsesZoom(paint.resampling)
   );
+}
+
+/**
+ * Whether a raster, hillshade or color-relief layer sets a `minzoom` or `maxzoom`,
+ * so its visibility must be rebuilt as the zoom crosses the range. These layers
+ * have no feature filter to carry the range, unlike vector layers.
+ */
+export function rasterLayerFollowsZoomRange(styleLayer: StyleLayer): boolean {
+  return (
+    (styleLayer.type === "raster" ||
+      styleLayer.type === "hillshade" ||
+      styleLayer.type === "color-relief") &&
+    hasZoomRange(styleLayer)
+  );
+}
+
+/**
+ * The `raster` material fields that hide a layer outside its `minzoom` and
+ * `maxzoom` (`maxzoom` exclusive). Empty without a range, so layers that set none
+ * keep their description unchanged.
+ */
+function zoomRangeVisibility(
+  styleLayer: StyleLayer,
+  zoom: number,
+): { show?: boolean } {
+  return rasterLayerFollowsZoomRange(styleLayer)
+    ? { show: inZoomRange(styleLayer, zoom) }
+    : {};
 }
 
 type LayerValueFn = ReturnType<StyleEngine["createValueFn"]>;
@@ -488,10 +517,16 @@ function createCircleLayer(
 /**
  * Create layer description for raster layer.
  */
-function createRasterLayer(source: Source): LayerDescription {
+function createRasterLayer(
+  source: Source,
+  styleLayer: StyleLayer,
+  zoom = CONSTRUCTION_ZOOM,
+): LayerDescription {
+  const visibility = zoomRangeVisibility(styleLayer, zoom);
   return {
     type: "raster",
     source,
+    ...(Object.keys(visibility).length > 0 && { raster: visibility }),
   };
 }
 
@@ -520,6 +555,7 @@ function createHillshadeLayer(
           zoom,
         )
       : undefined;
+  const visibility = zoomRangeVisibility(styleLayer, zoom);
   return {
     type: "raster",
     source,
@@ -527,6 +563,7 @@ function createHillshadeLayer(
       typeof exaggeration === "number" && Number.isFinite(exaggeration)
         ? { exaggeration }
         : {},
+    ...(Object.keys(visibility).length > 0 && { raster: visibility }),
   };
 }
 
@@ -630,6 +667,7 @@ function createColorReliefLayer(
     },
     raster: {
       opacity,
+      ...zoomRangeVisibility(styleLayer, zoom ?? CONSTRUCTION_ZOOM),
     },
   };
 
@@ -867,7 +905,7 @@ export function toLayerDescription(
     case "circle":
       return createCircleLayer(source, styleLayer);
     case "raster":
-      return createRasterLayer(source);
+      return createRasterLayer(source, styleLayer, zoom);
     case "hillshade":
       return createHillshadeLayer(source, styleLayer, engine, zoom);
     case "color-relief":
