@@ -180,6 +180,7 @@ mod tests {
             source_id: id.to_string(),
             url: "https://example.com/{z}/{x}/{y}.png".to_string(),
             tms: false,
+            tile_size: navara_source::RASTER_REFERENCE_TILE_SIZE,
             min_zoom,
             max_zoom,
             overscaled_max_zoom: 24,

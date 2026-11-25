@@ -79,7 +79,7 @@ The mapping from the document to the created source is:
 | `minzoom`       | `minZoom`                    | `minZoom`                    | (engine has no field)      |
 | `maxzoom`       | `maxZoom`                    | `maxZoom`                    | `maxZoom`                    |
 | `scheme: "tms"` | `tms: true`                  | `tms: true`                  | (engine has no field)      |
-| `tileSize`      | —                            | `tileSize` (default `512`)   | —                            |
+| `tileSize`      | `tileSize` (default `512`)   | `tileSize` (default `512`)   | —                            |
 | `encoding`      | —                            | `elevationDecoder` (default `"mapbox"`) | —                 |
 | `attribution`   | shown via `view.attribution` | shown via `view.attribution` | shown via `view.attribution` |
 
@@ -166,7 +166,7 @@ A discriminated union over `type`. Every variant shares the fields below. A fiel
 | `maxzoom`  | `number \| undefined` | Overrides the document's `maxzoom`.                                                                                                                                 |
 | `scheme`   | `"xyz" \| "tms" \| undefined` | Overrides the document's `scheme`.                                                                                                                          |
 
-The `raster-dem` variant (`TileJsonRasterDemSourceDescription`) additionally accepts:
+The `raster-tile` variant (`TileJsonRasterTileSourceDescription`) also accepts `tileSize`. The `raster-dem` variant (`TileJsonRasterDemSourceDescription`) additionally accepts:
 
 | Property   | Type                                | Description                                                     |
 | ---------- | ----------------------------------- | --------------------------------------------------------------- |
@@ -197,7 +197,7 @@ The subset of a TileJSON 3.0.0 document this plugin consumes. Other spec fields 
 | `minzoom`     | `number \| undefined` | `0`     | Minimum zoom level. Applied to raster sources only.                             |
 | `maxzoom`     | `number \| undefined` | `30`    | Maximum zoom level.                                                             |
 | `scheme`      | `"xyz" \| "tms"`      | `"xyz"` | Tiling scheme. `"tms"` flips the Y axis (raster sources only).                  |
-| `tileSize`    | `number \| undefined` | `512`   | Tile size in pixels. Not part of the TileJSON spec, but emitted by MapLibre-oriented tile servers. Applied to `raster-dem` sources only. |
+| `tileSize`    | `number \| undefined` | `512`   | Tile size in pixels. Not part of the TileJSON spec, but emitted by MapLibre-oriented tile servers. Applied to `raster-tile` and `raster-dem` sources. |
 | `encoding`    | `TileJsonDemEncoding \| undefined` | `"mapbox"` | Elevation encoding of DEM tiles. Not part of the TileJSON spec, but emitted by MapLibre-oriented tile servers. Applied to `raster-dem` sources only. |
 
 The document is validated when fetched: `addSource()` rejects if `tilejson` is present but is not a `major.minor.patch` version, or if `tiles` is missing or empty. A missing `tilejson` is accepted, as in MapLibre.

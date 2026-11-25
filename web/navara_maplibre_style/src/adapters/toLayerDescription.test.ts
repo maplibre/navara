@@ -16,9 +16,33 @@ import {
   colorReliefLayerFollowsZoom,
   getSymbolPlacement,
   hillshadeLayerFollowsZoom,
+  rasterLayerFollowsZoomRange,
   symbolLayerFollowsZoom,
   toLayerDescription,
 } from "./toLayerDescription";
+
+describe("rasterLayerFollowsZoomRange", () => {
+  const layer = (type: string, range: object = {}) =>
+    ({ id: "l", type, source: "s", ...range }) as StyleLayer;
+
+  it("is true for raster, hillshade and color-relief layers with a zoom range", () => {
+    for (const type of ["raster", "hillshade", "color-relief"]) {
+      expect(rasterLayerFollowsZoomRange(layer(type, { minzoom: 3 }))).toBe(
+        true,
+      );
+      expect(rasterLayerFollowsZoomRange(layer(type, { maxzoom: 9 }))).toBe(
+        true,
+      );
+    }
+  });
+
+  it("is false without a zoom range, and for layers that filter features instead", () => {
+    expect(rasterLayerFollowsZoomRange(layer("raster"))).toBe(false);
+    expect(rasterLayerFollowsZoomRange(layer("line", { minzoom: 3 }))).toBe(
+      false,
+    );
+  });
+});
 
 describe("hillshadeLayerFollowsZoom", () => {
   const hillshade = (exaggeration?: unknown) =>
@@ -323,6 +347,53 @@ describe("toLayerDescription", () => {
         type: "raster",
         source: mockSource,
       });
+    });
+
+    it("should leave the visibility alone for a layer without a zoom range", () => {
+      const result = toLayerDescription(mockSource, {
+        id: "test-layer",
+        type: "raster",
+        source: "test",
+      } as StyleLayer);
+
+      expect(result).not.toHaveProperty("raster");
+    });
+
+    it("should hide a raster layer outside its zoom range (minzoom inclusive, maxzoom exclusive)", () => {
+      const layer = {
+        id: "test-layer",
+        type: "raster",
+        source: "test",
+        minzoom: 2,
+        maxzoom: 10,
+      } as StyleLayer;
+      const showAt = (zoom: number) =>
+        (
+          toLayerDescription(mockSource, layer, undefined, undefined, zoom) as {
+            raster?: { show?: boolean };
+          }
+        ).raster?.show;
+
+      expect(showAt(1.9)).toBe(false);
+      expect(showAt(2)).toBe(true);
+      expect(showAt(9.9)).toBe(true);
+      expect(showAt(10)).toBe(false);
+    });
+
+    it("should hide a hillshade layer outside its zoom range", () => {
+      const hillshade = toLayerDescription(
+        mockSource,
+        {
+          id: "hs",
+          type: "hillshade",
+          source: "test",
+          maxzoom: 5,
+        } as StyleLayer,
+        undefined,
+        undefined,
+        8,
+      ) as { raster?: { show?: boolean } };
+      expect(hillshade.raster?.show).toBe(false);
     });
 
     it("should pass the hillshade exaggeration through, evaluated at the given zoom", () => {

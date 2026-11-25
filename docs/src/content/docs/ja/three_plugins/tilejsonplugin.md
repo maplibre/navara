@@ -79,7 +79,7 @@ addSource(desc: TileJsonSourceDescription): Promise<Source>
 | `minzoom`           | `minZoom`                 | `minZoom`                                    | —（エンジンに該当フィールドなし） |
 | `maxzoom`           | `maxZoom`                 | `maxZoom`                                    | `maxZoom`                         |
 | `scheme: "tms"`     | `tms: true`               | `tms: true`                                  | —（エンジンに該当フィールドなし） |
-| `tileSize`          | —                         | `tileSize`（デフォルト `512`）               | —                                 |
+| `tileSize`          | `tileSize`（デフォルト `512`） | `tileSize`（デフォルト `512`）               | —                                 |
 | `encoding`          | —                         | `elevationDecoder`（デフォルト `"mapbox"`）  | —                                 |
 | `attribution`       | `view.attribution` で表示 | `view.attribution` で表示                    | `view.attribution` で表示         |
 
@@ -166,7 +166,7 @@ type TileJsonSourceDescription =
 | `maxzoom`  | `number \| undefined` | ドキュメントの `maxzoom` を上書きします。                                                                                                       |
 | `scheme`   | `"xyz" \| "tms" \| undefined` | ドキュメントの `scheme` を上書きします。                                                                                                |
 
-`raster-dem` バリアント（`TileJsonRasterDemSourceDescription`）では、さらに次のフィールドを指定できます。
+`raster-tile` バリアント（`TileJsonRasterTileSourceDescription`）でも `tileSize` を指定できます。`raster-dem` バリアント（`TileJsonRasterDemSourceDescription`）では、さらに次のフィールドを指定できます。
 
 | プロパティ | 型                                 | 説明                                                                 |
 | ---------- | ---------------------------------- | -------------------------------------------------------------------- |
@@ -197,7 +197,7 @@ type TileJsonDemEncoding = "mapbox" | "terrarium";
 | `minzoom`     | `number \| undefined` | `0`        | 最小ズームレベル。ラスターソースにのみ適用されます。                                          |
 | `maxzoom`     | `number \| undefined` | `30`       | 最大ズームレベル。                                                                            |
 | `scheme`      | `"xyz" \| "tms"`      | `"xyz"`    | タイルスキーム。`"tms"` は Y 軸を反転します（ラスターソースのみ）。                           |
-| `tileSize`    | `number \| undefined` | `512`      | タイルサイズ（ピクセル）。TileJSON 仕様にはありませんが、MapLibre 向けタイルサーバーが出力します。`raster-dem` ソースにのみ適用されます。 |
+| `tileSize`    | `number \| undefined` | `512`      | タイルサイズ（ピクセル）。TileJSON 仕様にはありませんが、MapLibre 向けタイルサーバーが出力します。`raster-tile` と `raster-dem` ソースに適用されます。 |
 | `encoding`    | `TileJsonDemEncoding \| undefined` | `"mapbox"` | DEM タイルの標高エンコーディング。TileJSON 仕様にはありませんが、MapLibre 向けタイルサーバーが出力します。`raster-dem` ソースにのみ適用されます。 |
 
 ドキュメントは取得時に検証されます。`tilejson` が存在するが `major.minor.patch` 形式のバージョンでない場合、あるいは `tiles` が欠けている、または空の場合、`addSource()` は失敗します。`tilejson` が欠けている場合は、MapLibre と同様に受け付けます。

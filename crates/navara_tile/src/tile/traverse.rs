@@ -79,6 +79,9 @@ pub fn traverse_terrain(
     dynamic_sse: DynamicSseTerm,
     max_sse: f64,
     degrade: SseDegrade,
+    // Deepens terrain for small raster tiles (`raster_sse_width_scale`); `1.` unless
+    // WebMercator, which drapes one raster tile per terrain tile.
+    raster_sse_width_scale: f64,
     is_ancestor_rendered: bool,
     // This is used to keep rendering current children when parent tile isn't ready after you zoomed out.
     meets_sse_ancestors: bool,
@@ -169,7 +172,7 @@ pub fn traverse_terrain(
         frustum,
         window,
         ellipsoid,
-        if terrain_layer.is_some() { 65. } else { 64. },
+        (if terrain_layer.is_some() { 65. } else { 64. }) * raster_sse_width_scale,
         distance_from_camera,
         fog,
         dynamic_sse,
@@ -457,6 +460,7 @@ pub fn traverse_terrain(
                 dynamic_sse,
                 max_sse,
                 degrade,
+                raster_sse_width_scale,
                 if meets_sse_ancestors {
                     is_ancestor_rendered
                 } else {
@@ -1506,6 +1510,7 @@ mod tests {
             DynamicSseTerm::NONE,
             config.max_sse,
             SseDegrade::NONE,
+            1.,
             false,
             false,
             None,
@@ -1551,6 +1556,7 @@ mod tests {
             source_id: layer_id.to_string(),
             url: "https://example.com/{z}/{x}/{y}.png".to_string(),
             tms: false,
+            tile_size: navara_source::RASTER_REFERENCE_TILE_SIZE,
             min_zoom,
             max_zoom,
             overscaled_max_zoom: max_zoom,

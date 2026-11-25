@@ -30,6 +30,7 @@ import {
   colorReliefLayerFollowsZoom,
   getSymbolPlacement,
   hillshadeLayerFollowsZoom,
+  rasterLayerFollowsZoomRange,
   symbolLayerFollowsZoom,
   toLayerDescription,
 } from "./adapters/toLayerDescription";
@@ -44,6 +45,7 @@ import {
   MAPLIBRE_TILE_SIZE,
 } from "./utils/cameraHelpers";
 import { expressionUsesZoom } from "./utils/expressionHelpers";
+import { hasZoomRange, inZoomRange } from "./utils/zoomRange";
 
 /**
  * Options for MapLibreStylePlugin constructor.
@@ -57,8 +59,9 @@ type MapLibreStylePluginOptions = {
 /**
  * The zoom-following part of a layer's materials, comparable across zooms
  * (the source is not): a symbol layer's text/billboard, or a color-relief
- * layer's opacity and resampling. `Color` keeps its value in a private field,
- * which JSON cannot see.
+ * layer's opacity and resampling, or a raster layer's visibility inside its
+ * `minzoom`/`maxzoom`. `Color` keeps its value in a private field, which JSON
+ * cannot see.
  */
 function serializeMaterials(layerDesc: LayerDescription): string {
   if ("text" in layerDesc || "billboard" in layerDesc) {
@@ -74,26 +77,22 @@ function serializeMaterials(layerDesc: LayerDescription): string {
     return JSON.stringify([
       layerDesc.raster?.opacity,
       layerDesc.elevationHeatmap.filter,
+      layerDesc.raster?.show,
     ]);
   }
   if (layerDesc.type === "raster" && layerDesc.hillshade) {
     // An interpolated exaggeration changes continuously with zoom; a 0.05 step keeps
     // `layer.update()` to visible changes.
     const exaggeration = layerDesc.hillshade.exaggeration ?? 0;
-    return String(Math.round(exaggeration / 0.05));
+    return JSON.stringify([
+      Math.round(exaggeration / 0.05),
+      layerDesc.raster?.show,
+    ]);
+  }
+  if (layerDesc.type === "raster") {
+    return JSON.stringify([layerDesc.raster?.show]);
   }
   return "";
-}
-
-/** A layer's `minzoom` is inclusive and its `maxzoom` exclusive. */
-function inZoomRange(styleLayer: StyleLayer, zoom: number): boolean {
-  if ("minzoom" in styleLayer && styleLayer.minzoom !== undefined) {
-    if (zoom < styleLayer.minzoom) return false;
-  }
-  if ("maxzoom" in styleLayer && styleLayer.maxzoom !== undefined) {
-    if (zoom >= styleLayer.maxzoom) return false;
-  }
-  return true;
 }
 
 export class MapLibreStylePlugin extends Plugin<ThreeView, ViewContext> {
@@ -513,6 +512,7 @@ export class MapLibreStylePlugin extends Plugin<ThreeView, ViewContext> {
       minzoom?: number;
       maxzoom?: number;
       scheme?: unknown;
+      tileSize?: unknown;
     },
     tileJsonDesc: Partial<Parameters<TileJsonPlugin["addSource"]>[0]> & {
       type: "raster-tile" | "vector-tile" | "raster-dem";
@@ -522,8 +522,17 @@ export class MapLibreStylePlugin extends Plugin<ThreeView, ViewContext> {
     },
     sourceTypeName: string,
   ): Promise<Source | null> {
-    const tms =
-      tileJsonDesc.type === "raster-tile" && sourceSpec.scheme === "tms";
+    const isRaster = tileJsonDesc.type === "raster-tile";
+    const tms = isRaster && sourceSpec.scheme === "tms";
+    // Only raster sources take the style's `tileSize`; a raster-dem passes its own.
+    // The engine reads it as a positive integer (`u32`); anything else is left to its default.
+    const tileSize =
+      isRaster &&
+      typeof sourceSpec.tileSize === "number" &&
+      Number.isInteger(sourceSpec.tileSize) &&
+      sourceSpec.tileSize > 0
+        ? { tileSize: sourceSpec.tileSize }
+        : {};
     if (typeof sourceSpec.url === "string") {
       return await this.tileJsonPlugin.addSource({
         ...tileJsonDesc,
@@ -532,10 +541,11 @@ export class MapLibreStylePlugin extends Plugin<ThreeView, ViewContext> {
         minzoom: sourceSpec.minzoom,
         maxzoom: sourceSpec.maxzoom,
         // Overrides the TileJSON document's own scheme only when the style sets one
-        ...(tileJsonDesc.type === "raster-tile" &&
+        ...(isRaster &&
           (sourceSpec.scheme === "tms" || sourceSpec.scheme === "xyz") && {
             scheme: sourceSpec.scheme,
           }),
+        ...tileSize,
       });
     } else if (
       Array.isArray(sourceSpec.tiles) &&
@@ -560,6 +570,7 @@ export class MapLibreStylePlugin extends Plugin<ThreeView, ViewContext> {
         minZoom: sourceSpec.minzoom,
         maxZoom: sourceSpec.maxzoom,
         ...(tms && { tms: true }),
+        ...tileSize,
       } as Parameters<typeof view.addSource>[0]);
     } else {
       console.warn(
@@ -860,7 +871,8 @@ export class MapLibreStylePlugin extends Plugin<ThreeView, ViewContext> {
     if (
       symbolLayerFollowsZoom(styleLayer) ||
       colorReliefLayerFollowsZoom(styleLayer) ||
-      hillshadeLayerFollowsZoom(styleLayer)
+      hillshadeLayerFollowsZoom(styleLayer) ||
+      rasterLayerFollowsZoomRange(styleLayer)
     ) {
       this.zoomFollowingLayers.set(layer, {
         styleLayer,
@@ -890,13 +902,9 @@ export class MapLibreStylePlugin extends Plugin<ThreeView, ViewContext> {
   private setupFeatureEvaluation(layer: Layer, styleLayer: StyleLayer): void {
     // Zoom expressions need re-evaluation at every zoom step; minzoom/maxzoom
     // alone only when the zoom crosses the range
-    const hasMinMaxZoom =
-      ("minzoom" in styleLayer && styleLayer.minzoom !== undefined) ||
-      ("maxzoom" in styleLayer && styleLayer.maxzoom !== undefined);
-
     if (MapLibreStylePlugin.layerUsesZoom(styleLayer)) {
       this.zoomDependentLayers.add(layer);
-    } else if (hasMinMaxZoom) {
+    } else if (hasZoomRange(styleLayer)) {
       this.zoomRangeLayers.set(layer, styleLayer);
     }
 

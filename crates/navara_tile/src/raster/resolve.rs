@@ -77,6 +77,11 @@ fn fragment_loaded<'a>(
 pub struct RasterBakeLayer {
     pub layer_index: usize,
     pub max_zoom: usize,
+    /// Zoom levels to drape deeper than the terrain tile's own level, from the
+    /// source's tile size (`256` px → `1`), already clamped by
+    /// [`navara_source::raster_zoom_offset`]. Each level costs up to 4x the overlap
+    /// budget, so a smaller tile still fits the tiles it needs.
+    pub zoom_offset: i32,
 }
 
 /// One WebMercator raster tile to bake into a layer's drape render target, flattened
@@ -126,12 +131,15 @@ pub fn resolve_raster_tile_states(
 
     let mut out = Vec::new();
     for (ordinal, layer) in layers.iter().enumerate() {
-        let target_z = wm_zoom_for_lng_span(lng_span, layer.max_zoom);
+        let offset = layer.zoom_offset;
+        let target_z = (wm_zoom_for_lng_span(lng_span, usize::MAX) as i64 + offset as i64)
+            .clamp(0, layer.max_zoom as i64) as usize;
+        // A deeper drape zoom multiplies the tiles overlapping one terrain tile by 4
+        // per level, so the budget grows with it instead of coarsening the zoom back.
+        let budget = RASTER_DRAPE_OVERLAP_BUDGET * 4usize.pow(offset.max(0) as u32);
         let mut resolved_coords: FxHashSet<TileXYZ> = FxHashSet::default();
 
-        for coords in
-            overlapping_tiles_within_budget(*terrain_extent, target_z, RASTER_DRAPE_OVERLAP_BUDGET)
-        {
+        for coords in overlapping_tiles_within_budget(*terrain_extent, target_z, budget) {
             let Some((entity, resolved)) =
                 resolve_loaded_tile(qt, coords, layer.layer_index, is_loaded)
             else {
@@ -281,6 +289,7 @@ mod tests {
             .map(|layer_index| RasterBakeLayer {
                 layer_index,
                 max_zoom: 20,
+                zoom_offset: 0,
             })
             .collect()
     }
@@ -332,6 +341,45 @@ mod tests {
         assert_eq!(states[0].fragment, entities[0]);
         let band = states[0].reproject_terrain_lat.expect("geographic → band");
         assert!(band[0] < band[1], "south < north: {band:?}");
+    }
+
+    /// A 256 px source (`zoom_offset` 1) drapes one level deeper than the terrain
+    /// tile, and the overlap budget grows with it: the 8 WM z2 tiles under the
+    /// Geographic root all resolve instead of coarsening back to z1.
+    #[test]
+    fn resolve_states_zoom_offset_drapes_deeper_within_a_scaled_budget() {
+        let mut world = World::new();
+        let mut qt = RasterTileQuadtree::new_with_linear_qt();
+        let init = |(x, y, z): (usize, usize, usize)| RasterTile::new(TileXYZ { x, y, z }, 0., 0.);
+        qt.qt.initialize_zero(&init);
+        qt.qt.initialize_children((0, 0, 0), &init);
+        qt.qt.initialize_children((0, 0, 1), &init);
+        qt.qt.initialize_children((0, 1, 1), &init);
+
+        let terrain_extent =
+            TilingScheme::Geographic { tms: false }.tile_extent(TileXYZ { x: 0, y: 0, z: 0 });
+        let mut entities = Vec::new();
+        for x in 0..2 {
+            for y in 0..4 {
+                let handle = qt.qt.leaf((x, y, 2)).unwrap().handle();
+                let entity = world.spawn_empty().id();
+                entities.push(entity);
+                qt.qt.get_mut(handle).unwrap().texture_fragment_entity_ids =
+                    Some(vec![Some(entity)]);
+            }
+        }
+
+        let mut layers = bake_layers(1);
+        layers[0].zoom_offset = 1;
+        let states =
+            resolve_raster_tile_states(&qt, &terrain_extent, true, &layers, &loaded(&entities));
+        assert_eq!(states.len(), 8, "{states:?}");
+
+        // Capped by the source's max zoom.
+        layers[0].max_zoom = 1;
+        let states =
+            resolve_raster_tile_states(&qt, &terrain_extent, true, &layers, &loaded(&entities));
+        assert!(states.is_empty(), "z1 has no loaded fragment: {states:?}");
     }
 
     /// The overlap budget is per layer, NOT divided across layers: three layers on a

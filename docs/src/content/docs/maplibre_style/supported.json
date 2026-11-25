@@ -585,7 +585,7 @@
       }
     },
     "raster": {
-      "status": "⚠️ bounds is ignored; tileSize is not applied",
+      "status": "⚠️ bounds is ignored",
       "properties": {
         "url": {
           "status": "✅"
@@ -603,7 +603,7 @@
           "status": "✅"
         },
         "tileSize": {
-          "status": "⚠️ Not applied; tiles are always handled as 256 px"
+          "status": "✅"
         },
         "scheme": {
           "status": "✅"
