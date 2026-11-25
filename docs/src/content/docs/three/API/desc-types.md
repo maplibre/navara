@@ -147,7 +147,7 @@ For the data structure behind these events (Layer, FeatureSet, Feature, Batch), 
 |----------|------|-------------|
 | `featureSetId` | `FeatureSetId` | Unique identifier of the created feature set |
 | `evaluator` | `FeatureEvaluator` | Evaluator class used for feature styling |
-| `content` | `FeatureSetContent \| undefined` | The source content the feature set was loaded from, discriminated by `type`. For 3D Tiles, `{ type: "3d-tiles", credit?, metadata? }`: `credit` is the glTF `asset.copyright`, and `metadata` is the 3D Tiles 1.1 metadata of the tile, content and group (see [3D Tiles metadata](../../source/3d-tiles-source/#metadata)). `undefined` for other layers |
+| `content` | `FeatureSetContent \| undefined` | The source content the feature set was loaded from, discriminated by `type`. For 3D Tiles, `{ type: "3d-tiles", credit?, metadata? }`: `credit` is the glTF `asset.copyright`, and `metadata` is the 3D Tiles metadata of the tile, content and group (see [3D Tiles metadata](../../source/3d-tiles-source/#metadata)). `undefined` for other layers |
 
 **Example:**
 

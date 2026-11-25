@@ -37,7 +37,9 @@ use navara_layer::Cesium3dTilesLayer;
 use navara_material::Appearance;
 use navara_math::{FloatType, Mat4, Transform, Vec3};
 use navara_parser::cesium3dtiles::{
-    self, metadata_entity::resolve_metadata_entity, tileset::Refine,
+    self,
+    metadata_entity::resolve_metadata_entity,
+    tileset::{Groups, Refine},
 };
 use serde::Serialize;
 use serde_json::Value;
@@ -91,18 +93,17 @@ pub struct TilesetMetadataScope {
     /// Resolves JSON metadata entities and the property tables of
     /// `EXT_structural_metadata` in glTF content.
     pub schema: Option<Arc<Value>>,
-    /// Resolved group metadata entities, indexed by `content.group`.
-    pub groups: Option<Arc<[Value]>>,
+    /// Resolved group metadata entities, referenced by `content.group`.
+    pub groups: Option<Arc<Groups<Value>>>,
 }
 
 impl TilesetMetadataScope {
     pub fn new(tileset: &navara_parser::cesium3dtiles::tileset::Tileset) -> Self {
         let schema = tileset.schema.clone();
         let groups = tileset.groups.as_ref().map(|groups| {
-            groups
-                .iter()
-                .map(|g| resolve_metadata_entity(schema.as_ref(), &g.class_, g.properties.as_ref()))
-                .collect()
+            Arc::new(groups.map(|g| {
+                resolve_metadata_entity(schema.as_ref(), &g.class_, g.properties.as_ref())
+            }))
         });
         Self {
             schema: schema.map(Arc::new),
@@ -450,7 +451,8 @@ fn content_metadata(
         }),
         group: content
             .group
-            .and_then(|i| scope.groups.as_ref()?.get(i as usize)),
+            .as_ref()
+            .and_then(|g| scope.groups.as_ref()?.get(g)),
     };
     if metadata.tile.is_none() && metadata.content.is_none() && metadata.group.is_none() {
         return None;

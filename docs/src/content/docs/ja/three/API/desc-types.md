@@ -147,7 +147,7 @@ view.on("featureClick", (info) => {
 | -------------- | --------------------- | ------------------------------------------ |
 | `featureSetId` | `FeatureSetId`        | 作成されたフィーチャーセットの一意な識別子 |
 | `evaluator`    | `FeatureEvaluator`    | 地物のスタイリングに使用する評価クラス     |
-| `content`      | `FeatureSetContent \| undefined` | フィーチャーセットの読み込み元コンテンツ。`type` で種類を見分けます。3D Tiles では `{ type: "3d-tiles", credit?, metadata? }` で、`credit` は glTF の `asset.copyright`、`metadata` はタイル・コンテンツ・グループの 3D Tiles 1.1 メタデータです（[3D Tiles のメタデータ](../../source/3d-tiles-source/#メタデータ)を参照）。その他のレイヤーでは `undefined` |
+| `content`      | `FeatureSetContent \| undefined` | フィーチャーセットの読み込み元コンテンツ。`type` で種類を見分けます。3D Tiles では `{ type: "3d-tiles", credit?, metadata? }` で、`credit` は glTF の `asset.copyright`、`metadata` はタイル・コンテンツ・グループの 3D Tiles メタデータです（[3D Tiles のメタデータ](../../source/3d-tiles-source/#メタデータ)を参照）。その他のレイヤーでは `undefined` |
 
 **Example:**
 

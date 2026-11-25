@@ -79,12 +79,12 @@ Implicit tiling には対応していないため、タイルセットは `tiles
 
 ## メタデータ
 
-Navara は tileset・タイル・コンテンツ・グループの 3D Tiles 1.1 メタデータを読み、各値を tileset の `schema` で解決します。`normalized`・`offset`・`scale` を適用し、`noData` の値はそのプロパティの `default`（なければ `null`）に置き換え、省略されたプロパティには `default` を補います。
+Navara は tileset・タイル・コンテンツ・グループのメタデータを、3D Tiles 1.1 の core と 1.0 の `3DTILES_metadata` 拡張のどちらで書かれていても読み、各値を tileset の `schema` で解決します。`normalized`・`offset`・`scale` を適用し、`noData` の値はそのプロパティの `default`（なければ `null`）に置き換え、省略されたプロパティには `default` を補います。
 
 - タイル・コンテンツ・グループのメタデータは、レイヤーの `featureCreated` イベントでフィーチャーセットごとに `content.metadata: { tile?, content?, group? }` として届きます（`content.type` は `"3d-tiles"`）。ビューの `featureClick` / `featureHover` / `featureEnter` イベントでも、ピックしたフィーチャーに同じ `content` が付きます。
 - tileset のメタデータと schema は、読み込みごとに 1 回レイヤーの `tilesetLoaded` イベントで届き、その後も `layer.tileset` から読めます。
 
-schema はルート tileset JSON 内に書かれている必要があります（`schemaUri` は取得しません）。CesiumJS と同じく、すべてのタイルはルート tileset の `schema` と `groups` で解決し、外部（ネストした）tileset の `schema` と `groups` は無視します。implicit tiling の subtree にあるメタデータと、1.0 の `3DTILES_metadata` 拡張は読みません。
+schema はルート tileset JSON 内に書かれている必要があります（`schemaUri` は取得しません）。CesiumJS と同じく、すべてのタイルはルート tileset の `schema` と `groups` で解決し、外部（ネストした）tileset の `schema` と `groups` は無視します。implicit tiling の subtree にあるメタデータは読みません。
 
 ```typescript
 const layer = view.addLayer({ type: "3d-tiles", source: tileset });

@@ -79,12 +79,12 @@ Implicit tiling is not supported, so a tileset must describe its tile hierarchy 
 
 ## Metadata
 
-Navara reads the 3D Tiles 1.1 metadata of the tileset, tiles, contents and groups, and resolves each value with the tileset `schema`: `normalized`, `offset` and `scale` are applied, a `noData` value becomes the property's `default` (or `null`), and an omitted property gets its `default`.
+Navara reads the metadata of the tileset, tiles, contents and groups, written in the 3D Tiles 1.1 core or in the 1.0 `3DTILES_metadata` extension, and resolves each value with the tileset `schema`: `normalized`, `offset` and `scale` are applied, a `noData` value becomes the property's `default` (or `null`), and an omitted property gets its `default`.
 
 - Tile, content and group metadata arrive with each feature set in the layer's `featureCreated` event, as `content.metadata: { tile?, content?, group? }` where `content.type` is `"3d-tiles"`. Each picked feature carries the same `content` in the view's `featureClick` / `featureHover` / `featureEnter` events.
 - Tileset metadata and the schema arrive once per load in the layer's `tilesetLoaded` event, and stay readable as `layer.tileset`.
 
-The schema must be inline in the root tileset JSON: `schemaUri` is not fetched. As in CesiumJS, every tile resolves against the root tileset's `schema` and `groups`, and those of an external (nested) tileset are ignored. Metadata in implicit tiling subtrees and the 1.0 `3DTILES_metadata` extension are not read.
+The schema must be inline in the root tileset JSON: `schemaUri` is not fetched. As in CesiumJS, every tile resolves against the root tileset's `schema` and `groups`, and those of an external (nested) tileset are ignored. Metadata in implicit tiling subtrees is not read.
 
 ```typescript
 const layer = view.addLayer({ type: "3d-tiles", source: tileset });

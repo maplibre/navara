@@ -155,8 +155,7 @@ pub fn construct_cesium_3d_tiles_tree(
         }
 
         let json_bin = buf.get_u8(&req.handle).unwrap();
-        let tileset_json = match serde_json::from_slice::<cesium3dtiles::tileset::Tileset>(json_bin)
-        {
+        let tileset_json = match cesium3dtiles::tileset::Tileset::from_slice(json_bin) {
             Ok(d) => d,
             Err(e) => {
                 error!("tileset.json is incorrect: {}", e);
