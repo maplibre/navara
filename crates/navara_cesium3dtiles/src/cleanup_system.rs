@@ -613,7 +613,7 @@ mod memory_budget_tests {
             max_num_rendered_tiles: cap,
             num_rendered_tiles: 0,
             is_v1_1: false,
-            schema: None,
+            scope: Default::default(),
         };
         app.world_mut().spawn(tree);
     }

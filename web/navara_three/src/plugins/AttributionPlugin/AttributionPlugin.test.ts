@@ -227,7 +227,10 @@ describe("AttributionPlugin dynamic layer credits", () => {
     plugin.add([{ attribution: "Base", creditLayerId: "L" }]);
     plugin.show(); // sub-credits only render while the popover is open
 
-    layer.emit("featureCreated", { featureSetId: 1n, credit: "DynCredit" });
+    layer.emit("featureCreated", {
+      featureSetId: 1n,
+      content: { type: "3d-tiles", credit: "DynCredit" },
+    });
     expect(subCredits()).toContain("DynCredit");
 
     // Adding an unrelated static source must not retrack (and wipe) layer L.

@@ -32,6 +32,7 @@ const params = {
   note: "",
   asset: "",
   features: 0,
+  tileset: "",
   picked: "",
 };
 
@@ -116,6 +117,7 @@ async function load(url: string, note = "") {
   params.note = note;
   params.asset = "";
   params.features = 0;
+  params.tileset = "";
   params.picked = "";
   pickedBatchId = undefined;
   pane.refresh();
@@ -124,6 +126,10 @@ async function load(url: string, note = "") {
   layer = view.addLayer({ type: "3d-tiles", source, model: modelProps() });
   layer.on("featureCreated", () => {
     params.features++;
+  });
+  layer.on("tilesetLoaded", ({ metadata }) => {
+    params.tileset = metadata ? JSON.stringify(metadata, null, 1) : "";
+    pane.refresh();
   });
   layer.on("featureUpdated", ({ evaluator }) => {
     evaluator.evaluate(({ batchId }) => {
@@ -166,6 +172,12 @@ pane
 pane.addBinding(params, "note", { readonly: true });
 pane.addBinding(params, "asset", { readonly: true, label: "version" });
 pane.addBinding(params, "features", { readonly: true, interval: 500 });
+pane.addBinding(params, "tileset", {
+  readonly: true,
+  multiline: true,
+  rows: 6,
+  label: "tileset metadata",
+});
 pane.addBinding(params, "picked", {
   readonly: true,
   multiline: true,
@@ -191,7 +203,11 @@ pane.addButton({ title: "Load custom url" }).on("click", () => {
 view.on("featureClick", (info) => {
   const hit = info && info.layerId === layer?.id ? info : undefined;
   params.picked = hit
-    ? JSON.stringify({ batchId: hit.batchId, ...hit.properties }, null, 1)
+    ? JSON.stringify(
+        { batchId: hit.batchId, ...hit.properties, content: hit.content },
+        null,
+        1,
+      )
     : "";
   pane.refresh();
   if (hit?.batchId !== pickedBatchId) {

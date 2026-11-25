@@ -5,10 +5,56 @@ import { FeatureEvaluator } from "./evaluations";
 import { Source } from "./source";
 import type { LayerDescription } from "./type";
 
+/**
+ * A 3D Tiles 1.1 metadata entity. Values are in their final form: `normalized`,
+ * `offset` and `scale` are applied, a `noData` value is replaced by the
+ * property's `default` (or `null`), and an omitted property with a `default`
+ * is filled in. Enum values are names.
+ */
+export type Tiles3dMetadataEntity = {
+  /** Class ID in the tileset schema. */
+  class: string;
+  properties: Record<string, unknown>;
+};
+
+/**
+ * 3D Tiles 1.1 metadata of the tile, content and group a feature set was
+ * loaded from. Only the entities the tileset defines are present.
+ */
+export type Tiles3dContentMetadata = {
+  tile?: Tiles3dMetadataEntity;
+  content?: Tiles3dMetadataEntity;
+  group?: Tiles3dMetadataEntity;
+};
+
+/** The root tileset JSON of a `3d-tiles` layer. */
+export type Tiles3dTileset = {
+  /** The tileset's own metadata entity. */
+  metadata?: Tiles3dMetadataEntity;
+  /** The `schema` object of the tileset JSON. */
+  schema?: Record<string, unknown>;
+};
+
+/** The 3D Tiles content a feature set was loaded from. */
+export type Tiles3dFeatureSetContent = {
+  type: "3d-tiles";
+  /** `asset.copyright` of the content's glTF. */
+  credit?: string;
+  /** 3D Tiles 1.1 metadata, when the tileset defines any. */
+  metadata?: Tiles3dContentMetadata;
+};
+
+/**
+ * The source content a feature set was loaded from, discriminated by `type`.
+ * More data formats may be added.
+ */
+export type FeatureSetContent = Tiles3dFeatureSetContent;
+
 export type FeatureCreatedParams = {
   featureSetId: FeatureSetId;
   evaluator: FeatureEvaluator;
-  credit?: string;
+  /** `undefined` when the feature set has no source content information. */
+  content?: FeatureSetContent;
 };
 
 export type FeatureUpdatedParams = {
@@ -38,6 +84,11 @@ export type LayerEvent = {
   featureVisibilityChanged: (params: FeatureVisibilityChangedParams) => void;
   /** Emitted when a feature is removed from this layer. */
   featureRemoved: (params: FeatureRemovedParams) => void;
+  /**
+   * Emitted when a `3d-tiles` layer loads its root tileset JSON, again after
+   * a source update reloads it. Also readable as {@link Layer.tileset}.
+   */
+  tilesetLoaded: (tileset: Tiles3dTileset) => void;
   /**
    * Emitted after `update()` sends a new configuration to the engine, with the
    * configuration as passed to `update()`.
@@ -99,16 +150,19 @@ function withExplicitColorRampClears(l: LayerDescription): LayerDescription {
  * geoJsonLayer.delete();
  * ```
  */
+type FeatureSetEntry = {
+  evaluator: FeatureEvaluator;
+  contentSource?: { readonly content: FeatureSetContent | undefined };
+};
+
 export class Layer extends EventHandler<LayerEvent> {
   /** The unique identifier of this layer. */
   id: string;
   private core: Core;
-  private featureEvaluators: Map<FeatureSetId, FeatureEvaluator> = new Map<
-    FeatureSetId,
-    FeatureEvaluator
-  >();
+  private featureSets = new Map<FeatureSetId, FeatureSetEntry>();
   private needUpdate = false;
   private convertColors?: (obj: unknown) => unknown;
+  private _tileset: Tiles3dTileset | undefined;
 
   constructor(
     id: string,
@@ -123,14 +177,39 @@ export class Layer extends EventHandler<LayerEvent> {
   }
 
   /**
+   * The root tileset JSON of a `3d-tiles` layer, once loaded (see the
+   * `tilesetLoaded` event). `undefined` while a source update reloads it, and
+   * for other layer types.
+   */
+  get tileset(): Tiles3dTileset | undefined {
+    return this._tileset;
+  }
+
+  /** @internal Used by the event system */
+  _setTileset(tileset: Tiles3dTileset | undefined) {
+    this._tileset = tileset;
+  }
+
+  /**
    * Register a feature evaluator with this layer
    * @internal Used by the event system
    */
   _registerFeatureEvaluator(
     featureSetId: FeatureSetId,
     evaluator: FeatureEvaluator,
+    contentSource?: { readonly content: FeatureSetContent | undefined },
   ) {
-    this.featureEvaluators.set(featureSetId, evaluator);
+    this.featureSets.set(featureSetId, { evaluator, contentSource });
+  }
+
+  /**
+   * The source content a live feature set was loaded from, as in its
+   * `featureCreated` event. `undefined` once the feature set is removed.
+   */
+  getFeatureSetContent(
+    featureSetId: FeatureSetId,
+  ): FeatureSetContent | undefined {
+    return this.featureSets.get(featureSetId)?.contentSource?.content;
   }
 
   /**
@@ -140,7 +219,7 @@ export class Layer extends EventHandler<LayerEvent> {
   _getFeatureEvaluator(
     featureSetId: FeatureSetId,
   ): FeatureEvaluator | undefined {
-    return this.featureEvaluators.get(featureSetId);
+    return this.featureSets.get(featureSetId)?.evaluator;
   }
 
   /**
@@ -148,7 +227,7 @@ export class Layer extends EventHandler<LayerEvent> {
    * @internal Used by the event system
    */
   _unregisterFeatureEvaluator(featureSetId: FeatureSetId) {
-    this.featureEvaluators.delete(featureSetId);
+    this.featureSets.delete(featureSetId);
   }
 
   /**
@@ -162,7 +241,7 @@ export class Layer extends EventHandler<LayerEvent> {
     this.needUpdate = false;
 
     // Process all evaluators with the registered callbacks
-    for (const evaluator of this.featureEvaluators.values()) {
+    for (const { evaluator } of this.featureSets.values()) {
       this.emit("featureUpdated", {
         featureSetId: evaluator.id,
         evaluator,
@@ -208,5 +287,8 @@ export class Layer extends EventHandler<LayerEvent> {
   delete() {
     this.core.deleteLayer(this.id);
     this.emit("deleted");
+    // Removal events arrive after the layer left the manager, so they can't
+    // unregister its feature sets.
+    this.featureSets.clear();
   }
 }

@@ -12,4 +12,7 @@ pub struct BatchPropResult {
     /// consumers correlate picks through this field.
     #[wasm_bindgen(js_name = batchId)]
     pub batch_id: Option<u32>,
+    /// `bits` of the feature set's entity, as in `RenderableFeatureAddedEvent`.
+    #[wasm_bindgen(js_name = featureSetId)]
+    pub feature_set_id: Option<u64>,
 }

@@ -31,6 +31,7 @@ import {
   type BatchTextureSupport,
 } from "../batchTexture";
 import type { EventContext } from "../event/context";
+import type { FeatureSetContent, Tiles3dContentMetadata } from "../layer";
 import { applyLitOption, createShadowDepthMaterial } from "../material";
 import {
   createModelMaterialEnhancer,
@@ -91,6 +92,9 @@ export class ModelMesh
 
   // model credit for attribution
   credit: string | undefined;
+  private _isTiles3d: boolean;
+  private _metadataJson: string | undefined;
+  private _content: FeatureSetContent | undefined;
   batchLength?: number;
 
   constructor(
@@ -98,18 +102,37 @@ export class ModelMesh
     gltfInfo: {
       scene: Group;
       credit?: string;
+      /** Loaded from 3D Tiles content. */
+      isTiles3d?: boolean;
     },
     m: NavaraModelMesh,
   ) {
     super();
     this.ctx = ctx;
     this.credit = gltfInfo.credit;
+    this._isTiles3d = gltfInfo.isTiles3d ?? false;
+    this._metadataJson = m.metadata;
     this.batchLength = m.batch_length;
     this.add(gltfInfo.scene);
     this.init(m);
     this.addEventListener("removedFromWorld", () => {
       this.dispose();
     });
+  }
+
+  /** The source content this model was loaded from, built on first read. */
+  get content(): FeatureSetContent | undefined {
+    if (!this._isTiles3d) return undefined;
+    this._content ??= {
+      type: "3d-tiles",
+      credit: this.credit,
+      metadata:
+        this._metadataJson !== undefined
+          ? (JSON.parse(this._metadataJson) as Tiles3dContentMetadata)
+          : undefined,
+    };
+    this._metadataJson = undefined;
+    return this._content;
   }
 
   /**

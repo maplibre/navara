@@ -446,6 +446,7 @@ mod report_feature_gpu_bytes_tests {
                 feature_id: model_geometry,
                 render_info: Default::default(),
                 bin: None,
+                metadata: None,
                 geometry: Default::default(),
                 aabb: navara_core::Aabb::default(),
                 feature_batch_id: 0,

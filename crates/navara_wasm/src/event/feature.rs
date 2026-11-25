@@ -95,6 +95,8 @@ pub struct ModelMesh {
     // Exposed through getters so change events, which never read it, skip the copy.
     #[serde(skip)]
     gltf_resource: Option<Arc<GltfResourceBase>>,
+    #[serde(skip)]
+    metadata: Option<Arc<str>>,
     pub aabb: Aabb,
     #[wasm_bindgen(getter_with_clone)]
     pub geometry: TransferableModelGeometry,
@@ -114,6 +116,12 @@ impl ModelMesh {
     #[wasm_bindgen(getter)]
     pub fn resource_query(&self) -> Option<String> {
         self.gltf_resource.as_ref().and_then(|r| r.query.clone())
+    }
+
+    /// JSON of the 3D Tiles `{ tile?, content?, group? }` metadata.
+    #[wasm_bindgen(getter)]
+    pub fn metadata(&self) -> Option<String> {
+        self.metadata.as_deref().map(str::to_owned)
     }
 }
 
@@ -234,6 +242,7 @@ impl<'a> From<&'a navara_feature_component::render::RenderableFeature> for Rende
                 material,
                 transform,
                 bin,
+                metadata,
                 geometry,
                 active,
                 aabb,
@@ -245,6 +254,7 @@ impl<'a> From<&'a navara_feature_component::render::RenderableFeature> for Rende
                     transform: transform.into(),
                     bin: bin.as_ref().map(|v| v.handle),
                     gltf_resource: bin.as_ref().and_then(|v| v.gltf_resource.clone()),
+                    metadata: metadata.clone(),
                     aabb: aabb.clone().into(),
                     geometry: geometry.into(),
                     active: *active,

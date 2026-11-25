@@ -2,11 +2,33 @@
 
 use std::collections::HashMap;
 
-use cesiumtiles::tileset::{
-    BoundingVolume, GroupMetadata, ImplicitTiling, MetadataEntity, Statistics,
-};
+use cesiumtiles::tileset::{BoundingVolume, ImplicitTiling, Statistics};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+
+/// A metadata entity of the tileset, a tile, a content or a group.
+/// Same with cesiumtiles-rs `MetadataEntity` / `GroupMetadata`, but reads the
+/// spec's `extras` (cesiumtiles-rs names it `extra` and rejects `extras`), and
+/// unknown fields are ignored.
+#[derive(Serialize, Deserialize, Debug, Default, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct MetadataEntity {
+    /// The class that property values conform to. The value shall be a class ID declared in the `classes` dictionary of the metadata schema.
+    #[serde(rename = "class")]
+    pub class_: String,
+
+    /// A dictionary, where each key corresponds to a property ID in the class' `properties` dictionary and each value contains the property values.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub properties: Option<HashMap<String, Value>>,
+
+    /// Dictionary object with extension-specific objects.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub extensions: Option<HashMap<String, Value>>,
+
+    /// Application-specific data.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub extras: Option<Value>,
+}
 
 /// Metadata about the tile's content and a link to the content.
 /// Almost same with original: https://github.com/reearth/cesiumtiles-rs/blob/97485fe1c80577f052ae710eaa35b472bf594295/src/models/tileset.rs#L172,
@@ -183,8 +205,9 @@ pub struct Tileset {
     pub properties: Option<HashMap<String, Value>>,
 
     /// An object defining the structure of metadata classes and enums. When this is defined, then `schemaUri` shall be undefined.
+    /// Kept as JSON: the metadata resolvers read it as JSON, and apps get it as written.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub schema: Option<cesiumtiles::gltf_extensions::gltf::ext_structural_metadata::Schema>,
+    pub schema: Option<Value>,
 
     /// The URI (or IRI) of the external schema file. When this is defined, then `schema` shall be undefined.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -196,7 +219,7 @@ pub struct Tileset {
 
     /// An array of groups that tile content may belong to. Each element of this array is a metadata entity that describes the group. The tile content `group` property is an index into this array.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub groups: Option<Vec<GroupMetadata>>,
+    pub groups: Option<Vec<MetadataEntity>>,
 
     /// A metadata entity that is associated with this tileset.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -254,5 +277,29 @@ mod tests {
 
         assert!(matches!(tileset.root.refine, Some(Refine::Replace)));
         assert_eq!(tileset.root.content.unwrap().url.as_deref(), Some("a.b3dm"));
+    }
+
+    #[test]
+    fn it_should_parse_metadata_entities_with_extras() {
+        let tileset: Tileset = serde_json::from_str(
+            r#"{
+                "asset": {"version": "1.1"},
+                "geometricError": 100,
+                "schema": {"id": "s", "classes": {"c": {"properties": {}}}, "toolSpecific": 1},
+                "metadata": {"class": "c", "extras": {"a": 1}},
+                "groups": [{"class": "c", "properties": {}, "extras": {}}],
+                "root": {
+                    "boundingVolume": {"sphere": [0, 0, 0, 10]},
+                    "geometricError": 10,
+                    "metadata": {"class": "c", "extras": {}},
+                    "content": {"uri": "a.glb", "metadata": {"class": "c", "extras": {}}}
+                }
+            }"#,
+        )
+        .unwrap();
+
+        assert_eq!(tileset.metadata.unwrap().class_, "c");
+        assert_eq!(tileset.groups.unwrap().len(), 1);
+        assert!(tileset.root.content.unwrap().metadata.is_some());
     }
 }

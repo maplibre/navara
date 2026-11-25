@@ -14,6 +14,27 @@ pub enum BatchProperties<V> {
     Filtered(Option<Vec<Option<V>>>),
 }
 
+pub struct PickedProperties<V> {
+    pub properties: Option<V>,
+    pub layer_id: Option<String>,
+    pub batch_id: Option<u32>,
+    /// The feature set's `RenderableFeature` entity; `None` for a feature
+    /// outside a feature set.
+    pub feature_set: Option<Entity>,
+}
+
+// Derived `Default` would require `V: Default`.
+impl<V> Default for PickedProperties<V> {
+    fn default() -> Self {
+        Self {
+            properties: None,
+            layer_id: None,
+            batch_id: None,
+            feature_set: None,
+        }
+    }
+}
+
 impl App {
     /// Generate a new unique global batch id for picking.
     /// The returned id is in the range 1..0xffffff (24-bit RGB color range).
@@ -30,46 +51,52 @@ impl App {
     pub fn read_property_by_global_batch_id<V: PropertyValue>(
         &mut self,
         batch_id: &u32,
-    ) -> (Option<V>, Option<String>, Option<u32>) {
+    ) -> PickedProperties<V> {
         // For batched features like MVT(polygon, polyline) and Cesium 3D Tiles.
         if let Some((entity, in_batch_id, canonical_batch_id)) =
             self.search_feature_entity_by_global_batch_id(batch_id)
         {
-            return self
+            // A feature without properties still has its feature set.
+            let (properties, layer_id) = self
                 .read_batch_table_by_global_batch_id(entity, &in_batch_id)
-                .map(|(properties, layer_id)| {
-                    (Some(properties), Some(layer_id), Some(canonical_batch_id))
-                })
-                .unwrap_or((None, None, None));
+                .unwrap_or_default();
+            return PickedProperties {
+                properties,
+                layer_id,
+                batch_id: Some(canonical_batch_id),
+                feature_set: Some(entity),
+            };
         };
 
         // For other features like GeoJSON and MVT point
-        let batch_table = match self.app.world().get_resource::<BatchTable>() {
-            Some(bt) => bt,
-            None => return (None, None, None),
+        let Some(batch_value) = self
+            .app
+            .world()
+            .get_resource::<BatchTable>()
+            .and_then(|bt| bt.get(batch_id))
+        else {
+            return PickedProperties::default();
         };
 
-        let batch_value = match batch_table.get(batch_id) {
-            Some(bv) => bv,
-            None => return (None, None, None),
+        let properties = match &batch_value.properties {
+            // This should include only one batch.
+            Some(BatchProperty::Values(values)) => json_value_to_property(&values[0]),
+            _ => None,
         };
 
-        let layer_id = batch_value.layer_id.clone();
-
-        let Some(BatchProperty::Values(values)) = &batch_value.properties else {
-            return (None, layer_id, Some(*batch_id));
-        };
-        // This should include only one batch.
-        let properties: Option<V> = json_value_to_property(&values[0]);
-
-        (properties, layer_id, Some(*batch_id))
+        PickedProperties {
+            properties,
+            layer_id: batch_value.layer_id.clone(),
+            batch_id: Some(*batch_id),
+            feature_set: None,
+        }
     }
 
     fn read_batch_table_by_global_batch_id<V: PropertyValue>(
         &mut self,
         entity: Entity,
         in_batch_id: &usize,
-    ) -> Option<(V, String)> {
+    ) -> Option<(Option<V>, Option<String>)> {
         let world = self.app.world_mut();
         let mut query = world.query::<&RenderableFeature>();
 
@@ -101,21 +128,23 @@ impl App {
 
         let buf_store = world.get_resource::<BufferStore>()?;
         let batch_value = batch_table.get(&feature_batch_id)?;
-        let batch_prop = batch_value.properties.as_ref()?;
 
-        let properties = match batch_prop {
-            BatchProperty::Cesium3dTileset(in_batch_table) => {
-                let batch_table_json = in_batch_table.json().ok()?;
-                in_batch_table.get_property(&batch_table_json, *in_batch_id)
-            }
-            BatchProperty::Values(values) => json_value_to_property(values.get(*in_batch_id)?),
-            BatchProperty::Mvt(mvt_layer_data) => mvt_layer_data.get_properties(*in_batch_id),
-            BatchProperty::Cesium3dTilesetV11(gltf_table) => {
-                gltf_table.get_properties(*in_batch_id, buf_store)
-            }
-        }?;
+        let properties = batch_value
+            .properties
+            .as_ref()
+            .and_then(|batch_prop| match batch_prop {
+                BatchProperty::Cesium3dTileset(in_batch_table) => {
+                    let batch_table_json = in_batch_table.json().ok()?;
+                    in_batch_table.get_property(&batch_table_json, *in_batch_id)
+                }
+                BatchProperty::Values(values) => json_value_to_property(values.get(*in_batch_id)?),
+                BatchProperty::Mvt(mvt_layer_data) => mvt_layer_data.get_properties(*in_batch_id),
+                BatchProperty::Cesium3dTilesetV11(gltf_table) => {
+                    gltf_table.get_properties(*in_batch_id, buf_store)
+                }
+            });
 
-        Some((properties, batch_value.layer_id.clone()?))
+        Some((properties, batch_value.layer_id.clone()))
     }
 
     /// Read properties from a batched feature.

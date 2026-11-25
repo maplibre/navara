@@ -9,6 +9,7 @@ import type {
   LatLngHeight,
   LatLng,
   RegisteredJobKind,
+  FeatureSetId,
 } from "@navaramap/core";
 import initCore, {
   Core,
@@ -121,7 +122,7 @@ import { disposeAllObjects } from "./event/objectRemoved";
 import { createTileHandler } from "./event/tileHandler";
 import { InMemoryBufferStore } from "./inMemoryBufferStore";
 import { registerInputEvents } from "./input";
-import { Layer, type LayerEvent } from "./layer";
+import { Layer, type FeatureSetContent, type LayerEvent } from "./layer";
 import {
   MRTPassEffectDesc,
   SkyEnvMapEffectDesc,
@@ -227,6 +228,7 @@ const FLY_TO_EASING_CODE: Record<FlyToEasing, number> = {
 
 export { ColorMap, EventHandler, Plugin } from "@navaramap/core";
 export type {
+  FeatureSetId,
   Nullable,
   XYZ,
   LatLng,
@@ -3609,6 +3611,8 @@ export default class ThreeView<
         // evaluator exposes (a MultiPoint feature spans many instances).
         batchId: prop.batchId ?? batchId,
         layerId: prop.layerId,
+        featureSetId: prop.featureSetId,
+        content: this._featureSetContent(prop.layerId, prop.featureSetId),
       };
     }
     return {
@@ -3616,6 +3620,17 @@ export default class ThreeView<
       batchId,
       layerId: undefined,
     };
+  }
+
+  private _featureSetContent(
+    layerId: string | undefined,
+    featureSetId: FeatureSetId | undefined,
+  ): FeatureSetContent | undefined {
+    if (layerId === undefined || featureSetId === undefined) return;
+    const layer = this.layersManager.get(layerId);
+    return layer instanceof Layer
+      ? layer.getFeatureSetContent(featureSetId)
+      : undefined;
   }
 
   /**

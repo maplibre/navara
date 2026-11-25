@@ -116,6 +116,7 @@ mod test {
             feature_id: Entity::PLACEHOLDER,
             render_info: Default::default(),
             bin: None,
+            metadata: None,
             geometry: Default::default(),
             aabb: Default::default(),
             feature_batch_id: 0,

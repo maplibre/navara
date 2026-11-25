@@ -4,7 +4,7 @@ use navara_component::Priority;
 use navara_data_requester::DataRequester;
 use navara_event_store::{
     CameraFlightEnded, ComponentEvent, ComponentEventWithResource, EntityEvent, EventStore,
-    ReconstructableComponentEvent, TerrainExaggerationUpdated,
+    ReconstructableComponentEvent, TerrainExaggerationUpdated, TilesetLoaded,
 };
 use navara_feature_component::render::RenderableFeature;
 use navara_globe::Globe;
@@ -75,6 +75,8 @@ pub struct Events<'a> {
     pub hillshade_canceled: Vec<EntityEvent>,
     pub terrain_exaggeration_updated: Option<TerrainExaggerationUpdated>,
     pub vector_drape_changed: Vec<u64>,
+    pub tileset_loaded: Vec<TilesetLoaded>,
+    pub tileset_unloaded: Vec<String>,
 }
 
 impl<'a> Events<'a> {
@@ -229,6 +231,16 @@ impl<'a> Events<'a> {
 
         if !store.vector_drape_changed.is_empty() {
             events.vector_drape_changed = store.vector_drape_changed.clone();
+            is_changed = true;
+        }
+
+        if !store.tileset_loaded.is_empty() {
+            events.tileset_loaded = store.tileset_loaded.clone();
+            is_changed = true;
+        }
+
+        if !store.tileset_unloaded.is_empty() {
+            events.tileset_unloaded = store.tileset_unloaded.clone();
             is_changed = true;
         }
 

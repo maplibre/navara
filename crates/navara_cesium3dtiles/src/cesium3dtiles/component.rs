@@ -36,7 +36,11 @@ use navara_feature_component::{id::FeatureId, model::GltfResourceBase, render::R
 use navara_layer::Cesium3dTilesLayer;
 use navara_material::Appearance;
 use navara_math::{FloatType, Mat4, Transform, Vec3};
-use navara_parser::cesium3dtiles::{self, tileset::Refine};
+use navara_parser::cesium3dtiles::{
+    self, metadata_entity::resolve_metadata_entity, tileset::Refine,
+};
+use serde::Serialize;
+use serde_json::Value;
 use smallvec::SmallVec;
 use std::{collections::HashMap, sync::Arc};
 use url::{ParseError, Url};
@@ -75,10 +79,36 @@ pub struct Cesium3dTilesTree {
     pub num_rendered_tiles: u32,
     /// Whether this tileset is 3D Tiles version 1.1.
     pub is_v1_1: bool,
-    /// Schema from tileset.json for resolving property types in EXT_structural_metadata.
-    /// In 3D Tiles 1.1, the schema is typically defined at the tileset level,
-    /// not embedded in each tile's glTF.
-    pub schema: Option<serde_json::Value>,
+    pub scope: TilesetMetadataScope,
+}
+
+/// Metadata definitions of the root tileset JSON. Every tile resolves against
+/// them, nested tilesets included: as in CesiumJS, the `schema` and `groups`
+/// of a nested tileset are not read.
+/// <https://github.com/CesiumGS/cesium/blob/main/packages/engine/Source/Scene/findTileMetadata.js>
+#[derive(Debug, Default, Clone)]
+pub struct TilesetMetadataScope {
+    /// Resolves JSON metadata entities and the property tables of
+    /// `EXT_structural_metadata` in glTF content.
+    pub schema: Option<Arc<Value>>,
+    /// Resolved group metadata entities, indexed by `content.group`.
+    pub groups: Option<Arc<[Value]>>,
+}
+
+impl TilesetMetadataScope {
+    pub fn new(tileset: &navara_parser::cesium3dtiles::tileset::Tileset) -> Self {
+        let schema = tileset.schema.clone();
+        let groups = tileset.groups.as_ref().map(|groups| {
+            groups
+                .iter()
+                .map(|g| resolve_metadata_entity(schema.as_ref(), &g.class_, g.properties.as_ref()))
+                .collect()
+        });
+        Self {
+            schema: schema.map(Arc::new),
+            groups,
+        }
+    }
 }
 
 impl Cesium3dTilesTree {
@@ -89,7 +119,8 @@ impl Cesium3dTilesTree {
         metadata: &navara_parser::cesium3dtiles::tileset::Tileset,
     ) -> Result<Self, ParseError> {
         let base_url = Arc::new(Url::parse(url)?);
-        let root = Cesium3dTileContent::new(&metadata.root, None);
+        let scope = TilesetMetadataScope::new(metadata);
+        let root = Cesium3dTileContent::new(&metadata.root, None, &scope);
 
         let appearance = layer
             .appearances
@@ -102,11 +133,6 @@ impl Cesium3dTilesTree {
 
         let is_v1_1 = metadata.asset.version == "1.1";
 
-        let schema = metadata
-            .schema
-            .as_ref()
-            .and_then(|s| serde_json::to_value(s).ok());
-
         Ok(Self {
             layer_id,
             base_url,
@@ -115,7 +141,7 @@ impl Cesium3dTilesTree {
             max_num_rendered_tiles: 100,
             num_rendered_tiles: 0,
             is_v1_1,
-            schema,
+            scope,
         })
     }
 }
@@ -155,12 +181,22 @@ pub struct Cesium3dTileContent {
 }
 
 impl Cesium3dTileContent {
-    pub fn new(tile: &cesium3dtiles::tileset::Tile, parent: Option<&Self>) -> Self {
+    pub fn new(
+        tile: &cesium3dtiles::tileset::Tile,
+        parent: Option<&Self>,
+        scope: &TilesetMetadataScope,
+    ) -> Self {
+        let schema = scope.schema.as_deref();
+        let tile_metadata = tile
+            .metadata
+            .as_ref()
+            .map(|m| resolve_metadata_entity(schema, &m.class_, m.properties.as_ref()));
+        let new_slot = |content| ContentSlot::new(content, tile_metadata.as_ref(), scope);
         let contents = match (&tile.content, &tile.contents) {
-            (Some(content), _) => ContentSlot::new(content).into_iter().collect(),
+            (Some(content), _) => new_slot(content).into_iter().collect(),
             (None, Some(contents)) => contents
                 .iter()
-                .filter_map(ContentSlot::new)
+                .filter_map(new_slot)
                 .filter(|slot| {
                     // As in CesiumJS, which rejects an external tileset here.
                     let is_tileset = slot.kind == ContentKind::Json;
@@ -357,11 +393,18 @@ pub struct ContentSlot {
     pub data_requester_id: Option<Entity>,
     /// Entity with [`RenderedCesium3dTileContent`] when the content is rendered.
     pub rendered_tile_id: Option<Entity>,
+    /// JSON of the resolved `{ tile?, content?, group? }` metadata; `None`
+    /// when none of them is defined.
+    pub metadata: Option<Arc<str>>,
 }
 
 impl ContentSlot {
     /// `None` for a content without a URI or in an unsupported format.
-    fn new(content: &cesium3dtiles::tileset::Content) -> Option<Self> {
+    fn new(
+        content: &cesium3dtiles::tileset::Content,
+        tile_metadata: Option<&Value>,
+        scope: &TilesetMetadataScope,
+    ) -> Option<Self> {
         // Legacy tilesets name the content URI `url`.
         let uri = content.uri.as_ref().or(content.url.as_ref())?;
         let Some(kind) = ContentKind::from_uri(uri) else {
@@ -380,8 +423,39 @@ impl ContentSlot {
             kind,
             data_requester_id: None,
             rendered_tile_id: None,
+            metadata: content_metadata(tile_metadata, content, scope),
         })
     }
+}
+
+fn content_metadata(
+    tile_metadata: Option<&Value>,
+    content: &cesium3dtiles::tileset::Content,
+    scope: &TilesetMetadataScope,
+) -> Option<Arc<str>> {
+    #[derive(Serialize)]
+    struct ContentMetadata<'a> {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        tile: Option<&'a Value>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        content: Option<Value>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        group: Option<&'a Value>,
+    }
+
+    let metadata = ContentMetadata {
+        tile: tile_metadata,
+        content: content.metadata.as_ref().map(|m| {
+            resolve_metadata_entity(scope.schema.as_deref(), &m.class_, m.properties.as_ref())
+        }),
+        group: content
+            .group
+            .and_then(|i| scope.groups.as_ref()?.get(i as usize)),
+    };
+    if metadata.tile.is_none() && metadata.content.is_none() && metadata.group.is_none() {
+        return None;
+    }
+    serde_json::to_string(&metadata).ok().map(Into::into)
 }
 
 /// A data URI can be megabytes long.
@@ -653,7 +727,7 @@ mod tests {
     fn contents_keep_supported_renderable_slots() {
         let tile = |json: &str| {
             let tile: cesium3dtiles::tileset::Tile = serde_json::from_str(json).unwrap();
-            Cesium3dTileContent::new(&tile, None)
+            Cesium3dTileContent::new(&tile, None, &TilesetMetadataScope::default())
         };
         let kinds = |t: &Cesium3dTileContent| t.contents.iter().map(|s| s.kind).collect::<Vec<_>>();
 
@@ -667,6 +741,47 @@ mod tests {
         let nested = tile(r#"{"content": {"uri": "d.json"}}"#);
         assert_eq!(kinds(&nested), [ContentKind::Json]);
         assert!(!nested.is_renderable_content());
+    }
+
+    #[test]
+    fn contents_carry_tile_content_and_group_metadata() {
+        let tileset: navara_parser::cesium3dtiles::tileset::Tileset = serde_json::from_value(serde_json::json!({
+            "asset": { "version": "1.1" },
+            "geometricError": 1,
+            "schema": { "id": "s", "classes": {
+                "t": { "properties": { "area": { "type": "SCALAR", "componentType": "UINT8", "normalized": true, "scale": 10 } } },
+                "g": { "properties": { "name": { "type": "STRING" } } },
+            } },
+            "groups": [{ "class": "g", "properties": { "name": "a" } }],
+            "root": {
+                "boundingVolume": { "sphere": [0, 0, 0, 1] },
+                "geometricError": 0,
+                "metadata": { "class": "t", "properties": { "area": 255 } },
+                "contents": [
+                    { "uri": "a.b3dm", "group": 0, "metadata": { "class": "c", "properties": { "n": 1 } } },
+                    { "uri": "b.b3dm" },
+                ],
+            },
+        }))
+        .unwrap();
+        let scope = TilesetMetadataScope::new(&tileset);
+        let tile = Cesium3dTileContent::new(&tileset.root, None, &scope);
+        let metadata = |i: usize| -> Value {
+            serde_json::from_str(tile.contents[i].metadata.as_deref().unwrap()).unwrap()
+        };
+
+        assert_eq!(
+            metadata(0),
+            serde_json::json!({
+                "tile": { "class": "t", "properties": { "area": 10.0 } },
+                "content": { "class": "c", "properties": { "n": 1 } },
+                "group": { "class": "g", "properties": { "name": "a" } },
+            })
+        );
+        assert_eq!(
+            metadata(1),
+            serde_json::json!({ "tile": { "class": "t", "properties": { "area": 10.0 } } })
+        );
     }
 
     #[test]

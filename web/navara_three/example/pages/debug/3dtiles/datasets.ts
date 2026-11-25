@@ -119,7 +119,7 @@ export const DATASETS: Dataset[] = [
     group: "Metadata",
     name,
     url: `${CESIUM_SPECS}/Metadata/${name}/tileset_1.1.json`,
-    note: "3D Tiles 1.1 metadata over B3DM content",
+    note: "3D Tiles 1.1 metadata over B3DM content: see the pane on load and click",
   })),
   {
     group: "MultipleContents",

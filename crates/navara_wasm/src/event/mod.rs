@@ -45,6 +45,9 @@ pub struct Events {
     hillshade_canceled: Vec<EntityEvent>,
     terrain_exaggeration_updated: Option<TerrainExaggerationUpdatedEvent>,
     vector_drape_changed: Vec<TileHandle>,
+    tileset_loaded: Vec<TilesetLoadedEvent>,
+    /// Layer IDs.
+    tileset_unloaded: Vec<String>,
 }
 
 // Move-out accessors: each hands the stack's ownership to JS (elements are
@@ -122,6 +125,26 @@ impl Events {
     pub fn take_vector_drape_changed(&mut self) -> Vec<TileHandle> {
         std::mem::take(&mut self.vector_drape_changed)
     }
+    pub fn take_tileset_loaded(&mut self) -> Vec<TilesetLoadedEvent> {
+        std::mem::take(&mut self.tileset_loaded)
+    }
+    pub fn take_tileset_unloaded(&mut self) -> Vec<String> {
+        std::mem::take(&mut self.tileset_unloaded)
+    }
+}
+
+/// A 3D Tiles layer's root tileset JSON was loaded.
+#[wasm_bindgen]
+#[derive(Debug, Clone, Serialize)]
+pub struct TilesetLoadedEvent {
+    #[wasm_bindgen(getter_with_clone)]
+    pub layer_id: String,
+    /// JSON of the resolved tileset metadata entity.
+    #[wasm_bindgen(getter_with_clone)]
+    pub metadata: Option<String>,
+    /// JSON of the tileset schema.
+    #[wasm_bindgen(getter_with_clone)]
+    pub schema: Option<String>,
 }
 
 #[wasm_bindgen]
@@ -428,6 +451,16 @@ impl From<navara_event::Events<'_>> for Events {
                 }
             }),
             vector_drape_changed: ev.vector_drape_changed,
+            tileset_loaded: ev
+                .tileset_loaded
+                .into_iter()
+                .map(|ev| TilesetLoadedEvent {
+                    layer_id: ev.layer_id,
+                    metadata: ev.metadata,
+                    schema: ev.schema,
+                })
+                .collect(),
+            tileset_unloaded: ev.tileset_unloaded,
         }
     }
 }

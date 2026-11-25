@@ -76,7 +76,9 @@ layer.on("featureUpdated", ({ evaluator }) => {
 });
 ```
 
-Layer events: `featureCreated` / `featureUpdated` / `featureVisibilityChanged` / `featureRemoved` / `deleted`. There is no per-layer "loaded" event — to know when everything has finished loading, use the view-level `idle` event (fires after `idleThreshold` ms without tile/data activity).
+Layer events: `featureCreated` / `featureUpdated` / `featureVisibilityChanged` / `featureRemoved` / `tilesetLoaded` / `deleted`. There is no per-layer "loaded" event — `tilesetLoaded` (3d-tiles only) means the root tileset JSON arrived, not its content. To know when everything has finished loading, use the view-level `idle` event (fires after `idleThreshold` ms without tile/data activity).
+
+Feature-set source info: `featureCreated`, picks (`PickedFeature`) and `layer.getFeatureSetContent(featureSetId)` give `content?: FeatureSetContent`, discriminated by `type`; narrow with `content?.type === "3d-tiles"` to read `credit` (glTF copyright) and 3D Tiles 1.1 metadata `metadata?: { tile?, content?, group? }`. 3D Tiles 1.1 metadata: tileset metadata and `schema` in `tilesetLoaded` / `layer.tileset` (`undefined` while a source update reloads). Only the root tileset's `schema`/`groups` are read, as in CesiumJS. `PickedFeature.featureSetId` is a `bigint`, so `JSON.stringify` of a whole pick payload throws: pick the fields to serialize.
 
 **A `Layer` handle does not expose its description.** To know a layer's config, keep it yourself: `layerAdded` passes `(layer, description)` (as given to `addLayer`, a `Source` handle not yet turned into its id) and the layer's `updated` event passes each partial update, which the engine deep-merges into the current config (see "Updates are partial merges" above). `view.layers` iterates the resource layers in add order; `layerAdded` / `layerRemoved` / `sourceAdded` view events track them. A plugin that needs every layer subscribes in its `init()`, which runs before the app can add one. `MaterialSchemaPlugin` (`@navaramap/three-plugins`) does this tracking: `description(layer)` returns the merged config, `describeLayer(layer)` the per-field JSON.
 

@@ -36,6 +36,10 @@ pub struct EventStore {
     pub terrain_exaggeration_updated: Option<TerrainExaggerationUpdated>,
     /// Terrain tiles (handles) whose vector drape sources were handed over anew.
     pub vector_drape_changed: Vec<u64>,
+    pub tileset_loaded: Vec<TilesetLoaded>,
+    /// Layer IDs of 3D Tiles layers whose tileset was unloaded (layer deleted
+    /// or reset by a source update).
+    pub tileset_unloaded: Vec<String>,
 }
 
 impl EventStore {
@@ -63,5 +67,7 @@ impl EventStore {
         self.hillshade_canceled.clear();
         self.terrain_exaggeration_updated = None;
         self.vector_drape_changed.clear();
+        self.tileset_loaded.clear();
+        self.tileset_unloaded.clear();
     }
 }

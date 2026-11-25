@@ -26,6 +26,12 @@ navara_three では、レイヤーは以下の 4 種類に分類されます：
 
 **Description:** レイヤーの一意な識別子。
 
+#### tileset
+
+**Type:** `Tiles3dTileset | undefined`
+
+**Description:** `3d-tiles` レイヤーのルート tileset JSON（読み込み後。[`tilesetLoaded`](#tilesetloaded) を参照）。読み込み前、ソースの更新による再読み込み中、他の種類のレイヤーでは `undefined`。[3D Tiles のメタデータ](../../source/3d-tiles-source/#メタデータ)を参照。
+
 ### Methods
 
 #### update()
@@ -97,6 +103,28 @@ forceUpdate(): void
 layer.forceUpdate();
 ```
 
+#### getFeatureSetContent()
+
+フィーチャーセットの読み込み元コンテンツを返します。値は [`featureCreated`](#featurecreated) イベントの `content` と同じです。読み込み元コンテンツの情報がないフィーチャーセットや、削除済みのフィーチャーセットでは `undefined` を返します。
+
+**Syntax:**
+
+```typescript
+getFeatureSetContent(featureSetId: FeatureSetId): FeatureSetContent | undefined
+```
+
+**Example:**
+
+```typescript
+view.on("featureClick", (info) => {
+  if (info?.featureSetId === undefined) return;
+  const content = layer.getFeatureSetContent(info.featureSetId);
+  if (content?.type === "3d-tiles") {
+    console.log(content.credit, content.metadata?.tile);
+  }
+});
+```
+
 ### Events
 
 :::note
@@ -119,7 +147,7 @@ layer.forceUpdate();
 | -------------- | --------------------- | ------------------------------------------ |
 | `featureSetId` | `FeatureSetId`        | 作成されたフィーチャーセットの一意な識別子 |
 | `evaluator`    | `FeatureEvaluator`    | 地物のスタイリングに使用する評価クラス     |
-| `credit`       | `string \| undefined` | データソースのクレジット情報（オプション） |
+| `content`      | `FeatureSetContent \| undefined` | フィーチャーセットの読み込み元コンテンツ。`type` で種類を見分けます。3D Tiles では `{ type: "3d-tiles", credit?, metadata? }` で、`credit` は glTF の `asset.copyright`、`metadata` はタイル・コンテンツ・グループの 3D Tiles 1.1 メタデータです（[3D Tiles のメタデータ](../../source/3d-tiles-source/#メタデータ)を参照）。その他のレイヤーでは `undefined` |
 
 **Example:**
 
@@ -192,6 +220,23 @@ layer.on("featureUpdated", ({ evaluator }) => {
 | Property       | Type           | Description                          |
 | -------------- | -------------- | ------------------------------------ |
 | `featureSetId` | `FeatureSetId` | 削除されたフィーチャーセットの識別子 |
+
+#### tilesetLoaded
+
+**Description:** `3d-tiles` レイヤーがルート tileset JSON を読み込んだときに発火します。ソースの更新で再読み込みしたときにも再度発火します。値は [`tileset`](#tileset) からも読めます。
+
+**Handler Type:**
+
+```typescript
+(tileset: Tiles3dTileset) => void
+```
+
+**Tiles3dTileset:**
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `metadata` | `Tiles3dMetadataEntity \| undefined` | tileset 自体のメタデータエンティティ |
+| `schema` | `Record<string, unknown> \| undefined` | tileset JSON の `schema` オブジェクト |
 
 #### updated
 

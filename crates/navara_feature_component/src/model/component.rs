@@ -21,6 +21,11 @@ pub struct ModelBin {
     pub gltf_resource: Option<Arc<GltfResourceBase>>,
 }
 
+/// 3D Tiles metadata of the tile, content and group a model was loaded from,
+/// as a JSON object `{ tile?, content?, group? }` of resolved entities.
+#[derive(Clone, Debug, PartialEq, Component)]
+pub struct TileContentMetadata(pub Arc<str>);
+
 /// Where relative URIs inside a glTF bin resolve.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct GltfResourceBase {

@@ -668,7 +668,8 @@ export class AttributionPlugin extends Plugin<View, ViewContext> {
       // Track only features that actually carry a credit: layers can emit many
       // credit-less features (e.g. PLATEAU), and tracking them would grow these
       // sets unbounded and churn the UI with no visible effect.
-      const onCreated = ({ featureSetId, credit }: FeatureCreatedParams) => {
+      const onCreated = ({ featureSetId, content }: FeatureCreatedParams) => {
+        const credit = content?.credit;
         if (!credit) return;
         state.credits.set(featureSetId, credit);
         state.visible.add(featureSetId);
