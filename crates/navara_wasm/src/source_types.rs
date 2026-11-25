@@ -14,9 +14,8 @@ use navara_layer::{
 use navara_material::{Appearance, ElevationHeatmapConfig, HillshadeConfig};
 use navara_parser::geojson::GeoJson;
 use navara_source::{
-    B3dmSource, GeoJsonData, GeoJsonSource, PntsSource, QuantizedMeshSource,
-    RASTER_REFERENCE_TILE_SIZE, RasterDemSource, RasterTileSource, Source, Tiles3dSource,
-    VectorTileSource,
+    B3dmSource, GeoJsonData, GeoJsonSource, PntsSource, QuantizedMeshSource, RasterDemSource,
+    RasterTileSource, Source, Tiles3dSource, VectorTileSource,
 };
 use navara_wasm_types::{
     BillboardMaterial, ElevationDecoder, ElevationHeatmapMaterial, HillshadeMaterial,
@@ -33,7 +32,6 @@ const DEFAULT_MIN_ZOOM: usize = 0;
 const DEFAULT_MAX_ZOOM: usize = 20;
 const DEFAULT_OVERSCALED_MAX_ZOOM: usize = 24;
 const DEFAULT_TILE_SIZE: u32 = 256;
-const DEFAULT_RASTER_TILE_SIZE: u32 = RASTER_REFERENCE_TILE_SIZE;
 const DEFAULT_MAX_SSE: f32 = 2.0;
 
 /// Downcast the previous [`Source`] to a specific variant for partial-update
@@ -104,11 +102,6 @@ pub struct RasterTileSourceDescription {
     #[wasm_bindgen(getter_with_clone)]
     pub url: Option<String>,
     pub tms: Option<bool>,
-    /// Pixel size of one tile (MapLibre's `tileSize`, default `512`). Zoom is
-    /// defined for 512 px tiles, so `256` selects tiles one level deeper.
-    #[wasm_bindgen(js_name = tileSize)]
-    #[serde(rename = "tileSize")]
-    pub tile_size: Option<u32>,
     #[wasm_bindgen(js_name = minZoom)]
     #[serde(rename = "minZoom")]
     pub min_zoom: Option<usize>,
@@ -637,13 +630,6 @@ impl SourceDescription {
                     source_id: source_id.to_string(),
                     url: desc.url.or_else(|| old.map(|o| o.url.clone()))?,
                     tms: desc.tms.or(old.map(|o| o.tms)).unwrap_or(false),
-                    // Reject a zero size before falling back, so a partial update with an
-                    // invalid value keeps the previous size instead of resetting it.
-                    tile_size: desc
-                        .tile_size
-                        .filter(|&size| size > 0)
-                        .or(old.map(|o| o.tile_size))
-                        .unwrap_or(DEFAULT_RASTER_TILE_SIZE),
                     min_zoom: desc
                         .min_zoom
                         .or(old.map(|o| o.min_zoom))
@@ -932,7 +918,6 @@ impl From<&RasterTileSource> for RasterTileSourceDescription {
             r#type: Some("raster-tile".to_string()),
             url: Some(s.url.clone()),
             tms: Some(s.tms),
-            tile_size: Some(s.tile_size),
             min_zoom: Some(s.min_zoom),
             max_zoom: Some(s.max_zoom),
             overscaled_max_zoom: Some(s.overscaled_max_zoom),

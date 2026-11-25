@@ -286,14 +286,6 @@ pub fn update_terrain(
 
     // Sort the layer list once per run; the traversal touches every visited tile.
     let sorted_layers: Vec<_> = tiles.iter().sort::<&Order>().collect();
-    // Once per run. Only WebMercator terrain subdivides deeper for small raster tiles
-    // (it drapes one raster tile per terrain tile); Geographic raises the drape zoom.
-    let raster_sse_width_scale = if matches!(globe.tiling_scheme, TilingScheme::WebMercator { .. })
-    {
-        crate::raster::raster_sse_width_scale(&sorted_layers, &source_store)
-    } else {
-        1.
-    };
 
     let is_over_min_z = if !sorted_layers.is_empty() {
         sorted_layers
@@ -340,7 +332,6 @@ pub fn update_terrain(
             dynamic_sse,
             globe.max_sse as f64,
             degrade,
-            raster_sse_width_scale,
             false,
             false,
             is_texture_ready.then_some(root_handle),
@@ -5150,7 +5141,6 @@ mod dem_decoder_tests {
             source_id: "osm".to_string(),
             url: String::new(),
             tms: false,
-            tile_size: navara_source::RASTER_REFERENCE_TILE_SIZE,
             min_zoom: 0,
             max_zoom: 19,
             overscaled_max_zoom: 19,

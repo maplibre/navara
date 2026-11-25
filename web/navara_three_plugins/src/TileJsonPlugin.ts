@@ -85,16 +85,6 @@ const DEFAULT_DEM_TILE_SIZE = 512;
 const DEFAULT_DEM_ENCODING: TileJsonDemEncoding = "mapbox";
 
 /**
- * A `tileSize` the engine can use: a positive integer (it deserializes to a `u32`).
- * Anything else is ignored.
- */
-function validTileSize(size: unknown): number | undefined {
-  return typeof size === "number" && Number.isInteger(size) && size > 0
-    ? size
-    : undefined;
-}
-
-/**
  * How a `raster-dem` document's RGB tiles encode elevation, matching MapLibre's
  * `encoding` values. MapLibre's `"custom"` (free-form decode factors) is not
  * supported.
@@ -124,9 +114,7 @@ export type TileJson = {
   scheme?: "xyz" | "tms";
   /**
    * Tile size in pixels. Not part of the TileJSON spec, but emitted by
-   * MapLibre-oriented tile servers; applied to `raster` and `raster-dem`
-   * sources. On `raster` sources it is left to the engine default (512) when
-   * absent.
+   * MapLibre-oriented tile servers; applied to `raster-dem` sources only.
    * @defaultValue 512
    */
   tileSize?: number;
@@ -172,11 +160,6 @@ type TileJsonSourceDescriptionBase = {
 export type TileJsonRasterTileSourceDescription =
   TileJsonSourceDescriptionBase & {
     type: "raster-tile";
-    /**
-     * Overrides the document's `tileSize` when set. Zoom is defined for 512 px
-     * tiles, so `256` selects tiles one level deeper. @defaultValue 512
-     */
-    tileSize?: number;
   };
 
 /** Registers a TileJSON document as a `vector-tile` (MVT) source. */
@@ -368,21 +351,12 @@ export class TileJsonPlugin extends Plugin<View, ViewContext> {
     };
     let source: Source;
     if (desc.type === "raster-tile") {
-      const tileSize =
-        validTileSize(desc.tileSize) ?? validTileSize(doc.tileSize);
-      source = view.addSource({
-        type: "raster-tile",
-        ...rasterShared,
-        ...(tileSize !== undefined ? { tileSize } : {}),
-      });
+      source = view.addSource({ type: "raster-tile", ...rasterShared });
     } else if (desc.type === "raster-dem") {
       source = view.addSource({
         type: "raster-dem",
         ...rasterShared,
-        tileSize:
-          validTileSize(desc.tileSize) ??
-          validTileSize(doc.tileSize) ??
-          DEFAULT_DEM_TILE_SIZE,
+        tileSize: desc.tileSize ?? doc.tileSize ?? DEFAULT_DEM_TILE_SIZE,
         elevationDecoder: resolveElevationDecoder(
           desc.encoding ?? doc.encoding ?? DEFAULT_DEM_ENCODING,
         ),

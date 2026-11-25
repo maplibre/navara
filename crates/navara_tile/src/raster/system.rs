@@ -18,7 +18,7 @@ use navara_window::Window;
 use navara_layer::{TerrainLayer, TilesLayer};
 
 use super::tile_cache_manager::RasterTileCacheManager;
-use super::traverse::{raster_sse_width_scale, traverse_raster};
+use super::traverse::traverse_raster;
 
 /// Rate-limit raster texture fragment requests. Regular textures belong to the
 /// raster quadtree, so the rejected slot is cleared against `RasterTileQuadtree`
@@ -280,8 +280,6 @@ pub fn update_raster_tiles(
 
     // Sort the layer list once per run; the traversal touches every visited tile.
     let sorted_layers: Vec<_> = tiles.iter().sort::<&Order>().collect();
-    // Likewise once per run: the layers' tile sizes are fixed for the traversal.
-    let raster_sse_width_scale = raster_sse_width_scale(&sorted_layers, &source_store);
 
     tc.min_zoom_descent.refill();
     let root_coords = (TilingScheme::WebMercator { tms: false }).root_tiles();
@@ -312,7 +310,6 @@ pub fn update_raster_tiles(
             globe.max_sse as f64,
             degrade,
             terrain_present,
-            raster_sse_width_scale,
         );
     }
 }
@@ -356,13 +353,16 @@ pub fn snapshot_raster_bake_inputs(
         if l.hillshade_config.is_some() {
             continue;
         }
-        // Max zoom and tile size live on the referenced source; the fallbacks
-        // mirror `update_mesh_material`.
-        let source = l.source_id.as_deref().and_then(|id| source_store.get(id));
         snapshot.layers.push(super::RasterBakeLayer {
             layer_index,
-            max_zoom: source.map(|s| s.max_zoom()).unwrap_or(20),
-            zoom_offset: source.map_or(0, |s| s.raster_zoom_offset()),
+            // Max zoom lives on the referenced source; the fallback mirrors
+            // `update_mesh_material`.
+            max_zoom: l
+                .source_id
+                .as_deref()
+                .and_then(|id| source_store.get(id))
+                .map(|s| s.max_zoom())
+                .unwrap_or(20),
         });
     }
 

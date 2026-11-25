@@ -9,7 +9,7 @@ use navara_layer::TilesLayer;
 use navara_math::{FloatType, Transform};
 use navara_memory::SseDegrade;
 use navara_occluder::ellipsoidal_occluder::EllipsoidalOccluder;
-use navara_source::{SourceStore, raster_zoom_offset};
+use navara_source::SourceStore;
 use navara_tile_component::{
     RasterTile, RasterTileQuadtree, TerrainExaggeration, TerrainTileQuadtree, Tile, TileHandle,
     TileTextureFragmentQuery, terrain_height_for_tile,
@@ -18,32 +18,6 @@ use navara_window::Window;
 
 use super::request::request_raster_texture_fragment;
 use super::tile_cache_manager::RasterTileCacheManager;
-
-/// Factor on the SSE's reference tile width for the raster layers' tile sizes:
-/// `0.5^offset` for the deepest [`raster_zoom_offset`] among them, so a 256 px
-/// source (offset 1) halves the width, doubles the error and descends one level
-/// deeper. The traversal is shared by every layer, so the finest source decides.
-///
-/// It never exceeds `1.`, because the offset is never negative: tiles larger than
-/// the reference size must not coarsen the shared traversal, which also drives the
-/// terrain (including a DEM terrain layer).
-///
-/// Compute it once per system run and pass it into the traversals. It derives from
-/// the same offset as the drape, so the two always agree on the depth.
-pub(crate) fn raster_sse_width_scale(
-    sorted_layers: &[(&TilesLayer, &Order)],
-    source_store: &SourceStore,
-) -> f64 {
-    let offset = sorted_layers
-        .iter()
-        .filter(|(t, _)| t.hillshade_config.is_none())
-        .filter_map(|(t, _)| t.source_id.as_deref().and_then(|id| source_store.get(id)))
-        .filter_map(|s| s.raster_tile_size())
-        .map(raster_zoom_offset)
-        .max()
-        .unwrap_or(0);
-    0.5_f64.powi(offset)
-}
 
 /// Raster (texture) tile traversal in the WebMercator quadtree.
 ///
@@ -81,8 +55,6 @@ pub fn traverse_raster(
     max_sse: f64,
     degrade: SseDegrade,
     terrain_present: bool,
-    // Reference-width factor from the layers' tile sizes, see [`raster_sse_width_scale`].
-    raster_sse_width_scale: f64,
 ) {
     let coords = match qt.qt.get(handle) {
         Some(tile) => tile.coords,
@@ -112,7 +84,7 @@ pub fn traverse_raster(
         frustum,
         window,
         ellipsoid,
-        (if terrain_present { 65. } else { 64. }) * raster_sse_width_scale,
+        if terrain_present { 65. } else { 64. },
         distance_from_camera,
         fog,
         dynamic_sse,
@@ -198,7 +170,6 @@ pub fn traverse_raster(
                 max_sse,
                 degrade,
                 terrain_present,
-                raster_sse_width_scale,
             );
         }
     }
@@ -301,7 +272,6 @@ mod tests {
             config.max_sse,
             SseDegrade::NONE,
             config.terrain_present,
-            1.,
         );
     }
 
@@ -344,7 +314,6 @@ mod tests {
             source_id: id.to_string(),
             url: "https://example.com/{z}/{x}/{y}.png".to_string(),
             tms: false,
-            tile_size: navara_source::RASTER_REFERENCE_TILE_SIZE,
             min_zoom,
             max_zoom,
             overscaled_max_zoom: max_zoom,
@@ -644,72 +613,5 @@ mod tests {
         );
         let tc = app.world().resource::<RasterTileCacheManager>();
         assert_eq!(tc.active_handles.len(), 1);
-    }
-
-    // ----- tile size ----------------------------------------------------------
-
-    fn raster_sse_width_scale_of(layers: Vec<(TilesLayer, navara_source::Source)>) -> f64 {
-        let mut store = SourceStore::new();
-        for (_, source) in &layers {
-            store.add(source.source_id().to_string(), source.clone());
-        }
-        let orders: Vec<Order> = (0..layers.len()).map(Order).collect();
-        let sorted: Vec<(&TilesLayer, &Order)> =
-            layers.iter().map(|(l, _)| l).zip(orders.iter()).collect();
-        raster_sse_width_scale(&sorted, &store)
-    }
-
-    fn with_tile_size(
-        (layer, mut source): (TilesLayer, navara_source::Source),
-        tile_size: u32,
-    ) -> (TilesLayer, navara_source::Source) {
-        if let navara_source::Source::RasterTile(s) = &mut source {
-            s.tile_size = tile_size;
-        }
-        (layer, source)
-    }
-
-    #[test]
-    fn raster_sse_width_scale_is_one_for_the_reference_size_and_without_layers() {
-        assert_eq!(raster_sse_width_scale_of(vec![]), 1.);
-        assert_eq!(
-            raster_sse_width_scale_of(vec![raster_layer("a", 0, 20)]),
-            1.
-        );
-    }
-
-    #[test]
-    fn raster_sse_width_scale_halves_for_256_px_tiles() {
-        let layer = with_tile_size(raster_layer("a", 0, 20), 256);
-        assert_eq!(raster_sse_width_scale_of(vec![layer]), 0.5);
-    }
-
-    #[test]
-    fn raster_sse_width_scale_never_coarsens_for_large_tiles() {
-        let large = with_tile_size(raster_layer("a", 0, 20), 1024);
-        assert_eq!(raster_sse_width_scale_of(vec![large]), 1.);
-    }
-
-    #[test]
-    fn raster_sse_width_scale_matches_the_clamped_drape_offset() {
-        // 384 px rounds to the reference level, like the drape does.
-        let rounded = with_tile_size(raster_layer("a", 0, 20), 384);
-        assert_eq!(raster_sse_width_scale_of(vec![rounded]), 1.);
-        // 32 px would be 4 levels deeper, but the offset is clamped.
-        let tiny = with_tile_size(raster_layer("a", 0, 20), 32);
-        assert_eq!(
-            raster_sse_width_scale_of(vec![tiny]),
-            0.5_f64.powi(navara_source::MAX_RASTER_ZOOM_OFFSET)
-        );
-    }
-
-    #[test]
-    fn raster_sse_width_scale_follows_the_finest_source_and_skips_hillshade() {
-        let fine = with_tile_size(raster_layer("fine", 0, 20), 256);
-        let coarse = with_tile_size(raster_layer("coarse", 0, 20), 1024);
-        assert_eq!(raster_sse_width_scale_of(vec![coarse, fine]), 0.5);
-
-        let hillshade = with_tile_size(hillshade_layer("hs"), 128);
-        assert_eq!(raster_sse_width_scale_of(vec![hillshade]), 1.);
     }
 }

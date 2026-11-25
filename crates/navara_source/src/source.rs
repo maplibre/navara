@@ -141,20 +141,6 @@ impl Source {
         }
     }
 
-    /// Pixel size of a raster imagery tile; `None` for other source variants.
-    pub fn raster_tile_size(&self) -> Option<u32> {
-        match self {
-            Source::RasterTile(s) => Some(s.tile_size),
-            _ => None,
-        }
-    }
-
-    /// Zoom levels this source is draped deeper than the terrain tile's own
-    /// level (see [`raster_zoom_offset`]); `0` for sources that are not raster tiles.
-    pub fn raster_zoom_offset(&self) -> i32 {
-        self.raster_tile_size().map_or(0, raster_zoom_offset)
-    }
-
     /// Pixel size of a terrain DEM tile.
     pub fn tile_size(&self) -> u32 {
         match self {
@@ -259,44 +245,12 @@ pub struct VectorTileSource {
     pub crs: Option<CRS>,
 }
 
-/// Tile size the raster tile selection is calibrated for. A raster source with
-/// this `tile_size` is selected at the level matching the camera zoom, which is
-/// also MapLibre's convention (`zoom` is defined for 512 px tiles).
-pub const RASTER_REFERENCE_TILE_SIZE: u32 = 512;
-
-/// Most levels a raster source's tile size may shift its zoom deeper. Bounds the
-/// extra tiles a very small `tile_size` loads and drapes (the drape overlap
-/// budget grows 4x per level).
-pub const MAX_RASTER_ZOOM_OFFSET: i32 = 2;
-
-/// Zoom levels a raster source of `tile_size` px is selected deeper than the
-/// camera zoom: `round(log2(512 / tile_size))` clamped to
-/// `0..=`[`MAX_RASTER_ZOOM_OFFSET`], so `256` is `1` and `64` is `2`. Tiles at
-/// or above the reference size, and a zero size, are `0`: a larger tile is never
-/// selected shallower.
-///
-/// The tile traversal (SSE scale) and the drape (zoom and overlap budget) both
-/// derive from this one value, so they always agree on how deep a source goes.
-pub fn raster_zoom_offset(tile_size: u32) -> i32 {
-    if tile_size == 0 {
-        return 0;
-    }
-    ((RASTER_REFERENCE_TILE_SIZE as f64 / tile_size as f64)
-        .log2()
-        .round() as i32)
-        .clamp(0, MAX_RASTER_ZOOM_OFFSET)
-}
-
 /// Raster imagery tile source (XYZ / TMS).
 #[derive(Debug, Clone, PartialEq)]
 pub struct RasterTileSource {
     pub source_id: String,
     pub url: String,
     pub tms: bool,
-    /// Pixel size of one tile (MapLibre's `tileSize`). Zoom levels are defined
-    /// for [`RASTER_REFERENCE_TILE_SIZE`]-px tiles, so a smaller tile is
-    /// selected one level deeper per halving (`256` → +1 level).
-    pub tile_size: u32,
     pub min_zoom: usize,
     pub max_zoom: usize,
     pub overscaled_max_zoom: usize,
@@ -355,23 +309,4 @@ pub struct PntsSource {
     pub source_id: String,
     pub url: String,
     pub crs: Option<CRS>,
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn raster_zoom_offset_is_log2_of_the_size_ratio() {
-        assert_eq!(raster_zoom_offset(512), 0);
-        assert_eq!(raster_zoom_offset(256), 1);
-        assert_eq!(raster_zoom_offset(128), 2);
-        assert_eq!(raster_zoom_offset(384), 0);
-        assert_eq!(raster_zoom_offset(0), 0);
-        // Larger tiles are never selected shallower.
-        assert_eq!(raster_zoom_offset(1024), 0);
-        assert_eq!(raster_zoom_offset(8192), 0);
-        // Clamped to MAX_RASTER_ZOOM_OFFSET.
-        assert_eq!(raster_zoom_offset(32), MAX_RASTER_ZOOM_OFFSET);
-    }
 }

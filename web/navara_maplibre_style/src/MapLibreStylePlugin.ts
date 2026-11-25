@@ -512,7 +512,6 @@ export class MapLibreStylePlugin extends Plugin<ThreeView, ViewContext> {
       minzoom?: number;
       maxzoom?: number;
       scheme?: unknown;
-      tileSize?: unknown;
     },
     tileJsonDesc: Partial<Parameters<TileJsonPlugin["addSource"]>[0]> & {
       type: "raster-tile" | "vector-tile" | "raster-dem";
@@ -522,17 +521,8 @@ export class MapLibreStylePlugin extends Plugin<ThreeView, ViewContext> {
     },
     sourceTypeName: string,
   ): Promise<Source | null> {
-    const isRaster = tileJsonDesc.type === "raster-tile";
-    const tms = isRaster && sourceSpec.scheme === "tms";
-    // Only raster sources take the style's `tileSize`; a raster-dem passes its own.
-    // The engine reads it as a positive integer (`u32`); anything else is left to its default.
-    const tileSize =
-      isRaster &&
-      typeof sourceSpec.tileSize === "number" &&
-      Number.isInteger(sourceSpec.tileSize) &&
-      sourceSpec.tileSize > 0
-        ? { tileSize: sourceSpec.tileSize }
-        : {};
+    const tms =
+      tileJsonDesc.type === "raster-tile" && sourceSpec.scheme === "tms";
     if (typeof sourceSpec.url === "string") {
       return await this.tileJsonPlugin.addSource({
         ...tileJsonDesc,
@@ -541,11 +531,10 @@ export class MapLibreStylePlugin extends Plugin<ThreeView, ViewContext> {
         minzoom: sourceSpec.minzoom,
         maxzoom: sourceSpec.maxzoom,
         // Overrides the TileJSON document's own scheme only when the style sets one
-        ...(isRaster &&
+        ...(tileJsonDesc.type === "raster-tile" &&
           (sourceSpec.scheme === "tms" || sourceSpec.scheme === "xyz") && {
             scheme: sourceSpec.scheme,
           }),
-        ...tileSize,
       });
     } else if (
       Array.isArray(sourceSpec.tiles) &&
@@ -570,7 +559,6 @@ export class MapLibreStylePlugin extends Plugin<ThreeView, ViewContext> {
         minZoom: sourceSpec.minzoom,
         maxZoom: sourceSpec.maxzoom,
         ...(tms && { tms: true }),
-        ...tileSize,
       } as Parameters<typeof view.addSource>[0]);
     } else {
       console.warn(
