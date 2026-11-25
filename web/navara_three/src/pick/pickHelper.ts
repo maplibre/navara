@@ -46,7 +46,7 @@ function createGlobeDepthScene(globeDepth: RefThree<Texture>): Scene {
       }
     `,
     fragmentShader: /* glsl */ `
-            #include <packing>
+      #include <packing>
       ${DepthConventionChunk}
       uniform sampler2D tGlobeDepth;
       void main() {

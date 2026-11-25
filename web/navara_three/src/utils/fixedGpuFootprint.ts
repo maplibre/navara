@@ -3,13 +3,17 @@ import {
   DepthStencilFormat,
   FloatType,
   HalfFloatType,
+  IntType,
   Material,
   Object3D,
   RGFormat,
   RGIntegerFormat,
   RedFormat,
   RedIntegerFormat,
+  ShortType,
   Texture,
+  UnsignedIntType,
+  UnsignedShortType,
   WebGLRenderTarget,
 } from "three";
 
@@ -35,8 +39,12 @@ function channelCount(format: number): number {
 function bytesPerChannel(type: number): number {
   switch (type) {
     case FloatType:
+    case IntType:
+    case UnsignedIntType:
       return 4;
     case HalfFloatType:
+    case ShortType:
+    case UnsignedShortType:
       return 2;
     default:
       return 1; // 8-bit and friends

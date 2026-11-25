@@ -49,7 +49,8 @@ const DRAPE_SETUP = Symbol("DRAPE_SETUP");
  * handling is settled; until then only the anchors above are patched.
  *
  * @param globeNormal - Uniform ref for the globe normal copy.
- * @param globeDepth - Uniform ref for the RGBA-packed globe depth copy.
+ * @param globeDepth - Uniform ref for the globe depth copy, read through
+ * `nvr_readDepthCopy` (chunks/depth_convention).
  */
 export function setupMaterialForDrape(
   material: Material,

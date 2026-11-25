@@ -4,7 +4,11 @@ import {
   DepthTexture,
   FloatType,
   HalfFloatType,
+  RGBAIntegerFormat,
   RedFormat,
+  RedIntegerFormat,
+  UnsignedIntType,
+  UnsignedShortType,
   WebGLRenderTarget,
 } from "three";
 import { describe, expect, it } from "vitest";
@@ -104,6 +108,22 @@ describe("estimateFixedGpuBytes", () => {
     const bytes = estimateFixedGpuBytes(composerWith(rgba32f, r32f), []);
     // RGBA32F (16) + R32F (4)
     expect(bytes).toBe(PX * (16 + 4));
+  });
+
+  it("counts 16- and 32-bit integer channels at their width", () => {
+    const r32ui = new WebGLRenderTarget(W, H, {
+      format: RedIntegerFormat,
+      type: UnsignedIntType,
+      depthBuffer: false,
+    });
+    const rgba16ui = new WebGLRenderTarget(W, H, {
+      format: RGBAIntegerFormat,
+      type: UnsignedShortType,
+      depthBuffer: false,
+    });
+    const bytes = estimateFixedGpuBytes(composerWith(r32ui, rgba16ui), []);
+    // R32UI (4) + RGBA16UI (8)
+    expect(bytes).toBe(PX * (4 + 8));
   });
 
   it("counts a float depth-stencil texture as DEPTH32F_STENCIL8", () => {

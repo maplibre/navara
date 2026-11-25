@@ -94,6 +94,8 @@ export class AllDepthCopyPass extends Pass {
   private _copyPass: ShaderPass;
 
   /**
+   * @param renderTarget - The copy's target. Under a reversed depth it must
+   * be a float target (R32F); otherwise an RGBA8 one.
    * @param reversedDepth - The depth is reversed: the copy holds it as a
    * one-channel float (R32F, `BasicDepthPacking`) instead of RGBA-packed.
    */
