@@ -39,7 +39,7 @@
   "dependencies": {
     "@navaramap/material-schema": "workspace:*",
     "@mapbox/vector-tile": "3.0.0",
-    "pbf": "5.1.2",
+    "pbf": "5.2.0",
     "tweakpane": "4.0.5"
   },
   "devDependencies": {
