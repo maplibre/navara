@@ -205,7 +205,8 @@ export class OverdrawView {
     this.counter = new OverdrawCounter(
       ctx.getRenderer(),
       () => view.camera.raw,
-      () => [ctx.getRenderTarget(), ...this.pass.buffers],
+      (target) =>
+        target === ctx.getRenderTarget() || this.pass.buffers.includes(target),
     );
     this.pass = new OverdrawPass(this.counter);
     this.pass.enabled = false;
@@ -394,6 +395,11 @@ export class OverdrawView {
       if (draws.skipped > 0) {
         lines.push(
           `<div class="note warn">${draws.skipped} draws not counted: their target has no stencil buffer.</div>`,
+        );
+      }
+      if (draws.stencilTested > 0) {
+        lines.push(
+          `<div class="note warn">${draws.stencilTested} draws not counted: they use the stencil test, which counting cannot replay.</div>`,
         );
       }
       if (draws.unknownPrograms > 0) {

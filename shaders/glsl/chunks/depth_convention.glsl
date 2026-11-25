@@ -21,11 +21,15 @@ float nvr_readDepthCopy(sampler2D copy, vec2 uv) {
 #endif
 }
 
-// Whether a depth is the cleared far plane: nothing was drawn there. The
-// margin is 2^-23.
+// Whether a depth is the cleared far plane: nothing was drawn there. A
+// reversed far plane is exactly 0, and the float depth copies keep it exact.
+// No margin there: a reversed depth falls toward 0 like near / distance, so
+// even `<= 2^-23` would also take every surface past ~89 % of a far plane
+// 1e6 times the near one. The packed copies of the other conventions keep a
+// margin of 2^-23 below 1.
 bool nvr_isFarDepth(float depth) {
 #ifdef USE_REVERSED_DEPTH_BUFFER
-    return depth <= 1.0 / 8388608.0;
+    return depth <= 0.0;
 #else
     return depth >= 1.0 - 1.0 / 8388608.0;
 #endif

@@ -48,6 +48,12 @@ export type OverdrawFrameStats = {
   counted: number;
   /** Scene draws not counted: their target's depth format has no stencil. */
   skipped: number;
+  /**
+   * Scene draws not counted: they use the stencil test (depth pre-passes,
+   * drape stencil volumes, tile compositing). The replay stencil holds the
+   * counts, so the real stencil values are not there to test against.
+   */
+  stencilTested: number;
   /** Programs whose source could not be read; `shaded` assumed they write depth. */
   unknownPrograms: number;
 };
@@ -104,8 +110,10 @@ void main() {
  * then follows it because the replay writes depth like the real draw.
  *
  * Counted are draws through `renderBufferDirect` with the view's camera into
- * one of `targets()` (the G-buffer and the composer's two buffers): shadow
- * maps, the sky cube map, picking and full-screen passes are not.
+ * a target `isCounted` accepts (the G-buffer and the composer's two
+ * buffers): shadow maps, the sky cube map, picking and full-screen passes
+ * are not. Draws that use the stencil test are not counted either (see
+ * {@link OverdrawFrameStats.stencilTested}), a known limitation.
  *
  * `resolve()` turns the stencil counts into the red channel of
  * {@link texture} (count / 255, saturating at 255) and resets them.
@@ -119,20 +127,23 @@ export class OverdrawCounter {
   /** A target with another format was met; the next resolve switches. */
   private wantedFormat: DepthFormat | undefined;
   private replayFbo: WebGLFramebuffer | null = null;
-  /** The real framebuffer whose depth the replay buffer currently mirrors. */
-  private mirrored: WebGLFramebuffer | null = null;
+  /**
+   * The real depth attachment the replay buffer currently mirrors. Kept by
+   * attachment rather than framebuffer: framebuffers may share one.
+   */
+  private mirrored: WebGLTexture | WebGLRenderbuffer | null = null;
   private counting = false;
   private readonly restores: Restore[] = [];
   private readonly formats = new WeakMap<
     WebGLFramebuffer,
     DepthFormat | null
   >();
+  private readonly depthAttachments = new WeakMap<
+    WebGLFramebuffer,
+    WebGLTexture | WebGLRenderbuffer | null
+  >();
   private readonly programs = new WeakMap<WebGLProgram, boolean | undefined>();
-  private frame: OverdrawFrameStats = {
-    counted: 0,
-    skipped: 0,
-    unknownPrograms: 0,
-  };
+  private frame: OverdrawFrameStats = emptyStats();
   private last: OverdrawFrameStats = { ...this.frame };
   private blit!: WebGL2RenderingContext["blitFramebuffer"];
   private readonly state: GlStateShadow;
@@ -161,8 +172,8 @@ export class OverdrawCounter {
     private readonly renderer: WebGLRenderer,
     /** The camera whose draws are counted. */
     private readonly camera: () => Camera,
-    /** The render targets whose draws are counted. */
-    private readonly targets: () => Iterable<WebGLRenderTarget>,
+    /** Whether draws into a render target are counted. */
+    private readonly isCounted: (target: WebGLRenderTarget) => boolean,
   ) {
     this.gl = renderer.getContext() as WebGL2RenderingContext;
     this.state = new GlStateShadow(this.gl);
@@ -209,9 +220,9 @@ export class OverdrawCounter {
         renderer,
         "renderBufferDirect",
         (original) => (camera, scene, geometry, material, object, group) => {
+          const target = renderer.getRenderTarget();
           this.counting =
-            camera === this.camera() &&
-            this.isCountedTarget(renderer.getRenderTarget());
+            camera === this.camera() && !!target && this.isCounted(target);
           try {
             original.call(
               renderer,
@@ -236,6 +247,13 @@ export class OverdrawCounter {
           const draw = original as (...args: unknown[]) => void;
           return ((...args: unknown[]) => {
             if (!this.counting) {
+              this.forgetMirror(gl.DRAW_FRAMEBUFFER);
+              draw.apply(obj, args);
+              return;
+            }
+            if (this.state.stencilTest) {
+              // Its depth writes miss the replay buffer.
+              this.frame.stencilTested++;
               this.mirrored = null;
               draw.apply(obj, args);
               return;
@@ -257,7 +275,13 @@ export class OverdrawCounter {
         wrap(gl, key, (original) => {
           const call = original as (...args: unknown[]) => void;
           return ((...args: unknown[]) => {
-            this.mirrored = null;
+            // Each writes the draw framebuffer, but `invalidateFramebuffer`
+            // the one its first argument names.
+            this.forgetMirror(
+              key === "invalidateFramebuffer" && args[0] === gl.READ_FRAMEBUFFER
+                ? gl.READ_FRAMEBUFFER
+                : gl.DRAW_FRAMEBUFFER,
+            );
             call.apply(gl, args);
           }) as (typeof gl)[typeof key];
         }),
@@ -313,7 +337,7 @@ export class OverdrawCounter {
     renderer.autoClear = autoClear;
     this.clear(false, true);
     this.last = this.frame;
-    this.frame = { counted: 0, skipped: 0, unknownPrograms: 0 };
+    this.frame = emptyStats();
   }
 
   private clear(color: boolean, stencil: boolean): void {
@@ -326,10 +350,20 @@ export class OverdrawCounter {
     renderer.setClearColor(clearColor, clearAlpha);
   }
 
-  private isCountedTarget(target: WebGLRenderTarget | null): boolean {
-    if (!target) return false;
-    for (const t of this.targets()) if (t === target) return true;
-    return false;
+  /**
+   * Stops mirroring when the framebuffer bound to `binding` (draw or read)
+   * holds the mirrored depth, which a call is about to change. Others leave
+   * it alone, so the copy passes between scenes cost no re-blit.
+   */
+  private forgetMirror(binding: number): void {
+    if (this.mirrored === null) return;
+    const fbo =
+      binding === this.gl.READ_FRAMEBUFFER
+        ? this.state.readFramebuffer
+        : this.state.drawFramebuffer;
+    if (fbo && this.depthAttachment(fbo, binding) === this.mirrored) {
+      this.mirrored = null;
+    }
   }
 
   /**
@@ -348,7 +382,8 @@ export class OverdrawCounter {
       if (format) this.wantedFormat = format;
       return null;
     }
-    if (this.mirrored !== fbo) {
+    const depth = this.depthAttachment(fbo, gl.DRAW_FRAMEBUFFER);
+    if (this.mirrored !== depth) {
       const { width, height } = this.target;
       const read = state.readFramebuffer;
       const scissor = state.scissorTest;
@@ -370,7 +405,7 @@ export class OverdrawCounter {
       gl.bindFramebuffer(gl.READ_FRAMEBUFFER, read);
       gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, fbo);
       if (scissor) gl.enable(gl.SCISSOR_TEST);
-      this.mirrored = fbo;
+      this.mirrored = depth;
     }
     return fbo;
   }
@@ -382,13 +417,13 @@ export class OverdrawCounter {
       this.mode === "all" ||
       (this.mode === "shaded" && this.programWritesDepth());
 
+    // The real draw has the stencil test off (see the draw wrapper).
     const state = this.state;
-    const test = state.stencilTest;
     const front = { ...state.front };
     const back = { ...state.back };
 
     gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, this.replayFbo);
-    if (!test) gl.enable(gl.STENCIL_TEST);
+    gl.enable(gl.STENCIL_TEST);
     gl.stencilFunc(gl.ALWAYS, 0, 0xff);
     gl.stencilMask(0xff);
     gl.stencilOp(gl.KEEP, everyFragment ? gl.INCR : gl.KEEP, gl.INCR);
@@ -396,7 +431,7 @@ export class OverdrawCounter {
 
     state.restoreStencil(gl.FRONT, front);
     state.restoreStencil(gl.BACK, back);
-    if (!test) gl.disable(gl.STENCIL_TEST);
+    gl.disable(gl.STENCIL_TEST);
     gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, fbo);
     this.frame.counted++;
   }
@@ -417,6 +452,28 @@ export class OverdrawCounter {
     if (writes !== undefined) return writes;
     this.frame.unknownPrograms++;
     return this.renderer.capabilities.logarithmicDepthBuffer;
+  }
+
+  /**
+   * The depth attachment (texture or renderbuffer) of `fbo`, bound to
+   * `binding`; `null` without one.
+   */
+  private depthAttachment(
+    fbo: WebGLFramebuffer,
+    binding: number,
+  ): WebGLTexture | WebGLRenderbuffer | null {
+    let depth = this.depthAttachments.get(fbo);
+    if (depth !== undefined) return depth;
+    const gl = this.gl;
+    const parameter = (name: number) =>
+      gl.getFramebufferAttachmentParameter(binding, gl.DEPTH_ATTACHMENT, name);
+    depth =
+      parameter(gl.FRAMEBUFFER_ATTACHMENT_OBJECT_TYPE) === gl.NONE
+        ? null
+        : (parameter(gl.FRAMEBUFFER_ATTACHMENT_OBJECT_NAME) as
+            WebGLTexture | WebGLRenderbuffer);
+    this.depthAttachments.set(fbo, depth);
+    return depth;
   }
 
   /** The depth-stencil format of a framebuffer, `null` without stencil. */
@@ -505,6 +562,10 @@ export class OverdrawCounter {
 }
 
 const scratchColor = new Color();
+
+function emptyStats(): OverdrawFrameStats {
+  return { counted: 0, skipped: 0, stencilTested: 0, unknownPrograms: 0 };
+}
 
 /**
  * `undefined` when the fragment source cannot be read back or parsed (the

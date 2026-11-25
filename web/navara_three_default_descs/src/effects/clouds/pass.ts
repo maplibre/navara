@@ -166,7 +166,10 @@ const CLOUDS_SCENE_DEPTH_TEST = "if (depth < 1.0 - 1e-7) {";
  * Teaches the clouds material a reversed depth buffer. It is a
  * `RawShaderMaterial`, so three gives it no depth-mode define (takram mirrors
  * only the logarithmic one), and its scene-depth test takes 1 for the sky.
- * Throws when an upstream change moves the anchor.
+ * The reversed sky is exactly 0, as in `nvr_isFarDepth`
+ * (chunks/depth_convention), which cannot be included here: the material is
+ * GLSL 3 and the chunk reads with `texture2D`. Throws when an upstream change
+ * moves the anchor.
  */
 function patchReversedDepth(
   material: CloudsEffect["cloudsPass"]["currentMaterial"],
@@ -176,7 +179,7 @@ function patchReversedDepth(
     CLOUDS_SCENE_DEPTH_TEST,
     `
   #ifdef USE_REVERSED_DEPTH_BUFFER
-  if (depth > 1.0 / 8388608.0) {
+  if (depth > 0.0) {
   #else
   ${CLOUDS_SCENE_DEPTH_TEST}
   #endif

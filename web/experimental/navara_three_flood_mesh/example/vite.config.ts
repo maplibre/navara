@@ -60,6 +60,10 @@ const publishDatasets = (): Plugin => {
 export default defineConfig(({ command }) => ({
   appType: "mpa",
   plugins: [publishDatasets()],
+  // The package source inlines the depth-convention chunks from here.
+  resolve: {
+    alias: { "@shaders": resolve(import.meta.dirname, "../../../../shaders") },
+  },
   ...(command === "build" && {
     // Deploys under https://navara.world/navara-three-flood-mesh/ (see
     // scripts/assemble-site.mjs at the repo root).

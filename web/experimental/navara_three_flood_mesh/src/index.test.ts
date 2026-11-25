@@ -21,6 +21,8 @@ const reach = (entry: string) => {
     if (seen.has(file)) return;
     seen.add(file);
     for (const specifier of importsOf(file)) {
+      // Repository shader sources, inlined into the bundle `?raw`.
+      if (specifier.startsWith("@shaders/")) continue;
       if (specifier.startsWith(".")) {
         // A query, such as a worker's `?worker&url`, names the module too.
         visit(`${resolve(dirname(file), specifier.replace(/\?.*$/, ""))}.ts`);

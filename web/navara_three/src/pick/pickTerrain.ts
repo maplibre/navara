@@ -123,15 +123,18 @@ class DepthPickPass {
   }
 }
 
+/** How the renderer's depth buffer encodes depth. */
+export type DepthEncoding = "reversed" | "logarithmic" | "standard";
+
 export class TerrainPicker {
   private depthPickPass: DepthPickPass;
 
   /**
-   * @param reversedDepth - The renderer's depth buffer is reversed; its
-   * depth copies hold floats.
+   * @param depthEncoding - The renderer's depth convention. The depth copies
+   * of a reversed depth hold floats; the others are RGBA-packed.
    */
-  constructor(private readonly reversedDepth = false) {
-    this.depthPickPass = new DepthPickPass(reversedDepth);
+  constructor(private readonly depthEncoding: DepthEncoding = "standard") {
+    this.depthPickPass = new DepthPickPass(depthEncoding === "reversed");
   }
   pick(
     x: number,
@@ -190,13 +193,18 @@ export class TerrainPicker {
     renderer: WebGLRenderer,
     camera: PerspectiveCamera,
   ): Nullable<Vector3> {
-    if (this.reversedDepth) {
-      // The far plane, where nothing was drawn, is 0.
-      if (sample[0] <= 1 / 8388608) return null;
+    // Nothing was drawn at the far plane (nvr_isFarDepth in
+    // chunks/depth_convention). Reversed, it is exactly 0. Standard, it is 1
+    // less the packed copy's precision: almost every surface is above 0.99
+    // there. Logarithmic keeps the margin it always had.
+    if (this.depthEncoding === "reversed") {
+      if (sample[0] <= 0) return null;
       return this._reconstructWorldPosition(x, y, sample[0], renderer, camera);
     }
     const logDepthOrDepth = this._unpackRGBAToDepth(sample);
-    if (logDepthOrDepth > 0.99) {
+    const farDepth =
+      this.depthEncoding === "logarithmic" ? 0.99 : 1 - 1 / 8388608;
+    if (logDepthOrDepth >= farDepth) {
       return null;
     }
 
@@ -287,7 +295,7 @@ export class TerrainPicker {
 
     let clipCoords: Vector4;
 
-    if (renderer.capabilities.logarithmicDepthBuffer) {
+    if (this.depthEncoding === "logarithmic") {
       const logDepthBufFC = 2.0 / Math.log2(far + 1.0);
 
       const linearDepth = Math.pow(2, depth / (logDepthBufFC * 0.5)) - 1.0;
@@ -327,7 +335,7 @@ export class TerrainPicker {
       clipCoords = new Vector4(
         screenCoords.x,
         screenCoords.y,
-        this.reversedDepth ? depth : depth * 2.0 - 1.0,
+        this.depthEncoding === "reversed" ? depth : depth * 2.0 - 1.0,
         1.0,
       );
 

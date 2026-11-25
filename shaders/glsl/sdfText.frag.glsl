@@ -58,22 +58,7 @@ uniform float uSdfThreshold;
 uniform bool uOffsetDepth;
 uniform float uFarPlane;
 
-#ifndef USE_LOGARITHMIC_DEPTH_BUFFER
-#include <packing>
-#include "chunks/depth_pars_fragment.glsl"
-#endif
-
-// A depth in three's logarithmic encoding (log of 1 + view distance over log
-// of 1 + far), written in the view's own depth convention. The label depth
-// offsets are applied in this encoding, so they scale the view distance by
-// the same factor in every convention.
-float nvr_fromLogDepth(float logDepth) {
-#ifdef USE_LOGARITHMIC_DEPTH_BUFFER
-    return logDepth;
-#else
-    return nvr_depthAtViewDistance(exp2(logDepth * log2(uFarPlane + 1.0)) - 1.0);
-#endif
-}
+#include "chunks/label_depth_pars_fragment.glsl"
 uniform vec3 uBackgroundColor;
 uniform float uBackgroundOutlineWidth;
 uniform vec3 uBackgroundOutlineColor;
@@ -165,7 +150,7 @@ void main() {
     // closer to camera.
     float depthInput = uOffsetDepth ? vFragDepth * 0.8 : vFragDepth;
     float logDepth = clamp(log(depthInput) / log(uFarPlane + 1.0) + 0.0001, 0.0, 1.0);
-    gl_FragDepth = nvr_fromLogDepth(logDepth);
+    gl_FragDepth = nvr_fromLogDepth(logDepth, uFarPlane);
     // Picking mode
     if (nvr_uPickable > 0.0) {
         gl_FragColor = vec4(nvr_batchIdToColor(vBatchID), 1.0);
@@ -348,13 +333,13 @@ void main() {
         //     via instance draw order (the background occupies the first slot
         //     of the label's glyph run, so it is drawn first).
         // AA band ramps smoothly because fillAlpha is the weight.
-        gl_FragDepth = nvr_fromLogDepth(clamp(logDepth - (0.0002 * fillAlpha), 0.0, 1.0));
+        gl_FragDepth = nvr_fromLogDepth(clamp(logDepth - (0.0002 * fillAlpha), 0.0, 1.0), uFarPlane);
         gl_FragColor = vec4(color, alpha);
     } else {
         float alpha = fillAlpha * opacity;
         if (alpha <= 0.0) discard;
         gl_FragColor = vec4(vColor, alpha);
-        gl_FragDepth = nvr_fromLogDepth(clamp(logDepth - 0.0001, 0.0, 1.0));
+        gl_FragDepth = nvr_fromLogDepth(clamp(logDepth - 0.0001, 0.0, 1.0), uFarPlane);
     }
 
     #ifndef USE_SHADOWMAP_DEPTH

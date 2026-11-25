@@ -38,22 +38,7 @@ uniform float nvr_uPickable;
 uniform float uAlphaTest;
 uniform float uFarPlane;
 
-#ifndef USE_LOGARITHMIC_DEPTH_BUFFER
-#include <packing>
-#include "chunks/depth_pars_fragment.glsl"
-#endif
-
-// A depth in three's logarithmic encoding (log of 1 + view distance over log
-// of 1 + far), written in the view's own depth convention. The label depth
-// offsets are applied in this encoding, so they scale the view distance by
-// the same factor in every convention.
-float nvr_fromLogDepth(float logDepth) {
-#ifdef USE_LOGARITHMIC_DEPTH_BUFFER
-    return logDepth;
-#else
-    return nvr_depthAtViewDistance(exp2(logDepth * log2(uFarPlane + 1.0)) - 1.0);
-#endif
-}
+#include "chunks/label_depth_pars_fragment.glsl"
 
 void main() {
     // Logarithmic depth buffer
@@ -61,7 +46,7 @@ void main() {
 
     // Offset depth to make sure to be drawn over ellipsoid surface
     if (uOffsetDepth) { logDepth -= 0.01; }
-    gl_FragDepth = nvr_fromLogDepth(logDepth);
+    gl_FragDepth = nvr_fromLogDepth(logDepth, uFarPlane);
 
     float alphaForTest = 1.0;
     float alphaForColor = 1.0;

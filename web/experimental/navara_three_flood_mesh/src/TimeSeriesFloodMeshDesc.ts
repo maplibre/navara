@@ -14,6 +14,8 @@ import {
   type PassKey,
   type ViewContext,
 } from "@navaramap/three";
+import DepthConventionChunk from "@shaders/glsl/chunks/depth_convention.glsl?raw";
+import DepthParsChunk from "@shaders/glsl/chunks/depth_pars_fragment.glsl?raw";
 import {
   Box3,
   BufferAttribute,
@@ -342,7 +344,15 @@ const VERTEX_MAIN = /* glsl */ `
 }
 `;
 
+// The view's depth convention and depth/distance conversions. `?raw` keeps
+// the chunk's include, which this package has no GLSL plugin to resolve.
+const DEPTH_PARS = createReplacer(DepthParsChunk).replace(
+  "#include depth_convention;",
+  DepthConventionChunk,
+).source;
+
 const FRAGMENT_PARS = /* glsl */ `
+${DEPTH_PARS}
 in float vWaterPhase;
 in vec2 vWaterCell;
 #ifdef NVR_WATER_FLOW
@@ -361,30 +371,14 @@ uniform float uWaterAbsorption;
 uniform float uWaterShowUnderground;
 uniform float uWaterExposure;
 uniform float uPropMix;
-#ifndef USE_LOGARITHMIC_DEPTH_BUFFER
-  uniform mat4 projectionMatrix;
-#endif
 float nvrWaterShore;
 
-// The globe depth copy under this fragment: floats under a reversed depth,
-// RGBA-packed otherwise.
+// The globe depth copy under this fragment.
 float nvr_waterGroundDepth() {
-  vec2 uv = gl_FragCoord.xy / vec2(textureSize(uWaterGroundDepth, 0));
-#ifdef USE_REVERSED_DEPTH_BUFFER
-  return texture2D(uWaterGroundDepth, uv).r;
-#else
-  return unpackRGBAToDepth(texture2D(uWaterGroundDepth, uv));
-#endif
-}
-
-float nvr_waterGroundEyeDistance(float depth) {
-#ifdef USE_LOGARITHMIC_DEPTH_BUFFER
-  return exp2(2.0 * depth / logDepthBufFC) - 1.0;
-#elif defined(USE_REVERSED_DEPTH_BUFFER)
-  return projectionMatrix[3][2] / (depth + projectionMatrix[2][2]);
-#else
-  return projectionMatrix[3][2] / (depth * 2.0 - 1.0 + projectionMatrix[2][2]);
-#endif
+  return nvr_readDepthCopy(
+    uWaterGroundDepth,
+    gl_FragCoord.xy / vec2(textureSize(uWaterGroundDepth, 0))
+  );
 }
 
 vec3 nvr_propColor(
@@ -418,7 +412,7 @@ ${slotFragmentPars(1)}
 // takes the deep color and opacity.
 const FRAGMENT_COLOR = /* glsl */ `
 {
-  float groundW = nvr_waterGroundEyeDistance(nvr_waterGroundDepth());
+  float groundW = nvr_viewDistanceAtDepth(nvr_waterGroundDepth());
   float thickness = gl_FrontFacing
     ? max(groundW - vViewPosition.z, 0.0) * length(vViewPosition) / vViewPosition.z
     : length(vViewPosition);
@@ -440,15 +434,11 @@ const FRAGMENT_SHOW_UNDERGROUND = /* glsl */ `
   gl_FragDepth = gl_FragCoord.z;
 #endif
   float groundDepth = nvr_waterGroundDepth();
-  float behind = vViewPosition.z - nvr_waterGroundEyeDistance(groundDepth);
+  float behind = vViewPosition.z - nvr_viewDistanceAtDepth(groundDepth);
   float below = behind * length(vViewPosition) / vViewPosition.z
     * abs(dot(normalize(vViewPosition), normal));
   if (behind > 0.0 && below < uWaterShowUnderground) {
-#ifdef USE_REVERSED_DEPTH_BUFFER
-    gl_FragDepth = min(groundDepth * (1.0 + 1e-6), 1.0);
-#else
-    gl_FragDepth = groundDepth * (1.0 - 1e-6);
-#endif
+    gl_FragDepth = nvr_depthTowardCamera(groundDepth);
   }
 }
 #endif

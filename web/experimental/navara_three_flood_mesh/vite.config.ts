@@ -1,4 +1,6 @@
-import { defineConfig } from "vite";
+import path from "path";
+
+import { defineConfig, normalizePath } from "vite";
 
 import { commonConfig, composePlugins } from "../../vite.config.common";
 
@@ -9,6 +11,13 @@ export default defineConfig((env) => {
     // The worker is referenced relative to the module, wherever it is served.
     base: "./",
     plugins: composePlugins(env),
+    resolve: {
+      ...common.resolve,
+      // The depth-convention chunks, inlined `?raw`.
+      alias: {
+        "@shaders": normalizePath(path.resolve(__dirname, "../../../shaders")),
+      },
+    },
     // One file with the Zarr reader and its compressors inlined: an app's
     // bundler copies the worker as an opaque asset under a new name, so
     // chunks it imported relative to itself would be left behind.

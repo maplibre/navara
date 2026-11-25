@@ -185,7 +185,10 @@ import {
   positionIfStatic,
   type TextureSlot,
 } from "./utils";
-import { supportsReversedDepthBuffer } from "./utils/depthBuffer";
+import {
+  createWebGL2Context,
+  supportsReversedDepthBuffer,
+} from "./utils/depthBuffer";
 import { WaterState } from "./water/waterState";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 /** @ts-ignore ignore: https://v3.vitejs.dev/guide/features.html#import-with-query-suffixes  */
@@ -1136,8 +1139,17 @@ export default class ThreeView<
       { signal: this._canvasListeners.signal },
     );
 
+    const antialias = (options.multisampling ?? 0) > 0;
+    // Created here so the depth mode is read from the context the renderer
+    // uses, in a worker too. Handed a context, three starts with a clear
+    // alpha of 0 instead of 1; the background color below sets it to 1.
+    const context = options.canvas
+      ? createWebGL2Context(options.canvas, { antialias, stencil: true })
+      : null;
     const reversedDepthBuffer =
-      (options.reversedDepthBuffer ?? true) && supportsReversedDepthBuffer();
+      (options.reversedDepthBuffer ?? true) &&
+      !!context &&
+      supportsReversedDepthBuffer(context);
     if (reversedDepthBuffer && options.logarithmicDepthBuffer === true) {
       console.warn(
         "ThreeView: `logarithmicDepthBuffer: true` is ignored because the reversed depth buffer is in use. Set `reversedDepthBuffer: false` to use a logarithmic depth buffer.",
@@ -1145,11 +1157,12 @@ export default class ThreeView<
     }
     const renderer = new WebGLRenderer({
       // If it's true, some noise will happen. So use other AA algorithm instead.
-      antialias: (options.multisampling ?? 0) > 0,
+      antialias,
       reversedDepthBuffer,
       logarithmicDepthBuffer:
         !reversedDepthBuffer && (options.logarithmicDepthBuffer ?? true),
       canvas: options.canvas,
+      context: context ?? undefined,
       stencil: true,
     });
     renderer.info.autoReset = false;
@@ -1160,7 +1173,11 @@ export default class ThreeView<
     this._renderer = renderer;
 
     this._terrainPicker = new TerrainPicker(
-      renderer.capabilities.reversedDepthBuffer,
+      renderer.capabilities.reversedDepthBuffer
+        ? "reversed"
+        : renderer.capabilities.logarithmicDepthBuffer
+          ? "logarithmic"
+          : "standard",
     );
 
     renderer.shadowMap.enabled = !!options.shadow;

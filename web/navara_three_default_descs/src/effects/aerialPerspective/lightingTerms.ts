@@ -1,5 +1,6 @@
 import { createReplacer } from "@navaramap/three";
 import LightingTermsFragment from "@shaders/glsl/aerialPerspectiveLightingTerms.glsl";
+import DepthConventionChunk from "@shaders/glsl/chunks/depth_convention.glsl?raw";
 import {
   AerialPerspectiveEffect,
   type AerialPerspectiveEffectOptions,
@@ -50,7 +51,7 @@ export function patchLightingTermsShader(source: string): string {
       SKY_DEPTH_TEST,
       `
   #ifdef USE_REVERSED_DEPTH_BUFFER
-  if (depth <= 1.0 / 8388608.0) {
+  if (nvr_isFarDepth(depth)) {
   #else
   ${SKY_DEPTH_TEST}
   #endif
@@ -59,6 +60,8 @@ export function patchLightingTermsShader(source: string): string {
     .replace(
       MAIN_IMAGE_SIGNATURE,
       `
+${DepthConventionChunk}
+
 // The host declares this one under HAS_SHADOW.
 #ifndef HAS_SHADOW
 ${vogelDisk}

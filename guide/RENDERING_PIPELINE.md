@@ -258,7 +258,13 @@ which, and shaders see three's `USE_REVERSED_DEPTH_BUFFER` /
   (`nvr_viewDistanceAtDepth`, `nvr_depthAtViewDistance`); never compare a
   depth with 1.0 or take NDC z as `2 * depth - 1`. Effect shaders loaded
   `?raw` through takram's `resolveIncludes` include the convention chunk as
-  `nvr/depthConvention`.
+  `nvr/depthConvention`. Label depths (SDF text, sprites) go through
+  `chunks/label_depth_pars_fragment` (`nvr_fromLogDepth`).
+- The reversed sky test is `depth <= 0.0`, with no margin: a reversed depth
+  falls toward 0 like near / distance, so a fixed margin such as 2^-23 would
+  also take the far ~11 % of a far plane 1e6 times the near one. The float
+  copies keep the cleared 0 exact. Code that cannot include the chunk (a
+  GLSL 3 `RawShaderMaterial`, TS picking) compares with exactly 0 too.
 - Geometry pinned to the far plane writes clip z = 0 when reversed (z = w is
   its near plane), and clamps to the far plane use `max(z, 0)`.
 - three's `perspectiveDepthToViewZ` decodes a reversed depth itself; code that
