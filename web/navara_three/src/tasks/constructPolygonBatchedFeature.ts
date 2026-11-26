@@ -28,6 +28,7 @@ export function constructPolygonBatchedFeature(
         transferableBatchedFeatureLike.holes_total_sizes.buffer,
         transferableBatchedFeatureLike.outer_ring.buffer,
         transferableBatchedFeatureLike.outer_ring_sizes.buffer,
+        transferableBatchedFeatureLike.outline_edges.buffer,
       ],
     },
   );

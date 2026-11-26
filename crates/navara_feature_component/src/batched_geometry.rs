@@ -204,6 +204,7 @@ pub struct PolygonGeometryAccumulator {
     pub holes_boundaries: Vec<u32>,
     pub expected_winding_orders: Vec<u8>,
     pub batch_indices: Vec<u32>,
+    pub outline_edges: Vec<u8>,
     pub crs: CRS,
 }
 
@@ -218,6 +219,7 @@ impl PolygonGeometryAccumulator {
             holes_boundaries: Vec::new(),
             expected_winding_orders: Vec::new(),
             batch_indices: Vec::new(),
+            outline_edges: Vec::new(),
             crs,
         }
     }
@@ -263,6 +265,7 @@ impl PolygonGeometryAccumulator {
             holes_boundaries: buf.new_u32(self.holes_boundaries),
             expected_winding_orders: buf.new_u8(self.expected_winding_orders),
             batch_indices: buf.new_u32(self.batch_indices),
+            outline_edges: buf.new_u8(self.outline_edges),
             crs: self.crs,
         }
     }
@@ -406,6 +409,7 @@ pub struct TakenPolygonGeometry {
     pub holes_boundaries: Vec<u32>,
     pub expected_winding_orders: Vec<u8>,
     pub batch_indices: Vec<u32>,
+    pub outline_edges: Vec<u8>,
 }
 
 /// Pre-accumulated polygon geometry for all features in a batch.
@@ -422,6 +426,7 @@ pub struct BatchedPolygonGeometry {
     holes_boundaries: Handle,
     expected_winding_orders: Handle,
     batch_indices: Handle,
+    outline_edges: Handle,
     pub crs: CRS,
 }
 
@@ -465,6 +470,7 @@ impl BatchedPolygonGeometry {
                 .remove_u8(&self.expected_winding_orders)
                 .unwrap_or_default(),
             batch_indices: buf.remove_u32(&self.batch_indices).unwrap_or_default(),
+            outline_edges: buf.remove_u8(&self.outline_edges).unwrap_or_default(),
         }
     }
 
@@ -478,6 +484,7 @@ impl BatchedPolygonGeometry {
         buf.remove(&self.holes_boundaries);
         buf.remove(&self.expected_winding_orders);
         buf.remove(&self.batch_indices);
+        buf.remove(&self.outline_edges);
     }
 }
 
@@ -640,7 +647,7 @@ mod tests {
         let mut buf = BufferStore::new();
         let acc = PolygonGeometryAccumulator::new(CRS::Geographic);
         let geom = acc.into_component(&mut buf);
-        assert_eq!(buf.len(), 8); // 8 handles
+        assert_eq!(buf.len(), 9); // 9 handles
         geom.remove_from_buf(&mut buf);
         assert!(buf.is_empty());
     }

@@ -121,6 +121,8 @@ pub struct LayerParseConfig {
     pub polyline_from_polygons: bool,
     /// Whether a polygon appearance is present.
     pub polygon: bool,
+    #[serde(default)]
+    pub polygon_outline: bool,
     /// Optional MVT sublayer name filter.
     pub limit_layers: Option<Vec<String>>,
 }

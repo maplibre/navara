@@ -18,6 +18,7 @@ export class TransferablePolygonBatchedFeatureLike implements RemoveFreeRecursiv
   length: number;
   outer_ring: Float64Array;
   outer_ring_sizes: Uint32Array;
+  outline_edges: Uint8Array;
 
   constructor(t: ReturnedTransferablePolygonBatchedFeature) {
     this.batch_ids = t.transferBatchIds();
@@ -31,6 +32,7 @@ export class TransferablePolygonBatchedFeatureLike implements RemoveFreeRecursiv
     this.length = t.length();
     this.outer_ring = t.transferOuterRing();
     this.outer_ring_sizes = t.transferOuterRingSizes();
+    this.outline_edges = t.transferOutlineEdges();
   }
 
   setBatchIds(_length: number, _f: () => void) {}
@@ -42,6 +44,7 @@ export class TransferablePolygonBatchedFeatureLike implements RemoveFreeRecursiv
   setHolesBoundaries(_length: number, _f: () => void) {}
   setHolesSizes(_length: number, _f: () => void) {}
   setHolesTotalSizes(_length: number, _f: () => void) {}
+  setOutlineEdges(_length: number, _f: () => void) {}
 
   transferBatchIds(): Uint32Array {
     throw new Error();
@@ -68,6 +71,9 @@ export class TransferablePolygonBatchedFeatureLike implements RemoveFreeRecursiv
     throw new Error();
   }
   transferHolesTotalSizes(): Uint32Array {
+    throw new Error();
+  }
+  transferOutlineEdges(): Uint8Array {
     throw new Error();
   }
 }

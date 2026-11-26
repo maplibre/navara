@@ -81,6 +81,7 @@ fn build_polygon(
     let mut polygon_resource = PolygonResource::new();
     let (extent, result) = navara_feature_component::polygon::construct_polygon_feature(
         hierarchy,
+        None,
         &crs,
         &material,
         &mut polygon_resource,

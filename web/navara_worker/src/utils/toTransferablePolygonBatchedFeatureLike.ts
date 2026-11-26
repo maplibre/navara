@@ -30,6 +30,9 @@ export function toTransferablePolygonBatchedFeatureLike(
       b.set(like.expected_winding_orders);
     },
   );
+  t.setOutlineEdges(like.outline_edges.length, (b: Uint8Array) => {
+    b.set(like.outline_edges);
+  });
   t.setBatchIds(like.batch_ids.length, (b: Uint32Array) => {
     b.set(like.batch_ids);
   });

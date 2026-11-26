@@ -13,7 +13,7 @@ use geozero::mvt::{Message, Tile as MvtTile, process_geom, tile};
 use navara_core::{CRS, TileXYZ, WGS84_64};
 use navara_geometry::{
     Hierarchy, WindingOrder, is_closed_flat_ring, open_ring_len, pole_of_inaccessibility,
-    tile_ring_boundary_runs,
+    tile_ring_boundary_runs, tile_ring_kept_edges,
 };
 use navara_math::{FloatType, Vec3};
 
@@ -66,6 +66,7 @@ pub enum ParsedGeometry {
         holes_boundaries: Vec<u32>,
         expected_winding_orders: Vec<u8>,
         batch_indices: Vec<u32>,
+        outline_edges: Vec<u8>,
     },
 }
 
@@ -172,6 +173,7 @@ enum GeomBuf {
         holes_boundaries: Vec<u32>,
         expected_winding_orders: Vec<u8>,
         batch_indices: Vec<u32>,
+        outline_edges: Vec<u8>,
     },
 }
 
@@ -204,6 +206,7 @@ impl GeomBuf {
                 holes_boundaries: Vec::new(),
                 expected_winding_orders: Vec::new(),
                 batch_indices: Vec::new(),
+                outline_edges: Vec::new(),
             },
         }
     }
@@ -247,6 +250,7 @@ impl GeomBuf {
                 holes_boundaries,
                 expected_winding_orders,
                 batch_indices,
+                outline_edges,
             } => ParsedGeometry::Polygons {
                 outer_rings,
                 outer_ring_sizes,
@@ -256,6 +260,7 @@ impl GeomBuf {
                 holes_boundaries,
                 expected_winding_orders,
                 batch_indices,
+                outline_edges,
             },
         }
     }
@@ -427,6 +432,7 @@ struct MvtFeatureProcessor<'a> {
     /// Raw rings of the current polygon (outer first), kept until the polygon
     /// ends when an emitter labels it once at its pole of inaccessibility.
     polygon_rings: Vec<Vec<(f64, f64)>>,
+    polygon_outline_edges: Vec<u8>,
 
     // --- Dispatch tables, derived from the configs once per MVT sublayer. ---
     /// Every layer's point emitters as `(layer index, emitter)` pairs.
@@ -463,6 +469,7 @@ struct MvtFeatureProcessor<'a> {
     /// geometry, which requires splitting rings at tile-clip edges (the raw ring
     /// is collected alongside `projected` for the split).
     derive_boundary_runs: bool,
+    derive_outline_edges: bool,
     /// Memo of `height -> world position` for the coordinate being emitted, so
     /// emitters sharing a height (the common case across layers) pay for the
     /// geographic-to-cartesian conversion once.
@@ -490,6 +497,7 @@ impl<'a> MvtFeatureProcessor<'a> {
         let mut derive_points_along_rings = false;
         let mut derive_polygon_label_points = false;
         let mut derive_boundary_runs = false;
+        let mut derive_outline_edges = false;
 
         for (index, config) in configs.iter().enumerate() {
             let projection = projection_of(config);
@@ -514,6 +522,7 @@ impl<'a> MvtFeatureProcessor<'a> {
             if config.polygon {
                 polygon_consumers[projection].push(index);
                 projection_used[projection] = true;
+                derive_outline_edges |= config.polygon_outline && projection == GEOGRAPHIC;
             }
             if config.polyline_from_polygons {
                 ring_polyline_consumers.push(index);
@@ -538,6 +547,7 @@ impl<'a> MvtFeatureProcessor<'a> {
             in_polygon: false,
             raw_ring: Vec::new(),
             polygon_rings: Vec::new(),
+            polygon_outline_edges: Vec::new(),
             emitters,
             line_consumers,
             polygon_consumers,
@@ -553,6 +563,7 @@ impl<'a> MvtFeatureProcessor<'a> {
             derive_points_along_rings,
             derive_polygon_label_points,
             derive_boundary_runs,
+            derive_outline_edges,
             height_cache: Vec::new(),
         }
     }
@@ -871,6 +882,15 @@ impl<'a> MvtFeatureProcessor<'a> {
         tile_ring_boundary_runs(self.raw_ring[..n].iter().copied(), self.converter.extent())
     }
 
+    fn push_ring_outline_edges(&mut self) {
+        let start = self.polygon_outline_edges.len();
+        let kept = tile_ring_kept_edges(self.raw_ring.iter().copied(), self.converter.extent());
+        self.polygon_outline_edges
+            .extend(kept.into_iter().map(u8::from));
+        self.polygon_outline_edges
+            .resize(start + self.raw_ring.len(), 0);
+    }
+
     /// Accumulate the current projected ring as a closed polyline for layer
     /// `index` (polygon-boundary derivation). MVT rings close via `ClosePath`
     /// without repeating the first vertex, so the ring is closed here when
@@ -917,8 +937,14 @@ impl<'a> MvtFeatureProcessor<'a> {
         }
     }
 
-    /// Push one polygon (outer ring plus holes) into layer `index`'s polygon group.
-    fn push_polygon(&mut self, index: usize, outer: Vec<FloatType>, holes: Vec<Hierarchy>) {
+    fn push_polygon(
+        &mut self,
+        index: usize,
+        outer: Vec<FloatType>,
+        holes: Vec<Hierarchy>,
+        outline_edges: &[u8],
+    ) {
+        let outlined = self.layers[index].config.polygon_outline;
         let winding_order = if self.layers[index].config.flat {
             WindingOrder::CounterClockwise
         } else {
@@ -934,8 +960,12 @@ impl<'a> MvtFeatureProcessor<'a> {
             holes_boundaries,
             expected_winding_orders,
             batch_indices,
+            outline_edges: edge_buf,
         } = &mut self.layers[index].groups[group_index].geom
         {
+            if outlined {
+                edge_buf.extend_from_slice(outline_edges);
+            }
             outer_ring_sizes.push(outer.len() as u32);
             outer_rings.extend(outer);
             expected_winding_orders.push(winding_order as u8);
@@ -958,6 +988,7 @@ impl<'a> MvtFeatureProcessor<'a> {
     /// Emit the current polygon for every layer consuming polygon geometry.
     /// Each projection's rings move into that projection's last consumer.
     fn accumulate_polygon(&mut self) {
+        let outline_edges = std::mem::take(&mut self.polygon_outline_edges);
         for projection in 0..PROJECTIONS {
             let count = self.polygon_consumers[projection].len();
             if !self.rings[projection].outer_ring.is_empty() {
@@ -974,7 +1005,7 @@ impl<'a> MvtFeatureProcessor<'a> {
                             self.rings[projection].holes.clone(),
                         )
                     };
-                    self.push_polygon(index, outer, holes);
+                    self.push_polygon(index, outer, holes, &outline_edges);
                 }
             }
             self.rings[projection].outer_ring.clear();
@@ -1015,7 +1046,9 @@ impl GeomProcessor for MvtFeatureProcessor<'_> {
             // project geographically regardless of `flat`) and for splitting
             // non-draped boundary polylines at tile-clip edges.
             if if self.in_polygon {
-                self.derive_points_from_polygons || self.derive_boundary_runs
+                self.derive_points_from_polygons
+                    || self.derive_boundary_runs
+                    || self.derive_outline_edges
             } else {
                 self.derive_points_from_lines
             } {
@@ -1070,6 +1103,9 @@ impl GeomProcessor for MvtFeatureProcessor<'_> {
                 let index = self.ring_polyline_consumers[i];
                 self.accumulate_ring_polyline(index, &runs);
             }
+            if self.derive_outline_edges {
+                self.push_ring_outline_edges();
+            }
             self.emit_derived_ring_points(true);
             for projection in 0..PROJECTIONS {
                 if !self.projection_used[projection] {
@@ -1109,6 +1145,7 @@ impl GeomProcessor for MvtFeatureProcessor<'_> {
             self.rings[projection].holes.clear();
         }
         self.polygon_rings.clear();
+        self.polygon_outline_edges.clear();
         Ok(())
     }
 
@@ -1388,6 +1425,7 @@ mod test {
             polyline: false,
             polyline_from_polygons: false,
             polygon: false,
+            polygon_outline: false,
             limit_layers: None,
         }
     }
@@ -1400,6 +1438,7 @@ mod test {
             polyline: true,
             polyline_from_polygons: false,
             polygon: false,
+            polygon_outline: false,
             limit_layers: None,
         }
     }
@@ -1412,6 +1451,7 @@ mod test {
             polyline: false,
             polyline_from_polygons: false,
             polygon: true,
+            polygon_outline: false,
             limit_layers: None,
         }
     }
@@ -1531,6 +1571,38 @@ mod test {
             }
             _ => panic!("expected polygons"),
         }
+    }
+
+    fn parsed_outline_edges(config: LayerParseConfig, feature: tile::Feature) -> Vec<u8> {
+        let bin = encode_tile(vec![make_layer("l", vec![feature])]);
+        let groups = parse_mvt_tile(&bin, xyz(), Vec3::ZERO, &[config]);
+        match &groups[0].geometry {
+            ParsedGeometry::Polygons { outline_edges, .. } => outline_edges.clone(),
+            _ => panic!("expected polygons"),
+        }
+    }
+
+    #[test]
+    fn outlined_polygon_marks_tile_clip_edges_per_ring_vertex() {
+        let mut config = polygon_config();
+        config.polygon_outline = true;
+        let feature = polygon_with_holes_feature(
+            &[
+                &[(-64, 10), (100, 10), (100, 100), (-64, 100)],
+                &[(20, 20), (20, 50), (50, 50)],
+            ],
+            vec![0, 0],
+        );
+        assert_eq!(
+            parsed_outline_edges(config, feature),
+            vec![1, 1, 1, 0, 0, 1, 1, 1, 1]
+        );
+    }
+
+    #[test]
+    fn polygon_without_outline_carries_no_edge_flags() {
+        let feature = polygon_feature(&[(-64, 10), (100, 10), (100, 100), (-64, 100)], vec![0, 0]);
+        assert!(parsed_outline_edges(polygon_config(), feature).is_empty());
     }
 
     #[test]

@@ -31,7 +31,21 @@ pub struct PolygonGeometryOptions {
     pub per_position_height: bool,
     pub extrusion_base: ExtrusionBase,
     pub use_rte: bool,
-    pub outline: bool,
+    pub outline: PolygonOutline,
+}
+
+#[derive(Clone, Debug, Default, PartialEq)]
+pub enum PolygonOutline {
+    #[default]
+    None,
+    Rings,
+    Runs(Vec<OutlineRun>),
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct OutlineRun {
+    pub positions: Vec<Vec3>,
+    pub closed: bool,
 }
 
 impl Default for PolygonGeometryOptions {
@@ -50,7 +64,7 @@ impl Default for PolygonGeometryOptions {
             per_position_height: false,
             extrusion_base: ExtrusionBase::Position,
             use_rte: true, // Default to true for individual features
-            outline: false,
+            outline: PolygonOutline::None,
         }
     }
 }
@@ -179,14 +193,14 @@ pub fn create_flat_polygon_geometry(
 }
 
 fn create_side_outline(
-    ring: &[Vec3],
+    vertices: &[Vec3],
     positions: &mut Vec<f64>,
     skip_indices: &mut Vec<u32>,
     scale_normal_cap: &mut Vec<f32>,
     per_position_height: bool,
     extrusion_base: ExtrusionBase,
 ) {
-    for p in ring {
+    for p in vertices {
         let mut side_seg = vec![p.x, p.y, p.z, p.x, p.y, p.z];
         let s_n_c = scale_to_geodetic_height_extruded(
             &mut side_seg,
@@ -201,8 +215,8 @@ fn create_side_outline(
     }
 }
 
-fn outlines_from_hierarchy(
-    hierarchies: &[HierarchyDVec3],
+fn outlines_from_runs<'a>(
+    runs: impl IntoIterator<Item = (&'a [Vec3], bool)>,
     granularity: f64,
     per_position_height: bool,
     extrusion_base: ExtrusionBase,
@@ -212,9 +226,11 @@ fn outlines_from_hierarchy(
     let mut skip_indices = vec![];
     let mut scale_normal_cap = vec![];
 
-    for hierarchy in hierarchies {
-        let outer_ring = &(hierarchy.outer_ring);
-        let mut poss = compute_outline_positions(WGS84_64, outer_ring, granularity);
+    for (run, closed) in runs {
+        if run.len() < 2 {
+            continue;
+        }
+        let mut poss = compute_outline_positions(WGS84_64, run, closed, granularity);
         let s_n_c = scale_to_geodetic_height_extruded(
             &mut poss,
             WGS84_64,
@@ -229,43 +245,15 @@ fn outlines_from_hierarchy(
         skip_indices.push((positions.len() / 3 + poss.len() / 3 - 1) as u32);
         positions.extend(poss);
 
+        let corners = if closed { run } else { &run[1..run.len() - 1] };
         create_side_outline(
-            outer_ring,
+            corners,
             &mut positions,
             &mut skip_indices,
             &mut scale_normal_cap,
             per_position_height,
             extrusion_base,
         );
-
-        if let Some(holes_src) = &(hierarchy.holes) {
-            for hole_src in holes_src {
-                let mut poss =
-                    compute_outline_positions(WGS84_64, &hole_src.outer_ring, granularity);
-                let s_n_c = scale_to_geodetic_height_extruded(
-                    &mut poss,
-                    WGS84_64,
-                    per_position_height,
-                    extrusion_base,
-                );
-                scale_normal_cap.extend(s_n_c);
-
-                // top end index
-                skip_indices.push((positions.len() / 3 + poss.len() / 3 / 2 - 1) as u32);
-                // bottom end index
-                skip_indices.push((positions.len() / 3 + poss.len() / 3 - 1) as u32);
-                positions.extend(poss);
-
-                create_side_outline(
-                    &(hole_src.outer_ring),
-                    &mut positions,
-                    &mut skip_indices,
-                    &mut scale_normal_cap,
-                    per_position_height,
-                    extrusion_base,
-                );
-            }
-        }
     }
 
     // Always emit f32 positions (bounding volumes / raycast / non-RTE
@@ -314,16 +302,32 @@ pub fn create_polygon_geometry(
         return None;
     }
 
-    let outline_geometry = if options.outline {
-        Some(outlines_from_hierarchy(
-            &hierarchies,
+    let outline_geometry = match &options.outline {
+        PolygonOutline::None => None,
+        PolygonOutline::Rings => Some(outlines_from_runs(
+            hierarchies.iter().flat_map(|h| {
+                std::iter::once(h.outer_ring.as_slice())
+                    .chain(
+                        h.holes
+                            .iter()
+                            .flatten()
+                            .map(|hole| hole.outer_ring.as_slice()),
+                    )
+                    .map(|ring| (ring, true))
+            }),
             granularity as f64,
             per_position_height,
             extrusion_base,
             options.use_rte,
-        ))
-    } else {
-        None
+        )),
+        PolygonOutline::Runs(runs) => Some(outlines_from_runs(
+            runs.iter()
+                .map(|run| (run.positions.as_slice(), run.closed)),
+            granularity as f64,
+            per_position_height,
+            extrusion_base,
+            options.use_rte,
+        )),
     };
 
     let mut geometries = vec![];
@@ -727,7 +731,7 @@ mod tests {
         create_polygon_geometry(
             PolygonGeometryOptions {
                 hierarchy: square_hierarchy(),
-                outline: true,
+                outline: PolygonOutline::Rings,
                 use_rte,
                 ..Default::default()
             },

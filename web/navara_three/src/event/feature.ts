@@ -309,6 +309,9 @@ export async function processRenderableFeatureAdded(
     }
     outline.renderOrder = FEATURE_RENDER_ORDER;
     outline.userData.layerId = featureLayerId;
+    if (transform) {
+      setTransform(outline, transform);
+    }
     scenes.mrt.add(outline);
 
     obj.outline = outline;
@@ -461,6 +464,9 @@ export async function processRenderableFeatureChanged(
   // This should be handled after the asynchronous process to avoid a conflict.
   if (transform) {
     setTransform(obj, transform);
+    if (obj instanceof PolygonMesh && obj.outline) {
+      setTransform(obj.outline, transform);
+    }
   }
 
   obj.updateMatrix();

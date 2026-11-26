@@ -321,6 +321,11 @@ impl ReturnedTransferablePolygonBatchedFeature {
         self.transferable.transfer_expected_winding_orders()
     }
 
+    #[wasm_bindgen(js_name = "transferOutlineEdges")]
+    pub fn transfer_outline_edges(&mut self) -> js_sys::Uint8Array {
+        self.transferable.transfer_outline_edges()
+    }
+
     pub fn crs(&self) -> CRS {
         self.transferable.crs.clone()
     }

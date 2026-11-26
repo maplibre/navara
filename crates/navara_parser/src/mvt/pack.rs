@@ -17,7 +17,7 @@
 //!   (`points_sizes` for polylines; `outer_ring_sizes`, `holes_total_sizes`,
 //!   `holes_sizes`, `holes_boundaries` for polygons), then
 //!   `feature_tags_flat`, `feature_tag_sizes`
-//! - `u8_stream`: `expected_winding_orders`, `ring_flags`
+//! - `u8_stream`: `expected_winding_orders`, `outline_edges`, `ring_flags`
 
 use std::sync::Arc;
 
@@ -54,6 +54,7 @@ pub struct ParsedMvtSegmentLens {
     pub holes_sizes: u32,
     pub holes_boundaries: u32,
     pub expected_winding_orders: u32,
+    pub outline_edges: u32,
     // Property tags (u32 stream).
     pub feature_tags_flat: u32,
     pub feature_tag_sizes: u32,
@@ -144,6 +145,7 @@ pub fn pack_parsed_mvt_groups(groups: Vec<ParsedLayerGroup>) -> PackedMvtParseRe
                 holes_boundaries,
                 expected_winding_orders,
                 batch_indices,
+                outline_edges,
             } => {
                 f64_cap += outer_rings.len() + holes.len();
                 u32_cap += outer_ring_sizes.len()
@@ -151,7 +153,7 @@ pub fn pack_parsed_mvt_groups(groups: Vec<ParsedLayerGroup>) -> PackedMvtParseRe
                     + holes_sizes.len()
                     + holes_boundaries.len()
                     + batch_indices.len();
-                u8_cap += expected_winding_orders.len();
+                u8_cap += expected_winding_orders.len() + outline_edges.len();
             }
         }
     }
@@ -252,6 +254,7 @@ pub fn pack_parsed_mvt_groups(groups: Vec<ParsedLayerGroup>) -> PackedMvtParseRe
                 mut holes_boundaries,
                 mut expected_winding_orders,
                 mut batch_indices,
+                mut outline_edges,
             } => {
                 lens.batch_indices = batch_indices.len() as u32;
                 lens.outer_rings = outer_rings.len() as u32;
@@ -261,6 +264,7 @@ pub fn pack_parsed_mvt_groups(groups: Vec<ParsedLayerGroup>) -> PackedMvtParseRe
                 lens.holes_sizes = holes_sizes.len() as u32;
                 lens.holes_boundaries = holes_boundaries.len() as u32;
                 lens.expected_winding_orders = expected_winding_orders.len() as u32;
+                lens.outline_edges = outline_edges.len() as u32;
                 result.u32_stream.append(&mut batch_indices);
                 result.u32_stream.append(&mut outer_ring_sizes);
                 result.u32_stream.append(&mut holes_total_sizes);
@@ -269,6 +273,7 @@ pub fn pack_parsed_mvt_groups(groups: Vec<ParsedLayerGroup>) -> PackedMvtParseRe
                 result.f64_stream.append(&mut outer_rings);
                 result.f64_stream.append(&mut holes);
                 result.u8_stream.append(&mut expected_winding_orders);
+                result.u8_stream.append(&mut outline_edges);
             }
         }
 
@@ -454,6 +459,7 @@ impl PackedMvtStreamsCursor {
                 let outer_rings = self.take_f64(lens.outer_rings)?;
                 let holes = self.take_f64(lens.holes)?;
                 let expected_winding_orders = self.take_u8(lens.expected_winding_orders)?;
+                let outline_edges = self.take_u8(lens.outline_edges)?;
                 ParsedGeometry::Polygons {
                     outer_rings,
                     outer_ring_sizes,
@@ -463,6 +469,7 @@ impl PackedMvtStreamsCursor {
                     holes_boundaries,
                     expected_winding_orders,
                     batch_indices,
+                    outline_edges,
                 }
             }
         };
@@ -562,6 +569,7 @@ mod test {
                 holes_boundaries: vec![1, 0],
                 expected_winding_orders: vec![0, 1, 0],
                 batch_indices: vec![0, 1],
+                outline_edges: vec![1, 1, 0, 1, 1, 1, 1, 0, 1],
             },
         }
     }
@@ -620,6 +628,7 @@ mod test {
                     holes_boundaries,
                     expected_winding_orders,
                     batch_indices,
+                    outline_edges,
                 } => ParsedGeometry::Polygons {
                     outer_rings: outer_rings.clone(),
                     outer_ring_sizes: outer_ring_sizes.clone(),
@@ -629,6 +638,7 @@ mod test {
                     holes_boundaries: holes_boundaries.clone(),
                     expected_winding_orders: expected_winding_orders.clone(),
                     batch_indices: batch_indices.clone(),
+                    outline_edges: outline_edges.clone(),
                 },
             };
             expected.push((

@@ -67,6 +67,7 @@ pub(crate) fn layer_parse_config(matched: &MatchedLayerInfo) -> LayerParseConfig
     let mut polyline = false;
     let mut polyline_from_polygons = false;
     let mut polygon = false;
+    let mut polygon_outline = false;
     for a in matched.appearances {
         match a {
             Appearance::Point(m) => point_emitters.push(point_emitter(
@@ -100,7 +101,10 @@ pub(crate) fn layer_parse_config(matched: &MatchedLayerInfo) -> LayerParseConfig
                 polyline_from_polygons |= (m.clamp_to_ground || !flat)
                     && m.geometry_types.contains(&SourceGeometryType::Polygon);
             }
-            Appearance::Polygon(_) => polygon = true,
+            Appearance::Polygon(m) => {
+                polygon = true;
+                polygon_outline |= m.outline && !flat;
+            }
             _ => {}
         }
     }
@@ -115,6 +119,7 @@ pub(crate) fn layer_parse_config(matched: &MatchedLayerInfo) -> LayerParseConfig
         polyline,
         polyline_from_polygons,
         polygon,
+        polygon_outline,
         limit_layers: matched.limit_layers.clone(),
     }
 }
@@ -299,6 +304,7 @@ pub(crate) fn build_accumulated_geometry(
             holes_boundaries,
             expected_winding_orders,
             batch_indices,
+            outline_edges,
         } => AccumulatedGeometry::Polygons(PolygonGeometryAccumulator {
             outer_rings,
             outer_ring_sizes,
@@ -308,6 +314,7 @@ pub(crate) fn build_accumulated_geometry(
             holes_boundaries,
             expected_winding_orders,
             batch_indices,
+            outline_edges,
             crs: CRS::Geographic,
         }),
     }

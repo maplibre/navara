@@ -62,14 +62,19 @@ pub fn tile_ring_boundary_runs<I>(ring: I, extent: f64) -> Vec<Vec<usize>>
 where
     I: IntoIterator<Item = (f64, f64)>,
 {
+    kept_edge_runs(&tile_ring_kept_edges(ring, extent))
+}
+
+pub fn tile_ring_kept_edges<I>(ring: I, extent: f64) -> Vec<bool>
+where
+    I: IntoIterator<Item = (f64, f64)>,
+{
     let clip_edge = |a: (f64, f64), b: (f64, f64)| {
         (a.0 <= 0. && b.0 <= 0.)
             || (a.0 >= extent && b.0 >= extent)
             || (a.1 <= 0. && b.1 <= 0.)
             || (a.1 >= extent && b.1 >= extent)
     };
-    // Single pass over the vertices: kept[i] records whether edge i
-    // (vertex i → i + 1, the last edge wrapping back to vertex 0) survives.
     let mut vertices = ring.into_iter();
     let Some(first) = vertices.next() else {
         return Vec::new();
@@ -81,12 +86,17 @@ where
         prev = v;
     }
     if kept.is_empty() {
-        // A single vertex has no edges.
         return Vec::new();
     }
     kept.push(!clip_edge(prev, first));
-    let n = kept.len();
+    kept
+}
 
+pub fn kept_edge_runs(kept: &[bool]) -> Vec<Vec<usize>> {
+    let n = kept.len();
+    if n == 0 {
+        return Vec::new();
+    }
     let Some(first_dropped) = kept.iter().position(|&k| !k) else {
         let mut run: Vec<usize> = (0..n).collect();
         run.push(0);

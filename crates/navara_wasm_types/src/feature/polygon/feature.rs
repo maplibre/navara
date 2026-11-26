@@ -26,6 +26,7 @@ pub struct TransferablePolygonBatchedFeature {
     batch_ids: Vec<u32>,
     batch_indices: Vec<u32>,
     expected_winding_orders: Vec<u8>,
+    outline_edges: Vec<u8>,
 
     #[wasm_bindgen(getter_with_clone)]
     pub crs: CRS,
@@ -39,6 +40,7 @@ pub struct TransferablePolygonBatchedFeature {
     holes_offset: usize,
     holes_sizes_offset: usize,
     expected_winding_orders_offset: usize,
+    outline_edges_offset: usize,
 }
 
 #[wasm_bindgen]
@@ -56,6 +58,7 @@ impl TransferablePolygonBatchedFeature {
             batch_ids: vec![],
             batch_indices: vec![],
             expected_winding_orders: vec![],
+            outline_edges: vec![],
             crs,
             length,
             cur_idx: 0,
@@ -63,6 +66,7 @@ impl TransferablePolygonBatchedFeature {
             holes_offset: 0,
             holes_sizes_offset: 0,
             expected_winding_orders_offset: 0,
+            outline_edges_offset: 0,
         }
     }
 
@@ -101,6 +105,10 @@ impl TransferablePolygonBatchedFeature {
     #[wasm_bindgen(js_name = "setExpectedWindingOrders")]
     pub fn set_expected_winding_orders(&mut self, byte_length: usize, f: &js_sys::Function) {
         self.expected_winding_orders = transfer_u8_array(byte_length, f)
+    }
+    #[wasm_bindgen(js_name = "setOutlineEdges")]
+    pub fn set_outline_edges(&mut self, byte_length: usize, f: &js_sys::Function) {
+        self.outline_edges = transfer_u8_array(byte_length, f)
     }
 
     #[wasm_bindgen(js_name = "transferBatchIds")]
@@ -146,6 +154,11 @@ impl TransferablePolygonBatchedFeature {
     #[wasm_bindgen(js_name = "transferExpectedWindingOrders")]
     pub fn transfer_expected_winding_orders(&mut self) -> js_sys::Uint8Array {
         copy_u8_array(&self.expected_winding_orders)
+    }
+
+    #[wasm_bindgen(js_name = "transferOutlineEdges")]
+    pub fn transfer_outline_edges(&mut self) -> js_sys::Uint8Array {
+        copy_u8_array(&self.outline_edges)
     }
 }
 
@@ -248,6 +261,7 @@ impl TransferablePolygonBatchedFeature {
             holes_boundaries: geom.holes_boundaries,
             batch_indices: geom.batch_indices,
             expected_winding_orders: geom.expected_winding_orders,
+            outline_edges: geom.outline_edges,
             length,
             ..Default::default()
         }
@@ -288,7 +302,7 @@ impl TransferablePolygonBatchedFeature {
     pub fn to_transferable_hierarchy_by_index(
         &mut self,
         idx: usize,
-    ) -> (TransferableHierarchy, BatchIndex, BatchId) {
+    ) -> (TransferableHierarchy, BatchIndex, BatchId, Option<Vec<u8>>) {
         // Extract outer_ring slice
         let or_size = self.outer_ring_sizes[idx] as usize;
         let or_start = self.outer_ring_offset;
@@ -329,6 +343,13 @@ impl TransferablePolygonBatchedFeature {
             },
         };
 
+        let outline_edges = (!self.outline_edges.is_empty()).then(|| {
+            let start = self.outline_edges_offset;
+            let end = start + (or_size + holes_total) / 3;
+            self.outline_edges_offset = end;
+            self.outline_edges[start..end].to_vec()
+        });
+
         let batch_idx = self.batch_indices[idx] as usize;
 
         let batch_id = BatchId(self.batch_ids[idx] as f32);
@@ -337,12 +358,13 @@ impl TransferablePolygonBatchedFeature {
             transferable_hierarchy,
             BatchIndex(batch_idx as u32),
             batch_id,
+            outline_edges,
         )
     }
 }
 
 impl Iterator for TransferablePolygonBatchedFeature {
-    type Item = (TransferableHierarchy, BatchIndex, BatchId);
+    type Item = (TransferableHierarchy, BatchIndex, BatchId, Option<Vec<u8>>);
     fn next(&mut self) -> Option<Self::Item> {
         if self.cur_idx == self.length {
             return None;
@@ -387,7 +409,7 @@ mod test {
         t.add(&mut square(20.), BatchIndex(1));
         t.add_batch_id(&mut vec![100, 101, 102]);
 
-        let items: Vec<_> = t.map(|(_, idx, id)| (idx.0, id.0)).collect();
+        let items: Vec<_> = t.map(|(_, idx, id, _)| (idx.0, id.0)).collect();
         assert_eq!(items, vec![(0, 100.0), (0, 101.0), (1, 102.0)]);
     }
 
@@ -489,7 +511,7 @@ mod test {
         let mut features: Vec<Hierarchy> = vec![];
         let mut batch_ids = vec![];
         let mut batch_idxs = vec![];
-        for (feature, batch_index, batch_id) in transferable_features {
+        for (feature, batch_index, batch_id, _) in transferable_features {
             features.push(feature.into());
             batch_ids.push(batch_id.0);
             batch_idxs.push(batch_index.0);
@@ -558,7 +580,7 @@ mod test {
         let mut features: Vec<Hierarchy> = vec![];
         let mut batch_ids = vec![];
         let mut batch_idxs = vec![];
-        for (feature, batch_index, batch_id) in transferable_features {
+        for (feature, batch_index, batch_id, _) in transferable_features {
             features.push(feature.into());
             batch_ids.push(batch_id.0);
             batch_idxs.push(batch_index.0);

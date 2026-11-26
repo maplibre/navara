@@ -68,13 +68,14 @@ pub fn construct_polygon(
 
     let mut combined_extent: Option<Extent<f64, Radians>> = None;
     for idx in 0..features.length {
-        let (transferable_hierarchy, batch_idx, batch_id) =
+        let (transferable_hierarchy, batch_idx, batch_id, outline_edges) =
             features.to_transferable_hierarchy_by_index(idx);
         let geometry_hierarchy: Hierarchy = transferable_hierarchy.into();
 
         let (extent_opt, polygon_result_opt) =
             navara_feature_component::polygon::construct_polygon_feature(
                 geometry_hierarchy,
+                outline_edges.as_deref(),
                 &crs,
                 &material,
                 &mut polygon_resource,
@@ -328,7 +329,7 @@ pub fn construct_flat_polygon(
     let mut index_offset = 0;
 
     for idx in 0..features.length {
-        let (transferable_hierarchy, batch_idx, batch_id) =
+        let (transferable_hierarchy, batch_idx, batch_id, _) =
             features.to_transferable_hierarchy_by_index(idx);
         let geometry_hierarchy: Hierarchy = transferable_hierarchy.into();
 
