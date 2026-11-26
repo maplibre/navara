@@ -77,6 +77,9 @@ export type EvaluatableMaterialProperty = {
   declutterPriority: AvailableMaterialProperty["declutterPriority"];
   /** Image URL for billboards; packed into a shared per-mesh texture atlas. */
   image: string;
+  /** Name of an icon in the billboard material's `sprite`, in place of
+   *  `image`. */
+  icon: string;
   /** Whether this label/sprite lies in the screen plane (`"upright"`) or on
    *  the globe surface (`"flat"`). Overrides the material's
    *  `textFacing`/`billboardFacing`/`pointFacing` for this feature. */
@@ -138,6 +141,7 @@ type EvaluatedMaterialProperty = {
   opacity: number;
   declutterPriority: number;
   image: string | null;
+  icon: string | null;
   facing: "upright" | "flat";
   rotateWithCamera: boolean;
   spreadGlyphs: boolean;
@@ -489,6 +493,9 @@ export class FeatureEvaluator {
    *   packed into the layer's texture atlas. Return `null` to clear a
    *   previous per-feature image and revert to the material's default `url`;
    *   omit the key to leave it unchanged.
+   * - `icon` - Name of an icon in the billboard material's `sprite`, in place
+   *   of `image`; a name the sprite lacks hides the billboard. `null` and an
+   *   omitted key work as for `image`.
    * - `emissive` - Emissive color (for batched polygons/3D Tiles models/
    *   points/billboards/text; ignored on models without batch/feature ids).
    *   Pairs with `emissiveIntensity` and drives selective bloom. On text only
@@ -625,6 +632,9 @@ export class FeatureEvaluator {
         // loads by URL so evaluating many features costs one fetch per image.
         // A nullish url clears the override back to the material default.
         void obj.setFeatureImageByBatchIndex(batchIndex, evaluated.image);
+      }
+      if ("icon" in evaluated) {
+        void obj.setFeatureIconByBatchIndex(batchIndex, evaluated.icon);
       }
       return;
     }

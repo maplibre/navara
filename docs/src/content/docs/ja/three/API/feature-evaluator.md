@@ -153,6 +153,7 @@ evaluate(
 | `opacity` | `number` | 地物の不透明度、範囲 0.0-1.0（ポリゴン/ポイント/ビルボード/モデル/テキスト用） |
 | `declutterPriority` | `number` | デクラッターの配置優先度。値が大きいほど重なりの競合に勝ちます（[`declutter`](../../../three/material/text-material/#declutter) が有効なポイント/ビルボード/テキスト用）。レイヤーの `declutterPriority` を上書きしますが、先に比較されるマテリアルの [`declutterRank`](../../../three/material/text-material/#declutterrank) は上書きしません |
 | `image` | `string \| null` | 画像の URL（ビルボード地物用）。個別の URL ごとに一度だけ読み込まれ、レイヤーのテクスチャアトラスにパックされます。`null` を返すと以前に設定した地物ごとの画像がクリアされ、ビルボードマテリアルのデフォルト `url` に戻ります（マテリアルに `url` がない場合、その地物は非表示になります） |
+| `icon` | `string \| null` | ビルボードマテリアルの [`sprite`](../../../three/material/billboard-material/#sprite) にあるアイコンの名前（ビルボード地物用）。`image` の代わりに描画されます。スプライトにない名前では、その地物は非表示になります。`null` を返すと以前に設定した地物ごとのアイコンがクリアされ、マテリアルのデフォルト画像に戻ります。両方を返した場合は `icon` が優先されます |
 | `facing` | `"upright" \| "flat"` | ポイント、ビルボード、ラベルを画面と同じ平面に表示する（`"upright"`）か、地球表面に寝かせる（`"flat"`）か（ポイント/ビルボード/テキスト用）。マテリアルの `pointFacing`/`billboardFacing`/`textFacing` から決まる値を上書きします |
 | `rotateWithCamera` | `boolean` | ポイント、ビルボード、ラベルをカメラに合わせて回転させる（`true`）か、地図に合わせて回転させる（`false`）か（ポイント/ビルボード/テキスト用）。ライン沿いでは、`false` でラベルがラインに沿い、`true` で `spreadGlyphs` を指定しない限りまっすぐ描かれます。マテリアルの `rotateWithCamera` から決まる値を上書きします |
 | `spreadGlyphs` | `boolean` | ラベルをライン沿いに文字ごとに配置するか（ライン沿いに配置したテキスト用）。マテリアルの `spreadGlyphs` を上書きします。たとえば、ほかのラベルは文字ごとに配置するレイヤーで、筆記体のように文字がつながる文字体系やフォントのラベルだけを単語ごとに保てます |
@@ -331,6 +332,9 @@ type EvaluatedValue = {
    * レイヤーのテクスチャアトラスにパックされます。`null` は以前に設定した
    * 地物ごとの画像をクリアし、ビルボードマテリアルのデフォルト url に戻します */
   image?: string | null;
+  /** ビルボードマテリアルの `sprite` にあるアイコンの名前。`image` の代わりに
+   * 描画されます。`null` は以前に設定した地物ごとのアイコンをクリアします */
+  icon?: string | null;
   /** ポイント、ビルボード、ラベルを画面と同じ平面に表示する（"upright"）か、
    * 地球表面に寝かせる（"flat"）か（ポイント/ビルボード/テキスト用）。
    * マテリアルの facing 設定を上書きします */

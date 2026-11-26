@@ -314,6 +314,20 @@
       { "name": "height", "kind": "number", "default": 1, "applies": "live" },
       { "name": "url", "kind": "string", "default": "", "applies": "live" },
       {
+        "name": "sprite",
+        "kind": "list",
+        "doc": "Icon sheets that `icon` names refer to, as MapLibre's `sprite`: a URL (a single sheet with id `\"default\"`) or a list of `{ id, url }`. A URL names the sheet without extension; `<url>.json` and `<url>.png` are fetched, or their `@2x` variants on a high-DPI screen.",
+        "default": [],
+        "applies": "live"
+      },
+      {
+        "name": "icon",
+        "kind": "string",
+        "doc": "Name of the image in `sprite` to draw, in place of `url`: `<name>` in the `\"default\"` sheet, `<id>:<name>` in the others. A name the sprite lacks, or any name without a `sprite`, draws nothing.",
+        "default": "",
+        "applies": "live"
+      },
+      {
         "name": "sizeInMeters",
         "kind": "boolean",
         "doc": "Whether the size is specified in meters. If false, the size is in pixels. Default is true.",

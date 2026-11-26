@@ -289,6 +289,30 @@ import { Color } from "@navaramap/three";
 }
 ```
 
+### icon
+
+**Type:** `string | undefined`
+
+**Description:** [`sprite`](#sprite) の中から描画するアイコンの名前。[`url`](#url) の代わりに使われます。MapLibre と同じく、スプライトにない名前は何も描画せず警告を出します。`sprite` のないマテリアルの `icon` も同様です。スプライトの読み込みが終わるまで、ビルボードは表示されません。
+
+[`FeatureEvaluator`](../../api/feature-evaluator/) から地物ごとに指定することもできます。
+
+**Default:** `undefined`
+
+**Example:**
+
+```typescript
+{
+  billboard: {
+    sprite: "https://example.com/sprites/maki",
+    icon: "airport",
+    sizeInMeters: false,
+    sizeRelativeToImage: true,
+    size: 1 // アイコン本来の大きさ
+  }
+}
+```
+
 ### ignorePlacement
 
 **Type:** `boolean | undefined`
@@ -437,6 +461,8 @@ import { Color } from "@navaramap/three";
 **Type:** `boolean | undefined`
 
 **Description:** [`size`](#size) をビルボードの高さではなく、画像そのもののピクセル高さに対する倍率として扱うかどうか。MapLibre の `icon-size` と同じ扱いです。`true` の場合、`size` が `1` のとき画像は本来の大きさで描画されます。[`sizeInMeters`](#sizeinmeters) が `false` ならピクセル単位、`true` なら画像の 1 ピクセルを 1 メートルとして描画します。幅はどちらの場合も画像の縦横比に従います。[`offset`](#offset) は画像の大きさでは拡大されず、ピクセルまたはメートル単位のままです。
+
+[`sprite`](#sprite) のアイコンの本来の大きさは、ピクセルサイズをスプライトのインデックスにある `pixelRatio` で割ったものです。そのため `@2x` のシートのアイコンも、1x のシートと同じ大きさで描画されます。
 
 **Default:** `false`
 
@@ -616,6 +642,30 @@ MapLibre の `symbol-spacing` と同様に、ラインに沿った長さが `spa
 }
 ```
 
+### sprite
+
+**Type:** `string | { id: string; url: string }[] | undefined`
+
+**Description:** [`icon`](#icon) の名前が参照するアイコンシート。MapLibre の [`sprite`](https://maplibre.org/maplibre-style-spec/sprite/) と同じ形式です。シートは多数のアイコンをまとめた 1 枚の PNG 画像と、各アイコンの位置を記した JSON インデックスからなります。URL は拡張子なしで書きます。Navara は `<url>.json` と `<url>.png` を読み込み、高 DPI の画面では `<url>@2x.json` と `<url>@2x.png` を読み込みます。1x のファイルへのフォールバックはありません。
+
+文字列は 1 枚のシートを表し、アイコンはインデックスの名前のまま使えます。リストは複数のシートを読み込み、アイコンの名前は `<id>:<name>` になります。ただし `id` が `"default"` のシートのアイコンは `<name>` のままです。いずれかのシートの読み込みに失敗すると、そのスプライトのアイコンは描画されません。各シートは、使うレイヤーの数にかかわらず一度だけ読み込まれます。
+
+**Default:** `undefined`
+
+**Example:**
+
+```typescript
+{
+  billboard: {
+    sprite: [
+      { id: "default", url: "https://example.com/sprites/base" },
+      { id: "maki", url: "https://example.com/sprites/maki" }
+    ],
+    icon: "maki:airport"
+  }
+}
+```
+
 ### standalone
 
 **Type:** `boolean | undefined`
@@ -693,7 +743,7 @@ MapLibre の `symbol-spacing` と同様に、ラインに沿った長さが `spa
 
 **Type:** `string | undefined`
 
-**Description:** オブジェクトの URL を指定します。画像ファイルをサポートします。これはレイヤー内のすべての地物に適用されるデフォルト画像です。[`FeatureEvaluator.evaluate()`](../../api/feature-evaluator/#evaluate) から `image` を返すことで、地物ごとに上書きできます。`image: null` を返すと、上書きした地物はこのデフォルトに戻ります。
+**Description:** オブジェクトの URL を指定します。画像ファイルをサポートします。これはレイヤー内のすべての地物に適用されるデフォルト画像です。[`FeatureEvaluator.evaluate()`](../../api/feature-evaluator/#evaluate) から `image` を返すことで、地物ごとに上書きできます。`image: null` を返すと、上書きした地物はこのデフォルトに戻ります。[`icon`](#icon) が設定されている間は無視されます。
 
 **Default:** `undefined`
 

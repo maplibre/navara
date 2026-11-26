@@ -57,8 +57,14 @@ import { buildBatchIndexMap } from "../batchIndexMap";
 import { GEOMETRY_TYPES, type GeometryType } from "../constants";
 import { PickableMesh } from "../pickableMesh";
 
-import { BillboardAtlas, type AtlasRect } from "./billboardAtlas";
+import {
+  BillboardAtlas,
+  type AtlasImage,
+  type AtlasRect,
+  type LoadAtlasImage,
+} from "./billboardAtlas";
 import { loadAtlasImageFromUrl } from "./billboardAtlasImageLoader";
+import type { SpriteIcons } from "./spriteCache";
 
 type SpriteGeometryType = Extract<
   GeometryType,
@@ -244,16 +250,29 @@ export class InstancedSpriteMesh
   /** Instance count of the current geometry; bounds the identity fallback. */
   private _instanceCount = 0;
   private _atlas?: BillboardAtlas;
-  private _defaultUrl?: string;
+  /** Atlas key of the material's image: its `icon` (see {@link _iconImage}),
+   *  else its `url`. */
+  private _defaultKey?: string;
   /** Atlas rect of the current default image; re-applied to an instance when
    * its per-feature override is cleared. */
   private _defaultRect?: AtlasRect;
   /** Instance ids whose image was overridden per-feature; the default image
    * from the material no longer applies to them. */
   private _imageOverrides = new Set<number>();
-  /** Latest override URL requested per instance. An async pack only applies
+  /** Latest override key requested per instance. An async pack only applies
    * if it still matches, so a newer override or a clear wins over slow loads. */
-  private _requestedImageUrls = new Map<number, string>();
+  private _requestedImageKeys = new Map<number, string>();
+  /** The material's `sprite` as a comparable string; a change starts a new
+   *  {@link _spriteGeneration}. */
+  private _spriteKey = "";
+  /** Part of every icon's atlas key, so icons of a replaced sprite never
+   *  resolve to the old one's cached rects. */
+  private _spriteGeneration = 0;
+  /** Icons of the material's `sprite`; undefined when it has none. */
+  private _spriteIcons?: Promise<SpriteIcons>;
+  /** Per-feature icon names by batch index, resolved again when the sprite
+   *  changes. */
+  private _featureIcons = new Map<number, string>();
   /** Forwards the atlas byte footprint to the engine's memory ledger; wired
    * by the feature-added handler once the owning entity bits are known. */
   private _atlasBytesReporter?: (bytes: number) => void;
@@ -391,6 +410,9 @@ export class InstancedSpriteMesh
       ? (this.geometry?.getAttribute("instanceUvRect") as
           InstancedBufferAttribute | undefined)
       : undefined;
+    const imagePixelRatio = uvRect
+      ? this.geometry.getAttribute("instanceImagePixelRatio")
+      : undefined;
     for (let i = 0; i < count; i++) {
       const o = i * LINE_ANCHOR_STRIDE;
       const batchIndex = batchIndices ? batchIndices[i] : i;
@@ -399,6 +421,7 @@ export class InstancedSpriteMesh
         batchSize !== undefined && batchSize >= 0.0 ? batchSize : state.scale;
       const rectH = uvRect ? uvRect.getW(i) : 0;
       const aspect = uvRect && rectH > 0 ? uvRect.getZ(i) / rectH : 1.0;
+      const imageHeight = imagePixelRatio ? rectH / imagePixelRatio.getX(i) : 0;
       input[o] = anchors[i * 3];
       input[o + 1] = anchors[i * 3 + 1];
       input[o + 2] = anchors[i * 3 + 2];
@@ -414,7 +437,7 @@ export class InstancedSpriteMesh
         batchIndex,
         aspect,
         size,
-        rectH,
+        imageHeight,
       );
       input[o + 7] = box[0];
       input[o + 8] = box[1];
@@ -468,6 +491,9 @@ export class InstancedSpriteMesh
     const uvRect = state.billboard
       ? (this.geometry?.getAttribute("instanceUvRect") as
           InstancedBufferAttribute | undefined)
+      : undefined;
+    const imagePixelRatio = uvRect
+      ? this.geometry.getAttribute("instanceImagePixelRatio")
       : undefined;
     const anchors = this._anchors;
     const batchIndices = this._instanceBatchIndex;
@@ -525,7 +551,7 @@ export class InstancedSpriteMesh
             batchIndex,
             aspect,
             size,
-            rectH,
+            imagePixelRatio ? rectH / imagePixelRatio.getX(i) : 0,
           );
       out.push({
         anchorX: anchors[i * 3],
@@ -574,8 +600,9 @@ export class InstancedSpriteMesh
   /**
    * The unrotated quad around its anchor, `[minX, maxX, minY, maxY]` in the
    * unit of `size`, y up — mirror of instancedSprite.vert.glsl: the batch
-   * texture's anchor and offset, falling back to the material's. `rectH` is
-   * the image's pixel height, which `sizeRelativeToImage` scales by `size`.
+   * texture's anchor and offset, falling back to the material's.
+   * `imageHeight` is the image's height in CSS pixels (its atlas rect height
+   * over its pixel ratio), which `sizeRelativeToImage` scales by `size`.
    */
   private _quadBox(
     material: ShaderMaterial,
@@ -584,7 +611,7 @@ export class InstancedSpriteMesh
     batchIndex: number,
     aspect: number,
     size: number,
-    rectH: number,
+    imageHeight: number,
   ): Float64Array {
     const code = slots.anchor
       ? readBatchScalar(material, batchIndex, "anchor")
@@ -596,7 +623,7 @@ export class InstancedSpriteMesh
       ox = readBatchScalar(material, batchIndex, "offsetX") ?? ox;
       oy = readBatchScalar(material, batchIndex, "offsetY") ?? oy;
     }
-    const height = state.sizeRelativeToImage ? size * rectH : size;
+    const height = state.sizeRelativeToImage ? size * imageHeight : size;
     const box = _tmpQuadBox;
     box[0] = (-0.5 - cx) * aspect * height + ox;
     box[1] = (0.5 - cx) * aspect * height + ox;
@@ -815,9 +842,8 @@ export class InstancedSpriteMesh
         base: { alphaTest: m.material.alphaTest ?? 0.0 },
       });
 
-      if (m.material.url) {
-        await this._setDefaultImage(m.material.url);
-      }
+      this._syncSprite(m.material);
+      await this._setDefaultImage(m.material);
     }
 
     this.ctx.declutter?.markDirty();
@@ -869,6 +895,13 @@ export class InstancedSpriteMesh
       instancedGeometry.setAttribute(
         "instanceUvRect",
         new InstancedBufferAttribute(new Float32Array(instanceCount * 4), 4),
+      );
+      instancedGeometry.setAttribute(
+        "instanceImagePixelRatio",
+        new InstancedBufferAttribute(
+          new Float32Array(instanceCount).fill(1),
+          1,
+        ),
       );
     }
 
@@ -1033,8 +1066,9 @@ export class InstancedSpriteMesh
     enhancer.update({ base: { batchDataTexture: batchUniform } });
 
     // Handle billboard texture
-    if (isBillboard && m.material.url) {
-      await this._setDefaultImage(m.material.url);
+    if (m instanceof NavaraBillboardMesh) {
+      this._syncSprite(m.material);
+      await this._setDefaultImage(m.material);
     }
 
     material.visible = m.material.show ?? true;
@@ -1124,6 +1158,45 @@ export class InstancedSpriteMesh
     return this._atlas;
   }
 
+  /** Follow the material's `sprite`; the wasm getter clones, so it is read
+   *  once. */
+  private _syncSprite(material: NavaraBillboardMesh["material"]): void {
+    const sheets = (material.sprite ?? []).map(({ id, url }) => ({ id, url }));
+    const key = JSON.stringify(sheets);
+    if (key === this._spriteKey) return;
+    this._spriteKey = key;
+    this._spriteGeneration++;
+    this._spriteIcons =
+      sheets.length > 0
+        ? this.ctx.sprites.get(
+            sheets,
+            this.ctx.viewContext.getRenderer().getPixelRatio(),
+          )
+        : undefined;
+    for (const [batchIndex, name] of this._featureIcons) {
+      void this.setFeatureIconByBatchIndex(batchIndex, name);
+    }
+  }
+
+  /** The icon `name` of the current sprite, to pack in place of a URL. */
+  private _iconImage(name: string): AtlasImageSource {
+    return {
+      key: `${ICON_KEY_PREFIX}${this._spriteGeneration}:${name}`,
+      load: this._loadIcon.bind(this, this._spriteIcons, name),
+    };
+  }
+
+  /** Throws for a name the sprite lacks, so the atlas warns once and the icon
+   *  draws nothing. */
+  private async _loadIcon(
+    sprite: Promise<SpriteIcons> | undefined,
+    name: string,
+  ): Promise<AtlasImage> {
+    const icon = (await sprite)?.get(name);
+    if (!icon) throw new Error(`Icon "${name}" is not in the sprite`);
+    return icon;
+  }
+
   /**
    * Wire the callback that reports this mesh's atlas footprint to the
    * engine's memory ledger, and immediately report the current footprint —
@@ -1162,29 +1235,61 @@ export class InstancedSpriteMesh
   }
 
   /**
-   * Load the material-level image and apply its rect to every instance that
-   * hasn't been overridden per-feature via setFeatureImageByBatchId.
+   * Load the material-level image — its `icon`, else its `url` — and apply
+   * its rect to every instance that hasn't been overridden per-feature. An
+   * icon that does not resolve hides those instances; a URL that fails to
+   * load keeps the previous image.
    */
-  private async _setDefaultImage(url: string): Promise<void> {
-    if (this._defaultUrl === url) return;
-    this._defaultUrl = url;
+  private async _setDefaultImage(
+    material: NavaraBillboardMesh["material"],
+  ): Promise<void> {
+    const image: AtlasImageSource | undefined = material.icon
+      ? this._iconImage(material.icon)
+      : material.url
+        ? { key: material.url }
+        : undefined;
+    if (!image || this._defaultKey === image.key) return;
+    const key = image.key;
+    this._defaultKey = key;
 
-    const rect = await this._ensureAtlas().pack(url);
+    const rect = await this._ensureAtlas().pack(key, image.load);
     this._reportAtlasBytes();
-    if (!rect) return;
+    // A URL that fails keeps the previous image; an icon hides.
+    if (!rect && !image.load) return;
     // A newer default image won the race while this one was loading.
-    if (this._defaultUrl !== url) return;
+    if (this._defaultKey !== key) return;
 
     this._defaultRect = rect;
     this._syncAtlasUniforms();
+    for (let i = 0; i < this._instanceCount; i++) {
+      if (this._imageOverrides.has(i)) continue;
+      this._setInstanceImage(i, rect);
+    }
+    this._markImagesChanged();
+  }
+
+  /** Point an instance at its atlas rect; no rect hides it (the shader
+   *  culls empty rects). Pair with {@link _markImagesChanged}. */
+  private _setInstanceImage(instanceId: number, rect: AtlasRect | undefined) {
     const rectAttr = this.geometry.getAttribute(
       "instanceUvRect",
     ) as InstancedBufferAttribute;
-    for (let i = 0; i < rectAttr.count; i++) {
-      if (this._imageOverrides.has(i)) continue;
-      rectAttr.setXYZW(i, rect.x, rect.y, rect.w, rect.h);
-    }
-    rectAttr.needsUpdate = true;
+    const ratioAttr = this.geometry.getAttribute(
+      "instanceImagePixelRatio",
+    ) as InstancedBufferAttribute;
+    rectAttr.setXYZW(
+      instanceId,
+      rect?.x ?? 0,
+      rect?.y ?? 0,
+      rect?.w ?? 0,
+      rect?.h ?? 0,
+    );
+    ratioAttr.setX(instanceId, rect?.pixelRatio ?? 1);
+  }
+
+  private _markImagesChanged(): void {
+    this.geometry.getAttribute("instanceUvRect").needsUpdate = true;
+    this.geometry.getAttribute("instanceImagePixelRatio").needsUpdate = true;
     this._onAtlasRectsChanged();
   }
 
@@ -1552,59 +1657,77 @@ export class InstancedSpriteMesh
    * reverts the feature to the material's default image. No-op for
    * non-billboard (point) meshes.
    */
-  async setFeatureImageByBatchIndex(
+  setFeatureImageByBatchIndex(
     batchIndex: number,
     url: string | null | undefined,
   ): Promise<void> {
+    this._featureIcons.delete(batchIndex);
+    return this._setFeatureImage(
+      batchIndex,
+      url == null ? undefined : { key: url },
+    );
+  }
+
+  /**
+   * Give one feature the icon `name` of the material's `sprite`, in place of
+   * its image. A name the sprite lacks, or any name without a sprite, hides
+   * the feature. Passing a nullish `name` clears the override and reverts the
+   * feature to the material's default image. No-op for non-billboard (point)
+   * meshes.
+   */
+  setFeatureIconByBatchIndex(
+    batchIndex: number,
+    name: string | null | undefined,
+  ): Promise<void> {
+    if (name == null) this._featureIcons.delete(batchIndex);
+    else this._featureIcons.set(batchIndex, name);
+    return this._setFeatureImage(
+      batchIndex,
+      name == null ? undefined : this._iconImage(name),
+    );
+  }
+
+  private async _setFeatureImage(
+    batchIndex: number,
+    image: AtlasImageSource | undefined,
+  ): Promise<void> {
     const instances = this.instancesOfBatchIndex(batchIndex);
     if (instances.length === 0) return;
+    if (!this.geometry.getAttribute("instanceUvRect")) return;
 
-    const rectAttr = this.geometry.getAttribute("instanceUvRect") as
-      InstancedBufferAttribute | undefined;
-    if (!rectAttr) return;
-
-    if (url == null) {
+    if (image === undefined) {
       let cleared = false;
       for (const instanceId of instances) {
-        this._requestedImageUrls.delete(instanceId);
+        this._requestedImageKeys.delete(instanceId);
         if (!this._imageOverrides.delete(instanceId)) continue;
         // Zero rect (invisible) until the default image finishes loading,
         // same as instances that never had an override.
-        const rect = this._defaultRect;
-        rectAttr.setXYZW(
-          instanceId,
-          rect?.x ?? 0,
-          rect?.y ?? 0,
-          rect?.w ?? 0,
-          rect?.h ?? 0,
-        );
+        this._setInstanceImage(instanceId, this._defaultRect);
         cleared = true;
       }
-      if (cleared) {
-        rectAttr.needsUpdate = true;
-        this._onAtlasRectsChanged();
-      }
+      if (cleared) this._markImagesChanged();
       return;
     }
 
+    const { key, load } = image;
     for (const instanceId of instances) {
-      this._requestedImageUrls.set(instanceId, url);
+      this._requestedImageKeys.set(instanceId, key);
     }
-    const rect = await this._ensureAtlas().pack(url);
+    const rect = await this._ensureAtlas().pack(key, load);
     this._reportAtlasBytes();
-    if (!rect) return;
+    // A URL that fails keeps the current image; an icon hides.
+    if (!rect && !load) return;
     let applied = false;
     for (const instanceId of instances) {
       // A newer override or a clear superseded this load while in flight.
-      if (this._requestedImageUrls.get(instanceId) !== url) continue;
+      if (this._requestedImageKeys.get(instanceId) !== key) continue;
       this._imageOverrides.add(instanceId);
-      rectAttr.setXYZW(instanceId, rect.x, rect.y, rect.w, rect.h);
+      this._setInstanceImage(instanceId, rect);
       applied = true;
     }
     if (applied) {
       this._syncAtlasUniforms();
-      rectAttr.needsUpdate = true;
-      this._onAtlasRectsChanged();
+      this._markImagesChanged();
     }
   }
 
@@ -1639,6 +1762,15 @@ export class InstancedSpriteMesh
     this._outOfBand = null;
     this._bandInput = new Float64Array(0);
     this._imageOverrides.clear();
-    this._requestedImageUrls.clear();
+    this._requestedImageKeys.clear();
+    this._featureIcons.clear();
   }
 }
+
+/** Starts an icon's atlas key. The generation that follows keeps a replaced
+ *  sprite's icons apart. */
+const ICON_KEY_PREFIX = "sprite icon ";
+
+/** An image to pack: a URL, or an icon with its own loader and a key that
+ *  stands in for a URL. */
+type AtlasImageSource = { key: string; load?: LoadAtlasImage };

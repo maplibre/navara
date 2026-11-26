@@ -153,6 +153,7 @@ The callback function can return an object containing the following properties:
 | `opacity` | `number` | Feature opacity, range 0.0-1.0 (for polygons/points/billboards/models/text) |
 | `declutterPriority` | `number` | Placement priority for decluttering. Higher wins an overlap (for points/billboards/text with [`declutter`](../../../three/material/text-material/#declutter) enabled). Overrides the layer's `declutterPriority`, but never the material's [`declutterRank`](../../../three/material/text-material/#declutterrank), which is compared first |
 | `image` | `string \| null` | Image URL (for billboard features). Each distinct URL is loaded once and packed into the layer's texture atlas. Return `null` to clear a previous per-feature image and revert to the billboard material's default `url` (the feature becomes invisible if the material has no `url`) |
+| `icon` | `string \| null` | Name of an icon in the billboard material's [`sprite`](../../../three/material/billboard-material/#sprite) (for billboard features), drawn in place of `image`. A name the sprite does not have hides the feature. Return `null` to clear a previous per-feature icon and revert to the material's default image. When both are returned, `icon` wins |
 | `facing` | `"upright" \| "flat"` | Whether the point, billboard, or label lies in the screen plane (`"upright"`) or on the globe surface (`"flat"`) (for points/billboards/text). Overrides the value the material's `pointFacing`/`billboardFacing`/`textFacing` resolves to |
 | `rotateWithCamera` | `boolean` | Whether the point, billboard, or label turns with the camera (`true`) or with the map (`false`) (for points/billboards/text). Along a line, `false` makes a label follow the line, and `true` draws it straight unless `spreadGlyphs` is set. Overrides the value the material's `rotateWithCamera` resolves to |
 | `spreadGlyphs` | `boolean` | Whether the label places each glyph on its own along its line (for text placed along a line). Overrides the material's `spreadGlyphs`, for example to keep cursive scripts or fonts word by word in a layer that spreads the rest |
@@ -343,6 +344,9 @@ type EvaluatedValue = {
    * packed into the layer's texture atlas. `null` clears a previous
    * per-feature image, reverting to the billboard material's default url */
   image?: string | null;
+  /** Name of an icon in the billboard material's `sprite`, drawn in place of
+   * `image`. `null` clears a previous per-feature icon */
+  icon?: string | null;
   /** Whether the point, billboard, or label lies in the screen plane
    * ("upright") or on the globe surface ("flat") (for points/billboards/text).
    * Overrides the material's facing option */

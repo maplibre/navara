@@ -17,13 +17,20 @@ export type AtlasRect = {
   y: number;
   w: number;
   h: number;
+  /** The image's pixels per CSS pixel (see {@link AtlasImage.pixelRatio}). */
+  pixelRatio: number;
 };
+
+type PixelRect = Omit<AtlasRect, "pixelRatio">;
 
 export type AtlasImage = {
   width: number;
   height: number;
   /** RGBA, tightly packed, row 0 = bottom of the image (flipY at decode). */
   data: Uint8Array;
+  /** Image pixels per CSS pixel, as a sprite's `@2x` icons have 2. Divides
+   *  the image's pixel size under `sizeRelativeToImage`. Defaults to 1. */
+  pixelRatio?: number;
 };
 
 export type LoadAtlasImage = (url: string) => Promise<AtlasImage>;
@@ -102,15 +109,20 @@ export class BillboardAtlas {
   }
 
   /**
-   * Load `url` (once) and pack it into the atlas.
+   * Load `url` (once) and pack it into the atlas. `load` replaces the
+   * atlas's `loadImage` for an image that is not fetched by URL; `url` is
+   * then just its cache key.
    * Resolves to the entry's pixel rect, or `undefined` when the image fails
    * to load or the atlas is full even at `maxSize`.
    */
-  pack(url: string): Promise<AtlasRect | undefined> {
+  pack(
+    url: string,
+    load: LoadAtlasImage = this._loadImage,
+  ): Promise<AtlasRect | undefined> {
     const cached = this._rects.get(url);
     if (cached) return cached;
 
-    const pending = this._loadAndPack(url).catch((error) => {
+    const pending = this._loadAndPack(url, load).catch((error) => {
       console.warn(`BillboardAtlas: failed to load image "${url}"`, error);
       return undefined;
     });
@@ -124,8 +136,11 @@ export class BillboardAtlas {
     this._shelves = [];
   }
 
-  private async _loadAndPack(url: string): Promise<AtlasRect | undefined> {
-    const image = await this._loadImage(url);
+  private async _loadAndPack(
+    url: string,
+    load: LoadAtlasImage,
+  ): Promise<AtlasRect | undefined> {
+    const image = await load(url);
     const rect = this._allocate(image.width, image.height);
     if (!rect) {
       console.warn(
@@ -134,10 +149,10 @@ export class BillboardAtlas {
       return undefined;
     }
     this._blit(image, rect);
-    return rect;
+    return { ...rect, pixelRatio: image.pixelRatio ?? 1 };
   }
 
-  private _allocate(w: number, h: number): AtlasRect | undefined {
+  private _allocate(w: number, h: number): PixelRect | undefined {
     for (;;) {
       const rect = this._tryAllocate(w, h);
       if (rect) return rect;
@@ -145,7 +160,7 @@ export class BillboardAtlas {
     }
   }
 
-  private _tryAllocate(w: number, h: number): AtlasRect | undefined {
+  private _tryAllocate(w: number, h: number): PixelRect | undefined {
     const needW = w + GUTTER;
     const needH = h + GUTTER;
     if (needW > this._size) return undefined;
@@ -193,7 +208,7 @@ export class BillboardAtlas {
     return true;
   }
 
-  private _blit(image: AtlasImage, rect: AtlasRect): void {
+  private _blit(image: AtlasImage, rect: PixelRect): void {
     for (let row = 0; row < rect.h; row++) {
       this._data.set(
         image.data.subarray(row * rect.w * 4, (row + 1) * rect.w * 4),

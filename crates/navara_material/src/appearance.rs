@@ -338,6 +338,17 @@ pub struct VariableAnchor {
     pub offset: Vec2,
 }
 
+/// One icon sheet of a billboard's `sprite` (an entry of MapLibre's `sprite`).
+/// `url` names the sheet without extension: the frontend fetches
+/// `<url>.json` and `<url>.png`, or their `@2x` variants.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SpriteSheet {
+    /// Icons of this sheet are named `<id>:<name>`, or just `<name>` when
+    /// `id` is `"default"`.
+    pub id: String,
+    pub url: String,
+}
+
 /// Frame a label's or sprite's `translate` is measured in (MapLibre's
 /// `*-translate-anchor`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -586,6 +597,11 @@ pub struct BillboardMaterial {
     pub translate_anchor: TranslateAnchor,
     pub height: f32,
     pub url: String,
+    /// Icon sheets that `icon` names refer to. Empty means no sprite.
+    pub sprite: Vec<SpriteSheet>,
+    /// Name of the image in `sprite` to draw, which takes the place of `url`.
+    /// A name the sprite lacks draws nothing. Empty means no icon.
+    pub icon: String,
     pub size_in_meters: bool,
     /// `size` scales the image's own pixel height instead of being the quad's
     /// height (MapLibre's `icon-size`): `1.0` draws the image at its natural
@@ -660,6 +676,8 @@ impl Default for BillboardMaterial {
             clamp_to_ground: true,
             height: 1.,
             url: "".to_string(),
+            sprite: Vec::new(),
+            icon: "".to_string(),
             size_in_meters: true,
             size_relative_to_image: false,
             depth_test: true,

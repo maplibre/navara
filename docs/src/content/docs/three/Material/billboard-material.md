@@ -289,6 +289,30 @@ import { Color } from "@navaramap/three";
 }
 ```
 
+### icon
+
+**Type:** `string | undefined`
+
+**Description:** Name of the icon in [`sprite`](#sprite) to draw, in place of [`url`](#url). As in MapLibre, a name the sprite does not have draws nothing and logs a warning, and so does any `icon` on a material with no `sprite`. Billboards stay hidden until the sprite has loaded.
+
+Can also be set per feature from a [feature evaluator](../../api/feature-evaluator/).
+
+**Default:** `undefined`
+
+**Example:**
+
+```typescript
+{
+  billboard: {
+    sprite: "https://example.com/sprites/maki",
+    icon: "airport",
+    sizeInMeters: false,
+    sizeRelativeToImage: true,
+    size: 1 // the icon's own size
+  }
+}
+```
+
 ### ignorePlacement
 
 **Type:** `boolean | undefined`
@@ -437,6 +461,8 @@ This option applies when the layer's geometry is built: set it at layer creation
 **Type:** `boolean | undefined`
 
 **Description:** Whether [`size`](#size) scales the image's own pixel height instead of setting the billboard's height, as MapLibre's `icon-size` does. With `true`, a `size` of `1` draws the image at its natural size: in pixels when [`sizeInMeters`](#sizeinmeters) is `false`, or one meter per image pixel otherwise. The width follows the image's aspect ratio either way. [`offset`](#offset) is not scaled by the image and stays in pixels or meters.
+
+The natural size of a [`sprite`](#sprite) icon is its pixel size divided by the `pixelRatio` in the sprite's index, so an icon from a `@2x` sheet draws at the same size as from the 1x sheet.
 
 **Default:** `false`
 
@@ -616,6 +642,30 @@ This option applies when the layer's geometry is built. `layer.update()` does no
 }
 ```
 
+### sprite
+
+**Type:** `string | { id: string; url: string }[] | undefined`
+
+**Description:** Icon sheets that [`icon`](#icon) names refer to, in the format of MapLibre's [`sprite`](https://maplibre.org/maplibre-style-spec/sprite/). A sheet is one PNG image that holds many icons, with a JSON index that gives the position of each icon. Its URL is written without the extension: Navara loads `<url>.json` and `<url>.png`, or `<url>@2x.json` and `<url>@2x.png` on a high-DPI screen, with no fallback to the 1x files.
+
+A string is a single sheet, whose icons keep the names in its index. A list loads several sheets, and their icons are named `<id>:<name>`, except those of the sheet whose `id` is `"default"`. If any sheet fails to load, no icon of the sprite is drawn. Each sheet is loaded once, however many layers use it.
+
+**Default:** `undefined`
+
+**Example:**
+
+```typescript
+{
+  billboard: {
+    sprite: [
+      { id: "default", url: "https://example.com/sprites/base" },
+      { id: "maki", url: "https://example.com/sprites/maki" }
+    ],
+    icon: "maki:airport"
+  }
+}
+```
+
 ### standalone
 
 **Type:** `boolean | undefined`
@@ -693,7 +743,7 @@ This option applies when the layer's geometry is built. `layer.update()` does no
 
 **Type:** `string | undefined`
 
-**Description:** Specifies the URL of the object. Supports image files. This is the default image for every feature in the layer. Individual features can override it by returning `image` from [`FeatureEvaluator.evaluate()`](../../api/feature-evaluator/#evaluate), and returning `image: null` reverts an overridden feature to this default.
+**Description:** Specifies the URL of the object. Supports image files. This is the default image for every feature in the layer. Individual features can override it by returning `image` from [`FeatureEvaluator.evaluate()`](../../api/feature-evaluator/#evaluate), and returning `image: null` reverts an overridden feature to this default. Ignored while [`icon`](#icon) is set.
 
 **Default:** `undefined`
 

@@ -465,6 +465,61 @@ pub struct NearFar {
     pub far: f32,
 }
 
+/// One icon sheet of a billboard's `sprite`, as an entry of MapLibre's
+/// `sprite` list.
+#[wasm_bindgen]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SpriteSheet {
+    /// Icons of this sheet are named `<id>:<name>`, or just `<name>` when
+    /// `id` is `"default"`.
+    #[wasm_bindgen(getter_with_clone)]
+    pub id: String,
+    /// The sheet's URL without extension.
+    #[wasm_bindgen(getter_with_clone)]
+    pub url: String,
+}
+
+impl From<&navara_material::SpriteSheet> for SpriteSheet {
+    fn from(value: &navara_material::SpriteSheet) -> Self {
+        SpriteSheet {
+            id: value.id.clone(),
+            url: value.url.clone(),
+        }
+    }
+}
+
+fn to_sprite_sheets(sheets: Vec<SpriteSheet>) -> Vec<navara_material::SpriteSheet> {
+    sheets
+        .into_iter()
+        .map(|s| navara_material::SpriteSheet {
+            id: s.id,
+            url: s.url,
+        })
+        .collect()
+}
+
+/// Accepts MapLibre's two `sprite` forms: a URL becomes one sheet with id
+/// `"default"`.
+fn deserialize_sprite<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> Result<Option<Vec<SpriteSheet>>, D::Error> {
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum Sprite {
+        Url(String),
+        Sheets(Vec<SpriteSheet>),
+    }
+    Ok(
+        Option::<Sprite>::deserialize(deserializer)?.map(|sprite| match sprite {
+            Sprite::Url(url) => vec![SpriteSheet {
+                id: "default".to_string(),
+                url,
+            }],
+            Sprite::Sheets(sheets) => sheets,
+        }),
+    )
+}
+
 #[wasm_bindgen]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BillboardMaterial {
@@ -540,6 +595,18 @@ pub struct BillboardMaterial {
     pub height: Option<f32>,
     #[wasm_bindgen(getter_with_clone)]
     pub url: Option<String>,
+    /// Icon sheets that `icon` names refer to, as MapLibre's `sprite`: a URL
+    /// (a single sheet with id `"default"`) or a list of `{ id, url }`. A URL
+    /// names the sheet without extension; `<url>.json` and `<url>.png` are
+    /// fetched, or their `@2x` variants on a high-DPI screen.
+    #[wasm_bindgen(getter_with_clone)]
+    #[serde(default, deserialize_with = "deserialize_sprite")]
+    pub sprite: Option<Vec<SpriteSheet>>,
+    /// Name of the image in `sprite` to draw, in place of `url`: `<name>` in
+    /// the `"default"` sheet, `<id>:<name>` in the others. A name the sprite
+    /// lacks, or any name without a `sprite`, draws nothing.
+    #[wasm_bindgen(getter_with_clone)]
+    pub icon: Option<String>,
     #[wasm_bindgen(js_name = sizeInMeters)]
     #[serde(rename = "sizeInMeters")]
     /// Whether the size is specified in meters. If false, the size is in pixels. Default is true.
@@ -655,6 +722,8 @@ impl From<BillboardMaterial> for navara_material::BillboardMaterial {
                 .unwrap_or(default.translate_anchor),
             height: val.height.unwrap_or(default.height),
             url: val.url.unwrap_or(default.url),
+            sprite: val.sprite.map_or(default.sprite, to_sprite_sheets),
+            icon: val.icon.unwrap_or(default.icon),
             size_in_meters: val.size_in_meters.unwrap_or(default.size_in_meters),
             size_relative_to_image: val
                 .size_relative_to_image
@@ -700,6 +769,8 @@ impl<'a> From<&'a navara_material::BillboardMaterial> for BillboardMaterial {
             rotate_to_line: Some(value.rotate_to_line),
             height: Some(value.height),
             url: Some(value.url.clone()),
+            sprite: Some(value.sprite.iter().map(SpriteSheet::from).collect()),
+            icon: Some(value.icon.clone()),
             size_in_meters: Some(value.size_in_meters),
             size_relative_to_image: Some(value.size_relative_to_image),
             clamp_to_ground: Some(value.clamp_to_ground),
@@ -747,6 +818,11 @@ impl BillboardMaterial {
                 .unwrap_or(other.translate_anchor),
             height: self.height.unwrap_or(other.height),
             url: self.url.clone().unwrap_or(other.url.clone()),
+            sprite: self
+                .sprite
+                .clone()
+                .map_or_else(|| other.sprite.clone(), to_sprite_sheets),
+            icon: self.icon.clone().unwrap_or(other.icon.clone()),
             size_in_meters: self.size_in_meters.unwrap_or(other.size_in_meters),
             size_relative_to_image: self
                 .size_relative_to_image
@@ -3102,8 +3178,8 @@ pub struct HillshadeMaterial {
 #[cfg(test)]
 mod test {
     use super::{
-        PolygonMaterial, PolylineMaterial, TextMaterial, VariableAnchor, parse_anchor,
-        parse_facing, parse_geometry_types, parse_padding, parse_translate_anchor,
+        BillboardMaterial, PolygonMaterial, PolylineMaterial, TextMaterial, VariableAnchor,
+        parse_anchor, parse_facing, parse_geometry_types, parse_padding, parse_translate_anchor,
         parse_variable_anchors,
     };
     use navara_material::{Anchor, Facing, SourceGeometryType};
@@ -3328,5 +3404,45 @@ mod test {
         assert!(add(r#"{ "outline": false, "outlineShow": true }"#));
         assert!(add(r#"{ "outline": true, "outlineShow": false }"#));
         assert!(!add(r#"{ "outlineShow": false }"#));
+    }
+
+    /// `sprite` takes MapLibre's two forms; a patch without it keeps the
+    /// current sheets and icon.
+    #[test]
+    fn billboard_sprite_forms_and_merge() {
+        let parse = |json: &str| serde_json::from_str::<BillboardMaterial>(json).unwrap();
+        let sheet = |id: &str, url: &str| navara_material::SpriteSheet {
+            id: id.to_string(),
+            url: url.to_string(),
+        };
+
+        let url = navara_material::BillboardMaterial::from(parse(
+            r#"{ "sprite": "https://a/sprite", "icon": "airport" }"#,
+        ));
+        assert_eq!(url.sprite, vec![sheet("default", "https://a/sprite")]);
+        assert_eq!(url.icon, "airport");
+
+        let list = navara_material::BillboardMaterial::from(parse(
+            r#"{ "sprite": [{ "id": "maki", "url": "/maki" }, { "id": "default", "url": "/base" }] }"#,
+        ));
+        assert_eq!(
+            list.sprite,
+            vec![sheet("maki", "/maki"), sheet("default", "/base")]
+        );
+
+        let unset = navara_material::BillboardMaterial::from(parse("{}"));
+        assert!(unset.sprite.is_empty());
+        assert!(unset.icon.is_empty());
+
+        let merged = parse(r#"{ "size": 2 }"#).merge(&url);
+        assert_eq!(merged.sprite, url.sprite);
+        assert_eq!(merged.icon, "airport");
+        let replaced = parse(r#"{ "sprite": "/b", "icon": "train" }"#).merge(&url);
+        assert_eq!(replaced.sprite, vec![sheet("default", "/b")]);
+        assert_eq!(replaced.icon, "train");
+
+        let readback = BillboardMaterial::from(&list);
+        let back = readback.merge(&navara_material::BillboardMaterial::default());
+        assert_eq!(back.sprite, list.sprite);
     }
 }

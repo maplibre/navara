@@ -141,6 +141,14 @@ export type VariableAnchor = {
 };
 
 /**
+ * Icon sheets that a billboard's `icon` names refer to — MapLibre's `sprite`:
+ * a URL (one sheet whose icons are named `<name>`), or a list of sheets whose
+ * icons are named `<id>:<name>`, except those of the sheet with id
+ * `"default"`. A URL names the sheet without extension.
+ */
+export type BillboardSprite = string | { id: string; url: string }[];
+
+/**
  * Horizontal alignment of the lines of a multi-line label — MapLibre's
  * `text-justify`. `"auto"` aligns towards the horizontal side of the text's
  * `anchor`.
@@ -186,12 +194,14 @@ type ConvertStringUnionFields<T> = {
                   ? ExtrusionBase | Extract<T[K], undefined>
                   : K extends "variableAnchors"
                     ? VariableAnchor[] | Extract<T[K], undefined>
-                    : K extends "dashArray" | "declutterPadding"
-                      ? number[] | Extract<T[K], undefined>
-                      : T[K] extends object | undefined
-                        ? | ConvertStringUnionFields<T[K]>
-                          | Extract<T[K], undefined>
-                        : T[K];
+                    : K extends "sprite"
+                      ? BillboardSprite | Extract<T[K], undefined>
+                      : K extends "dashArray" | "declutterPadding"
+                        ? number[] | Extract<T[K], undefined>
+                        : T[K] extends object | undefined
+                          ? | ConvertStringUnionFields<T[K]>
+                            | Extract<T[K], undefined>
+                          : T[K];
 };
 
 /**

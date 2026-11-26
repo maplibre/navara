@@ -57,6 +57,15 @@ describe("BillboardAtlas", () => {
     expect(rect.h).toBe(8);
     expect(rect.x + rect.w).toBeLessThanOrEqual(atlas.size);
     expect(rect.y + rect.h).toBeLessThanOrEqual(atlas.size);
+    expect(rect.pixelRatio).toBe(1);
+  });
+
+  it("carries the image's pixel ratio on its rect", async () => {
+    const atlas = new BillboardAtlas({
+      initialSize: 64,
+      loadImage: async () => ({ ...solidImage(8, 8, 0), pixelRatio: 2 }),
+    });
+    expect((await mustPack(atlas, "icon")).pixelRatio).toBe(2);
   });
 
   it("writes the image pixels at the rect position", async () => {

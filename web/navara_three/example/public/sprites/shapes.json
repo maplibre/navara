@@ -1,0 +1,30 @@
+{
+  "circle": {
+    "x": 0,
+    "y": 0,
+    "width": 32,
+    "height": 32,
+    "pixelRatio": 1
+  },
+  "square": {
+    "x": 32,
+    "y": 0,
+    "width": 32,
+    "height": 32,
+    "pixelRatio": 1
+  },
+  "arrow": {
+    "x": 64,
+    "y": 0,
+    "width": 32,
+    "height": 32,
+    "pixelRatio": 1
+  },
+  "wide": {
+    "x": 0,
+    "y": 32,
+    "width": 48,
+    "height": 24,
+    "pixelRatio": 1
+  }
+}

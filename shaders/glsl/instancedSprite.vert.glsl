@@ -18,6 +18,8 @@
     // here (not baked into the attribute) so rects stay valid when the atlas
     // grows — growth only updates the uniform.
     attribute vec4 instanceUvRect;
+    // The image's pixels per CSS pixel (2 for a sprite's @2x icons).
+    attribute float instanceImagePixelRatio;
     uniform vec2 uAtlasSize;
 #endif
 
@@ -160,7 +162,7 @@ void main() {
     // Per-instance image aspect from the atlas rect (guard empty rects).
     float aspect = instanceUvRect.w > 0.0 ? instanceUvRect.z / instanceUvRect.w : 1.0;
     if (uSizeRelativeToImage) {
-        quadHeight *= instanceUvRect.w;
+        quadHeight *= instanceUvRect.w / instanceImagePixelRatio;
     }
 #else
     float aspect = 1.0;
