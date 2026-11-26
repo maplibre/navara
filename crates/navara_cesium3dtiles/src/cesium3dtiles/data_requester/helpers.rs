@@ -11,6 +11,7 @@ use crate::{
     cesium3dtiles::{ContentKind, resolve_content_url, types::Cesium3dTileContentRequesterQuery},
     glb::GlbDataRequesterMarker,
     gltf_features::GltfFeaturesDataRequesterMarker,
+    i3dm::I3dmDataRequesterMarker,
     pnts::PntsDataRequesterMarker,
 };
 
@@ -81,6 +82,7 @@ pub(crate) fn request_tile_content(
         match slot.kind {
             ContentKind::Pnts => entity.insert(PntsDataRequesterMarker),
             ContentKind::B3dm => entity.insert(B3dmDataRequesterMarker),
+            ContentKind::I3dm => entity.insert(I3dmDataRequesterMarker),
             ContentKind::Glb | ContentKind::Gltf if is_v1_1 => {
                 entity.insert(GltfFeaturesDataRequesterMarker)
             }

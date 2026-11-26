@@ -8,6 +8,8 @@ import type {
   DataRequesterRemovedEvent,
 } from "@navaramap/engine";
 
+import { embedI3dmGltf } from "../loaders/embedI3dmGltf";
+import { embedTilesetSchema } from "../loaders/embedTilesetSchema";
 import { packGltf } from "../loaders/packGltf";
 import { getImageDataFromBlob } from "../tasks/getImageDataFromBlob";
 
@@ -21,6 +23,25 @@ function fetchPriorityHint(rank: number): RequestPriority {
   if (rank >= 3) return "low";
   return "auto";
 }
+
+/**
+ * The engine reads the 3D Tiles resources a payload references by URI only
+ * once they are embedded in it.
+ */
+const EMBED_REFERENCES: Partial<
+  Record<
+    string,
+    (
+      bytes: Uint8Array<ArrayBuffer>,
+      url: string,
+      init: RequestInit,
+    ) => Promise<Uint8Array<ArrayBuffer>>
+  >
+> = {
+  gltf: packGltf,
+  i3dm: embedI3dmGltf,
+  json: embedTilesetSchema,
+};
 
 /**
  * A data requester's product is the buffer the engine owns (reported through
@@ -149,8 +170,9 @@ async function processRequestedData(
   if (signal.aborted) return;
 
   let bytes = new Uint8Array(val);
-  if (req.extension === "gltf") {
-    bytes = await packGltf(bytes, req.url, { signal, headers, priority });
+  const embed = EMBED_REFERENCES[req.extension];
+  if (embed) {
+    bytes = await embed(bytes, req.url, { signal, headers, priority });
     if (signal.aborted) return;
   }
   // MVT pbf: with the default delegated worker Rust never reads these

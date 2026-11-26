@@ -7,6 +7,10 @@ use serde_json::Value;
 
 use super::data::{PropertyColumnData, PropertyTableData, encode_no_data, infer_component_type};
 
+fn property_table_of(set: &Value) -> Option<usize> {
+    Some(set.get("propertyTable")?.as_u64()? as usize)
+}
+
 /// Parses a GLB binary and provides methods for extracting 3D Tiles 1.1
 /// feature metadata from EXT_mesh_features and EXT_structural_metadata.
 pub struct GlbSchemaParser<'a> {
@@ -73,61 +77,48 @@ impl<'a> GlbSchemaParser<'a> {
         })
     }
 
-    /// Extracts the feature count from the first FeatureIdSet in EXT_mesh_features.
-    ///
-    /// Reads `meshes[*].primitives[*].extensions.EXT_mesh_features.featureIds[0].featureCount`.
-    /// Returns 0 if the extension is not present or has no feature IDs.
-    pub fn feature_count(&self) -> u32 {
-        let meshes = match self.json.get("meshes").and_then(|m| m.as_array()) {
-            Some(m) => m,
-            None => return 0,
-        };
-
-        for mesh in meshes {
-            let primitives = match mesh.get("primitives").and_then(|p| p.as_array()) {
-                Some(p) => p,
-                None => continue,
-            };
-            for primitive in primitives {
-                if let Some(feature_count) = primitive
-                    .get("extensions")
-                    .and_then(|e| e.get("EXT_mesh_features"))
-                    .and_then(|mf| mf.get("featureIds"))
-                    .and_then(|fids| fids.as_array())
-                    .and_then(|fids| fids.first())
-                    .and_then(|fid| fid.get("featureCount"))
-                    .and_then(|fc| fc.as_u64())
-                {
-                    return feature_count as u32;
-                }
-            }
+    /// The first feature ID set of each node's `EXT_instance_features`, then
+    /// of each primitive's `EXT_mesh_features`: the sets a renderer reads by
+    /// default.
+    fn default_feature_id_sets(&self) -> impl Iterator<Item = &Value> {
+        fn first<'v>(owner: &'v Value, extension: &str) -> Option<&'v Value> {
+            owner
+                .get("extensions")?
+                .get(extension)?
+                .get("featureIds")?
+                .as_array()?
+                .first()
         }
-        0
+        let array = |key: &str| {
+            self.json
+                .get(key)
+                .and_then(Value::as_array)
+                .into_iter()
+                .flatten()
+        };
+        let instance_sets = array("nodes").filter_map(|node| first(node, "EXT_instance_features"));
+        let primitive_sets = array("meshes")
+            .filter_map(|mesh| mesh.get("primitives")?.as_array())
+            .flatten()
+            .filter_map(|primitive| first(primitive, "EXT_mesh_features"));
+        instance_sets.chain(primitive_sets)
     }
 
-    /// Gets the property table index from the first FeatureIdSet.
+    /// Largest `featureCount` of the default feature ID sets referencing
+    /// [`Self::property_table_index`]; 0 without one. Only those sets have
+    /// features.
+    pub fn feature_count(&self) -> u32 {
+        let table = self.property_table_index();
+        self.default_feature_id_sets()
+            .filter(|set| property_table_of(set) == table)
+            .filter_map(|set| set.get("featureCount")?.as_u64())
+            .max()
+            .map_or(0, |count| count as u32)
+    }
+
+    /// `propertyTable` of the first default feature ID set with one.
     pub fn property_table_index(&self) -> Option<usize> {
-        let meshes = self.json.get("meshes")?.as_array()?;
-        for mesh in meshes {
-            let primitives = match mesh.get("primitives").and_then(|p| p.as_array()) {
-                Some(p) => p,
-                None => continue,
-            };
-            for primitive in primitives {
-                if let Some(idx) = primitive
-                    .get("extensions")
-                    .and_then(|e| e.get("EXT_mesh_features"))
-                    .and_then(|mf| mf.get("featureIds"))
-                    .and_then(|fids| fids.as_array())
-                    .and_then(|fids| fids.first())
-                    .and_then(|fid| fid.get("propertyTable"))
-                    .and_then(|pt| pt.as_u64())
-                {
-                    return Some(idx as usize);
-                }
-            }
-        }
-        None
+        self.default_feature_id_sets().find_map(property_table_of)
     }
 
     /// Extracts PropertyTable data from EXT_structural_metadata.
@@ -500,6 +491,54 @@ mod tests {
     fn test_property_table_index_no_meshes() {
         let parser = make_parser_from_json(json!({}));
         assert_eq!(parser.property_table_index(), None);
+    }
+
+    // =========================================================================
+    // EXT_instance_features
+    // =========================================================================
+
+    #[test]
+    fn test_feature_id_sets_of_another_property_table_have_no_features() {
+        let parser = make_parser_from_json(json!({
+            "nodes": [
+                { "mesh": 0 },
+                {
+                    "mesh": 0,
+                    "extensions": {
+                        "EXT_instance_features": {
+                            "featureIds": [
+                                { "featureCount": 4, "propertyTable": 1 },
+                                { "featureCount": 20, "attribute": 0, "propertyTable": 0 }
+                            ]
+                        }
+                    }
+                }
+            ],
+            "meshes": [{
+                "primitives": [{
+                    "extensions": {
+                        "EXT_mesh_features": {
+                            "featureIds": [{ "featureCount": 9, "attribute": 0, "propertyTable": 0 }]
+                        }
+                    }
+                }]
+            }]
+        }));
+        assert_eq!(parser.feature_count(), 4);
+        assert_eq!(parser.property_table_index(), Some(1));
+    }
+
+    #[test]
+    fn test_property_table_index_skips_sets_without_one() {
+        let parser = make_parser_from_json(json!({
+            "meshes": [{
+                "primitives": [
+                    { "extensions": { "EXT_mesh_features": { "featureIds": [{ "featureCount": 5 }] } } },
+                    { "extensions": { "EXT_mesh_features": { "featureIds": [{ "featureCount": 5, "propertyTable": 0 }] } } }
+                ]
+            }]
+        }));
+        assert_eq!(parser.property_table_index(), Some(0));
     }
 
     // =========================================================================

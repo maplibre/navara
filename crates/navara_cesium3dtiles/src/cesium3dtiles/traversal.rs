@@ -75,7 +75,7 @@ use crate::{
     cesium3dtiles::Cesium3dTilesNestedMetadataDataRequesterMarker,
     glb::RenderedCesium3dTileContentGlbMarker,
     gltf_features::RenderedCesium3dTileContentGltfFeaturesMarker,
-    pnts::RenderedCesium3dTileContentPntsMarker,
+    i3dm::RenderedCesium3dTileContentI3dmMarker, pnts::RenderedCesium3dTileContentPntsMarker,
 };
 
 use super::{
@@ -738,6 +738,7 @@ fn toggle_rendered_slot_visible(
 ///
 /// - `.pnts` → [`RenderedCesium3dTileContentPntsMarker`] + [`Aabb`]
 /// - `.b3dm` → [`RenderedCesium3dTileContentB3dmMarker`]
+/// - `.i3dm` → [`RenderedCesium3dTileContentI3dmMarker`]
 /// - `.glb`, `.gltf` → [`RenderedCesium3dTileContentGlbMarker`]
 /// - `.glb`, `.gltf` 3D Tiles 1.1 → [`RenderedCesium3dTileContentGltfFeaturesMarker`] + [`Aabb`]
 ///
@@ -785,6 +786,10 @@ fn update_or_spawn_rendered_tile(
             }
             ContentKind::B3dm => {
                 entity.insert(RenderedCesium3dTileContentB3dmMarker);
+                false
+            }
+            ContentKind::I3dm => {
+                entity.insert(RenderedCesium3dTileContentI3dmMarker);
                 false
             }
             ContentKind::Glb | ContentKind::Gltf if is_v1_1 => {

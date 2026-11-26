@@ -10,6 +10,7 @@ use navara_material::{
 use navara_math::{Transform, Vec3};
 use navara_parser::pnts::{PNTS_HEADER_SIZE, PntsHeader, parse_json_to_struct};
 
+use crate::feature_table::{f32x3, global_bytes, global_vec3};
 use crate::tile_content_parser::{ParseContext, ParsedTileContent, TileContentParser};
 
 use super::{RenderedCesium3dTileContentPntsMarker, requester::PntsDataRequesterMarker};
@@ -194,6 +195,8 @@ fn read_pnts(pnts: &[u8]) -> Option<(ModelInternalMaterial, Vec3, usize)> {
         point_cloud: true,
         point_cloud_geodetic_normal: Vec3::ZERO,
         point_cloud_layout: Some(layout),
+        gltf_feature_ids: false,
+        gltf_property_table: None,
     };
     Some((internal, positions_center, binary_offset + binary.len()))
 }
@@ -243,35 +246,6 @@ fn split_feature_table(pnts: &[u8]) -> Option<(&[u8], &[u8], usize)> {
     let json = pnts.get(PNTS_HEADER_SIZE..binary_offset)?;
     let binary = pnts.get(binary_offset..binary_offset.checked_add(binary_length)?)?;
     Some((json, binary, binary_offset))
-}
-
-/// Reads a float32 vec3 global semantic, given inline as `[x, y, z]` or as a
-/// `{"byteOffset"}` into the feature table binary.
-fn global_vec3(value: &serde_json::Value, binary: &[u8]) -> Option<Vec3> {
-    if let Some(bytes) = global_bytes::<12>(value, binary) {
-        return Some(f32x3(bytes));
-    }
-    let [x, y, z] = value.as_array()?.as_slice() else {
-        return None;
-    };
-    Some(Vec3::new(x.as_f64()?, y.as_f64()?, z.as_f64()?))
-}
-
-/// Reads a little-endian float32 vec3.
-fn f32x3(bytes: &[u8; 12]) -> Vec3 {
-    let p = bytes.as_chunks::<4>().0;
-    let read = |b: [u8; 4]| f64::from(f32::from_le_bytes(b));
-    Vec3::new(read(p[0]), read(p[1]), read(p[2]))
-}
-
-/// The `N` bytes a `{"byteOffset"}` global semantic points to in the feature
-/// table binary; `None` when it is inline or does not fit in the binary.
-fn global_bytes<'a, const N: usize>(
-    value: &serde_json::Value,
-    binary: &'a [u8],
-) -> Option<&'a [u8; N]> {
-    let start = usize::try_from(value.get("byteOffset")?.as_u64()?).ok()?;
-    binary.get(start..)?.first_chunk::<N>()
 }
 
 /// Offset into the tile of the `byte_length` bytes at `byte_offset` of the

@@ -2,6 +2,8 @@ const CESIUM_SPECS =
   "https://raw.githubusercontent.com/CesiumGS/cesium/main/Specs/Data/Cesium3DTiles";
 const SAMPLES =
   "https://raw.githubusercontent.com/CesiumGS/3d-tiles-samples/main";
+const CESIUM_MODELS =
+  "https://raw.githubusercontent.com/CesiumGS/cesium/main/Specs/Data/Models/glTF-2.0";
 
 export type Dataset = {
   group: string;
@@ -20,8 +22,8 @@ const specs = (group: string, names: string[], note?: string): Dataset[] =>
   }));
 
 /**
- * Wraps a tileset without a transform, which would sit at the Earth's center,
- * as the external tileset of a root placed by `transform`.
+ * Wraps a tileset or glTF without a transform, which would sit at the Earth's
+ * center, as the content of a root placed by `transform`.
  */
 const placed = (url: string, transform: number[], box: number[]) =>
   `data:application/json,${encodeURIComponent(
@@ -115,6 +117,7 @@ export const DATASETS: Dataset[] = [
     "ContentMetadata",
     "GroupMetadata",
     "TilesetMetadata",
+    "ExternalSchema",
   ].flatMap((name) => [
     {
       group: "Metadata",
@@ -133,13 +136,48 @@ export const DATASETS: Dataset[] = [
     group: "MultipleContents",
     name: "MultipleContents",
     url: `${CESIUM_SPECS}/MultipleContents/MultipleContents/tileset_1.1.json`,
-    note: "Tile `contents`: the B3DM renders, the I3DM is skipped",
+    note: "Tile `contents`: a B3DM and an I3DM render together",
   },
+  ...specs("Instanced", [
+    "InstancedOrientation",
+    "InstancedOct32POrientation",
+    "InstancedQuantized",
+    "InstancedQuantizedOct32POrientation",
+    "InstancedRTC",
+    "InstancedZeroRTC",
+    "InstancedScale",
+    "InstancedScaleNonUniform",
+    "InstancedWithBatchIds",
+    "InstancedWithBatchTable",
+    "InstancedWithBatchTableBinary",
+    "InstancedWithoutBatchTable",
+    "InstancedWithTransform",
+    "InstancedTextured",
+    "InstancedRedMaterial",
+    "InstancedWithCopyright",
+  ]),
   ...specs(
     "Instanced",
-    ["InstancedOrientation", "InstancedWithBatchTable", "InstancedRTC"],
-    "I3DM: not supported, skipped",
+    ["InstancedGltfExternal", "InstancedWithoutNormals"],
+    "I3DM with a glTF referenced by URI (gltfFormat 0)",
   ),
+  {
+    group: "Instanced",
+    name: "BoxInstanced (EXT_mesh_gpu_instancing)",
+    url: placed(
+      `${CESIUM_MODELS}/BoxInstanced/glTF/box-instanced.gltf`,
+      // ENU at (-75.152408, 39.9471, 13 m), scaled 5x: the instances span
+      // ±10 m vertically.
+      [
+        4.833054361860749, 1.281243745467188, 0, 0, -0.8226610647256213,
+        3.1032078488354995, 3.8331879447152417, 0, 0.9822496158733259,
+        -3.7052011432076077, 3.2104003146788007, 0, 1254719.7023, -4733001.4696,
+        4073492.6578, 1,
+      ],
+      [0, 0, 0, 3, 0, 0, 0, 3, 0, 0, 0, 3],
+    ),
+    note: "glTF instancing with EXT_instance_features: click an instance for its `box` row",
+  },
   ...specs(
     "Composite",
     ["Composite", "CompositeOfComposite"],
@@ -160,7 +198,7 @@ export const DATASETS: Dataset[] = [
     group: "3d-tiles-samples 1.0",
     name: "TilesetWithTreeBillboards",
     url: `${SAMPLES}/1.0/TilesetWithTreeBillboards/tileset.json`,
-    note: "I3DM: not supported, skipped",
+    note: "I3DM trees over a B3DM",
   },
   {
     group: "3d-tiles-samples 1.1",

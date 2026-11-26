@@ -89,14 +89,18 @@ impl TileContentParser for GltfFeaturesParser {
                 batch_length: batch_length as u32,
                 instance_feature_indices: None,
             },
-            appearance_modifier: Some(Box::new(|material: &mut navara_material::ModelMaterial| {
-                material.internal = Some(ModelInternalMaterial {
-                    draco_attributes: None,
-                    point_cloud: false,
-                    point_cloud_geodetic_normal: Vec3::ZERO,
-                    point_cloud_layout: None,
-                });
-            })),
+            appearance_modifier: Some(Box::new(
+                move |material: &mut navara_material::ModelMaterial| {
+                    material.internal = Some(ModelInternalMaterial {
+                        draco_attributes: None,
+                        point_cloud: false,
+                        point_cloud_geodetic_normal: Vec3::ZERO,
+                        point_cloud_layout: None,
+                        gltf_feature_ids: true,
+                        gltf_property_table: property_table_index.map(|index| index as u32),
+                    });
+                },
+            )),
             extra_components: None,
         })
     }

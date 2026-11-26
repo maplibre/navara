@@ -25,7 +25,7 @@ Google Photorealistic 3D Tiles from Google Maps Platform are supported. A tile w
 | -------------------------------------------- | --------------------------------------------------------------------- |
 | b3dm (Batched 3D Model)                      | ⚠️ glTF 2.0 payloads only                                             |
 | pnts (Point Cloud)                           | ⚠️ Part of the feature table, see [PNTS attributes](#pnts-attributes) |
-| i3dm (Instanced 3D Model)                    | ❌                                                                    |
+| i3dm (Instanced 3D Model)                    | ⚠️ Triangle meshes only                                               |
 | cmpt (Composite)                             | ❌                                                                    |
 | External tileset (`tileset.json` as content) | ✅                                                                    |
 
@@ -55,6 +55,8 @@ Navara reads only part of the pnts feature table. Point colors are interpreted a
 | GLB POINTS primitive         | Point cloud rendering for glTF meshes with `mode: POINTS` (3D Tiles 1.1 point cloud). |
 | `EXT_mesh_features`          | Feature identification via FeatureId sets in glTF meshes.                             |
 | `EXT_structural_metadata`    | Access to per-feature metadata via property tables embedded in glTF assets.           |
+| `EXT_mesh_gpu_instancing`    | Instanced triangle meshes, drawn in one draw call per mesh. Points and lines draw once. |
+| `EXT_instance_features`      | Feature identification per instance, for picking and styling each instance.           |
 | Tileset metadata             | Tileset, tile, content and group `metadata`, see [Metadata](#metadata).               |
 | `KHR_draco_mesh_compression` | Decoding of Draco-compressed mesh data.                                               |
 | `KHR_mesh_quantization`      | Quantized vertex attributes for compact glTF assets.                                  |
@@ -84,7 +86,7 @@ Navara reads the metadata of the tileset, tiles, contents and groups, written in
 - Tile, content and group metadata arrive with each feature set in the layer's `featureCreated` event, as `content.metadata: { tile?, content?, group? }` where `content.type` is `"3d-tiles"`. Each picked feature carries the same `content` in the view's `featureClick` / `featureHover` / `featureEnter` events.
 - Tileset metadata and the schema arrive once per load in the layer's `tilesetLoaded` event, and stay readable as `layer.tileset`.
 
-The schema must be inline in the root tileset JSON: `schemaUri` is not fetched. As in CesiumJS, every tile resolves against the root tileset's `schema` and `groups`, and those of an external (nested) tileset are ignored. Metadata in implicit tiling subtrees is not read.
+The schema is read from the root tileset JSON, inline or through `schemaUri`. As in CesiumJS, every tile resolves against the root tileset's `schema` and `groups`, and those of an external (nested) tileset are ignored. Metadata in implicit tiling subtrees is not read.
 
 ```typescript
 const layer = view.addLayer({ type: "3d-tiles", source: tileset });

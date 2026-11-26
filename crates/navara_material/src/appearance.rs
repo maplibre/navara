@@ -1297,6 +1297,12 @@ pub struct ModelInternalMaterial {
     pub point_cloud_geodetic_normal: Vec3,
     /// Where the points sit in the bin; `Some` for PNTS.
     pub point_cloud_layout: Option<PointCloudLayout>,
+    /// The glTF names its feature IDs with `EXT_mesh_features` /
+    /// `EXT_instance_features`, not a B3DM `_BATCHID`.
+    pub gltf_feature_ids: bool,
+    /// The property table the batch IDs index. Only the feature ID sets
+    /// referencing it have features.
+    pub gltf_property_table: Option<u32>,
 }
 
 /// Where the points of a PNTS tile sit in its bin, which is the whole tile.

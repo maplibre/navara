@@ -40,7 +40,7 @@ use crate::{
     cesium3dtiles::Cesium3dTilesNestedMetadataDataRequesterMarker,
     cesium3dtiles::traversal::select_tiles, glb::RenderedCesium3dTileContentGlbMarker,
     gltf_features::RenderedCesium3dTileContentGltfFeaturesMarker,
-    pnts::RenderedCesium3dTileContentPntsMarker,
+    i3dm::RenderedCesium3dTileContentI3dmMarker, pnts::RenderedCesium3dTileContentPntsMarker,
 };
 use bevy_ecs::{
     change_detection::DetectChanges,
@@ -382,6 +382,7 @@ pub fn update_cesium3dtiles_layer(
         Or<(
             With<RenderedCesium3dTileContentPntsMarker>,
             With<RenderedCesium3dTileContentB3dmMarker>,
+            With<RenderedCesium3dTileContentI3dmMarker>,
             With<RenderedCesium3dTileContentGltfFeaturesMarker>,
             With<RenderedCesium3dTileContentGlbMarker>,
         )>,

@@ -2309,6 +2309,12 @@ pub struct ModelInternalMaterial {
     #[wasm_bindgen(getter_with_clone, js_name = pointCloudLayout)]
     #[serde(rename = "pointCloudLayout")]
     pub point_cloud_layout: Option<PointCloudLayout>,
+    #[wasm_bindgen(js_name = gltfFeatureIds)]
+    #[serde(rename = "gltfFeatureIds")]
+    pub gltf_feature_ids: bool,
+    #[wasm_bindgen(js_name = gltfPropertyTable)]
+    #[serde(rename = "gltfPropertyTable")]
+    pub gltf_property_table: Option<u32>,
 }
 
 impl<'a> From<&'a navara_material::ModelInternalMaterial> for ModelInternalMaterial {
@@ -2325,6 +2331,8 @@ impl<'a> From<&'a navara_material::ModelInternalMaterial> for ModelInternalMater
             draco_attributes,
             point_cloud_geodetic_normal: value.point_cloud_geodetic_normal.into(),
             point_cloud_layout: value.point_cloud_layout.as_ref().map(Into::into),
+            gltf_feature_ids: value.gltf_feature_ids,
+            gltf_property_table: value.gltf_property_table,
         }
     }
 }
@@ -2343,6 +2351,8 @@ impl From<ModelInternalMaterial> for navara_material::ModelInternalMaterial {
             draco_attributes,
             point_cloud_geodetic_normal: value.point_cloud_geodetic_normal.into(),
             point_cloud_layout: value.point_cloud_layout.map(Into::into),
+            gltf_feature_ids: value.gltf_feature_ids,
+            gltf_property_table: value.gltf_property_table,
         }
     }
 }
