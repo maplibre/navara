@@ -34,10 +34,15 @@ export class CloudsEffectDesc extends EffectDesc<
   }
 
   createPass() {
-    const pass = new Clouds(this.view.camera.raw, this.view.atmosphere, {
-      ...this.config.clouds,
-      enabled: this.config.visible ?? true,
-    });
+    const pass = new Clouds(
+      this.view.camera.raw,
+      this.view.atmosphere,
+      {
+        ...this.config.clouds,
+        enabled: this.config.visible ?? true,
+      },
+      this.ctx.getRenderer().capabilities.reversedDepthBuffer,
+    );
 
     const mrtPass = this.find<MRTPassEffectDesc>("mrt");
     invariant(mrtPass?.depthBuffer);

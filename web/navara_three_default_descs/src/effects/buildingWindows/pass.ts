@@ -4,6 +4,7 @@ import {
   type MRTPassEffectDesc,
 } from "@navaramap/three";
 import BuildingWindowsFragment from "@shaders/glsl/buildingWindows.frag.glsl?raw";
+import DepthConventionChunk from "@shaders/glsl/chunks/depth_convention.glsl?raw";
 import SelectiveEffectMaskChunk from "@shaders/glsl/chunks/selective_effect_mask.glsl?raw";
 import { depth as DepthChunk } from "@takram/three-geospatial/shaders";
 import { Pass as PostProcessingPass } from "postprocessing";
@@ -47,6 +48,7 @@ const fragmentShader = /* glsl */ `
 #include <packing>
 ${NORMAL_PACKING_SHADER}
 ${SelectiveEffectMaskChunk}
+${DepthConventionChunk}
 ${DepthChunk}
 ${BuildingWindowsFragment}
 `;

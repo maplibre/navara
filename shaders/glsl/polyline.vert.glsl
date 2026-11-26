@@ -278,7 +278,11 @@ void main() {
         // a wide extent, and the faces it draws are the far ones. Clamped to
         // the far plane they still cover the ground, and the fragment shader
         // writes the ground's depth.
-        gl_Position.z = min(gl_Position.z, gl_Position.w);
+        #ifdef USE_REVERSED_DEPTH_BUFFER
+            gl_Position.z = max(gl_Position.z, 0.0);
+        #else
+            gl_Position.z = min(gl_Position.z, gl_Position.w);
+        #endif
     #endif
     vViewPosition = -positionEC.xyz;
 

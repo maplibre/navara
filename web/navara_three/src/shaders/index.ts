@@ -11,7 +11,10 @@ export * from "@takram/three-geospatial/shaders";
 export const NORMAL_PACKING_SHADER: string = packing;
 
 /**
- * Three's `packing` chunk, for the MRT pass's packed depth buffers – check
- * `depthBufferPacking` / `globeDepthBufferPacking` for the packing in use.
+ * Three's `packing` chunk, for reading the MRT pass's depth copies – check
+ * `depthBufferPacking` / `globeDepthBufferPacking` for the packing in use:
+ * `RGBADepthPacking` copies decode with `unpackRGBAToDepth`, while the float
+ * copies of a reversed depth buffer (`BasicDepthPacking`, the default) are
+ * read from `.r`. Its `perspectiveDepthToViewZ` handles reversed depth.
  */
 export const DEPTH_PACKING_SHADER: string = ShaderChunk.packing;

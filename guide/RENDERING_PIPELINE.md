@@ -226,11 +226,55 @@ effects once and tune them via `update()`, don't add/remove per frame.
   the GLSL is exported as `NORMAL_PACKING_SHADER`. A naive `xy * 2 - 1`
   reconstruction produces wrong shading. (Known inconsistency: the raw
   sprite/text shaders use a local `xy * 0.5 + 0.5` packing.)
-- **Depth** follows three.js packing conventions — check
-  `depthBufferPacking` / `globeDepthBufferPacking` on the MRT desc and use the
-  helpers in `DEPTH_PACKING_SHADER` (three's `packing` chunk).
+- **Depth** follows the view's depth convention (below); read a copy's
+  packing from `depthBufferPacking` / `globeDepthBufferPacking` on the MRT
+  desc.
 - **Shadow buffer G channel** is the albedo-output flag (see `lit` below) — a
   deferred lighting pass uses it as its "shade this pixel" mask.
+
+### Depth convention
+
+`ThreeView` renders depth reversed by default (`reversedDepthBuffer`, through
+three's `EXT_clip_control` support, and only with `EXT_color_buffer_float`
+for the float depth copies): window depth 1 at the near plane and 0 at
+the far plane, clip z in `[0, w]`. three flips depth functions, the depth
+clear value and polygon offset itself. Without the extensions the view falls
+back to the logarithmic depth buffer, where every shader writes
+`gl_FragDepth`; with both options off, depth is three's standard one.
+`renderer.capabilities.reversedDepthBuffer` / `logarithmicDepthBuffer` say
+which, and shaders see three's `USE_REVERSED_DEPTH_BUFFER` /
+`USE_LOGARITHMIC_DEPTH_BUFFER` defines — a `RawShaderMaterial` does not.
+
+|                                       | reversed                           | logarithmic / standard            |
+| ------------------------------------- | ---------------------------------- | --------------------------------- |
+| depth buffers (G-buffer, composer)    | `DEPTH32F_STENCIL8`                | `DEPTH24_STENCIL8`                |
+| depth copies (globe depth, all depth) | R32F, `BasicDepthPacking`          | RGBA8, `RGBADepthPacking`         |
+| far plane, cleared depth, sky         | 0                                  | 1                                 |
+| nearer surface                        | larger depth                       | smaller depth                     |
+
+- Shaders read the convention from `chunks/depth_convention`
+  (`nvr_readDepthCopy`, `nvr_isFarDepth`, `nvr_isNearerDepth`,
+  `nvr_depthTowardCamera`) and convert with `chunks/depth_pars_fragment`
+  (`nvr_viewDistanceAtDepth`, `nvr_depthAtViewDistance`); never compare a
+  depth with 1.0 or take NDC z as `2 * depth - 1`. Effect shaders loaded
+  `?raw` through takram's `resolveIncludes` include the convention chunk as
+  `nvr/depthConvention`. Label depths (SDF text, sprites) go through
+  `chunks/label_depth_pars_fragment` (`nvr_fromLogDepth`).
+- The reversed sky test is `depth <= 0.0`, with no margin: a reversed depth
+  falls toward 0 like near / distance, so a fixed margin such as 2^-23 would
+  also take the far ~11 % of a far plane 1e6 times the near one. The float
+  copies keep the cleared 0 exact. Code that cannot include the chunk (a
+  GLSL 3 `RawShaderMaterial`, TS picking) compares with exactly 0 too.
+- Geometry pinned to the far plane writes clip z = 0 when reversed (z = w is
+  its near plane), and clamps to the far plane use `max(z, 0)`.
+- three's `perspectiveDepthToViewZ` decodes a reversed depth itself; code that
+  flips it first (`1.0 - depth`) decodes it twice.
+- Frustum corners sit at NDC z 1 (near) and 0 (far) when reversed
+  (`FrustumCorners` in `@navaramap/three-csm`).
+- Third-party code patched for a reversed depth, each throwing when its anchor
+  moves: takram's sky quad (`SkyMesh`), aerial perspective sky test
+  (`patchLightingTermsShader`), clouds material and shadow cascades (`Clouds`),
+  and postprocessing's circle of confusion (`DepthOfField`).
 
 ### The alpha-channel blending invariant
 
@@ -348,18 +392,18 @@ hundreds of kilometres below it (see `navara_geometry::ground_volume`). A
 clipped back face is never counted, and the drape vanishes around the camera.
 `setupMaterialForDrape` therefore clamps every draped material's depth to the
 far plane (`chunks/drape_depth_clamp_*`, after `<logdepthbuf_vertex>` /
-`<logdepthbuf_fragment>`): `gl_Position.z` is capped at `w` so nothing is
-clipped, and the depth is written per fragment, from the log depth's `w` or
-from the unclamped window depth, saturating at the far plane, which is still
-behind the terrain.
+`<logdepthbuf_fragment>`): `gl_Position.z` is capped at the far plane (`w`,
+or 0 with a reversed depth) so nothing is clipped, and the depth is written per
+fragment, from the log depth's `w` or from the unclamped window depth,
+saturating at the far plane, which is still behind the terrain.
 
 The ground `PolylineMeshDesc`'s volume (`NVR_GROUND_POLYLINE` in
 `polyline.vert.glsl`) has the same
 problem: over a wide extent it reaches thousands of kilometres down, and the
 faces it rasterizes are the far ones, so around the camera's nadir they fall
 past the far plane and the line gets a hole. Its vertex shader caps
-`gl_Position.z` at `w` the same way; no depth needs restoring, since its
-fragment shader writes the ground's depth.
+`gl_Position.z` at the far plane the same way; no depth needs restoring, since
+its fragment shader writes the ground's depth.
 
 The consequence that governs everything else: **the final pass has no depth
 test, so one pixel can be covered by several back faces** where the volume
@@ -377,9 +421,10 @@ listed on the function) and leaves the rest shaded on the volume:
 `chunks/drape_ground_fragment` right after `#include <normal_fragment_begin>`,
 so everything that reads `normal` or `vViewPosition` afterwards sees the
 ground: normal maps, the polygon enhancer's `origNormal` snapshot (its G-buffer
-normal and specular), and the lighting. The depth-to-eye-distance inverse,
-including the logarithmic depth case, is `chunks/globe_depth_pars_fragment`,
-shared with the ground `PolylineMeshDesc`. The drape binds the render pass's
+normal and specular), and the lighting. The depth-to-eye-distance inverse
+is `chunks/depth_pars_fragment`, included through
+`chunks/globe_depth_pars_fragment` and shared with the ground
+`PolylineMeshDesc`. The drape binds the render pass's
 own refs to its copy targets, and the polyline binds the view's
 (`ViewContext.getGlobeDepthTextureUniform()`/`getGlobeNormalTextureUniform()`).
 Both are pointed at the copy targets every frame.

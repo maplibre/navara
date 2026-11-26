@@ -115,6 +115,7 @@ Navara draws only when something changes, so the frame rate and frame time cover
 | Draw details              | Draw calls, triangles, geometries and textures of the latest drawn frame, and shader programs compiled in the last 5 s. A count that never settles means something recompiles every frame. |
 | Screen buffers            | Render targets sized to the screen, by the pass that owns them.                                                                                                                            |
 | Buffer viewer             | One of the renderer's images in a corner of the map: scene color, normals, roughness, reflectance, depth (as distance), shadows, selective effects, emissive. Unavailable buffers say why. |
+| Overdraw | A heat map of the fragments drawn at each pixel in the last frame, from blue (one) to white (64 or more), with a legend and the mean and maximum per pixel. It counts the fragments the GPU shades, hidden ones included where a shader writes `gl_FragDepth` (the logarithmic depth buffer); it can also count every fragment, or only those passing the depth test. Counting doubles the scene's GPU time while shown. |
 | Record frames             | The next N drawn frames' timings and per-pass costs, downloaded as JSON.                                                                                                                   |
 
 GPU times need the `EXT_disjoint_timer_query_webgl2` WebGL extension (Chrome on desktop). Without it, the GPU columns are empty.

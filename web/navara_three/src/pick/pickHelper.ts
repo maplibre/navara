@@ -1,5 +1,9 @@
+import DepthConventionChunk from "@shaders/glsl/chunks/depth_convention.glsl?raw";
 import {
   AlwaysDepth,
+  DepthStencilFormat,
+  DepthTexture,
+  FloatType,
   WebGLRenderer,
   WebGLRenderTarget,
   Frustum,
@@ -30,7 +34,7 @@ export type PickHelperOptions = {
 };
 
 /**
- * Writes the packed globe depth into the depth buffer, so draped meshes can
+ * Writes the globe depth copy into the depth buffer, so draped meshes can
  * be stencil-clipped against the terrain as in the main pass.
  */
 function createGlobeDepthScene(globeDepth: RefThree<Texture>): Scene {
@@ -43,10 +47,11 @@ function createGlobeDepthScene(globeDepth: RefThree<Texture>): Scene {
     `,
     fragmentShader: /* glsl */ `
       #include <packing>
+      ${DepthConventionChunk}
       uniform sampler2D tGlobeDepth;
       void main() {
         vec2 uv = gl_FragCoord.xy / vec2(textureSize(tGlobeDepth, 0));
-        gl_FragDepth = unpackRGBAToDepth(texture2D(tGlobeDepth, uv));
+        gl_FragDepth = nvr_readDepthCopy(tGlobeDepth, uv);
       }
     `,
     colorWrite: false,
@@ -231,19 +236,11 @@ export class PickHelper {
     const width = this._renderer.getContext().drawingBufferWidth;
     const height = this._renderer.getContext().drawingBufferHeight;
 
-    this.pickRenderTarget = new WebGLRenderTarget(width, height, {
-      format: RGBAFormat,
-      depthBuffer: true,
-      stencilBuffer: true,
-    });
+    this.pickRenderTarget = this.createPickTarget(width, height);
 
     if (options?.debug) {
       this.debugBufferView = new BufferView(width, height);
-      this.debugRenderTarget = new WebGLRenderTarget(width, height, {
-        format: RGBAFormat,
-        depthBuffer: true,
-        stencilBuffer: true,
-      });
+      this.debugRenderTarget = this.createPickTarget(width, height);
     }
   }
 
@@ -494,6 +491,26 @@ export class PickHelper {
     this._renderer.setRenderTarget(origRenderTarget);
     this._renderer.setClearColor(origClearColor, origClearAlpha);
     this._renderer.autoClear = origAutoClear;
+  }
+
+  /**
+   * A pick target. Its depth matches the main pass's: a reversed depth is
+   * only precise in floating point, which a target with stencil gets only
+   * from a float depth texture.
+   */
+  private createPickTarget(width: number, height: number): WebGLRenderTarget {
+    // three takes only `null` for "no depth texture".
+    let depthTexture: DepthTexture | null = null;
+    if (this._renderer.capabilities.reversedDepthBuffer) {
+      depthTexture = new DepthTexture(width, height, FloatType);
+      depthTexture.format = DepthStencilFormat;
+    }
+    return new WebGLRenderTarget(width, height, {
+      format: RGBAFormat,
+      depthBuffer: true,
+      stencilBuffer: true,
+      depthTexture,
+    });
   }
 
   public setSize(width: number, height: number) {

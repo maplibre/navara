@@ -5,8 +5,8 @@
 // replaces `normal` instead, so the drape is shaded without the terrain's
 // relief. Placed right after <normal_fragment_begin>, so everything reading
 // `normal` afterwards sees the replacement.
-float nvrDrapeGroundW = nvr_globeEyeDistance(unpackRGBAToDepth(
-    texture2D(tGlobeDepth, gl_FragCoord.xy / vec2(textureSize(tGlobeDepth, 0)))
+float nvrDrapeGroundW = nvr_viewDistanceAtDepth(nvr_readDepthCopy(
+    tGlobeDepth, gl_FragCoord.xy / vec2(textureSize(tGlobeDepth, 0))
 ));
 vec3 nvrGroundViewPosition = vViewPosition * (nvrDrapeGroundW / vViewPosition.z);
 

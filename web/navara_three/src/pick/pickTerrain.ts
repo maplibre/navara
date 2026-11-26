@@ -13,6 +13,8 @@ import {
   PlaneGeometry,
   Mesh,
   OrthographicCamera,
+  FloatType,
+  UnsignedByteType,
 } from "three";
 
 class DepthPickPass {
@@ -22,7 +24,11 @@ class DepthPickPass {
   private sampleTarget: WebGLRenderTarget;
   private material: ShaderMaterial;
 
-  constructor() {
+  /**
+   * @param floatDepth - The sampled depth copy holds floats (a reversed
+   * depth); the sample is then read back as a float instead of RGBA bytes.
+   */
+  constructor(private readonly floatDepth: boolean) {
     // Create reusable resources
     this.material = new ShaderMaterial({
       uniforms: {
@@ -46,6 +52,10 @@ class DepthPickPass {
           gl_FragColor = depthColor;
         }
       `,
+      // A copy: a fresh depth buffer holds 1.0, which a reversed depth test
+      // rejects the quad against.
+      depthTest: false,
+      depthWrite: false,
     });
 
     const geometry = new PlaneGeometry(2, 2);
@@ -55,7 +65,11 @@ class DepthPickPass {
     this.scene.add(this.quad);
 
     this.camera = new OrthographicCamera(-1, 1, 1, -1, 0, 1);
-    this.sampleTarget = new WebGLRenderTarget(1, 1, { format: RGBAFormat });
+    this.sampleTarget = new WebGLRenderTarget(1, 1, {
+      format: RGBAFormat,
+      type: floatDepth ? FloatType : UnsignedByteType,
+      depthBuffer: false,
+    });
   }
 
   update(depthTexture: Texture, samplePos: Vector2) {
@@ -69,10 +83,14 @@ class DepthPickPass {
     renderer.setRenderTarget(null);
   }
 
-  render(renderer: WebGLRenderer): Uint8Array {
+  private createPixels(): Uint8Array | Float32Array {
+    return this.floatDepth ? new Float32Array(4) : new Uint8Array(4);
+  }
+
+  render(renderer: WebGLRenderer): Uint8Array | Float32Array {
     this.renderSample(renderer);
 
-    const pixels = new Uint8Array(4);
+    const pixels = this.createPixels();
     renderer.readRenderTargetPixels(this.sampleTarget, 0, 0, 1, 1, pixels);
 
     return pixels;
@@ -84,10 +102,10 @@ class DepthPickPass {
    * PBO before this returns, so later renders into the sample target don't
    * affect the result.
    */
-  renderAsync(renderer: WebGLRenderer): Promise<Uint8Array> {
+  renderAsync(renderer: WebGLRenderer): Promise<Uint8Array | Float32Array> {
     this.renderSample(renderer);
 
-    const pixels = new Uint8Array(4);
+    const pixels = this.createPixels();
     return renderer.readRenderTargetPixelsAsync(
       this.sampleTarget,
       0,
@@ -95,7 +113,7 @@ class DepthPickPass {
       1,
       1,
       pixels,
-    ) as Promise<Uint8Array>;
+    ) as Promise<Uint8Array | Float32Array>;
   }
 
   dispose() {
@@ -105,11 +123,18 @@ class DepthPickPass {
   }
 }
 
+/** How the renderer's depth buffer encodes depth. */
+export type DepthEncoding = "reversed" | "logarithmic" | "standard";
+
 export class TerrainPicker {
   private depthPickPass: DepthPickPass;
 
-  constructor() {
-    this.depthPickPass = new DepthPickPass();
+  /**
+   * @param depthEncoding - The renderer's depth convention. The depth copies
+   * of a reversed depth hold floats; the others are RGBA-packed.
+   */
+  constructor(private readonly depthEncoding: DepthEncoding = "standard") {
+    this.depthPickPass = new DepthPickPass(depthEncoding === "reversed");
   }
   pick(
     x: number,
@@ -162,14 +187,24 @@ export class TerrainPicker {
   }
 
   private _positionFromSample(
-    rgba: Uint8Array,
+    sample: Uint8Array | Float32Array,
     x: number,
     y: number,
     renderer: WebGLRenderer,
     camera: PerspectiveCamera,
   ): Nullable<Vector3> {
-    const logDepthOrDepth = this._unpackRGBAToDepth(rgba);
-    if (logDepthOrDepth > 0.99) {
+    // Nothing was drawn at the far plane (nvr_isFarDepth in
+    // chunks/depth_convention). Reversed, it is exactly 0. Standard, it is 1
+    // less the packed copy's precision: almost every surface is above 0.99
+    // there. Logarithmic keeps the margin it always had.
+    if (this.depthEncoding === "reversed") {
+      if (sample[0] <= 0) return null;
+      return this._reconstructWorldPosition(x, y, sample[0], renderer, camera);
+    }
+    const logDepthOrDepth = this._unpackRGBAToDepth(sample);
+    const farDepth =
+      this.depthEncoding === "logarithmic" ? 0.99 : 1 - 1 / 8388608;
+    if (logDepthOrDepth >= farDepth) {
       return null;
     }
 
@@ -183,7 +218,7 @@ export class TerrainPicker {
   }
 
   // Ref: https://github.com/mrdoob/three.js/blob/f38421e7bf5bc37aac7d4ebbe66ad0cc15550c39/src/renderers/shaders/ShaderChunk/packing.glsl.js#L56-L58
-  private _unpackRGBAToDepth(rgba: Uint8Array): number {
+  private _unpackRGBAToDepth(rgba: Uint8Array | Float32Array): number {
     // Constants
     const UnpackDownscale = 255 / 256; // 0..1 -> fraction (excluding 1)
     const PackFactors = [1.0, 256.0, 256.0 * 256.0, 256.0 * 256.0 * 256.0];
@@ -260,7 +295,7 @@ export class TerrainPicker {
 
     let clipCoords: Vector4;
 
-    if (renderer.capabilities.logarithmicDepthBuffer) {
+    if (this.depthEncoding === "logarithmic") {
       const logDepthBufFC = 2.0 / Math.log2(far + 1.0);
 
       const linearDepth = Math.pow(2, depth / (logDepthBufFC * 0.5)) - 1.0;
@@ -295,11 +330,12 @@ export class TerrainPicker {
         eyeCoordinate.z,
       ).applyMatrix4(camera.matrixWorld);
     } else {
-      // Linear depth buffer case
+      // Standard or reversed depth: NDC z is the depth in [0, 1] when
+      // reversed, and spans [-1, 1] otherwise.
       clipCoords = new Vector4(
         screenCoords.x,
         screenCoords.y,
-        depth * 2.0 - 1.0,
+        this.depthEncoding === "reversed" ? depth : depth * 2.0 - 1.0,
         1.0,
       );
 

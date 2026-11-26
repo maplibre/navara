@@ -1,5 +1,6 @@
 #include "core/packing"
 #include "core/depth"
+#include "nvr/depthConvention"
 #include "core/transform"
 
 uniform sampler2D uLightTex0; // color,intensity
@@ -120,6 +121,7 @@ float getViewZ(const float depth) {
 
 void mainImage(const in vec4 inputColor, const in vec2 uv, out vec4 outputColor) {
     float depth = readDepth(uv);
+    bool sky = nvr_isFarDepth(depth);
     depth = reverseLogDepth(depth, cameraNear, cameraFar);
 
     float viewZ = getViewZ(depth);
@@ -134,7 +136,7 @@ void mainImage(const in vec4 inputColor, const in vec2 uv, out vec4 outputColor)
     
     // Get surface normal if surface lighting is enabled
     vec3 normal = vec3(0.0);
-    if (useSurfaceLighting && depth < 0.9999) {
+    if (useSurfaceLighting && !sky) {
         vec4 packedNormal = texture2D(normalBuffer, uv);
         normal = unpackVec2ToNormal(packedNormal.xy);
         // Transform normal from view space to world space

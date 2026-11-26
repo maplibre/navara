@@ -1,4 +1,4 @@
-import { Effect, type EffectOptions } from "@navaramap/three";
+import { Effect, createReplacer, type EffectOptions } from "@navaramap/three";
 import { DepthOfFieldEffect, BlendFunction } from "postprocessing";
 import type { Camera } from "three";
 
@@ -18,12 +18,24 @@ export const DEFAULT_DEPTH_OF_FIELD_OPTIONS: Required<DepthOfFieldOptions> = {
   bokehScale: 7,
 };
 
+// postprocessing turns a reversed depth into a standard one before calling
+// three's perspectiveDepthToViewZ, which undoes a reversed depth itself.
+const COC_REVERSED_DEPTH_FLIP =
+  "#elif defined(USE_REVERSED_DEPTH_BUFFER)\ndepth=1.0-depth;\n";
+
 export class DepthOfField extends Effect<
   DepthOfFieldEffect,
   DepthOfFieldOptions
 > {
   constructor(camera: Camera, options?: DepthOfFieldOptions) {
-    super(camera, new DepthOfFieldEffect(), options);
+    const effect = new DepthOfFieldEffect();
+    // Throws once postprocessing stops flipping, so the patch goes with it.
+    const coc = effect.cocMaterial;
+    coc.fragmentShader = createReplacer(coc.fragmentShader).replace(
+      COC_REVERSED_DEPTH_FLIP,
+      "",
+    ).source;
+    super(camera, effect, options);
   }
 
   protected onMounted(): void {

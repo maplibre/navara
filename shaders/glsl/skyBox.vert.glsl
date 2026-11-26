@@ -19,4 +19,8 @@ void main() {
     v_sunElevation = dot(v_upView, normalize(uSunDirView));
 
     gl_Position = vec4(position.xyz, 1.0);
+    #ifdef USE_REVERSED_DEPTH_BUFFER
+        // The far plane is depth 0 here; z = 1 would be the near plane.
+        gl_Position.z = 0.0;
+    #endif
 }

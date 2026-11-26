@@ -51,6 +51,7 @@ export class MRTPassEffectDesc extends EffectDesc<
         debugNormal: !!this.config.mrt?.debugNormal,
         buffers: this.view.buffers,
         lit: this.view.lit,
+        reversedDepth: this.ctx.getRenderer().capabilities.reversedDepthBuffer,
       },
     );
 

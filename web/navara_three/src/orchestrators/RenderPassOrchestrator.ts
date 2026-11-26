@@ -1,12 +1,78 @@
 import { NamedIndexMap } from "@navaramap/core";
 import { EffectComposer, Pass as PostProcessingPass } from "postprocessing";
-import { HalfFloatType, Scene, WebGLRenderer, Group } from "three";
+import {
+  FloatType,
+  HalfFloatType,
+  Scene,
+  WebGLRenderer,
+  Group,
+  type DepthTexture,
+} from "three";
 
 import {
   estimateFixedGpuBytes,
   listRenderTargets,
   type RenderTargetEntry,
 } from "../utils/fixedGpuFootprint";
+
+/** postprocessing's own depth texture setup, which it does not type. */
+type ComposerDepthTextures = {
+  createDepthTexture(): void;
+  depthRenderTarget: { depthTexture: DepthTexture | null } | null;
+};
+
+/**
+ * Adjusts the depth textures the composer creates for its buffers (input,
+ * output and the stable copy):
+ * - With `floatDepth`, they are made `DEPTH32F_STENCIL8`, as a reversed
+ *   depth buffer is only precise in floating point and the composer gives
+ *   buffers with stencil 24-bit depth. This covers the ones it already has,
+ *   before anything is drawn, and the ones it creates later.
+ * - The input and output buffers are allocated right away (and again after
+ *   each resize, see {@link allocateBuffers}). The composer copies the input
+ *   buffer's depth into the stable copy before the first pass draws into it;
+ *   unallocated, that copy reads the canvas instead, whose depth format a
+ *   float one cannot be copied from.
+ */
+function setupDepthTextures(
+  composer: EffectComposer,
+  renderer: WebGLRenderer,
+  floatDepth: boolean,
+): void {
+  const c = composer as unknown as ComposerDepthTextures;
+  const toFloat = () => {
+    if (!floatDepth) return;
+    for (const texture of [
+      composer.inputBuffer.depthTexture,
+      composer.outputBuffer.depthTexture,
+      c.depthRenderTarget?.depthTexture,
+    ]) {
+      if (texture) texture.type = FloatType;
+    }
+  };
+  toFloat();
+  const create = c.createDepthTexture.bind(c);
+  c.createDepthTexture = () => {
+    create();
+    toFloat();
+    allocateBuffers(composer, renderer);
+  };
+}
+
+/**
+ * Allocates the composer's input and output buffers while it keeps a stable
+ * depth copy (see {@link setupDepthTextures}). Resizing disposes them, so
+ * this runs after each resize too.
+ */
+function allocateBuffers(
+  composer: EffectComposer,
+  renderer: WebGLRenderer,
+): void {
+  const c = composer as unknown as ComposerDepthTextures;
+  if (!c.depthRenderTarget) return;
+  renderer.initRenderTarget(composer.inputBuffer);
+  renderer.initRenderTarget(composer.outputBuffer);
+}
 
 export type RenderPassOrchestratorOptions = {
   halfFloat?: boolean;
@@ -48,17 +114,26 @@ export class RenderPassOrchestrator {
 
   private passMap = new NamedIndexMap<NamedPass>();
 
-  constructor(renderer: WebGLRenderer, options: RenderPassOrchestratorOptions) {
+  constructor(
+    private readonly renderer: WebGLRenderer,
+    options: RenderPassOrchestratorOptions,
+  ) {
     // Setup render pass
     this.effectComposer = new EffectComposer(renderer, {
       stencilBuffer: true,
       frameBufferType: (options.halfFloat ?? true) ? HalfFloatType : undefined,
       multisampling: options.multisampling,
     });
+    setupDepthTextures(
+      this.effectComposer,
+      renderer,
+      renderer.capabilities.reversedDepthBuffer,
+    );
   }
 
   setSize(width: number, height: number) {
     this.effectComposer.setSize(width, height);
+    allocateBuffers(this.effectComposer, this.renderer);
   }
 
   render() {

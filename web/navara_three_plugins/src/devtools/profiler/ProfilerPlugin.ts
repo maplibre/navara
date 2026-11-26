@@ -29,6 +29,7 @@ import {
   type NetworkSourceMatcher,
   type NetworkSourceStats,
 } from "./networkMeter";
+import { OverdrawView } from "./overdrawView";
 import { PassProfiler, type PassSample } from "./passProfiler";
 
 export type ProfilerPluginOptions = DevtoolPluginOptions;
@@ -73,8 +74,8 @@ function msClass(ms: number | undefined): string {
 /**
  * Performance readouts for a running view: frame rate and frame time, where
  * each frame's time goes (per render pass, CPU and GPU), engine memory
- * against its budget, downloads per source, background work, and a buffer
- * viewer. Everything is sampled only while enabled. Hover any row for what
+ * against its budget, downloads per source, background work, a buffer
+ * viewer and an overdraw heat map. Everything is sampled only while enabled. Hover any row for what
  * it means.
  */
 export class ProfilerPlugin extends DevtoolPlugin {
@@ -85,6 +86,7 @@ export class ProfilerPlugin extends DevtoolPlugin {
   private passes!: PassProfiler;
   private readonly network = new NetworkMeter();
   private viewer!: BufferViewer;
+  private overdraw!: OverdrawView;
   private readonly matchers: NetworkSourceMatcher[] = [];
   private readonly sources = new Map<string, SourceInfo>();
   /** Pass costs of the latest drawn frame. */
@@ -132,6 +134,7 @@ export class ProfilerPlugin extends DevtoolPlugin {
     this.renderer = this.ctx.getRenderer();
     this.passes = new PassProfiler(this.ctx, this.renderer);
     this.viewer = new BufferViewer(this.view, this.ctx);
+    this.overdraw = new OverdrawView(this.view, this.ctx);
     this.view.on("sourceAdded", this.onSourceAdded);
 
     const ui = this.ui;
@@ -189,6 +192,7 @@ export class ProfilerPlugin extends DevtoolPlugin {
     this.folders = { breakdown, memory, downloads, background, draws, targets };
 
     this.viewer.buildUi(ui);
+    this.overdraw.buildUi(ui);
 
     const capture = ui.addFolder({ title: "Record frames", expanded: false });
     hint(
@@ -214,6 +218,7 @@ export class ProfilerPlugin extends DevtoolPlugin {
     this.passes.enable();
     this.network.enable();
     this.viewer.enable();
+    this.overdraw.enable();
     this.uiTicker.start();
     this.memoryTicker.start();
   }
@@ -223,6 +228,7 @@ export class ProfilerPlugin extends DevtoolPlugin {
     this.passes.disable();
     this.network.disable();
     this.viewer.disable();
+    this.overdraw.disable();
     this.uiTicker.stop();
     this.memoryTicker.stop();
     this.finishCapture();
@@ -234,6 +240,7 @@ export class ProfilerPlugin extends DevtoolPlugin {
     this.view.off("sourceAdded", this.onSourceAdded);
     this.passes.dispose();
     this.viewer.dispose();
+    this.overdraw.dispose();
   }
 
   /** Whether GPU timings are available (`EXT_disjoint_timer_query_webgl2`). */
@@ -326,6 +333,7 @@ export class ProfilerPlugin extends DevtoolPlugin {
    */
   private refreshUi(): void {
     this.viewer.refresh();
+    this.overdraw.refresh();
     if (!this.shown) return;
     const now = performance.now();
     const open = this.folders;

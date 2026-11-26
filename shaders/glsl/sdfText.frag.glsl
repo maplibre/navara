@@ -57,6 +57,8 @@ uniform vec2 uSdfAtlasSize;
 uniform float uSdfThreshold;
 uniform bool uOffsetDepth;
 uniform float uFarPlane;
+
+#include "chunks/label_depth_pars_fragment.glsl"
 uniform vec3 uBackgroundColor;
 uniform float uBackgroundOutlineWidth;
 uniform vec3 uBackgroundOutlineColor;
@@ -147,8 +149,8 @@ void main() {
     // When offsetDepth is enabled, multiply input by 0.8 to shift depth slightly
     // closer to camera.
     float depthInput = uOffsetDepth ? vFragDepth * 0.8 : vFragDepth;
-    gl_FragDepth = log(depthInput) / log(uFarPlane + 1.0);
-    gl_FragDepth = clamp(gl_FragDepth + 0.0001, 0.0, 1.0);
+    float logDepth = clamp(log(depthInput) / log(uFarPlane + 1.0) + 0.0001, 0.0, 1.0);
+    gl_FragDepth = nvr_fromLogDepth(logDepth, uFarPlane);
     // Picking mode
     if (nvr_uPickable > 0.0) {
         gl_FragColor = vec4(nvr_batchIdToColor(vBatchID), 1.0);
@@ -331,13 +333,13 @@ void main() {
         //     via instance draw order (the background occupies the first slot
         //     of the label's glyph run, so it is drawn first).
         // AA band ramps smoothly because fillAlpha is the weight.
-        gl_FragDepth = clamp(gl_FragDepth - (0.0002 * fillAlpha), 0.0, 1.0);
+        gl_FragDepth = nvr_fromLogDepth(clamp(logDepth - (0.0002 * fillAlpha), 0.0, 1.0), uFarPlane);
         gl_FragColor = vec4(color, alpha);
     } else {
         float alpha = fillAlpha * opacity;
         if (alpha <= 0.0) discard;
         gl_FragColor = vec4(vColor, alpha);
-        gl_FragDepth = clamp(gl_FragDepth - 0.0001, 0.0, 1.0);
+        gl_FragDepth = nvr_fromLogDepth(clamp(logDepth - 0.0001, 0.0, 1.0), uFarPlane);
     }
 
     #ifndef USE_SHADOWMAP_DEPTH

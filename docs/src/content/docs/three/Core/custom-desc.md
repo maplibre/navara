@@ -298,7 +298,7 @@ Buffer encodings to be aware of when sampling:
 
 - The normal buffer's RG channels hold the **view-space normal in octahedral encoding**. Decode with `unpackVec2ToNormal()` from the `NORMAL_PACKING_SHADER` GLSL string exported by `@navaramap/three` (a plain `xy * 2 - 1` reconstruction produces wrong shading).
 - The shadow buffer holds `R = shadow amount` (0 = lit .. 1 = fully shadowed) and `G = albedo-output flag` (1 when the fragment's color is plain albedo via the [`lit`](../../../three/api/threeview-properties/#lit) option. A deferred lighting pass uses it as its "shade this pixel" mask).
-- Depth textures follow Three.js packing conventions: check `depthBufferPacking` / `globeDepthBufferPacking` on the MRT pass and unpack with the helpers in the `DEPTH_PACKING_SHADER` GLSL string exported by `@navaramap/three` (Three.js's `packing` chunk).
+- Depth textures follow Three.js packing conventions: check `depthBufferPacking` / `globeDepthBufferPacking` on the MRT pass and read them with the helpers in the `DEPTH_PACKING_SHADER` GLSL string exported by `@navaramap/three` (Three.js's `packing` chunk). With the reversed depth buffer (the default) the copies are one-channel floats (R32F, `BasicDepthPacking`): read `.r`, and treat `0` as the sky. Otherwise they are `RGBADepthPacking`: decode with `unpackRGBAToDepth`.
 
 ## Custom Mesh Desc
 

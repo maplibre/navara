@@ -30,6 +30,7 @@
 #include <packing>
 
 #include "core/depth"
+#include "nvr/depthConvention"
 #include "core/interleavedGradientNoise"
 #include "core/packing"
 #include "core/transform"
@@ -389,7 +390,7 @@ void main() {
   }
 
   float depth = readDepth(vUv);
-  if (depth > 0.9999) {
+  if (nvr_isFarDepth(depth)) {
     gl_FragColor = SSR_NO_HIT;
     return;
   }

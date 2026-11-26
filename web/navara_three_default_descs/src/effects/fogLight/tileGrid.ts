@@ -12,6 +12,7 @@ import {
   RGFormat,
   Sphere,
   Vector3,
+  WebGLCoordinateSystem,
 } from "three";
 
 import {
@@ -302,7 +303,11 @@ export class FogLightTileGrid {
 
     const halfW = 0.5 * width;
     const halfH = 0.5 * height;
-    const frustum = this.frustum.setFromProjectionMatrix(vpM);
+    const frustum = this.frustum.setFromProjectionMatrix(
+      vpM,
+      WebGLCoordinateSystem,
+      camera.reversedDepth,
+    );
     const view = this.viewScratch;
     const ndc = this.ndcScratch;
     const sphere = this.sphereScratch;

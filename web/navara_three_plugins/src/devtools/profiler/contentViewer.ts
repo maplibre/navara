@@ -253,8 +253,15 @@ export class BufferViewer {
   /** Shades depth from the camera's height above the ground (black) outward. */
   private updateDepthScale(): void {
     const camera = this.view.camera;
+    const { logarithmicDepthBuffer, reversedDepthBuffer } =
+      this.ctx.getRenderer().capabilities;
     this.pass.setDepthScale(
-      this.ctx.getRenderer().capabilities.logarithmicDepthBuffer,
+      logarithmicDepthBuffer
+        ? "logarithmic"
+        : reversedDepthBuffer
+          ? "reversed"
+          : "standard",
+      camera.raw.near,
       camera.far,
       Math.abs(camera.positionGeographic.height),
     );
@@ -274,7 +281,12 @@ export class BufferViewer {
       if (depth) this.updateDepthScale();
       return r;
     };
-    this.pass.mode = view.mode;
+    // Depth copies of a reversed depth hold floats, not RGBA.
+    this.pass.mode =
+      view.mode === "packedDepth" &&
+      this.ctx.getRenderer().capabilities.reversedDepthBuffer
+        ? "depth"
+        : view.mode;
     this.pass.channel = view.channel ?? 0;
     this.pass.brightness = this.state.brightness;
     this.pass.corner = CORNERS[this.state.corner];

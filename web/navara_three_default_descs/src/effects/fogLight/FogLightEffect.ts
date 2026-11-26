@@ -1,4 +1,5 @@
 import type { Color } from "@navaramap/three";
+import DepthConventionChunk from "@shaders/glsl/chunks/depth_convention.glsl?raw";
 import FogLightFragment from "@shaders/glsl/fogLight.frag.glsl?raw";
 import { resolveIncludes } from "@takram/three-geospatial";
 import { depth, packing, transform } from "@takram/three-geospatial/shaders";
@@ -203,6 +204,7 @@ export class FogLightEffect extends PostProcessingEffect {
           depth,
           transform,
         },
+        nvr: { depthConvention: DepthConventionChunk },
       }),
       {
         uniforms,

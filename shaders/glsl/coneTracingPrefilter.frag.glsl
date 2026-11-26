@@ -1,3 +1,6 @@
+#include <packing>
+#include "nvr/depthConvention"
+
 uniform sampler2D inputBuffer;
 uniform sampler2D depthBuffer;
 uniform float exposure;
@@ -47,7 +50,7 @@ void main() {
       float depth = texelFetch(depthBuffer, coord * depthSize / inputSize, 0).r;
       // Ref: https://en.wikipedia.org/wiki/Relative_luminance
       float luma = dot(color, vec3(0.2126, 0.7152, 0.0722));
-      float geometry = step(depth, 0.9999);
+      float geometry = nvr_isFarDepth(depth) ? 0.0 : 1.0;
       sum += vec4(color / (1.0 + luma * exposure), 1.0) * geometry;
       taps += 1.0;
     }

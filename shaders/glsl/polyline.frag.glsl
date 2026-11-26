@@ -174,7 +174,7 @@ in vec3 vNormal;
     vec3 nvr_groundPositionEc(vec2 ndcXy, float depth) {
         vec4 nearPoint = inverseProjectionMatrix * vec4(ndcXy, -1.0, 1.0);
         vec3 nearPointEc = nearPoint.xyz / nearPoint.w;
-        return nearPointEc * (nvr_globeEyeDistance(depth) / -nearPointEc.z);
+        return nearPointEc * (nvr_viewDistanceAtDepth(depth) / -nearPointEc.z);
     }
 #endif
 
@@ -195,10 +195,9 @@ void main() {
     // Keep the fragment only where the ground point lies within half a line
     // width of the segment, between its miter planes.
     vec2 nvrGroundUv = gl_FragCoord.xy / vec2(textureSize(tGlobeDepth, 0));
-    float nvrGroundDepth = unpackRGBAToDepth(texture2D(tGlobeDepth, nvrGroundUv));
-    // Sky. A cleared 1.0 packs to vec4(1), which decodes to 1.0 or one f32
-    // step below it; no reconstructible ground depth is that close to 1.
-    if (nvrGroundDepth >= 1.0 - 1.0 / 8388608.0) {
+    float nvrGroundDepth = nvr_readDepthCopy(tGlobeDepth, nvrGroundUv);
+    // Sky: no ground under this fragment.
+    if (nvr_isFarDepth(nvrGroundDepth)) {
         discard;
     }
 
@@ -236,8 +235,8 @@ void main() {
     }
 
     // Depth-test at the ground point so geometry in front of it occludes the
-    // line. The bias covers the RGBA packing error against the globe depth.
-    gl_FragDepth = max(nvrGroundDepth - 1e-6, 0.0);
+    // line, nudged toward the camera past the copy's rounding.
+    gl_FragDepth = nvr_depthTowardCamera(nvrGroundDepth);
 
     vec3 nvrGroundViewPosition = -positionEc;
 #ifdef NVR_GROUND_POLYLINE_NORMALS

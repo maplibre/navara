@@ -4,6 +4,12 @@ import type { WebGLRenderer } from "three";
 
 import { GpuTimer, type GpuTimerResult } from "./gpuTimer";
 
+/**
+ * Drawn frames in a row a pass may miss before its GPU time is dropped, so a
+ * pass that skips some frames keeps its time while a disabled one loses it.
+ */
+const GPU_TIME_STALE_AFTER_MISSED_FRAMES = 10;
+
 /** One pass's cost in the latest tick. */
 export type PassSample = {
   name: string;
@@ -12,7 +18,8 @@ export type PassSample = {
   cpuMs: number;
   /**
    * GPU time of the latest tick whose queries resolved, summed over every
-   * run of the pass in that tick; `undefined` without timer-query support.
+   * run of the pass in that tick; `undefined` without timer-query support,
+   * and once several frames in a row were drawn without the pass.
    */
   gpuMs: number | undefined;
   calls: number;
@@ -43,6 +50,12 @@ export class PassProfiler {
   /** Per pass, the GPU time summed so far for the newest tick resolved. */
   private readonly gpuSums = new Map<string, { tick: number; ms: number }>();
   private tick = 0;
+  /** Per pass, the drawn frame (index in {@link drawnFrames}) it last ran in. */
+  private readonly lastRun = new Map<string, number>();
+  /** The last tick any pass ran in. */
+  private lastDrawn = -1;
+  /** Ticks in which any pass ran, counted since enabling. */
+  private drawnFrames = 0;
   private enabled = false;
 
   constructor(
@@ -66,6 +79,9 @@ export class PassProfiler {
     for (const pass of Array.from(this.wrapped.keys())) this.unwrap(pass);
     this.samples.clear();
     this.gpuSums.clear();
+    this.lastRun.clear();
+    this.lastDrawn = -1;
+    this.drawnFrames = 0;
   }
 
   /** Starts a tick: clears the per-tick counters and collects GPU results. */
@@ -91,6 +107,14 @@ export class PassProfiler {
       }
       sum.ms += result.ms;
       sample.gpuMs = sum.ms;
+    }
+    // A pass left out of many drawn frames in a row (disabled) has stopped
+    // running; its last time would otherwise stay forever, also in sums.
+    for (const [name, sample] of this.samples) {
+      const missed = this.drawnFrames - (this.lastRun.get(name) ?? -Infinity);
+      if (missed >= GPU_TIME_STALE_AFTER_MISSED_FRAMES) {
+        sample.gpuMs = undefined;
+      }
     }
   }
 
@@ -136,6 +160,13 @@ export class PassProfiler {
     this.wrapped.set(pass, { name, own });
     const gpu = this.gpu;
     const currentTick = () => this.tick;
+    const ran = () => {
+      if (this.lastDrawn !== this.tick) {
+        this.lastDrawn = this.tick;
+        this.drawnFrames++;
+      }
+      this.lastRun.set(name, this.drawnFrames);
+    };
     const renderer = this.renderer;
     pass.render = function (
       this: Pass,
@@ -156,6 +187,7 @@ export class PassProfiler {
         if (timed) gpu.end();
 
         sample.ran = true;
+        ran();
         sample.cpuMs += performance.now() - start;
         sample.calls += info.calls - calls;
         sample.triangles += info.triangles - triangles;
@@ -171,5 +203,6 @@ export class PassProfiler {
     this.wrapped.delete(pass);
     this.samples.delete(entry.name);
     this.gpuSums.delete(entry.name);
+    this.lastRun.delete(entry.name);
   }
 }

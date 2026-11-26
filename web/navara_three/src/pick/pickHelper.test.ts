@@ -83,6 +83,7 @@ const createRendererStub = () => {
     )[],
   };
   const renderer = {
+    capabilities: { reversedDepthBuffer: false },
     getContext: () => ({ drawingBufferWidth: 800, drawingBufferHeight: 600 }),
     getPixelRatio: () => 1,
     getClearColor: () => undefined,

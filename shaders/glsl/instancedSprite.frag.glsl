@@ -38,12 +38,15 @@ uniform float nvr_uPickable;
 uniform float uAlphaTest;
 uniform float uFarPlane;
 
+#include "chunks/label_depth_pars_fragment.glsl"
+
 void main() {
     // Logarithmic depth buffer
-    gl_FragDepth = log(vFragDepth) / log(uFarPlane + 1.0);
+    float logDepth = log(vFragDepth) / log(uFarPlane + 1.0);
 
     // Offset depth to make sure to be drawn over ellipsoid surface
-    if (uOffsetDepth) { gl_FragDepth -= 0.01; }
+    if (uOffsetDepth) { logDepth -= 0.01; }
+    gl_FragDepth = nvr_fromLogDepth(logDepth, uFarPlane);
 
     float alphaForTest = 1.0;
     float alphaForColor = 1.0;

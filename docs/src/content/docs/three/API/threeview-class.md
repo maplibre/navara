@@ -19,7 +19,6 @@ const view = new ThreeView({
   shadow: true,
   animation: true,
   backgroundColor: 0x0a0a0f,
-  logarithmicDepthBuffer: true,
 });
 const plugin = new DefaultPlugin();
 view.addPlugin(plugin);
@@ -306,11 +305,27 @@ const view = new ThreeView({
 });
 ```
 
+### reversedDepthBuffer
+
+**Type:** `boolean | undefined`
+
+**Description:** Whether to render depth reversed (1 at the near plane, 0 at the far plane) into 32-bit floating-point depth buffers. This keeps depth precise from street level to space, and the GPU can skip hidden fragments before shading them, which a logarithmic depth buffer prevents. It needs the WebGL extensions `EXT_clip_control` and `EXT_color_buffer_float`; without them, the view uses `logarithmicDepthBuffer` instead. Must be specified at initialization.
+
+**Default:** `true`
+
+**Example:**
+
+```typescript
+const view = new ThreeView({
+  reversedDepthBuffer: true,
+});
+```
+
 ### logarithmicDepthBuffer
 
 **Type:** `boolean | undefined`
 
-**Description:** Whether to use a logarithmic depth buffer. When `true`, depth precision is improved at large scales. Some effects do not support this, so it should be set to `false` in such cases.
+**Description:** Whether to use a logarithmic depth buffer where the reversed depth buffer is turned off or unsupported. It keeps depth precise at large scales, but every shader then writes its own depth, so the GPU shades hidden fragments too. With both options `false`, depth uses three.js's standard depth buffer, which loses precision far from the camera. While the reversed depth buffer is in use, this option has no effect (the view logs a warning when it is set to `true`); set `reversedDepthBuffer: false` to use a logarithmic depth buffer.
 
 **Default:** `true`
 

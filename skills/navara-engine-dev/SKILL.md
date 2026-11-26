@@ -45,6 +45,13 @@ self-contained present-tense fact a newcomer can verify against the code.
   add dead code and obscure the real contract. If an invariant is worth
   enforcing, assert it (e.g. `debug_assert!`/`unreachable!` in Rust, `throw`
   in TS) instead of silently handling it.
+- **Never assume a depth convention.** The view renders reversed depth (1 at
+  the near plane, 0 at the far plane) and falls back to a logarithmic one, so
+  a shader that compares depth with 1.0, takes NDC z as `2 * depth - 1`, or
+  pins a quad to the far plane at clip z = w breaks in one of them. Go
+  through `chunks/depth_convention` / `chunks/depth_pars_fragment`; a
+  `RawShaderMaterial` gets no depth-mode define from three. See
+  `guide/RENDERING_PIPELINE.md` "Depth convention".
 - **A shader that branches on `gl_FrontFacing` on a transparent `DoubleSide`
   material needs `forceSinglePass = true`.** Otherwise three draws a `BackSide`
   and a `FrontSide` pass: the winding flips, so `gl_FrontFacing` is true from

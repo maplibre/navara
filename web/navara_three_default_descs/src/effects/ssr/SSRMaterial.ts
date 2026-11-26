@@ -1,6 +1,7 @@
 // Research and development by https://github.com/takram-design-engineering
 
 import { assertType } from "@navaramap/core";
+import DepthConventionChunk from "@shaders/glsl/chunks/depth_convention.glsl?raw";
 import fragmentShader from "@shaders/glsl/ssr.frag.glsl?raw";
 import vertexShader from "@shaders/glsl/ssr.vert.glsl?raw";
 import { resolveIncludes } from "@takram/three-geospatial";
@@ -95,6 +96,7 @@ export class SSRMaterial extends ShaderMaterial {
           packing,
           transform,
         },
+        nvr: { depthConvention: DepthConventionChunk },
       }),
       vertexShader,
       uniforms: {
