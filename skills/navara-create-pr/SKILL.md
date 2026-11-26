@@ -67,7 +67,7 @@ A recent `gh` (2.105.0 has it; check `gh pr create --help`) uploads images and v
 - Pass the same file with `--attach`. `gh` uploads it and rewrites the reference to the uploaded asset.
 - A path in `--body-file` is relative to that file's directory.
 - An attached file that the body does not reference is appended to the end of the body.
-- A video is referenced the same way, `![name](./video/out.mp4)`. `gh` rewrites it to a bare asset URL on its own line, which GitHub renders as a player. A video cannot go in a table cell.
+- A video is referenced the same way, `![name](./video/out.mp4)`. `gh` rewrites it to a bare asset URL on its own line, which GitHub renders as a player, so put the reference on its own line, not in a table cell.
 
 ## Opening the PR
 
