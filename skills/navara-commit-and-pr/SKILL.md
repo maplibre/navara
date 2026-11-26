@@ -1,14 +1,14 @@
 ---
-name: navara-create-pr
+name: navara-commit-and-pr
 description: >
-  Write the Pull Request description from .github/pull_request_template.md,
-  capture and attach screenshots, open the PR as a draft against
-  maplibre/navara, and mark it ready after the user approves. Also covers commit
-  messages. Use when asked to create, open or write a PR (description) for the
-  current branch, or to commit.
+  Commit messages and Pull Requests for this repository: write one-line commit
+  messages, write the PR description from .github/pull_request_template.md,
+  capture and attach screenshots or videos, open the PR as a draft against
+  maplibre/navara, and mark it ready after the user approves. Use when asked to
+  commit, or to create, open or write a PR (description) for the current branch.
 ---
 
-# Creating a Pull Request
+# Commits and Pull Requests
 
 ## Flow
 
