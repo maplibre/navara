@@ -9,7 +9,8 @@
     flat varying vec3 vOutline;
 
     // MapLibre's SDF icon encoding: the shape's edge sits at alpha 0.75, and
-    // alpha drops by 1/8 per icon pixel outward.
+    // alpha drops by 1/8 per icon pixel outward. Icon pixels are CSS pixels:
+    // a `@2x` sheet spreads each step over 2 sheet pixels.
     const float SDF_EDGE = 0.75;
     const float SDF_PX = 8.0;
 
