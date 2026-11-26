@@ -28,11 +28,16 @@ Same principle as the description: the subject alone should tell what the commit
 
 ## Writing the description
 
-Keep it terse: a reviewer should see what changed at a glance. Leave implementation details to the code.
+Keep it terse: a reviewer should see what changed at a glance. Leave implementation details to the code, and say each thing in one section only.
+
+Describe the final diff, not the conversation; the reviewer never saw the chat. A requirement the user added later folds into the item it refines instead of becoming a nested bullet. Leave out who asked for what, code-level trial and error, and bugs introduced and fixed within the branch.
 
 - **Title:** a Conventional Commit, e.g. `feat: support instanced 3D Tiles`. Use `feat!:` for a breaking change.
 - **Overview:** state the problem and how the PR solves it, in two or three sentences. Do not list what was implemented; the next section does that. Put a related issue URL first when there is one.
-- **What I've done:** bullets for spec changes, and for public APIs added, changed or removed. Write "No public API change." when that is the case. No implementation details.
+  - For a complex feature or a performance change, add the approaches that were compared and why this one was chosen, with the measurements for a performance change. A future reader needs this to know what was already ruled out.
+- **What I've done:** bullets for spec changes, and for public APIs added, changed or removed. Write "No public API change." when that is the case.
+  - One sentence per bullet, with any qualification inside it: "Supported I3DM (`.i3dm`) content, including its batch table and glTF referenced by URI (`gltfFormat: 0`)." Nest bullets only to enumerate parallel items.
+  - Leave docs updates to the checklist and the pages used for checking to "How I tested".
 - **What I haven't done:** known limitations and out-of-scope items, as bullets. Leave it empty when there are none.
 - **How I tested:** name the example pages and datasets, and the unit-test targets.
 - **Which point I want you to review particularly:** leave it empty unless the user names something.
