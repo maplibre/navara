@@ -40,7 +40,6 @@ import { setupRTECallback } from "./rtcRteHelper";
 export class PolygonOutlineMesh extends Line2 {
   readonly ctx: EventContext;
   private resizeEventUnsubscribe?: () => void;
-  /** True when the geometry carries RTE high/low positions (GeoJSON path). */
   private useRTE = false;
 
   constructor(ctx: EventContext, mesh: NavaraPolygonMesh) {
@@ -268,6 +267,20 @@ export class PolygonOutlineMesh extends Line2 {
       }
 
       shader.vertexShader = createReplacer(shader.vertexShader)
+        .replace(
+          // LineMaterial derives the near plane for the standard depth
+          // projection only; under the reversed one it lands near half the
+          // far distance, stretching segments that cross the camera plane
+          // across the screen.
+          "float nearEstimate = - 0.5 * b / a;",
+          `
+          #ifdef USE_REVERSED_DEPTH_BUFFER
+            float nearEstimate = - b / ( a + 1.0 );
+          #else
+            float nearEstimate = - 0.5 * b / a;
+          #endif
+          `,
+        )
         .replace(
           "attribute vec3 instanceEnd;",
           `
