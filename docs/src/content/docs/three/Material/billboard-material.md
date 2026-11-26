@@ -451,7 +451,7 @@ import { Color } from "@navaramap/three";
 
 **Type:** `number | undefined`
 
-**Description:** Width of a halo drawn around a [`sprite`](#sprite) icon marked `"sdf": true`, outside its edge, in screen pixels, as MapLibre's `icon-halo-width`. The width stays the same at any icon size. Other images draw no halo. The halo can reach only as far as the distance field in the sheet does (6 icon pixels in MapLibre's sprites, times the icon's scale): a wider or more blurred halo fills the whole box of the icon.
+**Description:** Width of a halo drawn around a [`sprite`](#sprite) icon marked `"sdf": true`, outside its edge, in screen pixels, as MapLibre's `icon-halo-width`. The width stays the same at any icon size. Other images draw no halo. The halo can reach only as far as the distance field in the sheet does (6 icon pixels in MapLibre's sprites, times the icon's scale): a wider or more blurred halo is cut off there. MapLibre instead fills the whole box of the icon.
 
 All four `outline*` fields can also be set per feature from a [feature evaluator](../../api/feature-evaluator/). A field the evaluator leaves out keeps the feature's current value. Once any feature has its own halo, changing a field on the material with `layer.update()` sets that field on every feature, replacing their own values for it.
 

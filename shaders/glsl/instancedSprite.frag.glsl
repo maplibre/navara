@@ -31,7 +31,10 @@
         float inner = SDF_EDGE + haloGamma;
         float haloInner = smoothstep(inner - haloGamma, inner + haloGamma, dist);
         float haloEdge = SDF_EDGE - width / (SDF_PX * scale);
-        float halo = opacity * min(
+        // The field ends at alpha 0, where MapLibre's halo would fill the
+        // icon's whole box: fade out there over about a screen pixel instead.
+        float fieldEnd = smoothstep(0.0, 2.0 * gamma, dist);
+        float halo = opacity * fieldEnd * min(
             smoothstep(haloEdge - haloGamma, haloEdge + haloGamma, dist),
             1.0 - haloInner
         );
