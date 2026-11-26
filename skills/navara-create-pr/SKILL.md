@@ -52,7 +52,7 @@ Capture with Playwright, using the installed Chrome. Its bundled browsers are us
 
 A recent `gh` (2.105.0 has it; check `gh pr create --help`) uploads images with `--attach` on `pr create`, `pr edit` and `pr comment`.
 
-- In the body, reference each image by its local path, e.g. `![i3dm-pick](./shots/i3dm-pick.png)`.
+- In the body, reference each image by its local path in Markdown syntax, e.g. `![i3dm-pick](./shots/i3dm-pick.png)`. `gh` does not rewrite the `src` of an `<img>` tag: that reference stays broken and the image is appended to the body instead.
 - Pass the same file with `--attach`. `gh` uploads it and rewrites the reference to the uploaded asset.
 - A path in `--body-file` is relative to that file's directory.
 - An attached file that the body does not reference is appended to the end of the body.
