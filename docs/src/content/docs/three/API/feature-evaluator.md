@@ -162,10 +162,10 @@ The callback function can return an object containing the following properties:
 | `offset` | `{ x: number, y: number }` | Shift from the anchor point, `x` right and `y` down: in ems for text, in the unit of `size` for points and billboards. Overrides the material's `offset` (see [`offset`](../../../three/material/text-material/#offset)) |
 | `variableAnchors` | `{ anchor: Anchor, offset?: { x: number, y: number } }[]` | Placements the declutter pass tries in order for this label (for text features), offsets in ems. Overrides the material's [`variableAnchors`](../../../three/material/text-material/#variableanchors) |
 | `textAlign` | `"left" \| "center" \| "right" \| "auto"` | Line justification (for text features). `"auto"` follows the label's `anchor`. Overrides the material's [`textAlign`](../../../three/material/text-material/#textalign) |
-| `outlineColor` | `Color` | Outline color (for text features). Overrides the material's [`outlineColor`](../../../three/material/text-material/#outlinecolor) |
-| `outlineOpacity` | `number` | Outline opacity, range 0.0-1.0 (for text features). Overrides the material's [`outlineOpacity`](../../../three/material/text-material/#outlineopacity) |
-| `outlineWidth` | `number` | Outline thickness in 1/64 em (for text features). Overrides the material's [`outlineWidth`](../../../three/material/text-material/#outlinewidth) |
-| `outlineBlur` | `number` | Width over which the outline fades out, in 1/64 em (for text features). Overrides the material's [`outlineBlur`](../../../three/material/text-material/#outlineblur) |
+| `outlineColor` | `Color` | Outline color (for text features), or halo color of an SDF icon (for billboard features). Overrides the material's `outlineColor` ([text](../../../three/material/text-material/#outlinecolor), [billboard](../../../three/material/billboard-material/#outlinecolor)) |
+| `outlineOpacity` | `number` | Outline or SDF halo opacity, range 0.0-1.0 (for text/billboard features). Overrides the material's `outlineOpacity` ([text](../../../three/material/text-material/#outlineopacity), [billboard](../../../three/material/billboard-material/#outlineopacity)) |
+| `outlineWidth` | `number` | Outline thickness in 1/64 em (for text features), or SDF halo width in screen pixels (for billboard features). Overrides the material's `outlineWidth` ([text](../../../three/material/text-material/#outlinewidth), [billboard](../../../three/material/billboard-material/#outlinewidth)) |
+| `outlineBlur` | `number` | Width over which the outline fades out, in 1/64 em (for text features) or screen pixels (for billboard features). Overrides the material's `outlineBlur` ([text](../../../three/material/text-material/#outlineblur), [billboard](../../../three/material/billboard-material/#outlineblur)) |
 | `emissive` | `Color` | Emissive color (for batched polygons/3D Tiles models/points/billboards/text, ignored on models without batch/feature ids). Pairs with `emissiveIntensity` and drives selective bloom. On text only the glyph fill glows, while the outline and background stay dark |
 | `emissiveIntensity` | `number` | Emissive intensity multiplier (for batched polygons/3D Tiles models/points/billboards/text) |
 
@@ -387,17 +387,19 @@ type EvaluatedValue = {
   /** Line justification (for text features); `"auto"` follows `anchor`.
    * Overrides the material's `textAlign` */
   textAlign?: "left" | "center" | "right" | "auto";
-  /** Outline color (for text features). Overrides the material's
-   * `outlineColor` */
+  /** Outline color (for text features), or SDF halo color (for billboard
+   * features). Overrides the material's `outlineColor` */
   outlineColor?: Color;
-  /** Outline opacity, range 0.0-1.0 (for text features). Overrides the
-   * material's `outlineOpacity` */
+  /** Outline or SDF halo opacity, range 0.0-1.0 (for text/billboard
+   * features). Overrides the material's `outlineOpacity` */
   outlineOpacity?: number;
-  /** Outline thickness in 1/64 em (for text features). Overrides the
-   * material's `outlineWidth` */
+  /** Outline thickness in 1/64 em (for text features), or SDF halo width in
+   * screen pixels (for billboard features). Overrides the material's
+   * `outlineWidth` */
   outlineWidth?: number;
-  /** Width over which the outline fades out, in 1/64 em (for text
-   * features). Overrides the material's `outlineBlur` */
+  /** Width over which the outline fades out, in 1/64 em (for text features)
+   * or screen pixels (for billboard features). Overrides the material's
+   * `outlineBlur` */
   outlineBlur?: number;
   /** Emissive color (for batched polygons/3D Tiles models/points/billboards/
    * text; ignored on models without batch/feature ids). Pairs with

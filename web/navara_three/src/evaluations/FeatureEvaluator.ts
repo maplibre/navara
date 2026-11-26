@@ -107,17 +107,19 @@ export type EvaluatableMaterialProperty = {
   /** Line justification of this label (for text). Overrides the material's
    *  `textAlign`. */
   textAlign: TextAlign;
-  /** Outline color of this label (for text). Overrides the material's
-   *  `outlineColor`. */
+  /** Outline color of this label, or halo color of this billboard's SDF
+   *  icon. Overrides the material's `outlineColor`. */
   outlineColor: AvailableMaterialProperty["outlineColor"];
-  /** Outline opacity of this label (for text). Overrides the material's
-   *  `outlineOpacity`. */
+  /** Outline opacity of this label, or halo opacity of this billboard's SDF
+   *  icon. Overrides the material's `outlineOpacity`. */
   outlineOpacity: AvailableMaterialProperty["outlineOpacity"];
-  /** Outline thickness of this label in 1/64 em (for text). Overrides the
-   *  material's `outlineWidth`. */
+  /** Outline thickness of this label in 1/64 em, or halo width of this
+   *  billboard's SDF icon in screen pixels. Overrides the material's
+   *  `outlineWidth`. */
   outlineWidth: AvailableMaterialProperty["outlineWidth"];
-  /** Width over which this label's outline fades out, in 1/64 em (for
-   *  text). Overrides the material's `outlineBlur`. */
+  /** Width over which this label's outline (1/64 em) or this billboard's
+   *  SDF halo (screen pixels) fades out. Overrides the material's
+   *  `outlineBlur`. */
   outlineBlur: AvailableMaterialProperty["outlineBlur"];
   /** Emissive color expression (for polygons/3D Tiles models/points/billboards/text). */
   emissive: AvailableMaterialProperty["emissiveColor"];
@@ -503,8 +505,9 @@ export class FeatureEvaluator {
    * - `emissiveIntensity` - Emissive intensity multiplier (for batched
    *   polygons/3D Tiles models/points/billboards/text)
    * - `outlineColor`, `outlineOpacity`, `outlineWidth`, `outlineBlur` - The
-   *   label's outline (for text); width and blur in 1/64 em, like the
-   *   material's
+   *   label's outline (for text), or the halo of an SDF icon (for
+   *   billboards); width and blur in the material's unit (1/64 em for text,
+   *   screen pixels for billboards). Unset fields keep their current value
    *
    * Note: Evaluated styles override the layer's default styles.
    *
@@ -635,6 +638,19 @@ export class FeatureEvaluator {
       }
       if ("icon" in evaluated) {
         void obj.setFeatureIconByBatchIndex(batchIndex, evaluated.icon);
+      }
+      if (
+        evaluated.outlineColor != null ||
+        evaluated.outlineOpacity != null ||
+        evaluated.outlineWidth != null ||
+        evaluated.outlineBlur != null
+      ) {
+        obj.setFeatureOutlineByBatchIndex(batchIndex, {
+          color: evaluated.outlineColor?.toHex(),
+          opacity: evaluated.outlineOpacity ?? undefined,
+          width: evaluated.outlineWidth ?? undefined,
+          blur: evaluated.outlineBlur ?? undefined,
+        });
       }
       return;
     }

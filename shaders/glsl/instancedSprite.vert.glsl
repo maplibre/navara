@@ -26,7 +26,15 @@
     // Screen pixels per icon pixel, which an SDF halo's width is divided by
     // (MapLibre's fontScale).
     flat varying float vIconScale;
+    // The SDF halo: color, then (opacity, width, blur), width and blur in
+    // screen pixels.
+    flat varying vec3 vOutlineColor;
+    flat varying vec3 vOutline;
 #endif
+uniform vec3 uOutlineColor;
+uniform float uOutlineOpacity;
+uniform float uOutlineWidth;
+uniform float uOutlineBlur;
 
 attribute float instanceBatchID;
 // Animated hide factor from the screen-space declutter pass (0 = shown,
@@ -101,8 +109,20 @@ void main() {
     bool nvr_batchRotateWithCamera = uRotateWithCamera;
     vec2 nvr_batchAnchor = uAnchor;
     vec2 nvr_batchOffset = uOffset;
+    vec3 nvr_batchOutlineColor = uOutlineColor;
+    float nvr_batchOutlineOpacity = uOutlineOpacity;
+    float nvr_batchOutlineWidth = uOutlineWidth;
+    float nvr_batchOutlineBlur = uOutlineBlur;
     vColor = uColor;
     #include "chunks/batch_texture_vertex.glsl"
+#ifdef BILLBOARD
+    vOutlineColor = nvr_batchOutlineColor;
+    vOutline = vec3(
+        nvr_batchOutlineOpacity,
+        nvr_batchOutlineWidth,
+        nvr_batchOutlineBlur
+    );
+#endif
 
     vOpacity = nvr_vOpacity * (1.0 - instanceDeclutterHide);
 

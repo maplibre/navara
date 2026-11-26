@@ -42,7 +42,7 @@ export const SPRITE_BATCH_SUPPORT: BatchTextureSupport = {
     "offsetX",
     "offsetY",
   ],
-  vec3s: ["color", "emissive"],
+  vec3s: ["color", "emissive", "outlineColor"],
 };
 
 export const TEXT_BATCH_SUPPORT: BatchTextureSupport = {

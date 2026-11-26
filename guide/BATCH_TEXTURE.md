@@ -141,12 +141,13 @@ New attributes reuse one of these patterns rather than inventing new ones:
   them). The texture allocation is zero-filled, so a non-zero default must
   be actively backfilled.
 - **Uniform-backed backfill** (the exception): `rotation`, `orientation`, and
-  sprites' `anchor`/`offset` backfill the **material's** value, passed in as
-  `BatchAttributeDefaults`. Their material value lives in a uniform, and
+  sprites' `anchor`/`offset`/`outline` backfill the **material's** value,
+  passed in as `BatchAttributeDefaults`. Their material value lives in a uniform, and
   `USE_BATCH_*` is material-wide, so the first per-feature write would
   otherwise snap every unstyled feature from the uniform to a constant. The
   mesh writes a changed material value through to every feature once the slot
-  exists (`_writeThroughOrientation` / `_writeThroughPlacement`).
+  exists (`_writeThroughOrientation` / `_writeThroughPlacement` /
+  `_writeThroughOutline`).
 - **Packed components**: Two half-attributes can share one component with a
   sign/bias encoding. Writes to one half unpack, merge, and repack so the
   other half survives. `show`/`opacity` use `sign(show) * (1 + opacity)`,
@@ -162,7 +163,8 @@ New attributes reuse one of these patterns rather than inventing new ones:
   kept a usable identity multiplier. A sprite's `offset` is two scalars,
   `offsetX` + `offsetY`, written together as one public attribute. Text's
   `outline` is likewise one attribute: a vec3 color plus opacity, width and
-  blur scalars, backfilled `(black, 1, 0, 0)`, which draws no outline.
+  blur scalars, backfilled `(black, 1, 0, 0)`, which draws no outline. A
+  sprite's SDF halo uses the same slots, backfilled with its material's halo.
 - **Sentinels**: A reserved out-of-range value can mean "fall back to the
   material default" when 0 is a legal styled value (e.g. `lineWidth < 0`,
   `size < 0`).

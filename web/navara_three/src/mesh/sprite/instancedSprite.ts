@@ -24,6 +24,7 @@ import {
   hasBatchScalarSlot,
   readBatchScalar,
   readBatchShowOpacity,
+  readBatchVec3,
   registerBatchedMaterial,
   SPRITE_BATCH_SUPPORT,
   unpackOrientation,
@@ -218,6 +219,7 @@ const _tmpSize = new Vector2();
 
 /** Reusable scratch for per-feature style writes. */
 const _tmpColorArray: [number, number, number] = [0, 0, 0];
+const _tmpOutlineColor = new Color();
 
 // Coupled with crates/navara_feature/src/geometry/point.rs::pixel_to_world
 export class InstancedSpriteMesh
@@ -245,6 +247,8 @@ export class InstancedSpriteMesh
    */
   private _orientation?: SpriteOrientation;
   private _placement?: SpritePlacement;
+  /** The material's SDF halo; undefined for a point mesh. */
+  private _outline?: SpriteOutline;
   /** Current grid resolution of the sprite quad (see {@link FLAT_QUAD_SEGMENTS}). */
   private _quadSegments = 1;
   /** Instance count of the current geometry; bounds the identity fallback. */
@@ -734,6 +738,7 @@ export class InstancedSpriteMesh
     this._cacheAnchors(positionsInfo, m.transform);
     this._orientation = spriteOrientation(m.material);
     this._placement = spritePlacement(m.material);
+    this._outline = spriteOutline(m.material);
 
     // Create Geometry
     this.geometry = this._initGeometry(positionsInfo, m);
@@ -794,7 +799,7 @@ export class InstancedSpriteMesh
           ) ?? 0,
         emissiveColor: m.material.emissiveColor ?? 0,
         emissiveIntensity: m.material.emissiveIntensity ?? 0,
-        ...resolveOutline(m.material),
+        ...outlineUniforms(spriteOutline(m.material)),
       },
     });
 
@@ -804,6 +809,7 @@ export class InstancedSpriteMesh
     // it. Mirrors BatchedSdfTextMesh._applyUpdate.
     this._writeThroughOrientation(orientation);
     this._writeThroughPlacement(placement);
+    this._writeThroughOutline(spriteOutline(m.material));
 
     // Position updates (per-instance attributes)
     {
@@ -1017,7 +1023,7 @@ export class InstancedSpriteMesh
           ) ?? 0,
         emissiveColor: m.material.emissiveColor ?? 0,
         emissiveIntensity: m.material.emissiveIntensity ?? 0,
-        ...resolveOutline(m.material),
+        ...outlineUniforms(spriteOutline(m.material)),
         rtcCenter: [m.transform.tx, m.transform.ty, m.transform.tz],
       },
     });
@@ -1585,7 +1591,83 @@ export class InstancedSpriteMesh
       rotateWithCamera: follow,
       anchor: anchorCode(this._placement.anchor),
       offset: this._placement.offset,
+      outline: this._outline && outlineTexel(this._outline),
     };
+  }
+
+  /**
+   * One feature's SDF halo, overriding the fields of the material's that
+   * `patch` sets (or of the feature's own, once it has one). No-op for a
+   * point mesh.
+   */
+  setFeatureOutlineByBatchIndex(
+    batchIndex: number,
+    patch: Partial<SpriteOutline>,
+  ): void {
+    if (!this._outline) return;
+    const material = this.material as ShaderMaterial;
+    const current = hasBatchScalarSlot(material, "outlineWidth")
+      ? this._readFeatureOutline(batchIndex)
+      : outlineTexel(this._outline);
+    if (!current) return;
+    const next: OutlineTexel = [...current];
+    if (patch.color !== undefined) {
+      _tmpOutlineColor.setHex(patch.color);
+      next[0] = _tmpOutlineColor.r;
+      next[1] = _tmpOutlineColor.g;
+      next[2] = _tmpOutlineColor.b;
+    }
+    if (patch.opacity !== undefined) next[3] = patch.opacity;
+    if (patch.width !== undefined) next[4] = patch.width;
+    if (patch.blur !== undefined) next[5] = patch.blur;
+    // An evaluator re-run (on zoom) writes the same values again.
+    if (next.every((v, i) => v === current[i])) return;
+    this._updateBatchAttribute(
+      batchIndex,
+      "outline",
+      next,
+      this._batchDefaults(),
+    );
+  }
+
+  private _readFeatureOutline(batchIndex: number): OutlineTexel | undefined {
+    const material = this.material as ShaderMaterial;
+    const color = readBatchVec3(
+      material,
+      batchIndex,
+      "outlineColor",
+      _tmpOutlineColor,
+    );
+    if (!color) return undefined;
+    return [
+      color.r,
+      color.g,
+      color.b,
+      readBatchScalar(material, batchIndex, "outlineOpacity") ?? 1,
+      readBatchScalar(material, batchIndex, "outlineWidth") ?? 0,
+      readBatchScalar(material, batchIndex, "outlineBlur") ?? 0,
+    ];
+  }
+
+  /**
+   * Push the material's changed halo fields onto every feature once a slot
+   * exists — the same guards, for the same reasons, as
+   * {@link _writeThroughOrientation}. Fields the material did not change
+   * keep each feature's own value.
+   */
+  private _writeThroughOutline(next: SpriteOutline | undefined): void {
+    const prev = this._outline;
+    this._outline = next;
+    if (!prev || !next) return;
+    if (!hasBatchScalarSlot(this.material as Material, "outlineWidth")) return;
+    const changed: Partial<SpriteOutline> = {};
+    for (const key of OUTLINE_KEYS) {
+      if (next[key] !== prev[key]) changed[key] = next[key];
+    }
+    if (Object.keys(changed).length === 0) return;
+    for (let i = 0; i < this._batchLength; i++) {
+      this.setFeatureOutlineByBatchIndex(i, changed);
+    }
   }
 
   /**
@@ -1770,15 +1852,51 @@ export class InstancedSpriteMesh
   }
 }
 
-/** The halo of SDF icons; a point material has none. */
-function resolveOutline(material: SpriteMaterial) {
-  if (!("outlineWidth" in material)) return {};
+/** The halo of SDF icons: color as 0xRRGGBB, width and blur in screen
+ *  pixels. */
+type SpriteOutline = {
+  color: number;
+  opacity: number;
+  width: number;
+  blur: number;
+};
+
+const OUTLINE_KEYS = ["color", "opacity", "width", "blur"] as const;
+
+/** A point material has no halo. */
+function spriteOutline(material: SpriteMaterial): SpriteOutline | undefined {
+  if (!("outlineWidth" in material)) return undefined;
   return {
-    outlineColor: material.outlineColor ?? 0x000000,
-    outlineOpacity: material.outlineOpacity ?? 1,
-    outlineWidth: material.outlineWidth ?? 0,
-    outlineBlur: material.outlineBlur ?? 0,
+    color: material.outlineColor ?? 0x000000,
+    opacity: material.outlineOpacity ?? 1,
+    width: material.outlineWidth ?? 0,
+    blur: material.outlineBlur ?? 0,
   };
+}
+
+function outlineUniforms(outline: SpriteOutline | undefined) {
+  if (!outline) return {};
+  return {
+    outlineColor: outline.color,
+    outlineOpacity: outline.opacity,
+    outlineWidth: outline.width,
+    outlineBlur: outline.blur,
+  };
+}
+
+/** The `outline` batch value: linear RGB, opacity, width, blur. */
+type OutlineTexel = [number, number, number, number, number, number];
+
+function outlineTexel(outline: SpriteOutline): OutlineTexel {
+  _tmpOutlineColor.setHex(outline.color);
+  return [
+    _tmpOutlineColor.r,
+    _tmpOutlineColor.g,
+    _tmpOutlineColor.b,
+    outline.opacity,
+    outline.width,
+    outline.blur,
+  ];
 }
 
 /** Starts an icon's atlas key. The generation that follows keeps a replaced

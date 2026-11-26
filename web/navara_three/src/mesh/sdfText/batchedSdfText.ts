@@ -1110,7 +1110,7 @@ export class BatchedSdfTextMesh
 
   /** The material's orientation/rotation, backfilled into a new batch slot. */
   private _orientationDefaults(): Required<
-    Omit<BatchAttributeDefaults, "anchor" | "offset">
+    Omit<BatchAttributeDefaults, "anchor" | "offset" | "outline">
   > {
     return {
       rotation: (this._material.rotation ?? 0) * MathUtils.DEG2RAD,

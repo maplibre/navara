@@ -49,6 +49,9 @@ export type BatchAttributeDefaults = {
   anchor?: number;
   /** Sprites only: the material's offset. */
   offset?: readonly [number, number];
+  /** Sprites only: the material's SDF halo as written to the `outline`
+   *  slots: linear RGB, opacity, width and blur. */
+  outline?: readonly [number, number, number, number, number, number];
 };
 
 /** vec3 attributes: three components of a row (component 3 stays scalar-poolable). */

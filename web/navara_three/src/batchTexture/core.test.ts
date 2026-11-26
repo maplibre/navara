@@ -363,6 +363,21 @@ describe("outline", () => {
     expect(readOutline(data, defines, 3)).toEqual([0, 0, 0, 1, 0, 0]);
   });
 
+  test("backfills the material's halo given in defaults (sprites)", () => {
+    const { material } = setupBatchMaterial(4, [], ["color", "outlineColor"]);
+    const halo = [1, 1, 1, 0.5, 3, 1] as const;
+    updateBatchAttribute(material, 1, "outline", [1, 0, 0, 1, 4, 0], {
+      outline: halo,
+    });
+
+    const texture = getBatchDataTexture(material);
+    invariant(texture);
+    const data = texture.image.data as Float32Array;
+    const defines = material.userData.defines;
+    expect(readOutline(data, defines, 1)).toEqual([1, 0, 0, 1, 4, 0]);
+    expect(readOutline(data, defines, 3)).toEqual([...halo]);
+  });
+
   test("non-finite components fall back to the defaults", () => {
     const { material } = setupBatchMaterial(4, [], ["color", "outlineColor"]);
     updateBatchAttribute(material, 0, "outline", [NaN, 0, 0, NaN, NaN, NaN]);

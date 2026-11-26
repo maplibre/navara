@@ -25,7 +25,8 @@ import { TILE_DATASETS } from "../../../helpers/constants";
  * - The two rows below it repeat those icons with a halo (`outline*`): a
  *   white 3 px ring, then a yellow 3 px ring blurred over 1 px. The ring is as
  *   wide around the large dot as around the small one, and the plain circle
- *   has none.
+ *   has none. In the white row the evaluator overrides the halo per feature:
+ *   the large dot gets a red 4 px ring and the plus none (`outlineWidth: 0`).
  */
 
 const CENTER = { lng: 139.7671, lat: 35.6812 };
@@ -133,6 +134,10 @@ const addSdfRow = (
     outlineWidth?: number;
     outlineBlur?: number;
   },
+  featureOutlines: Record<
+    string,
+    { outlineColor?: Color; outlineWidth?: number }
+  > = {},
 ) => {
   const data: FeatureCollection = {
     ...sdfData,
@@ -162,15 +167,25 @@ const addSdfRow = (
       icon: properties?.["icon"] as string,
       color: new Color().setStyle(properties?.["color"] as string),
       size: properties?.["size"] as number,
+      ...featureOutlines[
+        `${properties?.["icon"] as string}@${properties?.["size"] as number}`
+      ],
     }));
   });
 };
 
 addSdfRow(CENTER.lat - 0.0055, {});
-addSdfRow(CENTER.lat - 0.0072, {
-  outlineColor: new Color().setHex(0xffffff),
-  outlineWidth: 3,
-});
+addSdfRow(
+  CENTER.lat - 0.0072,
+  { outlineColor: new Color().setHex(0xffffff), outlineWidth: 3 },
+  {
+    "dot-sdf@3": {
+      outlineColor: new Color().setHex(0xe53935),
+      outlineWidth: 4,
+    },
+    "plus-sdf@1.5": { outlineWidth: 0 },
+  },
+);
 addSdfRow(CENTER.lat - 0.0089, {
   outlineColor: new Color().setHex(0xffd400),
   outlineWidth: 3,

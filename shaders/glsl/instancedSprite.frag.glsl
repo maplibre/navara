@@ -4,10 +4,9 @@
     uniform sampler2D uTexture;
     flat varying float vSdf;
     flat varying float vIconScale;
-    uniform vec3 uOutlineColor;
-    uniform float uOutlineOpacity;
-    uniform float uOutlineWidth;
-    uniform float uOutlineBlur;
+    flat varying vec3 vOutlineColor;
+    // (opacity, width, blur), width and blur in screen pixels.
+    flat varying vec3 vOutline;
 
     // MapLibre's SDF icon encoding: the shape's edge sits at alpha 0.75, and
     // alpha drops by 1/8 per icon pixel outward.
@@ -19,21 +18,24 @@
     // (MapLibre's EDGE_GAMMA).
     vec4 nvr_sdfColor(float dist, float gamma, vec3 fillColor) {
         float fill = smoothstep(SDF_EDGE - gamma, SDF_EDGE + gamma, dist);
-        if (uOutlineWidth <= 0.0 || uOutlineOpacity <= 0.0) {
+        float opacity = vOutline.x;
+        float width = vOutline.y;
+        float blur = vOutline.z;
+        if (width <= 0.0 || opacity <= 0.0) {
             return vec4(fillColor, fill);
         }
         // Distances are in icon pixels; the halo's are in screen pixels.
         float scale = max(vIconScale, 1e-4);
-        float haloGamma = uOutlineBlur * 1.19 / (SDF_PX * scale) + gamma;
+        float haloGamma = blur * 1.19 / (SDF_PX * scale) + gamma;
         float inner = SDF_EDGE + haloGamma;
         float haloInner = smoothstep(inner - haloGamma, inner + haloGamma, dist);
-        float haloEdge = SDF_EDGE - uOutlineWidth / (SDF_PX * scale);
-        float halo = uOutlineOpacity * min(
+        float haloEdge = SDF_EDGE - width / (SDF_PX * scale);
+        float halo = opacity * min(
             smoothstep(haloEdge - haloGamma, haloEdge + haloGamma, dist),
             1.0 - haloInner
         );
         float alpha = fill + (1.0 - fill) * halo;
-        vec3 rgb = (fillColor * fill + uOutlineColor * halo * (1.0 - fill))
+        vec3 rgb = (fillColor * fill + vOutlineColor * halo * (1.0 - fill))
             / max(alpha, 1e-4);
         return vec4(rgb, alpha);
     }
