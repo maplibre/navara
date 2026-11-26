@@ -1,4 +1,4 @@
-import ThreeView from "@navaramap/three";
+import ThreeView, { Color } from "@navaramap/three";
 import {
   DefaultPlugin,
   type DefaultDescriptions,
@@ -19,6 +19,9 @@ import { TILE_DATASETS } from "../../../helpers/constants";
  * - Bottom row (per-feature `icon`): circle, a gap where the icon name is not
  *   in the sprite, square, and the layer's default triangle where the
  *   evaluator returns `icon: null`.
+ * - Nearest row (`"sdf": true` icons drawn in the per-feature `color`): a red
+ *   dot, a blue dot three times larger with an edge as crisp, a black plus
+ *   with sharp corners, and a plain (non-SDF) circle in the same layer.
  */
 
 const CENTER = { lng: 139.7671, lat: 35.6812 };
@@ -102,3 +105,38 @@ view.setCamera({
 });
 
 view.attribution?.add([TILE_DATASETS.openstreetmap]);
+
+const sdfIcons = [
+  { icon: "dot-sdf", color: "#e53935", size: 1 },
+  { icon: "dot-sdf", color: "#1e63e9", size: 3 },
+  { icon: "plus-sdf", color: "#000000", size: 1.5 },
+  { icon: "circle", color: "#ffffff", size: 1 },
+];
+const sdfData: FeatureCollection = {
+  type: "FeatureCollection",
+  features: row(
+    CENTER.lat - 0.0055,
+    sdfIcons.map((s) => s.icon),
+  ).map((feature, i) => ({
+    ...feature,
+    properties: { ...sdfIcons[i] },
+  })),
+};
+const sdfLayer = view.addLayer({
+  type: "vector",
+  source: view.addSource({ type: "geojson", data: sdfData }),
+  billboard: {
+    sprite: SPRITE,
+    sizeInMeters: false,
+    sizeRelativeToImage: true,
+    anchor: "bottom",
+    clampToGround: true,
+  },
+});
+sdfLayer.on("featureCreated", ({ evaluator }) => {
+  evaluator.evaluate(({ properties }) => ({
+    icon: properties?.["icon"] as string,
+    color: new Color().setStyle(properties?.["color"] as string),
+    size: properties?.["size"] as number,
+  }));
+});

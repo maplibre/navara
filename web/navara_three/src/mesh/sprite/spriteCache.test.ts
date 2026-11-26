@@ -65,7 +65,12 @@ describe("SpriteCache", () => {
     );
     const icon = icons.get("dot");
     if (!icon) throw new Error("dot is missing");
-    expect(icon).toMatchObject({ width: 4, height: 5, pixelRatio: 1 });
+    expect(icon).toMatchObject({
+      width: 4,
+      height: 5,
+      pixelRatio: 1,
+      sdf: false,
+    });
     // Stored row 0 is the icon's bottom row: sheet y = 3 + 5 - 1.
     expect(pixelAt(icon, 0, 0)).toEqual([2, 7]);
     expect(pixelAt(icon, 3, 4)).toEqual([5, 3]);
@@ -100,6 +105,21 @@ describe("SpriteCache", () => {
       1.5,
     );
     expect(icons.get("dot")?.pixelRatio).toBe(2);
+  });
+
+  it("marks icons whose index entry has sdf: true", async () => {
+    const load = loaderOf({
+      "/s.json": sheet({
+        dot: { x: 0, y: 0, width: 4, height: 4, sdf: true },
+        flag: { x: 4, y: 0, width: 4, height: 4, sdf: "yes" },
+      }),
+    });
+    const icons = await new SpriteCache(load).get(
+      [{ id: "default", url: "/s" }],
+      1,
+    );
+    expect(icons.get("dot")?.sdf).toBe(true);
+    expect(icons.get("flag")?.sdf).toBe(false);
   });
 
   it("loads each sprite once, and duplicate sheets once", async () => {

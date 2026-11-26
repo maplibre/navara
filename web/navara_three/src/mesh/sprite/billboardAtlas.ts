@@ -19,9 +19,11 @@ export type AtlasRect = {
   h: number;
   /** The image's pixels per CSS pixel (see {@link AtlasImage.pixelRatio}). */
   pixelRatio: number;
+  /** See {@link AtlasImage.sdf}. */
+  sdf: boolean;
 };
 
-type PixelRect = Omit<AtlasRect, "pixelRatio">;
+type PixelRect = Omit<AtlasRect, "pixelRatio" | "sdf">;
 
 export type AtlasImage = {
   width: number;
@@ -31,6 +33,11 @@ export type AtlasImage = {
   /** Image pixels per CSS pixel, as a sprite's `@2x` icons have 2. Divides
    *  the image's pixel size under `sizeRelativeToImage`. Defaults to 1. */
   pixelRatio?: number;
+  /** Whether the alpha holds a signed distance field (a sprite's `"sdf":
+   *  true` icons): 0.75 at the shape's edge, more inside, as MapLibre
+   *  encodes it. RGB is ignored and the shape is drawn in the material's
+   *  color. Defaults to false. */
+  sdf?: boolean;
 };
 
 export type LoadAtlasImage = (url: string) => Promise<AtlasImage>;
@@ -149,7 +156,11 @@ export class BillboardAtlas {
       return undefined;
     }
     this._blit(image, rect);
-    return { ...rect, pixelRatio: image.pixelRatio ?? 1 };
+    return {
+      ...rect,
+      pixelRatio: image.pixelRatio ?? 1,
+      sdf: image.sdf ?? false,
+    };
   }
 
   private _allocate(w: number, h: number): PixelRect | undefined {

@@ -18,9 +18,11 @@
     // here (not baked into the attribute) so rects stay valid when the atlas
     // grows — growth only updates the uniform.
     attribute vec4 instanceUvRect;
-    // The image's pixels per CSS pixel (2 for a sprite's @2x icons).
-    attribute float instanceImagePixelRatio;
+    // x: the image's pixels per CSS pixel (2 for a sprite's @2x icons).
+    // y: 1 when its alpha is a signed distance field.
+    attribute vec2 instanceImageInfo;
     uniform vec2 uAtlasSize;
+    flat varying float vSdf;
 #endif
 
 attribute float instanceBatchID;
@@ -110,6 +112,7 @@ void main() {
 
 #ifdef BILLBOARD
     vUv = (instanceUvRect.xy + uv * instanceUvRect.zw) / uAtlasSize;
+    vSdf = instanceImageInfo.y;
 #else
     vUv = uv;
 #endif
@@ -162,7 +165,7 @@ void main() {
     // Per-instance image aspect from the atlas rect (guard empty rects).
     float aspect = instanceUvRect.w > 0.0 ? instanceUvRect.z / instanceUvRect.w : 1.0;
     if (uSizeRelativeToImage) {
-        quadHeight *= instanceUvRect.w / instanceImagePixelRatio;
+        quadHeight *= instanceUvRect.w / instanceImageInfo.x;
     }
 #else
     float aspect = 1.0;

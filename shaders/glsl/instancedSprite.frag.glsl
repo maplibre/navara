@@ -2,6 +2,18 @@
 #include "chunks/pick.glsl"
 #ifdef BILLBOARD
     uniform sampler2D uTexture;
+    flat varying float vSdf;
+
+    // MapLibre's SDF icon encoding: the shape's edge sits at alpha 0.75, and
+    // alpha drops by 1/8 per icon pixel outward.
+    const float SDF_EDGE = 0.75;
+
+    // Coverage of an SDF texel, smoothed over about 1.7 screen pixels as
+    // MapLibre's EDGE_GAMMA does.
+    float nvr_sdfCoverage(float dist) {
+        float gamma = max(0.84 * length(vec2(dFdx(dist), dFdy(dist))), 1e-4);
+        return smoothstep(SDF_EDGE - gamma, SDF_EDGE + gamma, dist);
+    }
 #endif
 
 #include "chunks/gbuffer_pars_fragment.glsl"
@@ -53,8 +65,15 @@ void main() {
     #ifdef BILLBOARD
         // vUv already targets this instance's atlas sub-rect (see vertex shader)
         vec4 color = texture(uTexture, vUv);
-        // Tint RGB only, preserve texture alpha (avoid squaring alpha)
-        color.rgb *= vColor;
+        // Outside the branch: derivatives need every pixel of the quad.
+        float sdfCoverage = nvr_sdfCoverage(color.a);
+        if (vSdf > 0.5) {
+            // The shape takes the material color; the sheet's RGB is unused.
+            color = vec4(vColor, sdfCoverage);
+        } else {
+            // Tint RGB only, preserve texture alpha (avoid squaring alpha)
+            color.rgb *= vColor;
+        }
         alphaForTest = color.a;
         alphaForColor = color.a * vOpacity;
     #else

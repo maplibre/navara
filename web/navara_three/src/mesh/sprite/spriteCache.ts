@@ -3,8 +3,9 @@ import type { AtlasImage } from "./billboardAtlas";
 /** One icon sheet of a billboard material's `sprite`. */
 export type SpriteSheetRef = { readonly id: string; readonly url: string };
 
-/** An icon cut out of its sheet, and the sheet's pixels per CSS pixel. */
-export type SpriteIcon = AtlasImage & { pixelRatio: number };
+/** An icon cut out of its sheet, the sheet's pixels per CSS pixel, and
+ *  whether its alpha is a signed distance field. */
+export type SpriteIcon = AtlasImage & { pixelRatio: number; sdf: boolean };
 
 /** A sheet's index (`<url>.json`) and its decoded image (`<url>.png`). */
 export type SpriteSheetData = { index: unknown; image: AtlasImage };
@@ -20,6 +21,7 @@ type SpriteRect = {
   width: number;
   height: number;
   pixelRatio: number;
+  sdf: boolean;
 };
 
 /**
@@ -66,7 +68,7 @@ function toSpriteRect(
   ) {
     return undefined;
   }
-  return { x, y, width: w, height: h, pixelRatio };
+  return { x, y, width: w, height: h, pixelRatio, sdf: entry.sdf === true };
 }
 
 /**
@@ -96,6 +98,7 @@ export class SpriteIcons {
     entry.icon ??= {
       ...cutIcon(entry.sheet, entry.rect),
       pixelRatio: entry.rect.pixelRatio,
+      sdf: entry.rect.sdf,
     };
     return entry.icon;
   }

@@ -410,8 +410,8 @@ export class InstancedSpriteMesh
       ? (this.geometry?.getAttribute("instanceUvRect") as
           InstancedBufferAttribute | undefined)
       : undefined;
-    const imagePixelRatio = uvRect
-      ? this.geometry.getAttribute("instanceImagePixelRatio")
+    const imageInfo = uvRect
+      ? this.geometry.getAttribute("instanceImageInfo")
       : undefined;
     for (let i = 0; i < count; i++) {
       const o = i * LINE_ANCHOR_STRIDE;
@@ -421,7 +421,7 @@ export class InstancedSpriteMesh
         batchSize !== undefined && batchSize >= 0.0 ? batchSize : state.scale;
       const rectH = uvRect ? uvRect.getW(i) : 0;
       const aspect = uvRect && rectH > 0 ? uvRect.getZ(i) / rectH : 1.0;
-      const imageHeight = imagePixelRatio ? rectH / imagePixelRatio.getX(i) : 0;
+      const imageHeight = imageInfo ? rectH / imageInfo.getX(i) : 0;
       input[o] = anchors[i * 3];
       input[o + 1] = anchors[i * 3 + 1];
       input[o + 2] = anchors[i * 3 + 2];
@@ -492,8 +492,8 @@ export class InstancedSpriteMesh
       ? (this.geometry?.getAttribute("instanceUvRect") as
           InstancedBufferAttribute | undefined)
       : undefined;
-    const imagePixelRatio = uvRect
-      ? this.geometry.getAttribute("instanceImagePixelRatio")
+    const imageInfo = uvRect
+      ? this.geometry.getAttribute("instanceImageInfo")
       : undefined;
     const anchors = this._anchors;
     const batchIndices = this._instanceBatchIndex;
@@ -551,7 +551,7 @@ export class InstancedSpriteMesh
             batchIndex,
             aspect,
             size,
-            imagePixelRatio ? rectH / imagePixelRatio.getX(i) : 0,
+            imageInfo ? rectH / imageInfo.getX(i) : 0,
           );
       out.push({
         anchorX: anchors[i * 3],
@@ -896,12 +896,13 @@ export class InstancedSpriteMesh
         "instanceUvRect",
         new InstancedBufferAttribute(new Float32Array(instanceCount * 4), 4),
       );
+      // instanceImageInfo: vec2(pixel ratio, 1 for an SDF image) of the
+      // image in instanceUvRect.
+      const imageInfo = new Float32Array(instanceCount * 2);
+      for (let i = 0; i < instanceCount; i++) imageInfo[i * 2] = 1;
       instancedGeometry.setAttribute(
-        "instanceImagePixelRatio",
-        new InstancedBufferAttribute(
-          new Float32Array(instanceCount).fill(1),
-          1,
-        ),
+        "instanceImageInfo",
+        new InstancedBufferAttribute(imageInfo, 2),
       );
     }
 
@@ -1274,8 +1275,8 @@ export class InstancedSpriteMesh
     const rectAttr = this.geometry.getAttribute(
       "instanceUvRect",
     ) as InstancedBufferAttribute;
-    const ratioAttr = this.geometry.getAttribute(
-      "instanceImagePixelRatio",
+    const infoAttr = this.geometry.getAttribute(
+      "instanceImageInfo",
     ) as InstancedBufferAttribute;
     rectAttr.setXYZW(
       instanceId,
@@ -1284,12 +1285,12 @@ export class InstancedSpriteMesh
       rect?.w ?? 0,
       rect?.h ?? 0,
     );
-    ratioAttr.setX(instanceId, rect?.pixelRatio ?? 1);
+    infoAttr.setXY(instanceId, rect?.pixelRatio ?? 1, rect?.sdf ? 1 : 0);
   }
 
   private _markImagesChanged(): void {
     this.geometry.getAttribute("instanceUvRect").needsUpdate = true;
-    this.geometry.getAttribute("instanceImagePixelRatio").needsUpdate = true;
+    this.geometry.getAttribute("instanceImageInfo").needsUpdate = true;
     this._onAtlasRectsChanged();
   }
 

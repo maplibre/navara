@@ -650,6 +650,8 @@ This option applies when the layer's geometry is built. `layer.update()` does no
 
 A string is a single sheet, whose icons keep the names in its index. A list loads several sheets, and their icons are named `<id>:<name>`, except those of the sheet whose `id` is `"default"`. If any sheet fails to load, no icon of the sprite is drawn. Each sheet is loaded once, however many layers use it.
 
+An icon marked `"sdf": true` in the index is a signed distance field, as MapLibre encodes it. Its shape is drawn in [`color`](#color), with sharp edges at any size, and the colors in the sheet are not used. MapLibre draws such an icon black by default (`icon-color`), but `color` defaults to white, so set it.
+
 **Default:** `undefined`
 
 **Example:**
