@@ -4,6 +4,7 @@ import {
   type DefaultDescriptions,
 } from "@navaramap/three-default-plugin";
 import type { FeatureCollection } from "geojson";
+import { Pane } from "tweakpane";
 
 import { withBase } from "../../../helpers/base";
 import { TILE_DATASETS } from "../../../helpers/constants";
@@ -27,6 +28,16 @@ import { TILE_DATASETS } from "../../../helpers/constants";
  *   wide around the large dot as around the small one, and the plain circle
  *   has none. In the white row the evaluator overrides the halo per feature:
  *   the large dot gets a red 4 px ring and the plus none (`outlineWidth: 0`).
+ *
+ * The panel changes the layers live:
+ * - Top row `sprite`: the same sheet as a URL or as a list (icons keep their
+ *   names), a sheet that fails to load (the row hides, with one warning), or
+ *   none. Switching back and forth must not grow the atlas without end.
+ * - Bottom row `icon`: the default for the feature whose evaluator returns
+ *   `icon: null`; "(none)" hides it.
+ * - Yellow halo row: `outline*` of the layer.
+ * - Pixel ratio: 1 loads the 1x sheet, 2 the `@2x` one. Sizes and halo
+ *   widths stay the same in CSS pixels.
  */
 
 const CENTER = { lng: 139.7671, lat: 35.6812 };
@@ -159,6 +170,9 @@ const addSdfRow = (
       anchor: "bottom",
       clampToGround: true,
       declutter: false,
+      // Blended, so SDF edges and the halo's blur fade instead of being cut
+      // at `alphaTest`.
+      transparent: true,
       ...outline,
     },
   });
@@ -172,6 +186,7 @@ const addSdfRow = (
       ],
     }));
   });
+  return layer;
 };
 
 addSdfRow(CENTER.lat - 0.0055, {});
@@ -186,8 +201,89 @@ addSdfRow(
     "plus-sdf@1.5": { outlineWidth: 0 },
   },
 );
-addSdfRow(CENTER.lat - 0.0089, {
+const haloLayer = addSdfRow(CENTER.lat - 0.0089, {
   outlineColor: new Color().setHex(0xffd400),
   outlineWidth: 3,
   outlineBlur: 1,
 });
+
+const SPRITES = {
+  "shapes (URL)": SPRITE,
+  "shapes (list)": [{ id: "default", url: SPRITE }],
+  "missing sheet": new URL(withBase("/sprites/missing"), location.href).href,
+  none: [],
+};
+const params = {
+  sprite: "shapes (URL)",
+  size: 1,
+  icon: "shapes:arrow",
+  outlineColor: "#ffd400",
+  outlineOpacity: 1,
+  outlineWidth: 3,
+  outlineBlur: 1,
+  pixelRatio: window.devicePixelRatio > 1 ? 2 : 1,
+};
+
+const pane = new Pane({ title: "Sprite" });
+
+const topFolder = pane.addFolder({ title: "Top row" });
+topFolder
+  .addBinding(params, "sprite", {
+    options: Object.fromEntries(Object.keys(SPRITES).map((k) => [k, k])),
+  })
+  .on("change", ({ value }) => {
+    topLayer.update({
+      billboard: { sprite: SPRITES[value as keyof typeof SPRITES] },
+    });
+  });
+topFolder
+  .addBinding(params, "size", { min: 0.25, max: 3, step: 0.25 })
+  .on("change", ({ value }) => {
+    topLayer.update({ billboard: { size: value } });
+  });
+
+pane
+  .addFolder({ title: "Bottom row" })
+  .addBinding(params, "icon", {
+    label: "default icon",
+    options: {
+      arrow: "shapes:arrow",
+      circle: "shapes:circle",
+      square: "shapes:square",
+      "(none)": "",
+    },
+  })
+  .on("change", ({ value }) => {
+    bottomLayer.update({ billboard: { icon: value } });
+  });
+
+const halo = pane.addFolder({ title: "Yellow halo row" });
+halo.addBinding(params, "outlineColor").on("change", ({ value }) => {
+  haloLayer.update({
+    billboard: { outlineColor: new Color().setStyle(value) },
+  });
+});
+halo
+  .addBinding(params, "outlineOpacity", { min: 0, max: 1, step: 0.05 })
+  .on("change", ({ value }) => {
+    haloLayer.update({ billboard: { outlineOpacity: value } });
+  });
+halo
+  .addBinding(params, "outlineWidth", { min: 0, max: 8, step: 0.5 })
+  .on("change", ({ value }) => {
+    haloLayer.update({ billboard: { outlineWidth: value } });
+  });
+halo
+  .addBinding(params, "outlineBlur", { min: 0, max: 4, step: 0.25 })
+  .on("change", ({ value }) => {
+    haloLayer.update({ billboard: { outlineBlur: value } });
+  });
+
+pane
+  .addBinding(params, "pixelRatio", {
+    label: "pixel ratio",
+    options: { "1": 1, "2": 2 },
+  })
+  .on("change", ({ value }) => {
+    view.resize(undefined, undefined, value);
+  });
