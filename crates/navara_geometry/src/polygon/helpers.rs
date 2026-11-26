@@ -338,6 +338,7 @@ pub fn compute_outline_positions(
     for i in 0..edge_count {
         let p1 = positions[i];
         let p2 = positions[(i + 1) % length];
+        debug_assert_ne!(p1, p2, "zero-length outline edge at {i}");
         edge_positions.extend(subdivide_line(p1, p2, min_distance));
     }
     let last = if closed {

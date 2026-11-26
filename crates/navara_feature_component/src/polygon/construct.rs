@@ -108,21 +108,24 @@ fn outline_runs(hierarchy: &HierarchyDVec3, edges: &[u8]) -> Vec<OutlineRun> {
     for ring in rings {
         let ring_edges = &edges[offset..offset + ring.len()];
         offset += ring.len();
-        let n = match (ring.first(), ring.last()) {
-            (Some(first), Some(last)) if ring.len() > 1 && first == last => ring.len() - 1,
-            _ => ring.len(),
-        };
-        let kept: Vec<bool> = ring_edges[..n].iter().map(|&e| e != 0).collect();
+        // A zero-length edge turns the outline into NaN positions, so drop
+        // every vertex equal to the next one around the ring, together with
+        // the flag of the edge it starts.
+        let (vertices, kept): (Vec<Vec3>, Vec<bool>) = ring
+            .iter()
+            .zip(ring_edges)
+            .enumerate()
+            .filter(|&(i, _)| ring[i] != ring[(i + 1) % ring.len()])
+            .map(|(_, (&v, &e))| (v, e != 0))
+            .unzip();
+        let n = vertices.len();
         for run in kept_edge_runs(&kept) {
             let closed = run.len() == n + 1;
             let indices = if closed { &run[..n] } else { &run[..] };
-            let mut positions: Vec<Vec3> = Vec::with_capacity(indices.len());
-            for &i in indices {
-                if positions.last() != Some(&ring[i]) {
-                    positions.push(ring[i]);
-                }
-            }
-            runs.push(OutlineRun { positions, closed });
+            runs.push(OutlineRun {
+                positions: indices.iter().map(|&i| vertices[i]).collect(),
+                closed,
+            });
         }
     }
     debug_assert_eq!(offset, edges.len());
@@ -197,11 +200,18 @@ mod test {
 
     use super::construct_polygon_feature;
 
+    const A: [f64; 3] = [0.00, 0.00, 0.];
+    const B: [f64; 3] = [0.01, 0.00, 0.];
+    const C: [f64; 3] = [0.01, 0.01, 0.];
+    const D: [f64; 3] = [0.00, 0.01, 0.];
+
     fn outline(edges: Option<&[u8]>) -> PolygonOutlineGeometry {
+        ring_outline(&[A, B, C, D, A], edges)
+    }
+
+    fn ring_outline(ring: &[[f64; 3]], edges: Option<&[u8]>) -> PolygonOutlineGeometry {
         let hierarchy = Hierarchy {
-            outer_ring: vec![
-                0.00, 0.00, 0., 0.01, 0.00, 0., 0.01, 0.01, 0., 0.00, 0.01, 0., 0.00, 0.00, 0.,
-            ],
+            outer_ring: ring.concat(),
             holes: None,
             expected_winding_order: WindingOrder::Unknown,
         };
@@ -259,5 +269,21 @@ mod test {
             segment_count(&outline(Some(&[1, 0, 1, 0, 0]))),
             segments(2, 2, 0)
         );
+    }
+
+    /// MVT rings that write their first vertex again before `ClosePath`
+    /// arrive with it twice at the end.
+    #[test]
+    fn ring_repeating_its_first_vertex_before_closing_is_outlined_once() {
+        let outline = ring_outline(&[A, B, C, D, A, A], Some(&[1, 1, 1, 1, 1, 1]));
+        assert!(outline.position.data.iter().all(|v| v.is_finite()));
+        assert_eq!(segment_count(&outline), segments(4, 4, 4));
+    }
+
+    #[test]
+    fn repeated_vertices_keep_the_flags_of_their_real_edges() {
+        let outline = ring_outline(&[A, B, B, C, D, A], Some(&[1, 1, 1, 1, 0, 1]));
+        assert!(outline.position.data.iter().all(|v| v.is_finite()));
+        assert_eq!(segment_count(&outline), segments(3, 3, 2));
     }
 }
