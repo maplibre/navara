@@ -64,7 +64,7 @@ import {
   type AtlasRect,
 } from "./billboardAtlas";
 import { loadAtlasImageFromUrl } from "./billboardAtlasImageLoader";
-import type { SpriteIcons } from "./spriteCache";
+import type { SpriteIcons, SpriteSheetRef } from "./spriteCache";
 
 type SpriteGeometryType = Extract<
   GeometryType,
@@ -265,12 +265,17 @@ export class InstancedSpriteMesh
   /** Latest override key requested per instance. An async pack only applies
    * if it still matches, so a newer override or a clear wins over slow loads. */
   private _requestedImageKeys = new Map<number, string>();
-  /** The material's `sprite` as a comparable string; a change starts a new
-   *  {@link _spriteGeneration}. */
-  private _spriteKey = "";
-  /** Part of every icon's atlas key, so icons of a replaced sprite never
-   *  resolve to the old one's cached rects. */
-  private _spriteGeneration = 0;
+  /** The material's image: its `icon` name, else its `url`. */
+  private _defaultIcon?: string;
+  private _defaultUrl?: string;
+  /** The material's `sprite`. */
+  private _spriteSheets: SpriteSheetRef[] = [];
+  /** Whether the `@2x` sheets of the sprite are in use. */
+  private _spriteHighDpi = false;
+  /** The sprite's sheets and resolution as a comparable string; part of
+   *  every icon's atlas key, so each sprite keeps its own rects and switching
+   *  back to one reuses them. */
+  private _spriteKey?: string;
   /** Icons of the material's `sprite`; undefined on a point mesh. */
   private _spriteIcons?: Promise<SpriteIcons>;
   /** Per-feature icon names by batch index, resolved again when the sprite
@@ -848,8 +853,8 @@ export class InstancedSpriteMesh
         base: { alphaTest: m.material.alphaTest ?? 0.0 },
       });
 
-      this._syncSprite(m.material);
-      await this._setDefaultImage(m.material);
+      this._readImageSource(m.material);
+      await this._setDefaultImage();
     }
 
     this.ctx.declutter?.markDirty();
@@ -1047,6 +1052,7 @@ export class InstancedSpriteMesh
       mutates.updateScreenHeightPx(
         _renderer.getDrawingBufferSize(_tmpSize).y / _renderer.getPixelRatio(),
       );
+      this._followPixelRatio(_renderer.getPixelRatio());
 
       if (positionsInfo.RTE) {
         mutates.updateRteUniforms(
@@ -1075,8 +1081,8 @@ export class InstancedSpriteMesh
 
     // Handle billboard texture
     if (m instanceof NavaraBillboardMesh) {
-      this._syncSprite(m.material);
-      await this._setDefaultImage(m.material);
+      this._readImageSource(m.material);
+      await this._setDefaultImage();
     }
 
     material.visible = m.material.show ?? true;
@@ -1166,19 +1172,39 @@ export class InstancedSpriteMesh
     return this._atlas;
   }
 
-  /** Follow the material's `sprite`; the wasm getter clones, so it is read
-   *  once. */
-  private _syncSprite(material: NavaraBillboardMesh["material"]): void {
-    const sheets = (material.sprite ?? []).map(({ id, url }) => ({ id, url }));
-    const key = JSON.stringify(sheets);
+  /** Take the material's image and `sprite`. The `sprite` getter clones its
+   *  sheets into new wasm objects, so it is read once and each is freed. */
+  private _readImageSource(material: NavaraBillboardMesh["material"]): void {
+    this._defaultIcon = material.icon || undefined;
+    this._defaultUrl = material.url || undefined;
+    this._spriteSheets = (material.sprite ?? []).map((sheet) => {
+      const ref = { id: sheet.id, url: sheet.url };
+      sheet.free();
+      return ref;
+    });
+    this._applySprite(this.ctx.viewContext.getRenderer().getPixelRatio());
+  }
+
+  /** Switch between the `1x` and `@2x` sheets when the pixel ratio crosses
+   *  1, as when the window moves to another screen. */
+  private _followPixelRatio(pixelRatio: number): void {
+    if (this._spriteSheets.length === 0) return;
+    if (pixelRatio > 1 === this._spriteHighDpi) return;
+    this._applySprite(pixelRatio);
+    void this._setDefaultImage();
+  }
+
+  /** Load the sprite's sheets for `pixelRatio` and resolve the per-feature
+   *  icons against them, unless they are already in use. */
+  private _applySprite(pixelRatio: number): void {
+    const sheets = this._spriteSheets;
+    const highDpi = sheets.length > 0 && pixelRatio > 1;
+    const key = JSON.stringify([highDpi, sheets]);
     if (key === this._spriteKey) return;
     this._spriteKey = key;
-    this._spriteGeneration++;
+    this._spriteHighDpi = highDpi;
     // No sheets is an empty sprite, which warns about each icon asked of it.
-    this._spriteIcons = this.ctx.sprites.get(
-      sheets,
-      this.ctx.viewContext.getRenderer().getPixelRatio(),
-    );
+    this._spriteIcons = this.ctx.sprites.get(sheets, pixelRatio);
     for (const [batchIndex, name] of this._featureIcons) {
       void this.setFeatureIconByBatchIndex(batchIndex, name);
     }
@@ -1187,7 +1213,7 @@ export class InstancedSpriteMesh
   /** The icon `name` of the current sprite, to pack in place of a URL. */
   private _iconImage(name: string): AtlasImageSource {
     return {
-      key: `${ICON_KEY_PREFIX}${this._spriteGeneration}:${name}`,
+      key: `${ICON_KEY_PREFIX}${this._spriteKey}:${name}`,
       load: this._loadIcon.bind(this, this._spriteIcons, name),
     };
   }
@@ -1241,30 +1267,31 @@ export class InstancedSpriteMesh
   /**
    * Load the material-level image — its `icon`, else its `url` — and apply
    * its rect to every instance that hasn't been overridden per-feature. An
-   * icon that does not resolve hides those instances; a URL that fails to
-   * load keeps the previous image.
+   * icon that does not resolve, or no image at all, hides those instances; a
+   * URL that fails to load keeps the previous image.
    */
-  private async _setDefaultImage(
-    material: NavaraBillboardMesh["material"],
-  ): Promise<void> {
-    const image: AtlasImageSource | undefined = material.icon
-      ? this._iconImage(material.icon)
-      : material.url
-        ? { key: material.url }
+  private async _setDefaultImage(): Promise<void> {
+    const image: AtlasImageSource | undefined = this._defaultIcon
+      ? this._iconImage(this._defaultIcon)
+      : this._defaultUrl
+        ? { key: this._defaultUrl }
         : undefined;
-    if (!image || this._defaultKey === image.key) return;
-    const key = image.key;
+    const key = image?.key;
+    if (this._defaultKey === key) return;
     this._defaultKey = key;
 
-    const rect = await this._ensureAtlas().pack(key, image.load);
-    this._reportAtlasBytes();
-    // A URL that fails keeps the previous image; an icon hides.
-    if (!rect && !image.load) return;
-    // A newer default image won the race while this one was loading.
-    if (this._defaultKey !== key) return;
+    let rect: AtlasRect | undefined;
+    if (image) {
+      rect = await this._ensureAtlas().pack(image.key, image.load);
+      this._reportAtlasBytes();
+      // A URL that fails keeps the previous image.
+      if (!rect && !image.load) return;
+      // A newer default image won the race while this one was loading.
+      if (this._defaultKey !== key) return;
+      this._syncAtlasUniforms();
+    }
 
     this._defaultRect = rect;
-    this._syncAtlasUniforms();
     for (let i = 0; i < this._instanceCount; i++) {
       if (this._imageOverrides.has(i)) continue;
       this._setInstanceImage(i, rect);
