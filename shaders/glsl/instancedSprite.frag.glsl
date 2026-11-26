@@ -122,6 +122,11 @@ void main() {
     } else {
         color.a = alphaForColor;
     }
+    #ifdef OPAQUE
+        // three draws `transparent: false` without blending, so a lower alpha
+        // would reach the canvas and show the page through it.
+        color.a = 1.0;
+    #endif
 
     gl_FragColor = color;
 

@@ -392,7 +392,7 @@ Can also be set per feature from a [feature evaluator](../../api/feature-evaluat
 
 **Type:** `number | undefined`
 
-**Description:** Width over which the halo of an SDF icon fades out, in screen pixels, as MapLibre's `icon-halo-blur`. See [`outlineWidth`](#outlinewidth).
+**Description:** Width over which the halo of an SDF icon fades out, in screen pixels, as MapLibre's `icon-halo-blur`. The fade shows only with [`transparent`](#transparent) set to `true`: an opaque billboard, the default, cuts the halo where it fades below [`alphaTest`](#alphatest). See [`outlineWidth`](#outlinewidth).
 
 **Default:** `0.0`
 

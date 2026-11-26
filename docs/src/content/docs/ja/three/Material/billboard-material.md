@@ -392,7 +392,7 @@ import { Color } from "@navaramap/three";
 
 **Type:** `number | undefined`
 
-**Description:** SDF アイコンのハローがぼけて消えていく幅 (画面ピクセル)。MapLibre の `icon-halo-blur` に相当します。[`outlineWidth`](#outlinewidth) も参照してください。
+**Description:** SDF アイコンのハローがぼけて消えていく幅 (画面ピクセル)。MapLibre の `icon-halo-blur` に相当します。ぼかしが表示されるのは [`transparent`](#transparent) を `true` にしたときだけです。デフォルトの不透明なビルボードでは、ハローは [`alphaTest`](#alphatest) を下回るところで切れます。[`outlineWidth`](#outlinewidth) も参照してください。
 
 **Default:** `0.0`
 
