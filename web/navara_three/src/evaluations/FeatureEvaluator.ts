@@ -178,6 +178,12 @@ export type FeatureInfo = {
    */
   batchId: number;
   properties: Record<string, unknown> | undefined;
+  /**
+   * The feature's top-level id (GeoJSON `id` or MVT feature id), as a string
+   * or number, when the source data has one. It is stored apart from
+   * `properties`, so it never collides with a property name.
+   */
+  featureId?: string | number;
   layerId: LayerId | undefined;
   /** Mesh geometry type (e.g., "billboard", "text"). Not GeoJSON geometry ("Point", "Polygon"). */
   meshGeomType?: GeometryType;
@@ -254,6 +260,9 @@ export class FeatureEvaluator {
   >;
   private batchIds: number[] = [];
 
+  /** Top-level feature ids (GeoJSON or MVT) by batch index; read once. */
+  private featureIds?: Map<number, string | number>;
+
   /**
    * The underlying Three.js object representing this feature.
    * Can be used for advanced manipulation, but prefer using `evaluate()` for styling.
@@ -271,6 +280,25 @@ export class FeatureEvaluator {
     this.layerId = layerId;
     this.featureSetId = featureSetId;
     this.obj = obj;
+  }
+
+  /**
+   * Reads the top-level ids once. Must run before (never inside) a
+   * `read*BatchedProperties` callback: the WASM core is still borrowed there,
+   * and a nested call throws ("recursive use of an object").
+   */
+  private loadFeatureIds(): void {
+    if (this.featureIds) return;
+    const ids = new Map<number, string | number>();
+    this.handler.readBatchedFeatureIds(this.featureSetId, (idx, id) => {
+      ids.set(idx, id);
+    });
+    this.featureIds = ids;
+  }
+
+  /** Reads the ids loaded by {@link loadFeatureIds}; never calls into WASM. */
+  private featureIdOf(batchIdx: number): string | number | undefined {
+    return this.featureIds?.get(batchIdx);
   }
 
   /**
@@ -347,6 +375,7 @@ export class FeatureEvaluator {
   readFeatureProperties(f: (info: FeatureInfo, batchIndex: number) => void) {
     // Read geometry type dynamically to handle cases where it changes after evaluator creation
     const meshGeomType = this.determineGeometryType(this.obj);
+    this.loadFeatureIds();
 
     if (this.cachedBatchedProperties) {
       for (const [batchIdx, properties] of this.cachedBatchedProperties) {
@@ -355,6 +384,7 @@ export class FeatureEvaluator {
             layerId: this.layerId,
             batchId: this.batchIds[batchIdx],
             properties,
+            featureId: this.featureIdOf(batchIdx),
             meshGeomType,
           },
           batchIdx,
@@ -376,6 +406,7 @@ export class FeatureEvaluator {
               layerId: this.layerId,
               batchId,
               properties,
+              featureId: this.featureIdOf(batchIdx),
               meshGeomType,
             },
             batchIdx,
@@ -405,6 +436,7 @@ export class FeatureEvaluator {
   ) {
     // Read geometry type dynamically to handle cases where it changes after evaluator creation
     const meshGeomType = this.determineGeometryType(this.obj);
+    this.loadFeatureIds();
 
     const cacheKey = keys.join("|");
     if (this.filterCacheKey === cacheKey && this.cachedFilteredProperties) {
@@ -414,6 +446,7 @@ export class FeatureEvaluator {
             layerId: this.layerId,
             batchId: this.batchIds[batchIndex],
             properties: filtered,
+            featureId: this.featureIdOf(batchIndex),
             meshGeomType,
           },
           batchIndex,
@@ -438,6 +471,7 @@ export class FeatureEvaluator {
               layerId: this.layerId,
               batchId,
               properties,
+              featureId: this.featureIdOf(batchIndex),
               meshGeomType,
             },
             batchIndex,

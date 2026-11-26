@@ -111,6 +111,7 @@ pub(crate) fn construct_geojson_tile_geometry(
             _ => None,
         };
         builder.begin_feature(&props_map);
+        builder.set_feature_id(feature.id.as_ref());
 
         match &feature.geometry {
             TileGeometry::Polygons(polygons) if has_polygon || polyline_from_polygons => {
@@ -255,6 +256,7 @@ mod test {
         TileFeature {
             geometry: TileGeometry::Polygons(vec![coords]),
             properties: Arc::new(serde_json::json!({})),
+            id: None,
         }
     }
 
@@ -265,6 +267,7 @@ mod test {
         TileFeature {
             geometry: TileGeometry::Polygons(vec![coords]),
             properties: Arc::new(props),
+            id: None,
         }
     }
 
@@ -272,6 +275,7 @@ mod test {
         TileFeature {
             geometry: TileGeometry::Points(coords),
             properties: Arc::new(serde_json::json!({})),
+            id: None,
         }
     }
 
@@ -284,6 +288,7 @@ mod test {
                     .collect(),
             ),
             properties: Arc::new(serde_json::json!({})),
+            id: None,
         }
     }
 
@@ -447,6 +452,44 @@ mod test {
         let buf = app.world().resource::<BufferStore>();
         assert_eq!(geom.feature_count(buf), 2); // 2 polygons accumulated
         assert_eq!(geom.batch_indices(buf).unwrap(), &[0, 1]);
+    }
+
+    /// A tile feature's top-level id lands in the batch table at the feature's
+    /// row, separate from its properties (a `$id` property is not an id).
+    #[test]
+    fn tile_feature_ids_are_stored_per_row() {
+        use navara_feature_component::batch::FeatureBatchId;
+        use navara_parser::geojson::feature::Id;
+
+        let outer1 = vec![
+            [0.0, 0.0],
+            [2048.0, 0.0],
+            [2048.0, 2048.0],
+            [0.0, 2048.0],
+            [0.0, 0.0],
+        ];
+        let outer2 = vec![
+            [2048.0, 2048.0],
+            [4096.0, 2048.0],
+            [4096.0, 4096.0],
+            [2048.0, 4096.0],
+            [2048.0, 2048.0],
+        ];
+        let mut with_id = polygon_feature(vec![outer1]);
+        with_id.id = Some(Id::Number(1.into()));
+        let without_id = polygon_feature_with_props(vec![outer2], serde_json::json!({"$id": "b"}));
+        let mut app = run_construct(make_tile(vec![with_id, without_id]), polygon_appearances());
+
+        let mut query = app
+            .world_mut()
+            .query_filtered::<&FeatureBatchId, With<PolygonMarker>>();
+        let batch_id = query.single(app.world()).expect("one polygon batch").0;
+        let batch_table = app.world().resource::<BatchTable>();
+        assert_eq!(
+            batch_table.feature_id(&batch_id, 0),
+            Some(&serde_json::json!(1))
+        );
+        assert_eq!(batch_table.feature_id(&batch_id, 1), None);
     }
 
     #[test]
@@ -638,6 +681,7 @@ mod test {
         let feature = TileFeature {
             geometry: TileGeometry::Polygons(vec![vec![poly1_outer], vec![poly2_outer]]),
             properties: Arc::new(serde_json::json!({})),
+            id: None,
         };
         let tile = make_tile(vec![feature]);
         let mut app = run_construct(tile, polygon_appearances());

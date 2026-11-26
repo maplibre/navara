@@ -787,6 +787,7 @@ impl Core {
             layer_id: picked.layer_id,
             batch_id: picked.batch_id,
             feature_set_id: picked.feature_set.map(|e| e.to_bits()),
+            feature_id: feature_id_to_js(picked.feature_id.as_ref()),
         }
     }
 
@@ -814,6 +815,28 @@ impl Core {
                 },
             )?;
         Ok(())
+    }
+
+    /// Calls `callback(batchIdx, id)` for each row of a batched feature whose
+    /// source feature has a top-level id (GeoJSON `id` or MVT feature id;
+    /// `string | number`).
+    #[wasm_bindgen(js_name = readBatchedFeatureIds)]
+    pub fn read_batched_feature_ids(
+        &mut self,
+        renderable_feature_bits: u64,
+        callback: &js_sys::Function,
+    ) -> Result<(), JsValue> {
+        let this = JsValue::NULL;
+        self.app.read_batched_feature_ids::<JsValue, _>(
+            renderable_feature_bits,
+            &|batch_idx, id| {
+                let id = feature_id_to_js(Some(id));
+                if !id.is_undefined() {
+                    callback.call2(&this, &JsValue::from(batch_idx as u32), &id)?;
+                }
+                Ok(())
+            },
+        )
     }
 
     #[wasm_bindgen(js_name = readFilteredBatchedProperties)]
@@ -1289,3 +1312,16 @@ pub fn start() {
 
 //     f(app)
 // }
+
+/// A feature's top-level id (a JSON string or number) as a JS `string | number`;
+/// `undefined` for none or any other JSON type. Numbers above 2^53 lose
+/// precision, as they do in MapLibre.
+fn feature_id_to_js(id: Option<&serde_json::Value>) -> JsValue {
+    match id {
+        Some(serde_json::Value::String(s)) => JsValue::from_str(s),
+        Some(serde_json::Value::Number(n)) => {
+            n.as_f64().map_or(JsValue::UNDEFINED, JsValue::from_f64)
+        }
+        _ => JsValue::UNDEFINED,
+    }
+}

@@ -39,6 +39,7 @@ layer.on("featureCreated", ({ evaluator }) => {
 type FeatureInfo = {
   batchId: number;
   properties: Record<string, unknown> | undefined;
+  featureId?: string | number; // GeoJSON のトップレベル `id` または MVT の地物 ID。`properties` とは別に保持（ない場合は undefined）
   layerId: string | undefined;
 };
 ```

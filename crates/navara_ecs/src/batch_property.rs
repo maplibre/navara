@@ -1,7 +1,7 @@
 use bevy_ecs::entity::Entity;
 use navara_buffer_store::BufferStore;
 use navara_feature_component::{
-    batch::{BatchProperty, BatchTable, GlobalBatchIds},
+    batch::{BatchProperty, BatchTable, BatchTableValue, GlobalBatchIds},
     render::RenderableFeature,
 };
 use navara_parser::b3dm::BatchTable as B3dmBatchTable;
@@ -21,6 +21,9 @@ pub struct PickedProperties<V> {
     /// The feature set's `RenderableFeature` entity; `None` for a feature
     /// outside a feature set.
     pub feature_set: Option<Entity>,
+    /// The feature's top-level id (GeoJSON `id` or MVT feature id), as a JSON
+    /// string or number; `None` when the source feature has none.
+    pub feature_id: Option<serde_json::Value>,
 }
 
 // Derived `Default` would require `V: Default`.
@@ -31,6 +34,7 @@ impl<V> Default for PickedProperties<V> {
             layer_id: None,
             batch_id: None,
             feature_set: None,
+            feature_id: None,
         }
     }
 }
@@ -57,24 +61,23 @@ impl App {
             self.search_feature_entity_by_global_batch_id(batch_id)
         {
             // A feature without properties still has its feature set.
-            let (properties, layer_id) = self
+            let (properties, layer_id, feature_id) = self
                 .read_batch_table_by_global_batch_id(entity, &in_batch_id)
-                .unwrap_or_default();
+                .unwrap_or((None, None, None));
             return PickedProperties {
                 properties,
                 layer_id,
                 batch_id: Some(canonical_batch_id),
                 feature_set: Some(entity),
+                feature_id,
             };
         };
 
         // For other features like GeoJSON and MVT point
-        let Some(batch_value) = self
-            .app
-            .world()
-            .get_resource::<BatchTable>()
-            .and_then(|bt| bt.get(batch_id))
-        else {
+        let Some(batch_table) = self.app.world().get_resource::<BatchTable>() else {
+            return PickedProperties::default();
+        };
+        let Some(batch_value) = batch_table.get(batch_id) else {
             return PickedProperties::default();
         };
 
@@ -89,6 +92,8 @@ impl App {
             layer_id: batch_value.layer_id.clone(),
             batch_id: Some(*batch_id),
             feature_set: None,
+            // Same single row as the properties above.
+            feature_id: batch_table.feature_id(batch_id, 0).cloned(),
         }
     }
 
@@ -96,7 +101,7 @@ impl App {
         &mut self,
         entity: Entity,
         in_batch_id: &usize,
-    ) -> Option<(Option<V>, Option<String>)> {
+    ) -> Option<(Option<V>, Option<String>, Option<serde_json::Value>)> {
         let world = self.app.world_mut();
         let mut query = world.query::<&RenderableFeature>();
 
@@ -144,7 +149,89 @@ impl App {
                 }
             });
 
-        Some((properties, batch_value.layer_id.clone()))
+        // Ids live beside the properties: in the batch table for GeoJSON rows,
+        // in the layer data for MVT.
+        let feature_id = match batch_value.properties.as_ref() {
+            Some(BatchProperty::Values(_)) => batch_table
+                .feature_id(&feature_batch_id, *in_batch_id)
+                .cloned(),
+            Some(BatchProperty::Mvt(mvt)) => mvt.feature_id(*in_batch_id).map(Into::into),
+            _ => None,
+        };
+
+        Some((properties, batch_value.layer_id.clone(), feature_id))
+    }
+
+    /// Read the top-level ids (GeoJSON `id` or MVT feature id) of a batched
+    /// feature's rows.
+    ///
+    /// `callback(batch_idx, id)` runs for each row whose source feature had an
+    /// id (a JSON string or number); `batch_idx` is the same row index
+    /// [`Self::read_all_batched_properties`] reports. Ids live apart from the
+    /// properties, so they can never collide with a property name.
+    pub fn read_batched_feature_ids<E, F: Fn(usize, &serde_json::Value) -> Result<(), E>>(
+        &mut self,
+        renderable_feature_bits: u64,
+        callback: &F,
+    ) -> Result<(), E> {
+        let entity = Entity::from_bits(renderable_feature_bits);
+        let world = self.app.world_mut();
+        let mut query = world.query::<&RenderableFeature>();
+
+        let Some(batch_table) = world.get_resource::<BatchTable>() else {
+            return Ok(());
+        };
+        let Ok(renderable_feature) = query.get(world, entity) else {
+            return Ok(());
+        };
+
+        let feature_batch_id = match renderable_feature {
+            RenderableFeature::Model {
+                feature_batch_id, ..
+            }
+            | RenderableFeature::Polyline {
+                feature_batch_id, ..
+            }
+            | RenderableFeature::Polygon {
+                feature_batch_id, ..
+            }
+            | RenderableFeature::Point {
+                feature_batch_id, ..
+            }
+            | RenderableFeature::Billboard {
+                feature_batch_id, ..
+            }
+            | RenderableFeature::Text {
+                feature_batch_id, ..
+            } => *feature_batch_id,
+            RenderableFeature::Unknown => return Ok(()),
+        };
+
+        let Some(BatchTableValue {
+            properties: Some(properties),
+            ..
+        }) = batch_table.get(&feature_batch_id)
+        else {
+            return Ok(());
+        };
+        match properties {
+            BatchProperty::Values(values) => {
+                for row in 0..values.len() {
+                    if let Some(id) = batch_table.feature_id(&feature_batch_id, row) {
+                        callback(row, id)?;
+                    }
+                }
+            }
+            BatchProperty::Mvt(mvt) => {
+                for row in 0..mvt.feature_count() {
+                    if let Some(id) = mvt.feature_id(row) {
+                        callback(row, &serde_json::Value::from(id))?;
+                    }
+                }
+            }
+            _ => {}
+        }
+        Ok(())
     }
 
     /// Read properties from a batched feature.

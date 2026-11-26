@@ -173,6 +173,11 @@ export type FeatureHandler = {
       properties?: Record<string, unknown>,
     ) => void,
   ): void;
+  /** Calls back for each row whose feature has a top-level id (GeoJSON `id` or MVT feature id). */
+  readBatchedFeatureIds(
+    bits: bigint,
+    callback: (batchIdx: number, id: string | number) => void,
+  ): void;
   readFilteredBatchedProperties(
     bits: bigint,
     keys: string[],

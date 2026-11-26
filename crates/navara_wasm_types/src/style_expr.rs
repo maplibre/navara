@@ -56,6 +56,7 @@ impl CompiledExpression {
     /// * `zoom` - Current zoom level
     /// * `geometry_type` - Optional geometry type string (e.g., "Point", "Polygon")
     /// * `elevation` - Optional terrain elevation in meters for `["elevation"]`
+    /// * `feature_id` - Optional top-level feature id (`string | number`) for `["id"]`
     ///
     /// # Returns
     /// Evaluated value as JsValue. Supported types:
@@ -72,6 +73,7 @@ impl CompiledExpression {
         zoom: f64,
         geometry_type: Option<String>,
         elevation: Option<f64>,
+        feature_id: Option<JsValue>,
     ) -> Result<JsValue, JsValue> {
         // 1. Deserialize properties from JSON
         let properties_json: JsonValue = serde_wasm_bindgen::from_value(properties_json)
@@ -82,8 +84,8 @@ impl CompiledExpression {
 
         // 3. Create Feature and EvaluationContext
         let feature = Feature {
-            id: None,               // Not needed for property-based styling
-            properties,             // Main data: feature attributes from GeoJSON
+            id: feature_id_value(feature_id.as_ref()), // Top-level feature id for ["id"]
+            properties,                                // Main data: feature attributes from GeoJSON
             geometry_type,          // Geometry type for ["geometry-type"] expressions
             state: BTreeMap::new(), // Interactive states (hover/selected) set by renderer
             geometry: Vec::new(),   // Coordinates for geometric expressions (distance, area)
@@ -144,12 +146,14 @@ impl CompiledFilter {
     /// * `properties_json` - Feature properties as JSON object
     /// * `zoom` - Current zoom level
     /// * `geometry_type` - Optional geometry type string (e.g., "Point", "Polygon")
+    /// * `feature_id` - Optional top-level feature id (`string | number`) for `["id"]` / `$id`
     #[wasm_bindgen]
     pub fn test(
         &self,
         properties_json: JsValue,
         zoom: f64,
         geometry_type: Option<String>,
+        feature_id: Option<JsValue>,
     ) -> Result<bool, JsValue> {
         // Deserialize properties from JSON
         let properties_json: JsonValue = serde_wasm_bindgen::from_value(properties_json)
@@ -159,8 +163,8 @@ impl CompiledFilter {
 
         // Create context and evaluate
         let feature = Feature {
-            id: None,               // Not needed for property-based filtering
-            properties,             // Main data: feature attributes from GeoJSON
+            id: feature_id_value(feature_id.as_ref()), // Top-level feature id for ["id"] / $id
+            properties,                                // Main data: feature attributes from GeoJSON
             geometry_type,          // Geometry type for ["geometry-type"] filters
             state: BTreeMap::new(), // Interactive states not used in filters
             geometry: Vec::new(),   // Coordinates not used in property filters
@@ -181,6 +185,16 @@ impl CompiledFilter {
 }
 
 // Helper functions to convert between JSON and maplibre-expr Value types
+
+/// A feature id from JS (`string | number`); anything else is "no id".
+fn feature_id_value(id: Option<&JsValue>) -> Option<Value> {
+    let id = id?;
+    if let Some(s) = id.as_string() {
+        Some(Value::String(s))
+    } else {
+        id.as_f64().map(Value::Number)
+    }
+}
 
 /// Evaluation context for a compiled expression; `elevation` feeds
 /// `["elevation"]` (maplibre-expr has no builder for it).

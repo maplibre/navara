@@ -24,6 +24,7 @@ describe("FeatureEvaluator", () => {
         // Production code expects Record<string, unknown>, not an array
         callback(0, 0, {});
       }),
+      readBatchedFeatureIds: vi.fn(),
     } as unknown as FeatureHandler;
 
     // Spy on console.warn to check for warnings
@@ -147,6 +148,119 @@ describe("FeatureEvaluator", () => {
         capturedGeometryType = gt;
       });
       expect(capturedGeometryType).toBe("text");
+    });
+  });
+
+  describe("featureId", () => {
+    /**
+     * A handler that behaves like the WASM core: it is borrowed while a
+     * `read*BatchedProperties` callback runs, so any nested call into it
+     * throws, as wasm-bindgen does ("recursive use of an object").
+     */
+    function borrowCheckingHandler() {
+      let borrowed = false;
+      const borrow =
+        <A extends unknown[]>(f: (...args: A) => void) =>
+        (...args: A) => {
+          if (borrowed) {
+            throw new Error("recursive use of an object detected");
+          }
+          borrowed = true;
+          try {
+            f(...args);
+          } finally {
+            borrowed = false;
+          }
+        };
+      // Only row 0 has a top-level id; row 1 only has a `$id` property.
+      const readBatchedFeatureIds = vi.fn(
+        borrow((_: bigint, cb: (i: number, id: string | number) => void) => {
+          cb(0, 1);
+        }),
+      );
+      const handler = {
+        readAllBatchedProperties: vi.fn(
+          borrow(
+            (
+              _: bigint,
+              cb: (i: number, id: number, p?: Record<string, unknown>) => void,
+            ) => {
+              cb(0, 10, {});
+              cb(1, 11, { $id: "b" });
+            },
+          ),
+        ),
+        readFilteredBatchedProperties: vi.fn(
+          borrow(
+            (
+              _: bigint,
+              __: string[],
+              cb: (i: number, id: number, f?: unknown[]) => void,
+            ) => {
+              cb(0, 10, [undefined]);
+              cb(1, 11, ["b"]);
+            },
+          ),
+        ),
+        readBatchedFeatureIds,
+      } as unknown as FeatureHandler;
+      return { handler, readBatchedFeatureIds };
+    }
+
+    it("reads ids outside the properties callback and pairs them by row", () => {
+      const { handler } = borrowCheckingHandler();
+      const evaluator = new FeatureEvaluator(
+        handler,
+        "test-layer",
+        0n,
+        new Object3D(),
+      );
+
+      const ids: (string | number | undefined)[] = [];
+      evaluator.readFeatureProperties(({ featureId }, row) => {
+        ids[row] = featureId;
+      });
+
+      // A `$id` property is not the feature id.
+      expect(ids).toEqual([1, undefined]);
+    });
+
+    it("provides ids to filtered reads too", () => {
+      const { handler } = borrowCheckingHandler();
+      const evaluator = new FeatureEvaluator(
+        handler,
+        "test-layer",
+        0n,
+        new Object3D(),
+      );
+
+      const ids: (string | number | undefined)[] = [];
+      evaluator.readFilteredFeatureProperties(["$id"], ({ featureId }, row) => {
+        ids[row] = featureId;
+      });
+
+      expect(ids).toEqual([1, undefined]);
+    });
+
+    it("reads the ids from the engine only once", () => {
+      const { handler, readBatchedFeatureIds } = borrowCheckingHandler();
+      const evaluator = new FeatureEvaluator(
+        handler,
+        "test-layer",
+        0n,
+        new Object3D(),
+      );
+
+      const ids: (string | number | undefined)[] = [];
+      evaluator.readFeatureProperties(() => {});
+      // Second read goes through the properties cache.
+      evaluator.readFeatureProperties(({ featureId }, row) => {
+        ids[row] = featureId;
+      });
+      evaluator.readFilteredFeatureProperties(["$id"], () => {});
+
+      expect(ids).toEqual([1, undefined]);
+      expect(readBatchedFeatureIds).toHaveBeenCalledTimes(1);
     });
   });
 });

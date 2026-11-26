@@ -42,6 +42,7 @@ fn shift_feature(feature: &InternalFeature, offset: f64) -> Arc<InternalFeature>
             max_y: feature.bbox.max_y,
         },
         properties: feature.properties.clone(),
+        id: feature.id.clone(),
         source_index: feature.source_index,
     })
 }

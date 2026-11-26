@@ -122,6 +122,7 @@ type PickedFeature = {
   batchId: number; // Batch ID
   properties: Record<string, unknown> | undefined; // Feature properties
   layerId: string | undefined; // Layer ID
+  featureId?: string | number; // Top-level GeoJSON `id` or MVT feature id (undefined when the feature has none)
   featureSetId?: FeatureSetId; // Feature set ID, as in the layer's featureCreated event (undefined outside a feature set)
   content?: FeatureSetContent; // Source content of the feature set (3D Tiles credit and metadata), as in featureCreated
 };

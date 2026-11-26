@@ -45,6 +45,7 @@ import {
   MAPLIBRE_TILE_SIZE,
 } from "./utils/cameraHelpers";
 import { expressionUsesZoom } from "./utils/expressionHelpers";
+import { toMapLibreGeoJsonId } from "./utils/featureId";
 import { hasZoomRange, inZoomRange } from "./utils/zoomRange";
 
 /**
@@ -896,6 +897,13 @@ export class MapLibreStylePlugin extends Plugin<ThreeView, ViewContext> {
       this.zoomRangeLayers.set(layer, styleLayer);
     }
 
+    // MapLibre keeps a GeoJSON feature id only as an integer (see
+    // toMapLibreGeoJsonId); vector tile ids are integers already.
+    const sourceId = "source" in styleLayer ? styleLayer.source : undefined;
+    const geoJsonSource =
+      typeof sourceId === "string" &&
+      this.parsedStyle?.sources[sourceId]?.type === "geojson";
+
     // Determine MapLibre feature geometry type for expression evaluation
     // This is the GeoJSON geometry type used in MapLibre expressions (e.g., ["geometry-type"])
     // Symbol layers placed along lines only consume line geometry (see toLayerDescription).
@@ -910,6 +918,7 @@ export class MapLibreStylePlugin extends Plugin<ThreeView, ViewContext> {
     // Create base filter function from styleLayer.filter expression
     let baseFilterFn: (ctx: {
       properties: Record<string, unknown> | undefined;
+      featureId?: string | number;
       zoom?: number;
     }) => boolean;
 
@@ -934,6 +943,7 @@ export class MapLibreStylePlugin extends Plugin<ThreeView, ViewContext> {
     // This controls layer visibility based on zoom level
     const filterFn = (ctx: {
       properties: Record<string, unknown> | undefined;
+      featureId?: string | number;
       zoom?: number;
     }) => {
       // Check layer minzoom/maxzoom (controls entire layer visibility)
@@ -961,7 +971,10 @@ export class MapLibreStylePlugin extends Plugin<ThreeView, ViewContext> {
      * Performance: Only evaluates properties needed for the current rendering mode.
      */
     const evaluateLayoutProperties = (
-      ctx: { properties: Record<string, unknown> | undefined },
+      ctx: {
+        properties: Record<string, unknown> | undefined;
+        featureId?: string | number;
+      },
       meshGeometryType: string | undefined,
     ): Record<string, unknown> | undefined => {
       if (styleLayer.type !== "symbol") {
@@ -1034,9 +1047,19 @@ export class MapLibreStylePlugin extends Plugin<ThreeView, ViewContext> {
       const cameraZoom = this.view?.getZoomLevel(MAPLIBRE_TILE_SIZE) ?? 0;
 
       evaluator.evaluate(
-        ({ properties, meshGeomType: meshGeometryType }: FeatureInfo) => {
+        ({
+          properties,
+          featureId,
+          meshGeomType: meshGeometryType,
+        }: FeatureInfo) => {
           // Use camera zoom for all features (simpler than per-tile zoom)
-          const ctx = { properties, zoom: cameraZoom };
+          const ctx = {
+            properties,
+            featureId: geoJsonSource
+              ? toMapLibreGeoJsonId(featureId)
+              : featureId,
+            zoom: cameraZoom,
+          };
 
           // Check filter first
           if (!filterFn(ctx)) {
