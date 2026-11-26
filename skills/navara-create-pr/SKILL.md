@@ -3,8 +3,9 @@ name: navara-create-pr
 description: >
   Write the Pull Request description from .github/pull_request_template.md,
   capture and attach screenshots, open the PR as a draft against
-  maplibre/navara, and mark it ready after the user approves. Use when asked to
-  create, open or write a PR (description) for the current branch.
+  maplibre/navara, and mark it ready after the user approves. Also covers commit
+  messages. Use when asked to create, open or write a PR (description) for the
+  current branch, or to commit.
 ---
 
 # Creating a Pull Request
@@ -16,6 +17,14 @@ description: >
 3. Capture the screenshots (see below).
 4. Open the PR as a **draft**.
 5. Show the user the URL and a summary of the description. Run `gh pr ready <n> --repo maplibre/navara` only after they approve.
+
+## Commit messages
+
+Same principle as the description: the subject alone should tell what the commit changes. The code holds the details.
+
+- One line, as a Conventional Commit: `<type>(<scope>)?: <what changed>`, e.g. `feat: support instanced 3D Tiles`, `fix: keep picking on shared geometries`.
+- No body unless something cannot be read from the diff, such as a breaking change to call out. Trailers such as `Co-Authored-By` are fine.
+- One logical change per commit, so that one line can describe it.
 
 ## Writing the description
 
