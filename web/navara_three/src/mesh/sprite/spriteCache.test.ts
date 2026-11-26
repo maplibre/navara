@@ -141,6 +141,7 @@ describe("SpriteCache", () => {
   });
 
   it("skips entries that are malformed or outside the sheet", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
     const load = loaderOf({
       "/s.json": sheet({
         ok: { x: 12, y: 12, width: 4, height: 4 },
@@ -159,6 +160,24 @@ describe("SpriteCache", () => {
     for (const name of ["outside", "empty", "fraction", "ratio", "text"]) {
       expect(icons.get(name)).toBeUndefined();
     }
+    vi.restoreAllMocks();
+  });
+
+  it("warns once per icon name the sprite lacks", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const load = loaderOf({ "/s.json": sheet({}) });
+    const icons = await new SpriteCache(load).get(
+      [{ id: "default", url: "/s" }],
+      1,
+    );
+    icons.get("a");
+    icons.get("a");
+    icons.get("b");
+    expect(warn.mock.calls).toEqual([
+      ['Icon "a" is not in the sprite'],
+      ['Icon "b" is not in the sprite'],
+    ]);
+    warn.mockRestore();
   });
 
   it("has no icons when any sheet fails to load", async () => {

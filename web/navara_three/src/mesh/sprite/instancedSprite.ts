@@ -62,7 +62,6 @@ import {
   BillboardAtlas,
   type AtlasImage,
   type AtlasRect,
-  type LoadAtlasImage,
 } from "./billboardAtlas";
 import { loadAtlasImageFromUrl } from "./billboardAtlasImageLoader";
 import type { SpriteIcons } from "./spriteCache";
@@ -272,7 +271,7 @@ export class InstancedSpriteMesh
   /** Part of every icon's atlas key, so icons of a replaced sprite never
    *  resolve to the old one's cached rects. */
   private _spriteGeneration = 0;
-  /** Icons of the material's `sprite`; undefined when it has none. */
+  /** Icons of the material's `sprite`; undefined on a point mesh. */
   private _spriteIcons?: Promise<SpriteIcons>;
   /** Per-feature icon names by batch index, resolved again when the sprite
    *  changes. */
@@ -1175,13 +1174,11 @@ export class InstancedSpriteMesh
     if (key === this._spriteKey) return;
     this._spriteKey = key;
     this._spriteGeneration++;
-    this._spriteIcons =
-      sheets.length > 0
-        ? this.ctx.sprites.get(
-            sheets,
-            this.ctx.viewContext.getRenderer().getPixelRatio(),
-          )
-        : undefined;
+    // No sheets is an empty sprite, which warns about each icon asked of it.
+    this._spriteIcons = this.ctx.sprites.get(
+      sheets,
+      this.ctx.viewContext.getRenderer().getPixelRatio(),
+    );
     for (const [batchIndex, name] of this._featureIcons) {
       void this.setFeatureIconByBatchIndex(batchIndex, name);
     }
@@ -1195,15 +1192,13 @@ export class InstancedSpriteMesh
     };
   }
 
-  /** Throws for a name the sprite lacks, so the atlas warns once and the icon
+  /** Undefined for a name the sprite lacks (the sprite warns), so the icon
    *  draws nothing. */
   private async _loadIcon(
     sprite: Promise<SpriteIcons> | undefined,
     name: string,
-  ): Promise<AtlasImage> {
-    const icon = (await sprite)?.get(name);
-    if (!icon) throw new Error(`Icon "${name}" is not in the sprite`);
-    return icon;
+  ): Promise<AtlasImage | undefined> {
+    return (await sprite)?.get(name);
   }
 
   /**
@@ -1905,4 +1900,7 @@ const ICON_KEY_PREFIX = "sprite icon ";
 
 /** An image to pack: a URL, or an icon with its own loader and a key that
  *  stands in for a URL. */
-type AtlasImageSource = { key: string; load?: LoadAtlasImage };
+type AtlasImageSource = {
+  key: string;
+  load?: () => Promise<AtlasImage | undefined>;
+};

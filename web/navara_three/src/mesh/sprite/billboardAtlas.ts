@@ -41,6 +41,7 @@ export type AtlasImage = {
 };
 
 export type LoadAtlasImage = (url: string) => Promise<AtlasImage>;
+type LoadAtlasImageOrNone = (url: string) => Promise<AtlasImage | undefined>;
 
 export type BillboardAtlasOptions = {
   initialSize?: number;
@@ -118,13 +119,14 @@ export class BillboardAtlas {
   /**
    * Load `url` (once) and pack it into the atlas. `load` replaces the
    * atlas's `loadImage` for an image that is not fetched by URL; `url` is
-   * then just its cache key.
+   * then just its cache key, and `load` resolving to `undefined` means there
+   * is no image (reported by `load`, not here).
    * Resolves to the entry's pixel rect, or `undefined` when the image fails
    * to load or the atlas is full even at `maxSize`.
    */
   pack(
     url: string,
-    load: LoadAtlasImage = this._loadImage,
+    load: LoadAtlasImageOrNone = this._loadImage,
   ): Promise<AtlasRect | undefined> {
     const cached = this._rects.get(url);
     if (cached) return cached;
@@ -145,9 +147,10 @@ export class BillboardAtlas {
 
   private async _loadAndPack(
     url: string,
-    load: LoadAtlasImage,
+    load: LoadAtlasImageOrNone,
   ): Promise<AtlasRect | undefined> {
     const image = await load(url);
+    if (!image) return undefined;
     const rect = this._allocate(image.width, image.height);
     if (!rect) {
       console.warn(

@@ -90,11 +90,24 @@ type IconEntry = { sheet: AtlasImage; rect: SpriteRect; icon?: SpriteIcon };
 
 /** The icons of a loaded sprite, cut out of their sheet on first use. */
 export class SpriteIcons {
-  constructor(private readonly _entries: ReadonlyMap<string, IconEntry>) {}
+  private readonly _missing = new Set<string>();
+
+  /** `reportMissing` warns once per name the sprite lacks; off for a sprite
+   *  that failed to load, which has already warned. */
+  constructor(
+    private readonly _entries: ReadonlyMap<string, IconEntry>,
+    private readonly _reportMissing = true,
+  ) {}
 
   get(name: string): SpriteIcon | undefined {
     const entry = this._entries.get(name);
-    if (!entry) return undefined;
+    if (!entry) {
+      if (this._reportMissing && !this._missing.has(name)) {
+        this._missing.add(name);
+        console.warn(`Icon "${name}" is not in the sprite`);
+      }
+      return undefined;
+    }
     entry.icon ??= {
       ...cutIcon(entry.sheet, entry.rect),
       pixelRatio: entry.rect.pixelRatio,
@@ -168,7 +181,10 @@ export class SpriteCache {
         if (rect) entries.set(prefix + name, { sheet: image, rect });
       }
     });
-    return { icons: new SpriteIcons(failed ? new Map() : entries), failed };
+    const icons = failed
+      ? new SpriteIcons(new Map(), false)
+      : new SpriteIcons(entries);
+    return { icons, failed };
   }
 
   private _sheet(url: string, highDpi: boolean): Promise<SpriteSheetData> {

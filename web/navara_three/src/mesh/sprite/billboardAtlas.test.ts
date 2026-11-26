@@ -76,6 +76,14 @@ describe("BillboardAtlas", () => {
     });
   });
 
+  it("packs nothing, without a warning, when a custom load has no image", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const atlas = new BillboardAtlas({ loadImage: stubLoader() });
+    expect(await atlas.pack("icon", async () => undefined)).toBeUndefined();
+    expect(warn).not.toHaveBeenCalled();
+    warn.mockRestore();
+  });
+
   it("writes the image pixels at the rect position", async () => {
     const atlas = new BillboardAtlas({
       initialSize: 64,
