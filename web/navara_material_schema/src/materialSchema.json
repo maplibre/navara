@@ -1000,7 +1000,7 @@
       {
         "name": "surfaceShow",
         "kind": "boolean",
-        "doc": "Currently, this property is supported only in GeoJSON.",
+        "doc": "Whether to draw the polygon surface. With `outlineShow`, `false` leaves only the outline.",
         "default": true,
         "applies": "live"
       },
@@ -1014,7 +1014,7 @@
       {
         "name": "outlineShow",
         "kind": "boolean",
-        "doc": "Currently, this property is supported only in GeoJSON.",
+        "doc": "Whether to draw the outline: the edges of the extrusion at its base and at its top, and its vertical edges, on polygons from `geojson` and `vector-tile` sources. Not drawn when `clampToGround` or `tiled` is set. On a vector tile, edges introduced by tile clipping are left out.",
         "default": false,
         "applies": "reload",
         "note": "Applies at once when the layer was added with an outline."
@@ -1022,14 +1022,14 @@
       {
         "name": "outlineColor",
         "kind": "color",
-        "doc": "Currently, this property is supported only in GeoJSON.",
+        "doc": "Color of the outline.",
         "default": 16777215,
         "applies": "live"
       },
       {
         "name": "outlineWidth",
         "kind": "number",
-        "doc": "Currently, this property is supported only in GeoJSON.",
+        "doc": "Width of the outline in pixels.",
         "default": 1,
         "applies": "live"
       },

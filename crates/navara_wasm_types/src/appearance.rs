@@ -1653,7 +1653,8 @@ pub struct PolygonMaterial {
     /// Enable `opacity`. It might cause unexpected behavior when you use an effect.
     pub transparent: Option<bool>,
 
-    /// Currently, this property is supported only in GeoJSON.
+    /// Whether to draw the polygon surface. With `outlineShow`, `false`
+    /// leaves only the outline.
     #[wasm_bindgen(js_name = surfaceShow)]
     #[serde(rename = "surfaceShow")]
     pub surface_show: Option<bool>,
@@ -1662,15 +1663,18 @@ pub struct PolygonMaterial {
     /// computes it. Read when geometry is built: tiles already loaded keep
     /// what they have.
     pub outline: Option<bool>,
-    /// Currently, this property is supported only in GeoJSON.
+    /// Whether to draw the outline: the edges of the extrusion at its base
+    /// and at its top, and its vertical edges, on polygons from `geojson` and
+    /// `vector-tile` sources. Not drawn when `clampToGround` or `tiled` is
+    /// set. On a vector tile, edges introduced by tile clipping are left out.
     #[wasm_bindgen(js_name = outlineShow)]
     #[serde(rename = "outlineShow")]
     pub outline_show: Option<bool>,
-    /// Currently, this property is supported only in GeoJSON.
+    /// Color of the outline.
     #[wasm_bindgen(js_name = outlineColor)]
     #[serde(rename = "outlineColor")]
     pub outline_color: Option<u32>,
-    /// Currently, this property is supported only in GeoJSON.
+    /// Width of the outline in pixels.
     #[wasm_bindgen(js_name = outlineWidth)]
     #[serde(rename = "outlineWidth")]
     pub outline_width: Option<f32>,

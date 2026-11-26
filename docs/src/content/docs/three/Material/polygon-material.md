@@ -300,7 +300,7 @@ The option applies to the whole layer: its tiled `polygon` and `polyline` share 
 
 **Type:** `Color | undefined`
 
-**Description:** Specifies the outline color as a `Color` instance. Currently, this property is only supported for GeoJSON.
+**Description:** Specifies the outline color as a `Color` instance.
 
 **Default:** `undefined`
 
@@ -320,7 +320,7 @@ import { Color } from "@navaramap/three";
 
 **Type:** `boolean | undefined`
 
-**Description:** Specifies whether to show the outline. Currently, this property is only supported for GeoJSON.
+**Description:** Specifies whether to show the outline: the edges of the extrusion at its base and at its top, and its vertical edges. Outlines are drawn for polygons from GeoJSON and vector tile sources, but not when `clampToGround` or `tiled` is `true`. On a vector tile, the edges that tile clipping adds to a polygon are not outlined, so a building that crosses a tile border gets no line along that border.
 
 **Default:** `undefined`
 
@@ -338,7 +338,7 @@ import { Color } from "@navaramap/three";
 
 **Type:** `number | undefined`
 
-**Description:** Specifies the outline width. Currently, this property is only supported for GeoJSON. The unit is pixels.
+**Description:** Specifies the outline width. The unit is pixels.
 
 **Default:** `undefined`
 
@@ -519,7 +519,7 @@ import { Color } from "@navaramap/three";
 
 **Type:** `boolean | undefined`
 
-**Description:** Specifies whether to show the polygon surface. Currently, this property is only supported for GeoJSON. This is effective when `outlineShow` is `true`.
+**Description:** Specifies whether to show the polygon surface. This is effective when `outlineShow` is `true`.
 
 **Default:** `undefined`
 

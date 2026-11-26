@@ -300,7 +300,7 @@ import { Color } from "@navaramap/three";
 
 **Type:** `Color | undefined`
 
-**Description:** アウトラインの色を`Color`で指定します。現在、このプロパティは GeoJSON でのみサポートされています。
+**Description:** アウトラインの色を`Color`で指定します。
 
 **Default:** `undefined`
 
@@ -320,7 +320,7 @@ import { Color } from "@navaramap/three";
 
 **Type:** `boolean | undefined`
 
-**Description:** アウトラインを表示するかどうかを指定します。現在、このプロパティは GeoJSON でのみサポートされています。
+**Description:** アウトライン（押し出しの底面と上面の縁、および垂直の辺）を表示するかどうかを指定します。GeoJSON とベクタータイルのソースのポリゴンに描画されますが、`clampToGround` または `tiled` が `true` の場合は描画されません。ベクタータイルでは、タイルのクリッピングで加わった辺には描画されないため、タイルの境界をまたぐ建物にその境界に沿った線は引かれません。
 
 **Default:** `undefined`
 
@@ -338,7 +338,7 @@ import { Color } from "@navaramap/three";
 
 **Type:** `number | undefined`
 
-**Description:** アウトラインの幅を指定します。現在、このプロパティは GeoJSON でのみサポートされています。単位はピクセルです。
+**Description:** アウトラインの幅を指定します。単位はピクセルです。
 
 **Default:** `undefined`
 
@@ -519,7 +519,7 @@ import { Color } from "@navaramap/three";
 
 **Type:** `boolean | undefined`
 
-**Description:** ポリゴンの表面を表示するかどうかを指定します。現在、このプロパティは GeoJSON でのみサポートされています。`outlineShow`が`true`の場合に有効です。
+**Description:** ポリゴンの表面を表示するかどうかを指定します。`outlineShow`が`true`の場合に有効です。
 
 **Default:** `undefined`
 
