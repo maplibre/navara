@@ -57,6 +57,25 @@ describe("instancedSpriteBaseEnhancer / state", () => {
       expect(state.offsetDepth).toBe(false);
     });
 
+    it("updates the SDF halo, defaulting to an opaque black ring of width 0", () => {
+      expect(DEFAULT_BASE_STATE).toMatchObject({
+        outlineColor: 0x000000,
+        outlineOpacity: 1,
+        outlineWidth: 0,
+        outlineBlur: 0,
+      });
+      const state = updateState(
+        { outlineColor: 0xffd400, outlineWidth: 3, outlineBlur: 1 },
+        DEFAULT_BASE_STATE,
+      );
+      expect(state).toMatchObject({
+        outlineColor: 0xffd400,
+        outlineOpacity: 1,
+        outlineWidth: 3,
+        outlineBlur: 1,
+      });
+    });
+
     it("updates alphaTest", () => {
       const state = updateState({ alphaTest: 0.5 }, DEFAULT_BASE_STATE);
       expect(state.alphaTest).toBe(0.5);

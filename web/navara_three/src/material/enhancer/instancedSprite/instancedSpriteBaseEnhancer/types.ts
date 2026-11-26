@@ -57,6 +57,12 @@ export type InstancedSpriteBaseProps = {
   emissiveColor?: number;
   emissiveIntensity?: number;
 
+  // Halo around SDF icons (billboards only), width and blur in screen px.
+  outlineColor?: number;
+  outlineOpacity?: number;
+  outlineWidth?: number;
+  outlineBlur?: number;
+
   // Material properties (set directly on material, not via uniforms)
   transparent?: boolean;
   depthTest?: boolean;
@@ -105,6 +111,10 @@ export type InstancedSpriteBaseState = Readonly<{
   effectIdsMask: number;
   emissiveColor: number;
   emissiveIntensity: number;
+  outlineColor: number;
+  outlineOpacity: number;
+  outlineWidth: number;
+  outlineBlur: number;
 
   // Material properties
   transparent: boolean;
@@ -150,6 +160,10 @@ export type InstancedSpriteBaseRefs = {
   uEffectIdsMask: UniformValue<number>;
   uEmissiveColor: UniformValue<Color>;
   uEmissiveIntensity: UniformValue<number>;
+  uOutlineColor: UniformValue<Color>;
+  uOutlineOpacity: UniformValue<number>;
+  uOutlineWidth: UniformValue<number>;
+  uOutlineBlur: UniformValue<number>;
   uFovRad: UniformValue<number>;
   uScreenHeightPx: UniformValue<number>;
 

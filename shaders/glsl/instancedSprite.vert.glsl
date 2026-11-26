@@ -23,6 +23,9 @@
     attribute vec2 instanceImageInfo;
     uniform vec2 uAtlasSize;
     flat varying float vSdf;
+    // Screen pixels per icon pixel, which an SDF halo's width is divided by
+    // (MapLibre's fontScale).
+    flat varying float vIconScale;
 #endif
 
 attribute float instanceBatchID;
@@ -174,6 +177,12 @@ void main() {
     if (!uSizeInMeters) {
         sizeUnit = worldPerPx;
     }
+#ifdef BILLBOARD
+    float imageHeightPx = instanceUvRect.w / instanceImageInfo.x;
+    vIconScale = imageHeightPx > 0.0
+        ? quadHeight * sizeUnit / worldPerPx / imageHeightPx
+        : 1.0;
+#endif
     vec3 translateOffset = nvr_translateOffset(absTransformed, uTranslate, uTranslateViewport, worldPerPx);
 
     // The quad's axes: view-space x/y for a plain billboard, otherwise a pair

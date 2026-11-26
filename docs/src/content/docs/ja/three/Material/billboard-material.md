@@ -388,6 +388,89 @@ import { Color } from "@navaramap/three";
 }
 ```
 
+### outlineBlur
+
+**Type:** `number | undefined`
+
+**Description:** SDF アイコンのハローがぼけて消えていく幅 (画面ピクセル)。MapLibre の `icon-halo-blur` に相当します。[`outlineWidth`](#outlinewidth) も参照してください。
+
+**Default:** `0.0`
+
+**Example:**
+
+```typescript
+{
+  billboard: {
+    outlineWidth: 3,
+    outlineBlur: 1
+  }
+}
+```
+
+### outlineColor
+
+**Type:** `Color | undefined`
+
+**Description:** SDF アイコンのハローの色。MapLibre の `icon-halo-color` に相当します。[`outlineWidth`](#outlinewidth) も参照してください。
+
+**Default:** 黒
+
+**Example:**
+
+```typescript
+import { Color } from "@navaramap/three";
+
+{
+  billboard: {
+    outlineColor: new Color().setHex(0xffffff),
+    outlineWidth: 2
+  }
+}
+```
+
+### outlineOpacity
+
+**Type:** `number | undefined`
+
+**Description:** SDF アイコンのハローの不透明度 (0.0 から 1.0)。ハローは [`opacity`](#opacity) によっても薄くなります。
+
+**Default:** `1.0`
+
+**Example:**
+
+```typescript
+{
+  billboard: {
+    outlineWidth: 2,
+    outlineOpacity: 0.5
+  }
+}
+```
+
+### outlineWidth
+
+**Type:** `number | undefined`
+
+**Description:** `"sdf": true` が指定された [`sprite`](#sprite) のアイコンの縁の外側に描くハローの幅 (画面ピクセル)。MapLibre の `icon-halo-width` に相当します。幅はアイコンの大きさにかかわらず一定です。その他の画像にはハローは描画されません。ハローが届くのはシートの距離場の範囲 (MapLibre のスプライトではアイコンの 6 ピクセルにアイコンの拡大率を掛けたもの) までです。それより広い、またはぼかしの大きいハローは、アイコンの矩形全体を塗りつぶします。
+
+**Default:** `0.0` (ハローなし)
+
+**Example:**
+
+```typescript
+import { Color } from "@navaramap/three";
+
+{
+  billboard: {
+    sprite: "https://example.com/sprites/maki",
+    icon: "dot",
+    color: new Color().setHex(0xe53935),
+    outlineColor: new Color().setHex(0xffffff),
+    outlineWidth: 2
+  }
+}
+```
+
 ### overlap
 
 **Type:** `"never" | "always" | "cooperative" | undefined`
@@ -650,7 +733,7 @@ MapLibre の `symbol-spacing` と同様に、ラインに沿った長さが `spa
 
 文字列は 1 枚のシートを表し、アイコンはインデックスの名前のまま使えます。リストは複数のシートを読み込み、アイコンの名前は `<id>:<name>` になります。ただし `id` が `"default"` のシートのアイコンは `<name>` のままです。いずれかのシートの読み込みに失敗すると、そのスプライトのアイコンは描画されません。各シートは、使うレイヤーの数にかかわらず一度だけ読み込まれます。
 
-インデックスで `"sdf": true` が指定されたアイコンは、MapLibre と同じ形式の符号付き距離場 (SDF) です。形は [`color`](#color) の色で、どの大きさでもくっきりと描画され、シートの色は使われません。MapLibre はこのアイコンをデフォルトで黒 (`icon-color`) で描画しますが、`color` のデフォルトは白なので指定してください。
+インデックスで `"sdf": true` が指定されたアイコンは、MapLibre と同じ形式の符号付き距離場 (SDF) です。形は [`color`](#color) の色で、どの大きさでもくっきりと描画され、シートの色は使われません。MapLibre はこのアイコンをデフォルトで黒 (`icon-color`) で描画しますが、`color` のデフォルトは白なので指定してください。[`outlineWidth`](#outlinewidth) でハローを描画できます。
 
 **Default:** `undefined`
 

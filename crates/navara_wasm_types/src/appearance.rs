@@ -607,6 +607,26 @@ pub struct BillboardMaterial {
     /// lacks, or any name without a `sprite`, draws nothing.
     #[wasm_bindgen(getter_with_clone)]
     pub icon: Option<String>,
+    /// Color of the halo around an `"sdf": true` sprite icon, in 0xRRGGBB, as
+    /// MapLibre's `icon-halo-color`. Other images draw no halo. Defaults to
+    /// black.
+    #[wasm_bindgen(js_name = outlineColor)]
+    #[serde(rename = "outlineColor")]
+    pub outline_color: Option<u32>,
+    /// Opacity of the halo, from 0 to 1. Defaults to `1.0`.
+    #[wasm_bindgen(js_name = outlineOpacity)]
+    #[serde(rename = "outlineOpacity")]
+    pub outline_opacity: Option<f32>,
+    /// Width of the halo outside the icon's edge, in screen pixels, as
+    /// MapLibre's `icon-halo-width`. Defaults to `0.0` (no halo).
+    #[wasm_bindgen(js_name = outlineWidth)]
+    #[serde(rename = "outlineWidth")]
+    pub outline_width: Option<f32>,
+    /// Width over which the halo fades out, in screen pixels, as MapLibre's
+    /// `icon-halo-blur`. Defaults to `0.0`.
+    #[wasm_bindgen(js_name = outlineBlur)]
+    #[serde(rename = "outlineBlur")]
+    pub outline_blur: Option<f32>,
     #[wasm_bindgen(js_name = sizeInMeters)]
     #[serde(rename = "sizeInMeters")]
     /// Whether the size is specified in meters. If false, the size is in pixels. Default is true.
@@ -724,6 +744,10 @@ impl From<BillboardMaterial> for navara_material::BillboardMaterial {
             url: val.url.unwrap_or(default.url),
             sprite: val.sprite.map_or(default.sprite, to_sprite_sheets),
             icon: val.icon.unwrap_or(default.icon),
+            outline_color: val.outline_color.unwrap_or(default.outline_color),
+            outline_opacity: val.outline_opacity.unwrap_or(default.outline_opacity),
+            outline_width: val.outline_width.unwrap_or(default.outline_width),
+            outline_blur: val.outline_blur.unwrap_or(default.outline_blur),
             size_in_meters: val.size_in_meters.unwrap_or(default.size_in_meters),
             size_relative_to_image: val
                 .size_relative_to_image
@@ -771,6 +795,10 @@ impl<'a> From<&'a navara_material::BillboardMaterial> for BillboardMaterial {
             url: Some(value.url.clone()),
             sprite: Some(value.sprite.iter().map(SpriteSheet::from).collect()),
             icon: Some(value.icon.clone()),
+            outline_color: Some(value.outline_color),
+            outline_opacity: Some(value.outline_opacity),
+            outline_width: Some(value.outline_width),
+            outline_blur: Some(value.outline_blur),
             size_in_meters: Some(value.size_in_meters),
             size_relative_to_image: Some(value.size_relative_to_image),
             clamp_to_ground: Some(value.clamp_to_ground),
@@ -823,6 +851,10 @@ impl BillboardMaterial {
                 .clone()
                 .map_or_else(|| other.sprite.clone(), to_sprite_sheets),
             icon: self.icon.clone().unwrap_or(other.icon.clone()),
+            outline_color: self.outline_color.unwrap_or(other.outline_color),
+            outline_opacity: self.outline_opacity.unwrap_or(other.outline_opacity),
+            outline_width: self.outline_width.unwrap_or(other.outline_width),
+            outline_blur: self.outline_blur.unwrap_or(other.outline_blur),
             size_in_meters: self.size_in_meters.unwrap_or(other.size_in_meters),
             size_relative_to_image: self
                 .size_relative_to_image
@@ -3444,5 +3476,27 @@ mod test {
         let readback = BillboardMaterial::from(&list);
         let back = readback.merge(&navara_material::BillboardMaterial::default());
         assert_eq!(back.sprite, list.sprite);
+    }
+
+    /// The SDF halo defaults to none, and a patch keeps the fields it omits.
+    #[test]
+    fn billboard_outline_defaults_and_merge() {
+        let parse = |json: &str| serde_json::from_str::<BillboardMaterial>(json).unwrap();
+        let unset = navara_material::BillboardMaterial::from(parse("{}"));
+        assert_eq!(
+            (
+                unset.outline_color,
+                unset.outline_opacity,
+                unset.outline_width
+            ),
+            (0x000000, 1.0, 0.0)
+        );
+        let halo = navara_material::BillboardMaterial::from(parse(
+            r#"{ "outlineColor": 16777215, "outlineWidth": 3, "outlineBlur": 1 }"#,
+        ));
+        let merged = parse(r#"{ "outlineWidth": 2 }"#).merge(&halo);
+        assert_eq!(merged.outline_width, 2.0);
+        assert_eq!(merged.outline_color, 0xffffff);
+        assert_eq!(merged.outline_blur, 1.0);
     }
 }

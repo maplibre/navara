@@ -22,6 +22,10 @@ import { TILE_DATASETS } from "../../../helpers/constants";
  * - Nearest row (`"sdf": true` icons drawn in the per-feature `color`): a red
  *   dot, a blue dot three times larger with an edge as crisp, a black plus
  *   with sharp corners, and a plain (non-SDF) circle in the same layer.
+ * - The two rows below it repeat those icons with a halo (`outline*`): a
+ *   white 3 px ring, then a yellow 3 px ring blurred over 1 px. The ring is as
+ *   wide around the large dot as around the small one, and the plain circle
+ *   has none.
  */
 
 const CENTER = { lng: 139.7671, lat: 35.6812 };
@@ -122,21 +126,53 @@ const sdfData: FeatureCollection = {
     properties: { ...sdfIcons[i] },
   })),
 };
-const sdfLayer = view.addLayer({
-  type: "vector",
-  source: view.addSource({ type: "geojson", data: sdfData }),
-  billboard: {
-    sprite: SPRITE,
-    sizeInMeters: false,
-    sizeRelativeToImage: true,
-    anchor: "bottom",
-    clampToGround: true,
+const addSdfRow = (
+  lat: number,
+  outline: {
+    outlineColor?: Color;
+    outlineWidth?: number;
+    outlineBlur?: number;
   },
+) => {
+  const data: FeatureCollection = {
+    ...sdfData,
+    features: sdfData.features.map((feature) => ({
+      ...feature,
+      geometry: {
+        type: "Point",
+        coordinates: [(feature.geometry as GeoJSON.Point).coordinates[0], lat],
+      },
+    })),
+  };
+  const layer = view.addLayer({
+    type: "vector",
+    source: view.addSource({ type: "geojson", data }),
+    billboard: {
+      sprite: SPRITE,
+      sizeInMeters: false,
+      sizeRelativeToImage: true,
+      anchor: "bottom",
+      clampToGround: true,
+      declutter: false,
+      ...outline,
+    },
+  });
+  layer.on("featureCreated", ({ evaluator }) => {
+    evaluator.evaluate(({ properties }) => ({
+      icon: properties?.["icon"] as string,
+      color: new Color().setStyle(properties?.["color"] as string),
+      size: properties?.["size"] as number,
+    }));
+  });
+};
+
+addSdfRow(CENTER.lat - 0.0055, {});
+addSdfRow(CENTER.lat - 0.0072, {
+  outlineColor: new Color().setHex(0xffffff),
+  outlineWidth: 3,
 });
-sdfLayer.on("featureCreated", ({ evaluator }) => {
-  evaluator.evaluate(({ properties }) => ({
-    icon: properties?.["icon"] as string,
-    color: new Color().setStyle(properties?.["color"] as string),
-    size: properties?.["size"] as number,
-  }));
+addSdfRow(CENTER.lat - 0.0089, {
+  outlineColor: new Color().setHex(0xffd400),
+  outlineWidth: 3,
+  outlineBlur: 1,
 });

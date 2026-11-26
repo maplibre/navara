@@ -3,16 +3,39 @@
 #ifdef BILLBOARD
     uniform sampler2D uTexture;
     flat varying float vSdf;
+    flat varying float vIconScale;
+    uniform vec3 uOutlineColor;
+    uniform float uOutlineOpacity;
+    uniform float uOutlineWidth;
+    uniform float uOutlineBlur;
 
     // MapLibre's SDF icon encoding: the shape's edge sits at alpha 0.75, and
     // alpha drops by 1/8 per icon pixel outward.
     const float SDF_EDGE = 0.75;
+    const float SDF_PX = 8.0;
 
-    // Coverage of an SDF texel, smoothed over about 1.7 screen pixels as
-    // MapLibre's EDGE_GAMMA does.
-    float nvr_sdfCoverage(float dist) {
-        float gamma = max(0.84 * length(vec2(dFdx(dist), dFdy(dist))), 1e-4);
-        return smoothstep(SDF_EDGE - gamma, SDF_EDGE + gamma, dist);
+    // An SDF icon in `fillColor` over its halo, as MapLibre's symbol_sdf shader
+    // draws it. `gamma` smooths edges over about 1.7 screen pixels
+    // (MapLibre's EDGE_GAMMA).
+    vec4 nvr_sdfColor(float dist, float gamma, vec3 fillColor) {
+        float fill = smoothstep(SDF_EDGE - gamma, SDF_EDGE + gamma, dist);
+        if (uOutlineWidth <= 0.0 || uOutlineOpacity <= 0.0) {
+            return vec4(fillColor, fill);
+        }
+        // Distances are in icon pixels; the halo's are in screen pixels.
+        float scale = max(vIconScale, 1e-4);
+        float haloGamma = uOutlineBlur * 1.19 / (SDF_PX * scale) + gamma;
+        float inner = SDF_EDGE + haloGamma;
+        float haloInner = smoothstep(inner - haloGamma, inner + haloGamma, dist);
+        float haloEdge = SDF_EDGE - uOutlineWidth / (SDF_PX * scale);
+        float halo = uOutlineOpacity * min(
+            smoothstep(haloEdge - haloGamma, haloEdge + haloGamma, dist),
+            1.0 - haloInner
+        );
+        float alpha = fill + (1.0 - fill) * halo;
+        vec3 rgb = (fillColor * fill + uOutlineColor * halo * (1.0 - fill))
+            / max(alpha, 1e-4);
+        return vec4(rgb, alpha);
     }
 #endif
 
@@ -66,10 +89,13 @@ void main() {
         // vUv already targets this instance's atlas sub-rect (see vertex shader)
         vec4 color = texture(uTexture, vUv);
         // Outside the branch: derivatives need every pixel of the quad.
-        float sdfCoverage = nvr_sdfCoverage(color.a);
+        float sdfGamma = max(
+            0.84 * length(vec2(dFdx(color.a), dFdy(color.a))),
+            1e-4
+        );
         if (vSdf > 0.5) {
             // The shape takes the material color; the sheet's RGB is unused.
-            color = vec4(vColor, sdfCoverage);
+            color = nvr_sdfColor(color.a, sdfGamma, vColor);
         } else {
             // Tint RGB only, preserve texture alpha (avoid squaring alpha)
             color.rgb *= vColor;

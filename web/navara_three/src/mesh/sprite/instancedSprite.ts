@@ -794,6 +794,7 @@ export class InstancedSpriteMesh
           ) ?? 0,
         emissiveColor: m.material.emissiveColor ?? 0,
         emissiveIntensity: m.material.emissiveIntensity ?? 0,
+        ...resolveOutline(m.material),
       },
     });
 
@@ -1016,6 +1017,7 @@ export class InstancedSpriteMesh
           ) ?? 0,
         emissiveColor: m.material.emissiveColor ?? 0,
         emissiveIntensity: m.material.emissiveIntensity ?? 0,
+        ...resolveOutline(m.material),
         rtcCenter: [m.transform.tx, m.transform.ty, m.transform.tz],
       },
     });
@@ -1766,6 +1768,17 @@ export class InstancedSpriteMesh
     this._requestedImageKeys.clear();
     this._featureIcons.clear();
   }
+}
+
+/** The halo of SDF icons; a point material has none. */
+function resolveOutline(material: SpriteMaterial) {
+  if (!("outlineWidth" in material)) return {};
+  return {
+    outlineColor: material.outlineColor ?? 0x000000,
+    outlineOpacity: material.outlineOpacity ?? 1,
+    outlineWidth: material.outlineWidth ?? 0,
+    outlineBlur: material.outlineBlur ?? 0,
+  };
 }
 
 /** Starts an icon's atlas key. The generation that follows keeps a replaced

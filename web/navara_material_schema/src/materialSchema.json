@@ -328,6 +328,34 @@
         "applies": "live"
       },
       {
+        "name": "outlineColor",
+        "kind": "color",
+        "doc": "Color of the halo around an `\"sdf\": true` sprite icon, in 0xRRGGBB, as MapLibre's `icon-halo-color`. Other images draw no halo. Defaults to black.",
+        "default": 0,
+        "applies": "live"
+      },
+      {
+        "name": "outlineOpacity",
+        "kind": "number",
+        "doc": "Opacity of the halo, from 0 to 1. Defaults to `1.0`.",
+        "default": 1,
+        "applies": "live"
+      },
+      {
+        "name": "outlineWidth",
+        "kind": "number",
+        "doc": "Width of the halo outside the icon's edge, in screen pixels, as MapLibre's `icon-halo-width`. Defaults to `0.0` (no halo).",
+        "default": 0,
+        "applies": "live"
+      },
+      {
+        "name": "outlineBlur",
+        "kind": "number",
+        "doc": "Width over which the halo fades out, in screen pixels, as MapLibre's `icon-halo-blur`. Defaults to `0.0`.",
+        "default": 0,
+        "applies": "live"
+      },
+      {
         "name": "sizeInMeters",
         "kind": "boolean",
         "doc": "Whether the size is specified in meters. If false, the size is in pixels. Default is true.",

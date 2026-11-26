@@ -388,6 +388,89 @@ Can also be set per feature from a [feature evaluator](../../api/feature-evaluat
 }
 ```
 
+### outlineBlur
+
+**Type:** `number | undefined`
+
+**Description:** Width over which the halo of an SDF icon fades out, in screen pixels, as MapLibre's `icon-halo-blur`. See [`outlineWidth`](#outlinewidth).
+
+**Default:** `0.0`
+
+**Example:**
+
+```typescript
+{
+  billboard: {
+    outlineWidth: 3,
+    outlineBlur: 1
+  }
+}
+```
+
+### outlineColor
+
+**Type:** `Color | undefined`
+
+**Description:** Color of the halo around an SDF icon, as MapLibre's `icon-halo-color`. See [`outlineWidth`](#outlinewidth).
+
+**Default:** Black
+
+**Example:**
+
+```typescript
+import { Color } from "@navaramap/three";
+
+{
+  billboard: {
+    outlineColor: new Color().setHex(0xffffff),
+    outlineWidth: 2
+  }
+}
+```
+
+### outlineOpacity
+
+**Type:** `number | undefined`
+
+**Description:** Opacity of the halo around an SDF icon, from 0.0 to 1.0. The halo also fades with [`opacity`](#opacity).
+
+**Default:** `1.0`
+
+**Example:**
+
+```typescript
+{
+  billboard: {
+    outlineWidth: 2,
+    outlineOpacity: 0.5
+  }
+}
+```
+
+### outlineWidth
+
+**Type:** `number | undefined`
+
+**Description:** Width of a halo drawn around a [`sprite`](#sprite) icon marked `"sdf": true`, outside its edge, in screen pixels, as MapLibre's `icon-halo-width`. The width stays the same at any icon size. Other images draw no halo. The halo can reach only as far as the distance field in the sheet does (6 icon pixels in MapLibre's sprites, times the icon's scale): a wider or more blurred halo fills the whole box of the icon.
+
+**Default:** `0.0` (no halo)
+
+**Example:**
+
+```typescript
+import { Color } from "@navaramap/three";
+
+{
+  billboard: {
+    sprite: "https://example.com/sprites/maki",
+    icon: "dot",
+    color: new Color().setHex(0xe53935),
+    outlineColor: new Color().setHex(0xffffff),
+    outlineWidth: 2
+  }
+}
+```
+
 ### overlap
 
 **Type:** `"never" | "always" | "cooperative" | undefined`
@@ -650,7 +733,7 @@ This option applies when the layer's geometry is built. `layer.update()` does no
 
 A string is a single sheet, whose icons keep the names in its index. A list loads several sheets, and their icons are named `<id>:<name>`, except those of the sheet whose `id` is `"default"`. If any sheet fails to load, no icon of the sprite is drawn. Each sheet is loaded once, however many layers use it.
 
-An icon marked `"sdf": true` in the index is a signed distance field, as MapLibre encodes it. Its shape is drawn in [`color`](#color), with sharp edges at any size, and the colors in the sheet are not used. MapLibre draws such an icon black by default (`icon-color`), but `color` defaults to white, so set it.
+An icon marked `"sdf": true` in the index is a signed distance field, as MapLibre encodes it. Its shape is drawn in [`color`](#color), with sharp edges at any size, and the colors in the sheet are not used. MapLibre draws such an icon black by default (`icon-color`), but `color` defaults to white, so set it. [`outlineWidth`](#outlinewidth) draws a halo around it.
 
 **Default:** `undefined`
 
