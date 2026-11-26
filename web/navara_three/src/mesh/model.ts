@@ -11,6 +11,8 @@ import {
   Box3Helper,
   Color,
   Group,
+  InstancedBufferAttribute,
+  InstancedMesh,
   Mesh,
   Points,
   MeshPhysicalMaterial,
@@ -43,7 +45,13 @@ import type { CustomObject3DEventMap } from "../object3DEvent";
 
 import { GEOMETRY_TYPES } from "./constants";
 import type { FeatureMesh } from "./featureMesh";
-import { vertexGlobalBatchIds } from "./modelBatchIds";
+import {
+  featureIndexAttribute,
+  type GltfFeatureIds,
+  shareAttributes,
+  vertexCount,
+  vertexGlobalBatchIds,
+} from "./modelBatchIds";
 import type { PickableMesh } from "./pickableMesh";
 import { releaseGeometryArraysAfterUpload } from "./releaseGeometryArrays";
 
@@ -177,6 +185,9 @@ export class ModelMesh
     };
 
     const internal = meshMaterial.__internal__;
+    const gltfFeatureIds: GltfFeatureIds | undefined = internal?.gltfFeatureIds
+      ? { propertyTable: internal.gltfPropertyTable }
+      : undefined;
     const geodeticNormal: Vec3 =
       internal?.pointCloudGeodeticNormal ?? new Vec3(0, 0, 0);
     const layout = internal?.pointCloudLayout;
@@ -201,6 +212,7 @@ export class ModelMesh
           meshMaterial,
           batchIds,
           dataSize,
+          gltfFeatureIds,
           modelInitialProps,
         );
         this._releaseGeometryArrays(object);
@@ -239,8 +251,15 @@ export class ModelMesh
       }
     });
     for (const node of nodes) {
-      const box = (node.geometry as BufferGeometry).boundingBox;
+      // Only the box `GLTFLoader` gave the geometry: its arrays may be
+      // released, and an instanced mesh computes its box from that one.
+      let box = (node.geometry as BufferGeometry).boundingBox;
       if (!box) continue;
+      if (node instanceof InstancedMesh) {
+        node.computeBoundingBox();
+        invariant(node.boundingBox);
+        box = node.boundingBox;
+      }
       const helper = new Box3Helper(
         box,
         node instanceof Points ? 0xff0000 : 0x0000ff,
@@ -331,12 +350,13 @@ export class ModelMesh
     meshMaterial: NavaraModelMaterial,
     batchIds: Uint32Array<ArrayBufferLike> | null,
     dataSize: number,
+    gltfFeatureIds: GltfFeatureIds | undefined,
     initialProps: ModelMaterialProps,
   ) {
     // Content without features (e.g. GLB in a 1.0 tileset) has no batch IDs.
     // The shader then reads `batchId` as 0, i.e. nothing to pick.
     if (batchIds) {
-      this._setBatchIdAttribute(mesh, batchIds, dataSize);
+      this._setBatchIdAttribute(mesh, batchIds, dataSize, gltfFeatureIds);
     }
 
     // The enhancer supports standard/physical only. Unlit materials
@@ -369,26 +389,34 @@ export class ModelMesh
     mesh: Mesh<BufferGeometry<NormalBufferAttributes>, ModelMaterial>,
     batchIds: Uint32Array<ArrayBufferLike>,
     dataSize: number,
+    gltfFeatureIds: GltfFeatureIds | undefined,
   ) {
-    // B3DM (1.0) uses _batchid; glTF with EXT_mesh_features (1.1) uses _FEATURE_ID_N.
-    // Assign _FEATURE_ID_0 to _batchid so the batch texture shader works unchanged.
-    // Also accept lowercase _feature_id_0 as a compatibility fallback.
-    const attrs = mesh.geometry.attributes;
-    const featureIdAttribute =
-      attrs?.["_FEATURE_ID_0"] ?? attrs?.["_feature_id_0"];
-    if (!attrs?._batchid && featureIdAttribute) {
-      // TODO: Support other feature ID semantics such as `_FEATURE_ID_n`.
-      // Need to clone, since it might be switch to different feature ID attributes.
-      mesh.geometry.setAttribute("_batchid", featureIdAttribute.clone());
+    const featureIndices = featureIndexAttribute(mesh, gltfFeatureIds);
+    if (!featureIndices) {
+      // A B3DM without `_BATCHID` is one feature; a glTF mesh without
+      // feature IDs is none.
+      const batchId = gltfFeatureIds ? 0 : (batchIds[0] ?? 0);
+      mesh.geometry.setAttribute(
+        "batchId",
+        new BufferAttribute(
+          new Float32Array(vertexCount(mesh.geometry)).fill(batchId),
+          dataSize,
+        ),
+      );
+      return;
     }
-    const featureIndices = attrs?._batchid;
-    const attrBatchIds = featureIndices
-      ? vertexGlobalBatchIds(featureIndices, batchIds)
-      : new Float32Array(attrs?.position?.count).fill(batchIds[0]);
-
+    if (featureIndices instanceof InstancedBufferAttribute) {
+      // The nodes instancing one glTF mesh share its geometry.
+      mesh.geometry = shareAttributes(mesh.geometry);
+    }
+    // `_batchid` marks the mesh as batched for the feature evaluator.
+    mesh.geometry.setAttribute("_batchid", featureIndices);
+    const globalBatchIds = vertexGlobalBatchIds(featureIndices, batchIds);
     mesh.geometry.setAttribute(
       "batchId",
-      new BufferAttribute(attrBatchIds, dataSize),
+      featureIndices instanceof InstancedBufferAttribute
+        ? new InstancedBufferAttribute(globalBatchIds, dataSize)
+        : new BufferAttribute(globalBatchIds, dataSize),
     );
   }
 

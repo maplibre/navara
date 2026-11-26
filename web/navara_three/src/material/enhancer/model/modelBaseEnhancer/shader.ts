@@ -72,7 +72,11 @@ ${BatchTextureVertex}
       "#include <clipping_planes_vertex>",
       `
 #include <clipping_planes_vertex>
+#ifdef USE_INSTANCING
+vPosition = (modelMatrix * instanceMatrix * vec4(transformed, 1.0)).xyz;
+#else
 vPosition = (modelMatrix * vec4(transformed, 1.0)).xyz;
+#endif
 ${ShadowMapDepthVertex}
 `,
     ).source;

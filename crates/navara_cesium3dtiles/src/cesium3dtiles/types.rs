@@ -8,7 +8,7 @@ use navara_data_requester::DataRequester;
 use crate::{
     Cesium3dTilesMetadataDataRequesterMarker, b3dm::B3dmDataRequesterMarker,
     glb::GlbDataRequesterMarker, gltf_features::GltfFeaturesDataRequesterMarker,
-    pnts::PntsDataRequesterMarker,
+    i3dm::I3dmDataRequesterMarker, pnts::PntsDataRequesterMarker,
 };
 
 use super::Cesium3dTileContentDataRequesterMarker;
@@ -23,6 +23,7 @@ pub type Cesium3dTileContentRequesterQuery<'a, 'world, 'state> = Query<
     (
         Or<(
             With<B3dmDataRequesterMarker>,
+            With<I3dmDataRequesterMarker>,
             With<PntsDataRequesterMarker>,
             With<GlbDataRequesterMarker>,
             With<GltfFeaturesDataRequesterMarker>,
@@ -42,6 +43,7 @@ pub type ChangedCesium3dTileContentRequesterQuery<'a, 'world, 'state> = Query<
     (
         Or<(
             With<B3dmDataRequesterMarker>,
+            With<I3dmDataRequesterMarker>,
             With<PntsDataRequesterMarker>,
             With<GlbDataRequesterMarker>,
             With<GltfFeaturesDataRequesterMarker>,

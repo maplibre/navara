@@ -409,7 +409,7 @@ impl ContentSlot {
         // Legacy tilesets name the content URI `url`.
         let uri = content.uri.as_ref().or(content.url.as_ref())?;
         let Some(kind) = ContentKind::from_uri(uri) else {
-            // TODO: support other formats like i3dm, cmpt, plain glTF, etc.
+            // TODO: support other formats like cmpt.
             // The tile is kept so its children still render.
             if !uri.is_empty() {
                 warn!(
@@ -471,6 +471,7 @@ pub enum ContentKind {
     /// A nested tileset.
     Json,
     B3dm,
+    I3dm,
     Pnts,
     Glb,
     /// JSON glTF, which the frontend packs into a GLB, so it is then handled
@@ -489,6 +490,7 @@ impl ContentKind {
         match content_extension(uri)? {
             "json" => Some(Self::Json),
             "b3dm" => Some(Self::B3dm),
+            "i3dm" => Some(Self::I3dm),
             "pnts" => Some(Self::Pnts),
             "glb" => Some(Self::Glb),
             "gltf" => Some(Self::Gltf),
@@ -512,6 +514,7 @@ impl ContentKind {
         };
         match &magic {
             b"b3dm" => Some(Self::B3dm),
+            b"i3dm" => Some(Self::I3dm),
             b"pnts" => Some(Self::Pnts),
             b"glTF" => Some(Self::Glb),
             [b'{', ..] => Some(Self::Json),
@@ -523,6 +526,7 @@ impl ContentKind {
         match self {
             Self::Json => DataRequesterExtension::Json,
             Self::B3dm => DataRequesterExtension::B3dm,
+            Self::I3dm => DataRequesterExtension::I3dm,
             Self::Pnts => DataRequesterExtension::Pnts,
             Self::Glb => DataRequesterExtension::Glb,
             Self::Gltf => DataRequesterExtension::Gltf,
@@ -704,8 +708,9 @@ mod tests {
             ("data:model/gltf+json,{}", Some(ContentKind::Gltf)),
             ("data:application/json,{}", Some(ContentKind::Json)),
             ("data:,{\"asset\":{}}", Some(ContentKind::Json)),
-            // "i3dm".
-            ("data:;base64,aTNkbQEAAAA=", None),
+            ("data:;base64,aTNkbQEAAAA=", Some(ContentKind::I3dm)),
+            // "cmpt".
+            ("data:;base64,Y21wdAEAAAA=", None),
             ("data:;base64,YjNk", None),
             ("data:;base64", None),
         ];
@@ -734,7 +739,7 @@ mod tests {
         let kinds = |t: &Cesium3dTileContent| t.contents.iter().map(|s| s.kind).collect::<Vec<_>>();
 
         let multi = tile(
-            r#"{"contents": [{"uri": "a.b3dm"}, {"uri": "b.i3dm"}, {"uri": "c.glb"}, {"uri": "d.json"}]}"#,
+            r#"{"contents": [{"uri": "a.b3dm"}, {"uri": "b.cmpt"}, {"uri": "c.glb"}, {"uri": "d.json"}]}"#,
         );
         assert_eq!(kinds(&multi), [ContentKind::B3dm, ContentKind::Glb]);
         assert!(multi.is_renderable_content());

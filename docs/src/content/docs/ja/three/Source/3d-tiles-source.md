@@ -25,7 +25,7 @@ Google Maps Platform の Google Photorealistic 3D Tiles に対応しています
 | ----------------------------------------------------- | -------------------------------------------------------------- |
 | b3dm (Batched 3D Model)                               | ⚠️ glTF 2.0 のペイロードのみ                                   |
 | pnts (Point Cloud)                                    | ⚠️ feature table の一部のみ。[PNTS の属性](#pnts-の属性)を参照 |
-| i3dm (Instanced 3D Model)                             | ❌                                                             |
+| i3dm (Instanced 3D Model)                             | ⚠️ 三角形メッシュのみ                                          |
 | cmpt (Composite)                                      | ❌                                                             |
 | 外部タイルセット（コンテンツとしての `tileset.json`） | ✅                                                             |
 
@@ -55,6 +55,8 @@ Navara が読み取るのは pnts の feature table の一部です。点の色�
 | GLB POINTS プリミティブ      | `mode: POINTS` の glTF メッシュを点群として描画（3D Tiles 1.1 の点群対応）。                  |
 | `EXT_mesh_features`          | glTF メッシュ内の FeatureId セットによるフィーチャー識別。                                    |
 | `EXT_structural_metadata`    | glTF アセットに埋め込まれたプロパティテーブルによるフィーチャーごとのメタデータへのアクセス。 |
+| `EXT_mesh_gpu_instancing`    | インスタンス化された三角形メッシュを、メッシュごとに 1 回のドローコールで描画。点と線は 1 つだけ描画されます。 |
+| `EXT_instance_features`      | インスタンスごとのフィーチャー識別。インスタンス単位でピッキングやスタイリングができます。    |
 | tileset のメタデータ         | tileset・タイル・コンテンツ・グループの `metadata`。[メタデータ](#メタデータ)を参照。         |
 | `KHR_draco_mesh_compression` | Draco 圧縮されたメッシュデータのデコード。                                                    |
 | `KHR_mesh_quantization`      | 量子化された頂点属性によるコンパクトな glTF アセットへの対応。                                |
@@ -84,7 +86,7 @@ Navara は tileset・タイル・コンテンツ・グループのメタデー�
 - タイル・コンテンツ・グループのメタデータは、レイヤーの `featureCreated` イベントでフィーチャーセットごとに `content.metadata: { tile?, content?, group? }` として届きます（`content.type` は `"3d-tiles"`）。ビューの `featureClick` / `featureHover` / `featureEnter` イベントでも、ピックしたフィーチャーに同じ `content` が付きます。
 - tileset のメタデータと schema は、読み込みごとに 1 回レイヤーの `tilesetLoaded` イベントで届き、その後も `layer.tileset` から読めます。
 
-schema はルート tileset JSON 内に書かれている必要があります（`schemaUri` は取得しません）。CesiumJS と同じく、すべてのタイルはルート tileset の `schema` と `groups` で解決し、外部（ネストした）tileset の `schema` と `groups` は無視します。implicit tiling の subtree にあるメタデータは読みません。
+schema はルート tileset JSON から読みます（インラインでも `schemaUri` でも構いません）。CesiumJS と同じく、すべてのタイルはルート tileset の `schema` と `groups` で解決し、外部（ネストした）tileset の `schema` と `groups` は無視します。implicit tiling の subtree にあるメタデータは読みません。
 
 ```typescript
 const layer = view.addLayer({ type: "3d-tiles", source: tileset });

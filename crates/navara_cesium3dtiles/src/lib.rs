@@ -41,8 +41,10 @@ mod b3dm;
 mod cesium3dtiles;
 mod cleanup_system;
 mod construct_system;
+mod feature_table;
 mod glb;
 mod gltf_features;
+mod i3dm;
 mod pnts;
 mod tile_content_parser;
 
@@ -102,11 +104,13 @@ impl Plugin for Cesium3dTilesPlugin {
                 construct_system::construct_model_by_cesium3dtiles_layer::<pnts::parser::PntsParser>,
                 construct_system::construct_model_by_cesium3dtiles_layer::<glb::parser::GlbParser>,
                 construct_system::construct_model_by_cesium3dtiles_layer::<gltf_features::parser::GltfFeaturesParser>,
+                construct_system::construct_model_by_cesium3dtiles_layer::<i3dm::parser::I3dmParser>,
                 // Phase 4: Cleanup (generic for all formats)
                 cleanup_system::remove_invisible_rendered_tiles::<b3dm::parser::B3dmParser>,
                 cleanup_system::remove_invisible_rendered_tiles::<pnts::parser::PntsParser>,
                 cleanup_system::remove_invisible_rendered_tiles::<glb::parser::GlbParser>,
                 cleanup_system::remove_invisible_rendered_tiles::<gltf_features::parser::GltfFeaturesParser>,
+                cleanup_system::remove_invisible_rendered_tiles::<i3dm::parser::I3dmParser>,
                 cleanup_system::enforce_memory_budget,
                 // Phase 5: Layer management
                 cesium3dtiles::system::delete_cesium3dtiles_layer,

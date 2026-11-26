@@ -9,7 +9,8 @@ use navara_data_requester::{DataRequester, RequestOrder};
 use crate::{
     Cesium3dTileContentDataRequesterMarker, Cesium3dTileContentLayerId,
     Cesium3dTilesMetadataDataRequesterMarker, TileOrderByDistance, b3dm::B3dmDataRequesterMarker,
-    glb::GlbDataRequesterMarker, pnts::PntsDataRequesterMarker,
+    glb::GlbDataRequesterMarker, gltf_features::GltfFeaturesDataRequesterMarker,
+    i3dm::I3dmDataRequesterMarker, pnts::PntsDataRequesterMarker,
 };
 
 #[allow(clippy::type_complexity)]
@@ -28,8 +29,10 @@ pub fn filter_requestable_data_requester(
             With<Cesium3dTileContentDataRequesterMarker>,
             Or<(
                 With<B3dmDataRequesterMarker>,
+                With<I3dmDataRequesterMarker>,
                 With<PntsDataRequesterMarker>,
                 With<GlbDataRequesterMarker>,
+                With<GltfFeaturesDataRequesterMarker>,
             )>,
             Without<Cesium3dTilesMetadataDataRequesterMarker>,
             Added<DataRequester>,
@@ -44,8 +47,10 @@ pub fn filter_requestable_data_requester(
             With<Cesium3dTileContentDataRequesterMarker>,
             Or<(
                 With<B3dmDataRequesterMarker>,
+                With<I3dmDataRequesterMarker>,
                 With<PntsDataRequesterMarker>,
                 With<GlbDataRequesterMarker>,
+                With<GltfFeaturesDataRequesterMarker>,
             )>,
             Without<Cesium3dTilesMetadataDataRequesterMarker>,
             Without<Deleted>,
