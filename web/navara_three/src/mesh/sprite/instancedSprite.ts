@@ -1642,8 +1642,11 @@ export class InstancedSpriteMesh
     if (patch.opacity !== undefined) next[3] = patch.opacity;
     if (patch.width !== undefined) next[4] = patch.width;
     if (patch.blur !== undefined) next[5] = patch.blur;
-    // An evaluator re-run (on zoom) writes the same values again.
-    if (next.every((v, i) => v === current[i])) return;
+    // An evaluator re-run (on zoom) writes the same values again; compare as
+    // the float32 texture stores them.
+    if (next.every((v, i) => Math.fround(v) === Math.fround(current[i]))) {
+      return;
+    }
     this._updateBatchAttribute(
       batchIndex,
       "outline",
