@@ -109,7 +109,8 @@ export class SpriteIcons {
  * does: the `@2x` sheets are used when the pixel ratio is above 1 (with no
  * fallback to `1x`), identical `id` + `url` entries load once, and icons are
  * named `<id>:<name>`, except those of the sheet with id `"default"`. If any
- * sheet fails to load, a warning is logged and the sprite has no icons.
+ * sheet fails to load, a warning is logged and the sprite has no icons; the
+ * next `get` of that sprite loads it again.
  */
 export class SpriteCache {
   private readonly _sprites = new Map<string, Promise<SpriteIcons>>();
@@ -127,18 +128,24 @@ export class SpriteCache {
       ...new Map(sheets.map((s) => [`${s.id}\0${s.url}`, s])).values(),
     ];
     const key = JSON.stringify([highDpi, unique.map((s) => [s.id, s.url])]);
-    let sprite = this._sprites.get(key);
-    if (!sprite) {
-      sprite = this._load(unique, highDpi);
-      this._sprites.set(key, sprite);
-    }
+    const cached = this._sprites.get(key);
+    if (cached) return cached;
+    const sprite: Promise<SpriteIcons> = this._load(unique, highDpi).then(
+      ({ icons, failed }) => {
+        if (failed && this._sprites.get(key) === sprite) {
+          this._sprites.delete(key);
+        }
+        return icons;
+      },
+    );
+    this._sprites.set(key, sprite);
     return sprite;
   }
 
   private async _load(
     sheets: readonly SpriteSheetRef[],
     highDpi: boolean,
-  ): Promise<SpriteIcons> {
+  ): Promise<{ icons: SpriteIcons; failed: boolean }> {
     const results = await Promise.allSettled(
       sheets.map((s) => this._sheet(s.url, highDpi)),
     );
@@ -161,16 +168,18 @@ export class SpriteCache {
         if (rect) entries.set(prefix + name, { sheet: image, rect });
       }
     });
-    return new SpriteIcons(failed ? new Map() : entries);
+    return { icons: new SpriteIcons(failed ? new Map() : entries), failed };
   }
 
   private _sheet(url: string, highDpi: boolean): Promise<SpriteSheetData> {
     const urls = spriteSheetUrls(url, highDpi);
-    let sheet = this._sheets.get(urls.json);
-    if (!sheet) {
-      sheet = this._loadSheet(urls);
-      this._sheets.set(urls.json, sheet);
-    }
+    const cached = this._sheets.get(urls.json);
+    if (cached) return cached;
+    const sheet = this._loadSheet(urls);
+    this._sheets.set(urls.json, sheet);
+    sheet.catch(() => {
+      if (this._sheets.get(urls.json) === sheet) this._sheets.delete(urls.json);
+    });
     return sheet;
   }
 }

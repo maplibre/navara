@@ -178,4 +178,20 @@ describe("SpriteCache", () => {
     expect(warn).toHaveBeenCalledTimes(1);
     warn.mockRestore();
   });
+
+  it("loads a sprite again after a sheet failed", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const sheets: Record<string, SpriteSheetData | Error> = {
+      "/s.json": new Error("timeout"),
+    };
+    const load = loaderOf(sheets);
+    const cache = new SpriteCache(load);
+    const ref = [{ id: "default", url: "/s" }];
+    expect((await cache.get(ref, 1)).get("a")).toBeUndefined();
+
+    sheets["/s.json"] = sheet({ a: { x: 0, y: 0, width: 1, height: 1 } });
+    expect((await cache.get(ref, 1)).get("a")).toBeDefined();
+    expect(load).toHaveBeenCalledTimes(2);
+    warn.mockRestore();
+  });
 });

@@ -733,7 +733,7 @@ This option applies when the layer's geometry is built. `layer.update()` does no
 
 **Description:** Icon sheets that [`icon`](#icon) names refer to, in the format of MapLibre's [`sprite`](https://maplibre.org/maplibre-style-spec/sprite/). A sheet is one PNG image that holds many icons, with a JSON index that gives the position of each icon. Its URL is written without the extension: Navara loads `<url>.json` and `<url>.png`, or `<url>@2x.json` and `<url>@2x.png` on a high-DPI screen, with no fallback to the 1x files.
 
-A string is a single sheet, whose icons keep the names in its index. A list loads several sheets, and their icons are named `<id>:<name>`, except those of the sheet whose `id` is `"default"`. If any sheet fails to load, no icon of the sprite is drawn. Each sheet is loaded once, however many layers use it.
+A string is a single sheet, whose icons keep the names in its index. A list loads several sheets, and their icons are named `<id>:<name>`, except those of the sheet whose `id` is `"default"`. If any sheet fails to load, no icon of the sprite is drawn. The sprite is loaded again the next time a new tile or layer uses it. Each sheet is loaded once, however many layers use it.
 
 An icon marked `"sdf": true` in the index is a signed distance field, as MapLibre encodes it. Its shape is drawn in [`color`](#color), with sharp edges at any size, and the colors in the sheet are not used. MapLibre draws such an icon black by default (`icon-color`), but `color` defaults to white, so set it. [`outlineWidth`](#outlinewidth) draws a halo around it.
 
