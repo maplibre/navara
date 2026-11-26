@@ -487,8 +487,10 @@ impl PackedMvtStreamsCursor {
         let feature_tag_sizes = self.take_u32(lens.feature_tag_sizes)?;
         let feature_ids = self
             .take_u32(lens.feature_ids)?
-            .chunks_exact(3)
-            .map(|w| (w[0] != 0).then(|| u64::from(w[1]) | (u64::from(w[2]) << 32)))
+            .as_chunks::<3>()
+            .0
+            .iter()
+            .map(|&[present, lo, hi]| (present != 0).then(|| u64::from(lo) | (u64::from(hi) << 32)))
             .collect();
 
         Some(UnpackedMvtGroup {
