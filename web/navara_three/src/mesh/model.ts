@@ -25,12 +25,15 @@ import {
 import invariant from "tiny-invariant";
 
 import {
+  attachBatchedMaterial,
   initBatchedMaterial,
   MODEL_BATCH_SUPPORT,
   registerBatchedMaterial,
+  setFeatureIdTexture,
   updateBatchAttribute,
   type BatchTextureConfig,
   type BatchTextureSupport,
+  type FeatureIdTextureSource,
 } from "../batchTexture";
 import type { EventContext } from "../event/context";
 import type { FeatureSetContent, Tiles3dContentMetadata } from "../layer";
@@ -47,6 +50,7 @@ import { GEOMETRY_TYPES } from "./constants";
 import type { FeatureMesh } from "./featureMesh";
 import {
   featureIndexAttribute,
+  gltfFeatureIdsOf,
   type GltfFeatureIds,
   shareAttributes,
   vertexCount,
@@ -103,6 +107,10 @@ export class ModelMesh
   private _isTiles3d: boolean;
   private _metadataJson: string | undefined;
   private _content: FeatureSetContent | undefined;
+  /** Meshes of a feature tile whose features could not be resolved. */
+  private _featurelessMeshes = new WeakSet<Mesh>();
+  /** The first feature ID texture clone of each glTF material. */
+  private _featureIdMaterials = new WeakMap<ModelMaterial, ModelMaterial>();
   batchLength?: number;
 
   constructor(
@@ -112,6 +120,8 @@ export class ModelMesh
       credit?: string;
       /** Loaded from 3D Tiles content. */
       isTiles3d?: boolean;
+      /** Feature ID texture source per mesh of `scene` (`loadFeatureIdTextures`). */
+      featureIdTextures?: ReadonlyMap<Mesh, FeatureIdTextureSource>;
     },
     m: NavaraModelMesh,
   ) {
@@ -122,7 +132,7 @@ export class ModelMesh
     this._metadataJson = m.metadata;
     this.batchLength = m.batch_length;
     this.add(gltfInfo.scene);
-    this.init(m);
+    this.init(m, gltfInfo.featureIdTextures);
     this.addEventListener("removedFromWorld", () => {
       this.dispose();
     });
@@ -162,7 +172,10 @@ export class ModelMesh
     }
   }
 
-  private init(m: NavaraModelMesh) {
+  private init(
+    m: NavaraModelMesh,
+    featureIdTextures: ReadonlyMap<Mesh, FeatureIdTextureSource> | undefined,
+  ) {
     const { buf } = this.ctx;
     const batchIdsData = m.geometry.batch_ids;
     const dataSize = batchIdsData?.size ?? 0;
@@ -185,9 +198,7 @@ export class ModelMesh
     };
 
     const internal = meshMaterial.__internal__;
-    const gltfFeatureIds: GltfFeatureIds | undefined = internal?.gltfFeatureIds
-      ? { propertyTable: internal.gltfPropertyTable }
-      : undefined;
+    const gltfFeatureIds = gltfFeatureIdsOf(internal);
     const geodeticNormal: Vec3 =
       internal?.pointCloudGeodeticNormal ?? new Vec3(0, 0, 0);
     const layout = internal?.pointCloudLayout;
@@ -214,6 +225,7 @@ export class ModelMesh
           dataSize,
           gltfFeatureIds,
           modelInitialProps,
+          featureIdTextures?.get(object),
         );
         this._releaseGeometryArrays(object);
       } else if (object instanceof Points) {
@@ -352,6 +364,7 @@ export class ModelMesh
     dataSize: number,
     gltfFeatureIds: GltfFeatureIds | undefined,
     initialProps: ModelMaterialProps,
+    featureIdTexture: FeatureIdTextureSource | undefined,
   ) {
     // Content without features (e.g. GLB in a 1.0 tileset) has no batch IDs.
     // The shader then reads `batchId` as 0, i.e. nothing to pick.
@@ -359,9 +372,29 @@ export class ModelMesh
       this._setBatchIdAttribute(mesh, batchIds, dataSize, gltfFeatureIds);
     }
 
+    const featureIdSource = batchIds && this.batchLength && featureIdTexture;
+    // Otherwise the evaluator would style the whole tile per feature.
+    if (
+      gltfFeatureIds &&
+      !featureIdSource &&
+      !mesh.geometry.hasAttribute("_batchid")
+    ) {
+      this._featurelessMeshes.add(mesh);
+    }
+
     // The enhancer supports standard/physical only. Unlit materials
     // (`KHR_materials_unlit`, e.g. Google Photorealistic 3D Tiles) render as is.
     if (!(mesh.material instanceof MeshStandardMaterial)) return;
+
+    // Its feature ID uniforms and defines are per mesh; the batch texture is
+    // shared by the meshes of one glTF material.
+    let batchSource: ModelMaterial | undefined;
+    if (featureIdSource) {
+      const original = mesh.material;
+      mesh.material = original.clone();
+      batchSource = this._featureIdMaterials.get(original);
+      if (!batchSource) this._featureIdMaterials.set(original, mesh.material);
+    }
 
     mesh.castShadow = !!meshMaterial.castShadow;
     mesh.receiveShadow = !!meshMaterial.receiveShadow;
@@ -378,11 +411,21 @@ export class ModelMesh
     mesh.material.customProgramCacheKey = () => enhancer.programCacheKey();
     mesh.material.onBeforeCompile = enhancer.transformShader;
 
+    if (batchSource) attachBatchedMaterial(batchSource, mesh.material);
     this._initBatchedMaterial(mesh);
+    if (featureIdSource) {
+      this._initBatchDataTexture(mesh);
+      setFeatureIdTexture(mesh.material, featureIdSource, batchIds);
+    }
 
     this.initDepthMaterial(mesh, enhancer);
 
     this.ctx.viewContext.applyShadowMaterial(mesh.material);
+  }
+
+  /** Whether per-feature styles apply to the mesh. */
+  _hasFeatures(mesh: Mesh): boolean {
+    return !this._featurelessMeshes.has(mesh);
   }
 
   private _setBatchIdAttribute(

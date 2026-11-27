@@ -24,6 +24,7 @@ import {
   hasBatchScalarSlot,
   readBatchScalar,
   readBatchShowOpacity,
+  readBatchVec3,
   registerBatchedMaterial,
   SPRITE_BATCH_SUPPORT,
   unpackOrientation,
@@ -57,8 +58,13 @@ import { buildBatchIndexMap } from "../batchIndexMap";
 import { GEOMETRY_TYPES, type GeometryType } from "../constants";
 import { PickableMesh } from "../pickableMesh";
 
-import { BillboardAtlas, type AtlasRect } from "./billboardAtlas";
+import {
+  BillboardAtlas,
+  type AtlasImage,
+  type AtlasRect,
+} from "./billboardAtlas";
 import { loadAtlasImageFromUrl } from "./billboardAtlasImageLoader";
+import type { SpriteIcons, SpriteSheetRef } from "./spriteCache";
 
 type SpriteGeometryType = Extract<
   GeometryType,
@@ -212,6 +218,7 @@ const _tmpSize = new Vector2();
 
 /** Reusable scratch for per-feature style writes. */
 const _tmpColorArray: [number, number, number] = [0, 0, 0];
+const _tmpOutlineColor = new Color();
 
 // Coupled with crates/navara_feature/src/geometry/point.rs::pixel_to_world
 export class InstancedSpriteMesh
@@ -239,21 +246,41 @@ export class InstancedSpriteMesh
    */
   private _orientation?: SpriteOrientation;
   private _placement?: SpritePlacement;
+  /** The material's SDF halo; undefined for a point mesh. */
+  private _outline?: SpriteOutline;
   /** Current grid resolution of the sprite quad (see {@link FLAT_QUAD_SEGMENTS}). */
   private _quadSegments = 1;
   /** Instance count of the current geometry; bounds the identity fallback. */
   private _instanceCount = 0;
   private _atlas?: BillboardAtlas;
-  private _defaultUrl?: string;
+  /** Atlas key of the material's image: its `icon` (see {@link _iconImage}),
+   *  else its `url`. */
+  private _defaultKey?: string;
   /** Atlas rect of the current default image; re-applied to an instance when
    * its per-feature override is cleared. */
   private _defaultRect?: AtlasRect;
   /** Instance ids whose image was overridden per-feature; the default image
    * from the material no longer applies to them. */
   private _imageOverrides = new Set<number>();
-  /** Latest override URL requested per instance. An async pack only applies
+  /** Latest override key requested per instance. An async pack only applies
    * if it still matches, so a newer override or a clear wins over slow loads. */
-  private _requestedImageUrls = new Map<number, string>();
+  private _requestedImageKeys = new Map<number, string>();
+  /** The material's image: its `icon` name, else its `url`. */
+  private _defaultIcon?: string;
+  private _defaultUrl?: string;
+  /** The material's `sprite`. */
+  private _spriteSheets: SpriteSheetRef[] = [];
+  /** Whether the `@2x` sheets of the sprite are in use. */
+  private _spriteHighDpi = false;
+  /** The sprite's sheets and resolution as a comparable string; part of
+   *  every icon's atlas key, so each sprite keeps its own rects and switching
+   *  back to one reuses them. */
+  private _spriteKey?: string;
+  /** Icons of the material's `sprite`; undefined on a point mesh. */
+  private _spriteIcons?: Promise<SpriteIcons>;
+  /** Per-feature icon names by batch index, resolved again when the sprite
+   *  changes. */
+  private _featureIcons = new Map<number, string>();
   /** Forwards the atlas byte footprint to the engine's memory ledger; wired
    * by the feature-added handler once the owning entity bits are known. */
   private _atlasBytesReporter?: (bytes: number) => void;
@@ -391,6 +418,9 @@ export class InstancedSpriteMesh
       ? (this.geometry?.getAttribute("instanceUvRect") as
           InstancedBufferAttribute | undefined)
       : undefined;
+    const imageInfo = uvRect
+      ? this.geometry.getAttribute("instanceImageInfo")
+      : undefined;
     for (let i = 0; i < count; i++) {
       const o = i * LINE_ANCHOR_STRIDE;
       const batchIndex = batchIndices ? batchIndices[i] : i;
@@ -399,6 +429,7 @@ export class InstancedSpriteMesh
         batchSize !== undefined && batchSize >= 0.0 ? batchSize : state.scale;
       const rectH = uvRect ? uvRect.getW(i) : 0;
       const aspect = uvRect && rectH > 0 ? uvRect.getZ(i) / rectH : 1.0;
+      const imageHeight = imageInfo ? rectH / imageInfo.getX(i) : 0;
       input[o] = anchors[i * 3];
       input[o + 1] = anchors[i * 3 + 1];
       input[o + 2] = anchors[i * 3 + 2];
@@ -414,7 +445,7 @@ export class InstancedSpriteMesh
         batchIndex,
         aspect,
         size,
-        rectH,
+        imageHeight,
       );
       input[o + 7] = box[0];
       input[o + 8] = box[1];
@@ -468,6 +499,9 @@ export class InstancedSpriteMesh
     const uvRect = state.billboard
       ? (this.geometry?.getAttribute("instanceUvRect") as
           InstancedBufferAttribute | undefined)
+      : undefined;
+    const imageInfo = uvRect
+      ? this.geometry.getAttribute("instanceImageInfo")
       : undefined;
     const anchors = this._anchors;
     const batchIndices = this._instanceBatchIndex;
@@ -525,7 +559,7 @@ export class InstancedSpriteMesh
             batchIndex,
             aspect,
             size,
-            rectH,
+            imageInfo ? rectH / imageInfo.getX(i) : 0,
           );
       out.push({
         anchorX: anchors[i * 3],
@@ -574,8 +608,9 @@ export class InstancedSpriteMesh
   /**
    * The unrotated quad around its anchor, `[minX, maxX, minY, maxY]` in the
    * unit of `size`, y up — mirror of instancedSprite.vert.glsl: the batch
-   * texture's anchor and offset, falling back to the material's. `rectH` is
-   * the image's pixel height, which `sizeRelativeToImage` scales by `size`.
+   * texture's anchor and offset, falling back to the material's.
+   * `imageHeight` is the image's height in CSS pixels (its atlas rect height
+   * over its pixel ratio), which `sizeRelativeToImage` scales by `size`.
    */
   private _quadBox(
     material: ShaderMaterial,
@@ -584,7 +619,7 @@ export class InstancedSpriteMesh
     batchIndex: number,
     aspect: number,
     size: number,
-    rectH: number,
+    imageHeight: number,
   ): Float64Array {
     const code = slots.anchor
       ? readBatchScalar(material, batchIndex, "anchor")
@@ -596,7 +631,7 @@ export class InstancedSpriteMesh
       ox = readBatchScalar(material, batchIndex, "offsetX") ?? ox;
       oy = readBatchScalar(material, batchIndex, "offsetY") ?? oy;
     }
-    const height = state.sizeRelativeToImage ? size * rectH : size;
+    const height = state.sizeRelativeToImage ? size * imageHeight : size;
     const box = _tmpQuadBox;
     box[0] = (-0.5 - cx) * aspect * height + ox;
     box[1] = (0.5 - cx) * aspect * height + ox;
@@ -707,6 +742,7 @@ export class InstancedSpriteMesh
     this._cacheAnchors(positionsInfo, m.transform);
     this._orientation = spriteOrientation(m.material);
     this._placement = spritePlacement(m.material);
+    this._outline = spriteOutline(m.material);
 
     // Create Geometry
     this.geometry = this._initGeometry(positionsInfo, m);
@@ -767,6 +803,7 @@ export class InstancedSpriteMesh
           ) ?? 0,
         emissiveColor: m.material.emissiveColor ?? 0,
         emissiveIntensity: m.material.emissiveIntensity ?? 0,
+        ...outlineUniforms(spriteOutline(m.material)),
       },
     });
 
@@ -776,6 +813,7 @@ export class InstancedSpriteMesh
     // it. Mirrors BatchedSdfTextMesh._applyUpdate.
     this._writeThroughOrientation(orientation);
     this._writeThroughPlacement(placement);
+    this._writeThroughOutline(spriteOutline(m.material));
 
     // Position updates (per-instance attributes)
     {
@@ -815,9 +853,8 @@ export class InstancedSpriteMesh
         base: { alphaTest: m.material.alphaTest ?? 0.0 },
       });
 
-      if (m.material.url) {
-        await this._setDefaultImage(m.material.url);
-      }
+      this._readImageSource(m.material);
+      await this._setDefaultImage();
     }
 
     this.ctx.declutter?.markDirty();
@@ -869,6 +906,14 @@ export class InstancedSpriteMesh
       instancedGeometry.setAttribute(
         "instanceUvRect",
         new InstancedBufferAttribute(new Float32Array(instanceCount * 4), 4),
+      );
+      // instanceImageInfo: vec2(pixel ratio, 1 for an SDF image) of the
+      // image in instanceUvRect.
+      const imageInfo = new Float32Array(instanceCount * 2);
+      for (let i = 0; i < instanceCount; i++) imageInfo[i * 2] = 1;
+      instancedGeometry.setAttribute(
+        "instanceImageInfo",
+        new InstancedBufferAttribute(imageInfo, 2),
       );
     }
 
@@ -982,6 +1027,7 @@ export class InstancedSpriteMesh
           ) ?? 0,
         emissiveColor: m.material.emissiveColor ?? 0,
         emissiveIntensity: m.material.emissiveIntensity ?? 0,
+        ...outlineUniforms(spriteOutline(m.material)),
         rtcCenter: [m.transform.tx, m.transform.ty, m.transform.tz],
       },
     });
@@ -1006,6 +1052,7 @@ export class InstancedSpriteMesh
       mutates.updateScreenHeightPx(
         _renderer.getDrawingBufferSize(_tmpSize).y / _renderer.getPixelRatio(),
       );
+      this._followPixelRatio(_renderer.getPixelRatio());
 
       if (positionsInfo.RTE) {
         mutates.updateRteUniforms(
@@ -1033,8 +1080,9 @@ export class InstancedSpriteMesh
     enhancer.update({ base: { batchDataTexture: batchUniform } });
 
     // Handle billboard texture
-    if (isBillboard && m.material.url) {
-      await this._setDefaultImage(m.material.url);
+    if (m instanceof NavaraBillboardMesh) {
+      this._readImageSource(m.material);
+      await this._setDefaultImage();
     }
 
     material.visible = m.material.show ?? true;
@@ -1124,6 +1172,61 @@ export class InstancedSpriteMesh
     return this._atlas;
   }
 
+  /** Take the material's image and `sprite`. The `sprite` getter clones its
+   *  sheets into new wasm objects, so it is read once and each is freed. */
+  private _readImageSource(material: NavaraBillboardMesh["material"]): void {
+    this._defaultIcon = material.icon || undefined;
+    this._defaultUrl = material.url || undefined;
+    this._spriteSheets = (material.sprite ?? []).map((sheet) => {
+      const ref = { id: sheet.id, url: sheet.url };
+      sheet.free();
+      return ref;
+    });
+    this._applySprite(this.ctx.viewContext.getRenderer().getPixelRatio());
+  }
+
+  /** Switch between the `1x` and `@2x` sheets when the pixel ratio crosses
+   *  1, as when the window moves to another screen. */
+  private _followPixelRatio(pixelRatio: number): void {
+    if (this._spriteSheets.length === 0) return;
+    if (pixelRatio > 1 === this._spriteHighDpi) return;
+    this._applySprite(pixelRatio);
+    void this._setDefaultImage();
+  }
+
+  /** Load the sprite's sheets for `pixelRatio` and resolve the per-feature
+   *  icons against them, unless they are already in use. */
+  private _applySprite(pixelRatio: number): void {
+    const sheets = this._spriteSheets;
+    const highDpi = sheets.length > 0 && pixelRatio > 1;
+    const key = JSON.stringify([highDpi, sheets]);
+    if (key === this._spriteKey) return;
+    this._spriteKey = key;
+    this._spriteHighDpi = highDpi;
+    // No sheets is an empty sprite, which warns about each icon asked of it.
+    this._spriteIcons = this.ctx.sprites.get(sheets, pixelRatio);
+    for (const [batchIndex, name] of this._featureIcons) {
+      void this.setFeatureIconByBatchIndex(batchIndex, name);
+    }
+  }
+
+  /** The icon `name` of the current sprite, to pack in place of a URL. */
+  private _iconImage(name: string): AtlasImageSource {
+    return {
+      key: `${ICON_KEY_PREFIX}${this._spriteKey}:${name}`,
+      load: this._loadIcon.bind(this, this._spriteIcons, name),
+    };
+  }
+
+  /** Undefined for a name the sprite lacks (the sprite warns), so the icon
+   *  draws nothing. */
+  private async _loadIcon(
+    sprite: Promise<SpriteIcons> | undefined,
+    name: string,
+  ): Promise<AtlasImage | undefined> {
+    return (await sprite)?.get(name);
+  }
+
   /**
    * Wire the callback that reports this mesh's atlas footprint to the
    * engine's memory ledger, and immediately report the current footprint —
@@ -1162,29 +1265,62 @@ export class InstancedSpriteMesh
   }
 
   /**
-   * Load the material-level image and apply its rect to every instance that
-   * hasn't been overridden per-feature via setFeatureImageByBatchId.
+   * Load the material-level image — its `icon`, else its `url` — and apply
+   * its rect to every instance that hasn't been overridden per-feature. An
+   * icon that does not resolve, or no image at all, hides those instances; a
+   * URL that fails to load keeps the previous image.
    */
-  private async _setDefaultImage(url: string): Promise<void> {
-    if (this._defaultUrl === url) return;
-    this._defaultUrl = url;
+  private async _setDefaultImage(): Promise<void> {
+    const image: AtlasImageSource | undefined = this._defaultIcon
+      ? this._iconImage(this._defaultIcon)
+      : this._defaultUrl
+        ? { key: this._defaultUrl }
+        : undefined;
+    const key = image?.key;
+    if (this._defaultKey === key) return;
+    this._defaultKey = key;
 
-    const rect = await this._ensureAtlas().pack(url);
-    this._reportAtlasBytes();
-    if (!rect) return;
-    // A newer default image won the race while this one was loading.
-    if (this._defaultUrl !== url) return;
+    let rect: AtlasRect | undefined;
+    if (image) {
+      rect = await this._ensureAtlas().pack(image.key, image.load);
+      this._reportAtlasBytes();
+      // A URL that fails keeps the previous image.
+      if (!rect && !image.load) return;
+      // A newer default image won the race while this one was loading.
+      if (this._defaultKey !== key) return;
+      this._syncAtlasUniforms();
+    }
 
     this._defaultRect = rect;
-    this._syncAtlasUniforms();
+    for (let i = 0; i < this._instanceCount; i++) {
+      if (this._imageOverrides.has(i)) continue;
+      this._setInstanceImage(i, rect);
+    }
+    this._markImagesChanged();
+  }
+
+  /** Point an instance at its atlas rect; no rect hides it (the shader
+   *  culls empty rects). Pair with {@link _markImagesChanged}. */
+  private _setInstanceImage(instanceId: number, rect: AtlasRect | undefined) {
     const rectAttr = this.geometry.getAttribute(
       "instanceUvRect",
     ) as InstancedBufferAttribute;
-    for (let i = 0; i < rectAttr.count; i++) {
-      if (this._imageOverrides.has(i)) continue;
-      rectAttr.setXYZW(i, rect.x, rect.y, rect.w, rect.h);
-    }
-    rectAttr.needsUpdate = true;
+    const infoAttr = this.geometry.getAttribute(
+      "instanceImageInfo",
+    ) as InstancedBufferAttribute;
+    rectAttr.setXYZW(
+      instanceId,
+      rect?.x ?? 0,
+      rect?.y ?? 0,
+      rect?.w ?? 0,
+      rect?.h ?? 0,
+    );
+    infoAttr.setXY(instanceId, rect?.pixelRatio ?? 1, rect?.sdf ? 1 : 0);
+  }
+
+  private _markImagesChanged(): void {
+    this.geometry.getAttribute("instanceUvRect").needsUpdate = true;
+    this.geometry.getAttribute("instanceImageInfo").needsUpdate = true;
     this._onAtlasRectsChanged();
   }
 
@@ -1477,7 +1613,86 @@ export class InstancedSpriteMesh
       rotateWithCamera: follow,
       anchor: anchorCode(this._placement.anchor),
       offset: this._placement.offset,
+      outline: this._outline && outlineTexel(this._outline),
     };
+  }
+
+  /**
+   * One feature's SDF halo, overriding the fields of the material's that
+   * `patch` sets (or of the feature's own, once it has one). No-op for a
+   * point mesh.
+   */
+  setFeatureOutlineByBatchIndex(
+    batchIndex: number,
+    patch: Partial<SpriteOutline>,
+  ): void {
+    if (!this._outline) return;
+    const material = this.material as ShaderMaterial;
+    const current = hasBatchScalarSlot(material, "outlineWidth")
+      ? this._readFeatureOutline(batchIndex)
+      : outlineTexel(this._outline);
+    if (!current) return;
+    const next: OutlineTexel = [...current];
+    if (patch.color !== undefined) {
+      _tmpOutlineColor.setHex(patch.color);
+      next[0] = _tmpOutlineColor.r;
+      next[1] = _tmpOutlineColor.g;
+      next[2] = _tmpOutlineColor.b;
+    }
+    if (patch.opacity !== undefined) next[3] = patch.opacity;
+    if (patch.width !== undefined) next[4] = patch.width;
+    if (patch.blur !== undefined) next[5] = patch.blur;
+    // An evaluator re-run (on zoom) writes the same values again; compare as
+    // the float32 texture stores them.
+    if (next.every((v, i) => Math.fround(v) === Math.fround(current[i]))) {
+      return;
+    }
+    this._updateBatchAttribute(
+      batchIndex,
+      "outline",
+      next,
+      this._batchDefaults(),
+    );
+  }
+
+  private _readFeatureOutline(batchIndex: number): OutlineTexel | undefined {
+    const material = this.material as ShaderMaterial;
+    const color = readBatchVec3(
+      material,
+      batchIndex,
+      "outlineColor",
+      _tmpOutlineColor,
+    );
+    if (!color) return undefined;
+    return [
+      color.r,
+      color.g,
+      color.b,
+      readBatchScalar(material, batchIndex, "outlineOpacity") ?? 1,
+      readBatchScalar(material, batchIndex, "outlineWidth") ?? 0,
+      readBatchScalar(material, batchIndex, "outlineBlur") ?? 0,
+    ];
+  }
+
+  /**
+   * Push the material's changed halo fields onto every feature once a slot
+   * exists — the same guards, for the same reasons, as
+   * {@link _writeThroughOrientation}. Fields the material did not change
+   * keep each feature's own value.
+   */
+  private _writeThroughOutline(next: SpriteOutline | undefined): void {
+    const prev = this._outline;
+    this._outline = next;
+    if (!prev || !next) return;
+    if (!hasBatchScalarSlot(this.material as Material, "outlineWidth")) return;
+    const changed: Partial<SpriteOutline> = {};
+    for (const key of OUTLINE_KEYS) {
+      if (next[key] !== prev[key]) changed[key] = next[key];
+    }
+    if (Object.keys(changed).length === 0) return;
+    for (let i = 0; i < this._batchLength; i++) {
+      this.setFeatureOutlineByBatchIndex(i, changed);
+    }
   }
 
   /**
@@ -1552,59 +1767,77 @@ export class InstancedSpriteMesh
    * reverts the feature to the material's default image. No-op for
    * non-billboard (point) meshes.
    */
-  async setFeatureImageByBatchIndex(
+  setFeatureImageByBatchIndex(
     batchIndex: number,
     url: string | null | undefined,
   ): Promise<void> {
+    this._featureIcons.delete(batchIndex);
+    return this._setFeatureImage(
+      batchIndex,
+      url == null ? undefined : { key: url },
+    );
+  }
+
+  /**
+   * Give one feature the icon `name` of the material's `sprite`, in place of
+   * its image. A name the sprite lacks, or any name without a sprite, hides
+   * the feature. Passing a nullish `name` clears the override and reverts the
+   * feature to the material's default image. No-op for non-billboard (point)
+   * meshes.
+   */
+  setFeatureIconByBatchIndex(
+    batchIndex: number,
+    name: string | null | undefined,
+  ): Promise<void> {
+    if (name == null) this._featureIcons.delete(batchIndex);
+    else this._featureIcons.set(batchIndex, name);
+    return this._setFeatureImage(
+      batchIndex,
+      name == null ? undefined : this._iconImage(name),
+    );
+  }
+
+  private async _setFeatureImage(
+    batchIndex: number,
+    image: AtlasImageSource | undefined,
+  ): Promise<void> {
     const instances = this.instancesOfBatchIndex(batchIndex);
     if (instances.length === 0) return;
+    if (!this.geometry.getAttribute("instanceUvRect")) return;
 
-    const rectAttr = this.geometry.getAttribute("instanceUvRect") as
-      InstancedBufferAttribute | undefined;
-    if (!rectAttr) return;
-
-    if (url == null) {
+    if (image === undefined) {
       let cleared = false;
       for (const instanceId of instances) {
-        this._requestedImageUrls.delete(instanceId);
+        this._requestedImageKeys.delete(instanceId);
         if (!this._imageOverrides.delete(instanceId)) continue;
         // Zero rect (invisible) until the default image finishes loading,
         // same as instances that never had an override.
-        const rect = this._defaultRect;
-        rectAttr.setXYZW(
-          instanceId,
-          rect?.x ?? 0,
-          rect?.y ?? 0,
-          rect?.w ?? 0,
-          rect?.h ?? 0,
-        );
+        this._setInstanceImage(instanceId, this._defaultRect);
         cleared = true;
       }
-      if (cleared) {
-        rectAttr.needsUpdate = true;
-        this._onAtlasRectsChanged();
-      }
+      if (cleared) this._markImagesChanged();
       return;
     }
 
+    const { key, load } = image;
     for (const instanceId of instances) {
-      this._requestedImageUrls.set(instanceId, url);
+      this._requestedImageKeys.set(instanceId, key);
     }
-    const rect = await this._ensureAtlas().pack(url);
+    const rect = await this._ensureAtlas().pack(key, load);
     this._reportAtlasBytes();
-    if (!rect) return;
+    // A URL that fails keeps the current image; an icon hides.
+    if (!rect && !load) return;
     let applied = false;
     for (const instanceId of instances) {
       // A newer override or a clear superseded this load while in flight.
-      if (this._requestedImageUrls.get(instanceId) !== url) continue;
+      if (this._requestedImageKeys.get(instanceId) !== key) continue;
       this._imageOverrides.add(instanceId);
-      rectAttr.setXYZW(instanceId, rect.x, rect.y, rect.w, rect.h);
+      this._setInstanceImage(instanceId, rect);
       applied = true;
     }
     if (applied) {
       this._syncAtlasUniforms();
-      rectAttr.needsUpdate = true;
-      this._onAtlasRectsChanged();
+      this._markImagesChanged();
     }
   }
 
@@ -1639,6 +1872,65 @@ export class InstancedSpriteMesh
     this._outOfBand = null;
     this._bandInput = new Float64Array(0);
     this._imageOverrides.clear();
-    this._requestedImageUrls.clear();
+    this._requestedImageKeys.clear();
+    this._featureIcons.clear();
   }
 }
+
+/** The halo of SDF icons: color as 0xRRGGBB, width and blur in screen
+ *  pixels. */
+type SpriteOutline = {
+  color: number;
+  opacity: number;
+  width: number;
+  blur: number;
+};
+
+const OUTLINE_KEYS = ["color", "opacity", "width", "blur"] as const;
+
+/** A point material has no halo. */
+function spriteOutline(material: SpriteMaterial): SpriteOutline | undefined {
+  if (!("outlineWidth" in material)) return undefined;
+  return {
+    color: material.outlineColor ?? 0x000000,
+    opacity: material.outlineOpacity ?? 1,
+    width: material.outlineWidth ?? 0,
+    blur: material.outlineBlur ?? 0,
+  };
+}
+
+function outlineUniforms(outline: SpriteOutline | undefined) {
+  if (!outline) return {};
+  return {
+    outlineColor: outline.color,
+    outlineOpacity: outline.opacity,
+    outlineWidth: outline.width,
+    outlineBlur: outline.blur,
+  };
+}
+
+/** The `outline` batch value: linear RGB, opacity, width, blur. */
+type OutlineTexel = [number, number, number, number, number, number];
+
+function outlineTexel(outline: SpriteOutline): OutlineTexel {
+  _tmpOutlineColor.setHex(outline.color);
+  return [
+    _tmpOutlineColor.r,
+    _tmpOutlineColor.g,
+    _tmpOutlineColor.b,
+    outline.opacity,
+    outline.width,
+    outline.blur,
+  ];
+}
+
+/** Starts an icon's atlas key. The generation that follows keeps a replaced
+ *  sprite's icons apart. */
+const ICON_KEY_PREFIX = "sprite icon ";
+
+/** An image to pack: a URL, or an icon with its own loader and a key that
+ *  stands in for a URL. */
+type AtlasImageSource = {
+  key: string;
+  load?: () => Promise<AtlasImage | undefined>;
+};

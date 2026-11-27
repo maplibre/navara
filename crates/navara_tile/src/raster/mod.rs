@@ -42,8 +42,24 @@ impl RasterResolveRevision {
 /// not Geographic (nothing bakes there).
 #[derive(Resource, Default)]
 pub struct RasterBakeSnapshot {
-    /// Baked (non-hillshade) layers in sorted order — `layer_ordinal` source of truth.
+    /// Baked (shown, non-hillshade) layers in sorted order — `layer_ordinal` source of truth.
     pub layers: Vec<RasterBakeLayer>,
     /// Texture fragment entities whose data finished loading.
     pub loaded: rustc_hash::FxHashSet<bevy_ecs::entity::Entity>,
+}
+
+/// The layers that take a composite slot on a terrain tile, in draw order, each
+/// with its index in `sorted_layers` (the index of its per-layer entity arrays,
+/// e.g. `texture_fragment_entity_ids` and `hillshade_entity_ids`). A hidden
+/// layer takes no slot. Every per-slot material array and the baked-slot
+/// ordinals ([`RasterBakeSnapshot`]) are built from this list, so the k-th
+/// baked slot pairs with `layer_ordinal == k`.
+pub(crate) fn slotted_layers<'a, T>(
+    sorted_layers: &'a [(&'a navara_layer::TilesLayer, T)],
+) -> impl Iterator<Item = (usize, &'a navara_layer::TilesLayer)> {
+    sorted_layers
+        .iter()
+        .enumerate()
+        .filter(|(_, (l, _))| l.appearance().unwrap().show)
+        .map(|(i, (l, _))| (i, *l))
 }

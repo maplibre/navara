@@ -36,6 +36,10 @@ describe("instancedSpriteBaseEnhancer/mutates", () => {
         alphaTest: 0.3,
         pickable: true,
         atlasSize: [512, 256] as [number, number],
+        outlineColor: 0xffffff,
+        outlineOpacity: 0.5,
+        outlineWidth: 3,
+        outlineBlur: 1,
       };
       const mutates = createBaseMutates(false, false);
       mutates.update(state);
@@ -58,6 +62,10 @@ describe("instancedSpriteBaseEnhancer/mutates", () => {
       expect(uniforms.nvr_uPickable?.value).toBe(1.0);
       expect(uniforms.uAtlasSize?.value.x).toBe(512);
       expect(uniforms.uAtlasSize?.value.y).toBe(256);
+      expect(uniforms.uOutlineColor?.value.getHex()).toBe(0xffffff);
+      expect(uniforms.uOutlineOpacity?.value).toBe(0.5);
+      expect(uniforms.uOutlineWidth?.value).toBe(3);
+      expect(uniforms.uOutlineBlur?.value).toBe(1);
     });
   });
 

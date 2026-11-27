@@ -50,6 +50,9 @@ export type BatchAttributeDefaults = {
   anchor?: number;
   /** Sprites only: the material's offset. */
   offset?: readonly [number, number];
+  /** Sprites only: the material's SDF halo as written to the `outline`
+   *  slots: linear RGB, opacity, width and blur. */
+  outline?: readonly [number, number, number, number, number, number];
 };
 
 /** vec3 attributes: three components of a row (component 3 stays scalar-poolable). */
@@ -90,8 +93,9 @@ export type BatchScalarKey = (typeof BATCH_SCALAR_KEYS)[number];
 /**
  * Scalar slot keys: the public scalar attributes plus internal components —
  * packed show/opacity (written through `show`/`opacity`), the emissive
- * intensity paired with the emissive vec3 row, and the outline scalars paired
- * with the outline color row (written through `outline`).
+ * intensity paired with the emissive vec3 row, the outline scalars paired
+ * with the outline color row (written through `outline`), and the pick IDs
+ * (written through `writeBatchPickIds`).
  */
 export type BatchScalarSlotKey =
   | BatchScalarKey
@@ -99,7 +103,9 @@ export type BatchScalarSlotKey =
   | "emissiveIntensity"
   | "outlineOpacity"
   | "outlineWidth"
-  | "outlineBlur";
+  | "outlineBlur"
+  /** Global pick ID per feature, read when features resolve per fragment. */
+  | "pickId";
 
 export type BatchTextureConfig = {
   /**

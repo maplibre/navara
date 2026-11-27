@@ -56,6 +56,11 @@ self-contained present-tense fact a newcomer can verify against the code.
   material needs `forceSinglePass = true`.** Otherwise three draws a `BackSide`
   and a `FrontSide` pass: the winding flips, so `gl_FrontFacing` is true from
   both sides, `DOUBLE_SIDED` is not defined, and `needsUpdate` fires every frame.
+- **Decode a data texture through `<img>` (`TextureLoader`), not an
+  `ImageBitmap`.** iOS Safari zeroes the RGB of alpha-0 texels in an
+  `ImageBitmap` even with `premultiplyAlpha: "none"`, and `GLTFLoader` uses
+  `ImageBitmapLoader` on Safari 17+, so IDs stored as `(id, 0, 0, 0)` all read
+  0. See `loaders/featureIdTextures.ts`.
 - **Frontend job handlers execute; the engine schedules.** JS never queues,
   caps, dedupes or prioritizes engine events; Rust decides admission and
   order (`RequestLimits`, `WorkerLimits`, `Priority`). Async work registers

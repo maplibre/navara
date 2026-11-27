@@ -40,6 +40,7 @@
     "@types/geojson": "7946.0.16"
   },
   "devDependencies": {
-    "@navaramap/three": "workspace:*"
+    "@navaramap/three": "workspace:*",
+    "fast-check": "4.10.2"
   }
 }

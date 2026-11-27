@@ -242,12 +242,12 @@ function vec3Default(key: BatchVec3Key): Color {
 function ensureVec3Row(
   state: BatchTextureState,
   key: BatchVec3Key,
+  defaultColor: { r: number; g: number; b: number } = vec3Default(key),
 ): number | undefined {
   if (!state.supportedVec3s.has(key)) return undefined;
   const existing = state.layout.getVec3Row(key);
   if (existing != null) return existing;
 
-  const defaultColor = vec3Default(key);
   const row = state.layout.allocateVec3(key);
   // A vec3 always opens a fresh row, so the texture was just (re)created and
   // does a full first upload — no dirty marking needed for the fill.
@@ -282,12 +282,16 @@ function ensureEmissiveSlots(
 }
 
 /**
- * Slots for a text outline: the color row and its opacity, width and blur
- * scalars, allocated together so the fragment shader never mixes a written
- * value with an unbackfilled one. The defaults (black, opaque, zero width and
- * blur) draw no outline.
+ * Slots for an outline (a text outline, a sprite's SDF halo): the color row
+ * and its opacity, width and blur scalars, allocated together so the fragment
+ * shader never mixes a written value with an unbackfilled one. Text backfills
+ * the fixed defaults (black, opaque, zero width and blur), which draw no
+ * outline; a sprite backfills its material's halo (`defaults.outline`).
  */
-function ensureOutlineSlots(state: BatchTextureState):
+function ensureOutlineSlots(
+  state: BatchTextureState,
+  defaults: Partial<BatchAttributeDefaults> | undefined,
+):
   | {
       row: number;
       opacity: BatchSlot;
@@ -295,15 +299,18 @@ function ensureOutlineSlots(state: BatchTextureState):
       blur: BatchSlot;
     }
   | undefined {
-  const row = ensureVec3Row(state, "outlineColor");
+  const [r, g, b, opacity, width, blur] = defaults?.outline ?? [
+    0, 0, 0, 1, 0, 0,
+  ];
+  const row = ensureVec3Row(state, "outlineColor", { r, g, b });
   if (row == null) return undefined;
   const scalar = (key: BatchScalarSlotKey, fallback: number) =>
     state.layout.getScalarSlot(key) ?? allocateScalarSlot(state, key, fallback);
   return {
     row,
-    opacity: scalar("outlineOpacity", 1),
-    width: scalar("outlineWidth", 0),
-    blur: scalar("outlineBlur", 0),
+    opacity: scalar("outlineOpacity", opacity),
+    width: scalar("outlineWidth", width),
+    blur: scalar("outlineBlur", blur),
   };
 }
 
@@ -320,21 +327,49 @@ function allocateScalarSlot(
   const slot = state.layout.allocateScalar(key);
   const data = ensureTextureRows(state);
   if (fallback !== 0) {
-    const texture = state.uniform.value;
-    invariant(texture);
     for (let batchId = 0; batchId < state.batchLength; batchId++) {
       data[
         batchBaseIndex(state.width, state.groups, batchId, slot.row) + slot.comp
       ] = fallback;
     }
-    for (let group = 0; group < state.groups; group++) {
-      const rowBase = (slot.row * state.groups + group) * state.width * 4;
-      markTexelDirty(texture, rowBase);
-      markTexelDirty(texture, rowBase + (state.width - 1) * 4);
-    }
+    markRowDirty(state, slot.row);
   }
   stampLayoutDefines(state);
   return slot;
+}
+
+/** Mark every batch of an attribute row dirty. */
+function markRowDirty(state: BatchTextureState, row: number): void {
+  const texture = state.uniform.value;
+  invariant(texture);
+  for (let group = 0; group < state.groups; group++) {
+    const rowBase = (row * state.groups + group) * state.width * 4;
+    markTexelDirty(texture, rowBase);
+    markTexelDirty(texture, rowBase + (state.width - 1) * 4);
+  }
+}
+
+/**
+ * Write every batch's global pick ID into the internal `pickId` slot, for
+ * shaders that resolve the feature per fragment (see `featureIdTexture.ts`).
+ */
+export function writeBatchPickIds(
+  material: Material,
+  pickIds: ArrayLike<number>,
+): void {
+  const state = getBatchTextureState(material);
+  invariant(state && state.batchLength === pickIds.length);
+  const slot =
+    state.layout.getScalarSlot("pickId") ??
+    allocateScalarSlot(state, "pickId", 0);
+  const { data } = textureData(state);
+  for (let batchId = 0; batchId < state.batchLength; batchId++) {
+    data[
+      batchBaseIndex(state.width, state.groups, batchId, slot.row) + slot.comp
+    ] = pickIds[batchId];
+  }
+  markRowDirty(state, slot.row);
+  enableDefine(material, "USE_BATCH_PICK_ID");
 }
 
 /**
@@ -778,7 +813,7 @@ export function updateBatchAttribute(
     }
     case "outline": {
       if (!(value instanceof Array)) return false;
-      const slots = ensureOutlineSlots(state);
+      const slots = ensureOutlineSlots(state, defaults);
       if (!slots) return false;
       enableDefine(material, "USE_BATCH_OUTLINE");
 

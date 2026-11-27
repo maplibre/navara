@@ -6,6 +6,9 @@ import { Browser, Page, chromium } from "playwright";
 import sharp from "sharp";
 import invariant from "tiny-invariant";
 
+import { isGalleryExample, toDashUrlName } from "../example/pageNames";
+import { getExamplePages } from "../example-pages";
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
@@ -53,12 +56,12 @@ type ExamplePage = {
 function toExamplePage(relPath: string): ExamplePage {
   // Curated examples: presentation at /<section>/<slug>, raw demo at
   // /demo/<section>/<slug>. Screenshots are keyed by that same demo path.
-  if (relPath.startsWith("examples/")) {
+  if (isGalleryExample(relPath)) {
     const rest = relPath.replace(/^examples\//, "");
     return { name: rest, url: `/demo/${rest}` };
   }
   // Everything else: dash URLs, a trailing "/index" collapsed to its parent.
-  const urlName = relPath.replace(/\/index$/, "").replace(/\//g, "-");
+  const urlName = toDashUrlName(relPath);
   return { name: urlName, url: `/${urlName}` };
 }
 
@@ -77,13 +80,6 @@ function matchesTarget(page: ExamplePage, target: string): boolean {
   const url = norm(page.url);
   return page.name === t || url === t || url.replace(/^demo\//, "") === t;
 }
-
-/**
- * Directories under `example/pages` that hold a shared entrypoint reused by
- * other pages rather than a standalone page. Mirrors `SHARED_ENTRY_DIRS` in
- * `vite.config.example.ts`; these must not be captured as their own page.
- */
-const SHARED_ENTRY_DIRS = new Set(["detail"]);
 
 const DEFAULT_CONFIG: ScreenshotConfig = {
   viewport: { width: 400 * 3, height: 250 * 3 },
@@ -217,49 +213,11 @@ class ScreenshotGenerator {
     });
   }
 
-  /**
-   * Recursively discover example pages in nested directories, returning each
-   * page's directory path relative to `example/pages` (slash form). A directory
-   * is a page if it contains a `main.ts` / `main.tsx`; otherwise it is a
-   * category directory and we recurse. Non-directory entries (e.g. loose
-   * `sections.ts`) are skipped.
-   */
-  async discoverPagesRecursive(
-    baseDir: string,
-    prefix = "",
-  ): Promise<string[]> {
-    const entries = await fs.readdir(baseDir, { withFileTypes: true });
-    const paths: string[] = [];
-
-    for (const entry of entries) {
-      if (!entry.isDirectory()) continue;
-
-      if (!prefix && SHARED_ENTRY_DIRS.has(entry.name)) {
-        // Shared entrypoint, not a page of its own.
-        continue;
-      }
-
-      const fullPath = path.join(baseDir, entry.name);
-      const relPath = prefix ? `${prefix}/${entry.name}` : entry.name;
-      const subEntries = await fs.readdir(fullPath, { withFileTypes: true });
-      const isPage = subEntries.some(
-        (e) => e.isFile() && (e.name === "main.ts" || e.name === "main.tsx"),
-      );
-
-      if (isPage) {
-        paths.push(relPath);
-      } else {
-        // This is a category directory, recurse.
-        paths.push(...(await this.discoverPagesRecursive(fullPath, relPath)));
-      }
-    }
-
-    return paths;
-  }
-
   async discoverPages(): Promise<ExamplePage[]> {
     const pagesDir = path.join(__dirname, "../example/pages");
-    const relPaths = (await this.discoverPagesRecursive(pagesDir)).sort();
+    const relPaths = getExamplePages(pagesDir)
+      .map(({ name }) => name)
+      .sort();
     const pages = relPaths.map(toExamplePage);
 
     // If specific pages are requested, resolve and return them.
@@ -308,9 +266,11 @@ class ScreenshotGenerator {
    * page happens to add.
    */
   async hidePageUI(page: Page): Promise<void> {
+    // Tweakpane's color picker draws on a canvas of its own, which would keep
+    // its pane on screen.
     await page.addStyleTag({
       content:
-        "body :not(canvas):not(:has(canvas)) { display: none !important; }",
+        "body :not(canvas):not(:has(canvas)), .tp-dfwv { display: none !important; }",
     });
   }
 

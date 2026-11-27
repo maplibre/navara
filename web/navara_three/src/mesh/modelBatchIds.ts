@@ -26,9 +26,18 @@ export function vertexGlobalBatchIds(
   return ids;
 }
 
+/** `featureId.texture` of `EXT_mesh_features`. */
+export type FeatureIdTextureInfo = {
+  index: number;
+  texCoord?: number;
+  channels?: number[];
+};
+
 type FeatureIdSet = {
+  featureCount?: number;
+  nullFeatureId?: number;
   attribute?: number;
-  texture?: unknown;
+  texture?: FeatureIdTextureInfo;
   propertyTable?: number;
 };
 
@@ -37,6 +46,15 @@ export type GltfFeatureIds = {
   /** The property table the batch IDs index. */
   propertyTable: number | undefined;
 };
+
+/** The feature ID mapping of glTF content, from its internal material. */
+export function gltfFeatureIdsOf(
+  internal: { gltfFeatureIds: boolean; gltfPropertyTable?: number } | undefined,
+): GltfFeatureIds | undefined {
+  return internal?.gltfFeatureIds
+    ? { propertyTable: internal.gltfPropertyTable }
+    : undefined;
+}
 
 /** The first feature ID set of a glTF extension `GLTFLoader` kept on `object`. */
 function firstFeatureIdSet(
@@ -61,6 +79,28 @@ function instanceFeatureIdSet(mesh: InstancedMesh): FeatureIdSet | undefined {
       ? firstFeatureIdSet(parent, "EXT_instance_features")
       : undefined)
   );
+}
+
+type FeatureIdTextureSet = FeatureIdSet & { texture: FeatureIdTextureInfo };
+
+function readsTexture(
+  set: FeatureIdSet | undefined,
+): set is FeatureIdTextureSet {
+  return set?.texture !== undefined;
+}
+
+/**
+ * The default feature ID set of a mesh (see {@link featureIndexAttribute})
+ * when it reads the IDs from a texture.
+ */
+export function featureIdTextureSet(
+  mesh: Mesh,
+): FeatureIdTextureSet | undefined {
+  if (mesh instanceof InstancedMesh && instanceFeatureIdSet(mesh)) {
+    return undefined;
+  }
+  const set = firstFeatureIdSet(mesh, "EXT_mesh_features");
+  return readsTexture(set) ? set : undefined;
 }
 
 export function vertexCount(geometry: BufferGeometry): number {

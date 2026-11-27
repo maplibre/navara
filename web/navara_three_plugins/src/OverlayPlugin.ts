@@ -96,7 +96,8 @@ const DEFAULT_MAX_DISTANCE = 100_000;
  * Projects geographic positions to screen coordinates on every render frame.
  *
  * Register via `view.addPlugin(overlayPlugin)` **before** `view.init()`.
- * The `preRender` hook is attached automatically during initialization.
+ * The `preUpdate` and `preRender` hooks are attached automatically during
+ * initialization.
  */
 export class OverlayPlugin extends Plugin<View, ViewContext> {
   private view?: View;
@@ -106,36 +107,59 @@ export class OverlayPlugin extends Plugin<View, ViewContext> {
   private projected = new Map<string, ProjectedPosition>();
 
   private listeners = new Set<UpdateListener>();
+  /**
+   * Set when the projection must be recomputed although the view may have
+   * nothing else to render. Turned into a frame request in `preUpdate`,
+   * which runs on every tick before the view decides whether to render; a
+   * `forceUpdate()` made during a frame instead is cleared by the view right
+   * after that frame.
+   */
+  private needsProjection = false;
+  private boundPreUpdate: () => void;
   private boundHandler: () => void;
 
   constructor(config?: OverlayConfig) {
     super();
     this.maxDistance = config?.maxDistance ?? DEFAULT_MAX_DISTANCE;
+    this.boundPreUpdate = this.handlePreUpdate.bind(this);
     this.boundHandler = this.handlePreRender.bind(this);
   }
 
   async init(view: View, _ctx: ViewContext): Promise<void> {
     this.view = view;
+    view.on("preUpdate", this.boundPreUpdate);
     view.on("preRender", this.boundHandler);
   }
 
   /**
-   * Replace the set of world positions to track.
-   * Positions are re-projected on the next render frame automatically.
+   * Replace the set of world positions to track. The next frame projects
+   * them and calls the `onUpdate` listeners, and a frame is rendered for
+   * this even when the map is idle. Calls made within one frame are
+   * projected together on the next.
    */
   setPositions(positions: WorldPosition[]): void {
     this.positions = positions;
+    this.needsProjection = true;
   }
 
+  /**
+   * Subscribe to projection updates, called on every rendered frame.
+   * A new listener receives the current projection on the next frame,
+   * which is rendered for this even when the map is idle.
+   */
   onUpdate(fn: UpdateListener): () => void {
     this.listeners.add(fn);
+    this.needsProjection = true;
     return () => this.listeners.delete(fn);
   }
 
   dispose(): void {
     if (this.view) {
+      this.view.off("preUpdate", this.boundPreUpdate);
       this.view.off("preRender", this.boundHandler);
+      this.view = undefined;
     }
+    this.needsProjection = false;
     this.listeners.clear();
     this.positions = [];
     this.projected.clear();
@@ -162,8 +186,15 @@ export class OverlayPlugin extends Plugin<View, ViewContext> {
     return { x: result.x, y: result.y };
   }
 
+  private handlePreUpdate(): void {
+    if (this.needsProjection) this.view?.forceUpdate();
+  }
+
   private handlePreRender(): void {
     if (!this.view) return;
+    // Cleared before the listeners run, so one that calls `setPositions`
+    // gets its positions projected on the next frame.
+    this.needsProjection = false;
 
     const geo = this.view.camera.positionGeographic;
     const cameraEcef = geodeticToVector3({

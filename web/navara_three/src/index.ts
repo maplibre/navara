@@ -539,22 +539,51 @@ export type ViewEvents = {
   resize: (w: number, h: number) => void;
   /**
    * Emitted when a feature is clicked or tapped (click-gesture GPU pick).
-   * Receives the clicked feature, or null when empty space was clicked. For
-   * raw click coordinates use the `click` event instead.
+   * Receives the clicked feature, or null when nothing pickable was hit, and
+   * the click's `pointerup` as a `MapPointerEvent`, or a plain `PointerEvent`
+   * without `map` where the pointer is off the globe (the sky). It fires for
+   * any mouse button: check `event.button === 0` to act on the left button
+   * only. A left click emits it before `click`, with the same event object.
+   *
+   * For the point drawn at the click (a roof, a model, the terrain), call
+   * `view.pickDepthPosition(event.clientX, event.clientY)` in the listener
+   * itself: until the next frame renders, the depth is that of the frame on
+   * screen. After an `await` or in a timeout it may read a newer frame. With
+   * the underground shown (`globe.hideUnderground = false`) the depth keeps
+   * the nearer of the terrain and the objects, so for an object below the
+   * terrain it returns the terrain surface above it.
    */
-  featureClick: (info: Nullable<PickedFeature>) => void;
+  featureClick: (
+    info: Nullable<PickedFeature>,
+    event: MapPointerEvent | PointerEvent,
+  ) => void;
   /**
    * Emitted when the hovered feature changes (hover picking). Receives
    * the newly hovered feature, or null when the pointer leaves all pickable
-   * features. Hover picking runs a GPU pick per frame while the pointer
+   * features, and the pointer event it was picked for: the latest
+   * `pointermove`, or the `pointerleave` when the pointer leaves the canvas.
+   * The event is a `MapPointerEvent`, or a plain `PointerEvent` off the globe
+   * (see `featureClick`, which also covers `pickDepthPosition` in the
+   * listener). A `pointermove` is delivered on the next frame, after its
+   * dispatch: `preventDefault()` and `stopPropagation()` have no effect and
+   * `currentTarget` is null. Hover picking runs a GPU pick per frame while the pointer
    * moves, and is active only while at least one `featureHover` /
    * `featureEnter` / `featureLeave` listener is registered.
    */
-  featureHover: (info: Nullable<PickedFeature>) => void;
-  /** Emitted when the pointer starts hovering a pickable feature. See `featureHover` for activation. */
-  featureEnter: (info: PickedFeature) => void;
-  /** Emitted when the pointer stops hovering the previously hovered feature. See `featureHover` for activation. */
-  featureLeave: (info: PickedFeature) => void;
+  featureHover: (
+    info: Nullable<PickedFeature>,
+    event: MapPointerEvent | PointerEvent,
+  ) => void;
+  /** Emitted when the pointer starts hovering a pickable feature, with the pointer event as in `featureHover`. See `featureHover` for activation. */
+  featureEnter: (
+    info: PickedFeature,
+    event: MapPointerEvent | PointerEvent,
+  ) => void;
+  /** Emitted when the pointer stops hovering the previously hovered feature, with the pointer event as in `featureHover`. See `featureHover` for activation. */
+  featureLeave: (
+    info: PickedFeature,
+    event: MapPointerEvent | PointerEvent,
+  ) => void;
   /** Emitted when a layer event occurs. Receives event type, layer ID, and event arguments. */
   layer: <K extends keyof LayerEvent>(
     k: K,
@@ -1379,9 +1408,12 @@ export default class ThreeView<
   }
 
   /**
-   * Extend a pointer event with map coordinates at its location
+   * Extend a pointer event with map coordinates at its location. An event
+   * that already has them (a feature event and the pointer event of the same
+   * gesture share the object) is returned as is.
    */
   private convertToMapEvent(event: PointerEvent): MapPointerEvent | null {
+    if ("map" in event) return event as MapPointerEvent;
     const rect = this._renderer.domElement.getBoundingClientRect();
     const x = event.clientX - rect.left;
     const y = event.clientY - rect.top;
@@ -1889,6 +1921,16 @@ export default class ThreeView<
 
     this._camera.core = this._core;
 
+    // After the PickHelper's listeners: on a pointerup, `featureClick` fires
+    // before `click`, and both get the event object it gave `map`.
+    this._listenToPointerEvents();
+  }
+
+  /**
+   * Emits the view's pointer events and `click` from the canvas's pointer
+   * events.
+   */
+  private _listenToPointerEvents() {
     // The map events are fed from pointer events; touch produces no
     // compatibility mouse events because the camera-input handlers call
     // preventDefault() on touch events. `click` is a gesture, not the DOM
@@ -3533,15 +3575,17 @@ export default class ThreeView<
       const t0 = timing ? performance.now() : 0;
       this._stats?.begin();
 
+      // Before this frame's render: the GPU has usually finished the previous
+      // frame by now, so the pick's synchronous readback waits for the pick
+      // alone. Before the resize too: until then the depth copy and the camera
+      // are those of the frame on screen, which a listener's
+      // `pickDepthPosition` reads.
+      this._pickHelper?.pickHover();
+
       if (this._resizePending) {
         this._resizePending = false;
         this._handleResize();
       }
-
-      // Before this frame's render: the GPU has usually finished the previous
-      // frame by now, so the pick's synchronous readback waits for the pick
-      // alone.
-      this._pickHelper?.pickHover();
 
       this._forceFeatureUpdates(time);
 
@@ -3681,23 +3725,23 @@ export default class ThreeView<
   /**
    * Handles pick events and emits the picked feature information.
    * @param pickArr - Array of picked batch IDs
+   * @param event - The click's `pointerup`
    */
-  private onPick(pickArr: number[]) {
+  private onPick(pickArr: number[], event: PointerEvent) {
     this._renderFlag.forceUpdate = true;
 
-    if (pickArr.length > 0) {
-      this.emit("featureClick", this.resolvePickedFeature(pickArr[0]));
-    } else {
-      this.emit("featureClick", null);
-    }
+    const feature =
+      pickArr.length > 0 ? this.resolvePickedFeature(pickArr[0]) : null;
+    this.emit("featureClick", feature, this.convertToMapEvent(event) ?? event);
   }
 
   /**
    * Handles hover pick results and synthesizes `featureHover` / `featureEnter` /
    * `featureLeave` events by diffing against the previously hovered feature.
    * @param pickArr - Array of picked batch IDs
+   * @param event - The pointer event the hover was picked for
    */
-  private onHoverPick(pickArr: number[]) {
+  private onHoverPick(pickArr: number[], event: PointerEvent) {
     // The pick render re-bakes draped vector atlases in pick mode; a main
     // render is needed to restore their normal colors.
     this._renderFlag.forceUpdate = true;
@@ -3709,9 +3753,12 @@ export default class ThreeView<
     const feature = batchId > 0 ? this.resolvePickedFeature(batchId) : null;
     this._hoveredFeature = feature;
 
-    if (prev) this.emit("featureLeave", prev);
-    if (feature) this.emit("featureEnter", feature);
-    this.emit("featureHover", feature);
+    // Only on a change. The view's own pointermove / pointerleave listener
+    // has usually given the event its `map` already.
+    const mapEvent = this.convertToMapEvent(event) ?? event;
+    if (prev) this.emit("featureLeave", prev, mapEvent);
+    if (feature) this.emit("featureEnter", feature, mapEvent);
+    this.emit("featureHover", feature, mapEvent);
   }
 
   /**
@@ -3765,9 +3812,13 @@ export default class ThreeView<
   }
 
   /**
-   * Picks the terrain position at screen coordinates.
-   * @param x - Screen X coordinate in CSS pixels (same as MouseEvent.clientX)
-   * @param y - Screen Y coordinate in CSS pixels (same as MouseEvent.clientY)
+   * Picks the terrain position under a pointer.
+   * On an `OffscreenCanvas`, which has no client rect, x/y are
+   * canvas-relative.
+   * @param x - Client X coordinate in CSS pixels (`MouseEvent.clientX`),
+   * relative to the viewport, not to the canvas
+   * @param y - Client Y coordinate in CSS pixels (`MouseEvent.clientY`),
+   * relative to the viewport, not to the canvas
    * @returns World position Vector3 in ECEF coordinates, or null if no terrain is hit
    */
   pickTerrainPosition(x: number, y: number): Nullable<Vector3> {
@@ -3781,9 +3832,13 @@ export default class ThreeView<
   }
 
   /**
-   * Picks the position at screen coordinates from the depth.
-   * @param x - Screen X coordinate in CSS pixels (same as MouseEvent.clientX)
-   * @param y - Screen Y coordinate in CSS pixels (same as MouseEvent.clientY)
+   * Picks the position under a pointer from the depth.
+   * On an `OffscreenCanvas`, which has no client rect, x/y are
+   * canvas-relative.
+   * @param x - Client X coordinate in CSS pixels (`MouseEvent.clientX`),
+   * relative to the viewport, not to the canvas
+   * @param y - Client Y coordinate in CSS pixels (`MouseEvent.clientY`),
+   * relative to the viewport, not to the canvas
    * @returns World position Vector3 in ECEF coordinates, or null if nothing is hit
    */
   pickDepthPosition(x: number, y: number): Nullable<Vector3> {

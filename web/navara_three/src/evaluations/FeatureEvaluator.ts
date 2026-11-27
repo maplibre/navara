@@ -11,9 +11,12 @@ import type {
   TextMaterial,
 } from "@navaramap/engine";
 import { BufferGeometry, Mesh, Object3D } from "three";
-import type { NormalBufferAttributes } from "three";
+import type { Material, NormalBufferAttributes } from "three";
 
-import type { BatchedAttributeName } from "../batchTexture";
+import {
+  hasFeatureIdTexture,
+  type BatchedAttributeName,
+} from "../batchTexture";
 import { Color } from "../Color";
 import type { FeatureHandler } from "../event/context";
 import type { LineCap } from "../lineDash";
@@ -78,6 +81,9 @@ export type EvaluatableMaterialProperty = {
   declutterPriority: AvailableMaterialProperty["declutterPriority"];
   /** Image URL for billboards; packed into a shared per-mesh texture atlas. */
   image: string;
+  /** Name of an icon in the billboard material's `sprite`, in place of
+   *  `image`. */
+  icon: string;
   /** Whether this label/sprite lies in the screen plane (`"upright"`) or on
    *  the globe surface (`"flat"`). Overrides the material's
    *  `textFacing`/`billboardFacing`/`pointFacing` for this feature. */
@@ -105,17 +111,19 @@ export type EvaluatableMaterialProperty = {
   /** Line justification of this label (for text). Overrides the material's
    *  `textAlign`. */
   textAlign: TextAlign;
-  /** Outline color of this label (for text). Overrides the material's
-   *  `outlineColor`. */
+  /** Outline color of this label, or halo color of this billboard's SDF
+   *  icon. Overrides the material's `outlineColor`. */
   outlineColor: AvailableMaterialProperty["outlineColor"];
-  /** Outline opacity of this label (for text). Overrides the material's
-   *  `outlineOpacity`. */
+  /** Outline opacity of this label, or halo opacity of this billboard's SDF
+   *  icon. Overrides the material's `outlineOpacity`. */
   outlineOpacity: AvailableMaterialProperty["outlineOpacity"];
-  /** Outline thickness of this label in 1/64 em (for text). Overrides the
-   *  material's `outlineWidth`. */
+  /** Outline thickness of this label in 1/64 em, or halo width of this
+   *  billboard's SDF icon in screen pixels. Overrides the material's
+   *  `outlineWidth`. */
   outlineWidth: AvailableMaterialProperty["outlineWidth"];
-  /** Width over which this label's outline fades out, in 1/64 em (for
-   *  text). Overrides the material's `outlineBlur`. */
+  /** Width over which this label's outline (1/64 em) or this billboard's
+   *  SDF halo (screen pixels) fades out. Overrides the material's
+   *  `outlineBlur`. */
   outlineBlur: AvailableMaterialProperty["outlineBlur"];
   /** Emissive color expression (for polygons/3D Tiles models/points/billboards/text). */
   emissive: AvailableMaterialProperty["emissiveColor"];
@@ -140,6 +148,7 @@ type EvaluatedMaterialProperty = {
   opacity: number;
   declutterPriority: number;
   image: string | null;
+  icon: string | null;
   facing: "upright" | "flat";
   rotateWithCamera: boolean;
   spreadGlyphs: boolean;
@@ -493,6 +502,9 @@ export class FeatureEvaluator {
    *   packed into the layer's texture atlas. Return `null` to clear a
    *   previous per-feature image and revert to the material's default `url`;
    *   omit the key to leave it unchanged.
+   * - `icon` - Name of an icon in the billboard material's `sprite`, in place
+   *   of `image`; a name the sprite lacks hides the billboard. `null` and an
+   *   omitted key work as for `image`.
    * - `emissive` - Emissive color (for batched polygons/3D Tiles models/
    *   points/billboards/text; ignored on models without batch/feature ids).
    *   Pairs with `emissiveIntensity` and drives selective bloom. On text only
@@ -500,8 +512,9 @@ export class FeatureEvaluator {
    * - `emissiveIntensity` - Emissive intensity multiplier (for batched
    *   polygons/3D Tiles models/points/billboards/text)
    * - `outlineColor`, `outlineOpacity`, `outlineWidth`, `outlineBlur` - The
-   *   label's outline (for text); width and blur in 1/64 em, like the
-   *   material's
+   *   label's outline (for text), or the halo of an SDF icon (for
+   *   billboards); width and blur in the material's unit (1/64 em for text,
+   *   screen pixels for billboards). Unset fields keep their current value
    *
    * Note: Evaluated styles override the layer's default styles.
    *
@@ -629,6 +642,22 @@ export class FeatureEvaluator {
         // loads by URL so evaluating many features costs one fetch per image.
         // A nullish url clears the override back to the material default.
         void obj.setFeatureImageByBatchIndex(batchIndex, evaluated.image);
+      }
+      if ("icon" in evaluated) {
+        void obj.setFeatureIconByBatchIndex(batchIndex, evaluated.icon);
+      }
+      if (
+        evaluated.outlineColor != null ||
+        evaluated.outlineOpacity != null ||
+        evaluated.outlineWidth != null ||
+        evaluated.outlineBlur != null
+      ) {
+        obj.setFeatureOutlineByBatchIndex(batchIndex, {
+          color: evaluated.outlineColor?.toHex(),
+          opacity: evaluated.outlineOpacity ?? undefined,
+          width: evaluated.outlineWidth ?? undefined,
+          blur: evaluated.outlineBlur ?? undefined,
+        });
       }
       return;
     }
@@ -766,15 +795,20 @@ export class FeatureEvaluator {
     batchIndex: number,
     evaluated: Partial<EvaluatedValue>,
   ) {
-    const batchIdAttr =
-      "geometry" in m ? m.geometry.getAttribute("_batchid") : undefined;
+    if (parent instanceof ModelMesh && !parent._hasFeatures(m)) return;
 
-    // Non-batched feature mesh path (a mesh without a `_batchid` attribute,
-    // e.g. a plain glTF model layer whose meshes carry no feature ids —
-    // GeoJSON polygons/polylines are batched). Only the attributes below are
-    // applicable here; emissive/emissiveIntensity need the batch texture.
+    // Feature IDs per vertex (`_batchid`) or per texel.
+    const batched =
+      "geometry" in m &&
+      (!!m.geometry.getAttribute("_batchid") ||
+        hasFeatureIdTexture(m.material as Material));
+
+    // Non-batched feature mesh path (a mesh without feature IDs, e.g. a plain
+    // glTF model layer — GeoJSON polygons/polylines are batched). Only the
+    // attributes below are applicable here; emissive/emissiveIntensity need
+    // the batch texture.
     const featureMesh = (() => {
-      if (batchIdAttr) return;
+      if (batched) return;
       if (parent) return isFeatureMesh(parent) ? parent : undefined;
       return isFeatureMesh(m) ? m : undefined;
     })();
@@ -799,7 +833,7 @@ export class FeatureEvaluator {
     }
 
     // Batched mesh path
-    if (!batchIdAttr) return;
+    if (!batched) return;
 
     const mesh =
       parent instanceof ModelMesh

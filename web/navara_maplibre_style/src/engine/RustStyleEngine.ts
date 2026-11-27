@@ -93,14 +93,13 @@ export class RustStyleEngine implements StyleEngine {
 
     // Compile expression in WASM with type checking
     let compiled: CompiledExpression;
-    let requiredProps: string[] | null = null;
+    // Undefined when the properties read can't be named statically (a computed
+    // get/has key, or `["properties"]` other than as a literal-key get/has object).
+    let requiredProps: string[] | undefined;
     try {
       // Pass expected type for validation (matches JsStyleEngine behavior)
       compiled = new CompiledExpression(expr, spec.type);
-
-      // Extract required properties for optimization
-      const propsArray = compiled.getRequiredProperties();
-      requiredProps = Array.from(propsArray) as string[];
+      requiredProps = compiled.getRequiredProperties() as string[] | undefined;
     } catch (e) {
       // If compilation fails and this looks like a literal array (paths, font names, etc.),
       // treat it as a constant value instead of throwing.
@@ -118,14 +117,11 @@ export class RustStyleEngine implements StyleEngine {
     return (ctx: EvaluationContext) => {
       // Filter properties to only required ones to reduce serialization overhead
       let propsToPass: Record<string, unknown>;
-      if (requiredProps === null || requiredProps.length === 0) {
-        // Empty array means dynamic property access (e.g., ["get", ["concat", ...]])
-        // since constants are already filtered out above.
-        // Conservative approach: pass all properties to avoid breaking evaluation.
+      if (requiredProps === undefined) {
         propsToPass = ctx.properties ?? {};
       } else {
-        // Only pass required properties
-        propsToPass = {};
+        // No prototype, so a property named `__proto__` is kept as data.
+        propsToPass = Object.create(null) as Record<string, unknown>;
         if (ctx.properties) {
           for (const prop of requiredProps) {
             if (Object.prototype.hasOwnProperty.call(ctx.properties, prop)) {

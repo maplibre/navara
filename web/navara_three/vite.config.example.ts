@@ -1,4 +1,4 @@
-import { existsSync, readdirSync, readFileSync } from "fs";
+import { existsSync, readFileSync } from "fs";
 import path, { resolve } from "path";
 
 import react from "@vitejs/plugin-react";
@@ -11,6 +11,8 @@ import tsconfig from "vite-tsconfig-paths";
 
 import { commonConfig } from "../vite.config.common";
 
+import { isGalleryExample, toDashUrlName } from "./example/pageNames";
+import { getExamplePages } from "./example-pages";
 import { createMpaPlugin } from "./vite-plugin-mpa";
 
 type PageInfo = {
@@ -18,55 +20,6 @@ type PageInfo = {
   category: string;
   displayName: string;
 };
-
-/**
- * Directories under `example/pages` that hold a shared entrypoint (a `main.tsx`
- * reused by other pages) rather than a standalone page. They must not be
- * registered as their own MPA page or listed in the launchers. `detail` is the
- * shared React presentation template rendered at `/<section>/<slug>` for each
- * curated example.
- */
-const SHARED_ENTRY_DIRS = new Set(["detail"]);
-
-/**
- * Recursively discover example pages in nested directories.
- * A directory is considered a page if it contains a main.ts file.
- * Otherwise, it's treated as a category directory.
- */
-function getExamplePages(
-  baseDir: string,
-  prefix = "",
-): { name: string; path: string }[] {
-  const entries = readdirSync(baseDir, { withFileTypes: true });
-  const pages: { name: string; path: string }[] = [];
-
-  for (const entry of entries) {
-    if (entry.isDirectory()) {
-      if (!prefix && SHARED_ENTRY_DIRS.has(entry.name)) {
-        // Shared entrypoint, not a page of its own.
-        continue;
-      }
-      const fullPath = resolve(baseDir, entry.name);
-      const mainFile = resolve(fullPath, "main.ts");
-      const mainTsxFile = resolve(fullPath, "main.tsx");
-
-      if (existsSync(mainFile) || existsSync(mainTsxFile)) {
-        // This is a page directory
-        const pageName = prefix ? `${prefix}/${entry.name}` : entry.name;
-        pages.push({ name: pageName, path: fullPath });
-      } else {
-        // This is a category directory, recurse
-        const nestedPages = getExamplePages(
-          fullPath,
-          prefix ? `${prefix}/${entry.name}` : entry.name,
-        );
-        pages.push(...nestedPages);
-      }
-    }
-  }
-
-  return pages;
-}
 
 const examplePages = getExamplePages(resolve(__dirname, "example/pages"));
 
@@ -132,7 +85,7 @@ export default defineConfig(async (env) => {
         // Curated examples get two entries with clean, slash-separated URLs:
         //   detail (presentation)  -> /<section>/<slug>       (shared React template)
         //   demo   (iframe target) -> /demo/<section>/<slug>  (the raw full-screen demo)
-        if (name.startsWith("examples/")) {
+        if (isGalleryExample(name)) {
           const rel = name.replace(/^examples\//, "");
           // Static meta tags carry the root-locale (en) strings; the page
           // itself localizes at runtime.
@@ -169,7 +122,7 @@ export default defineConfig(async (env) => {
 
         // Everything else (gallery index, dev launcher, debug/*, legacy demos):
         // dash URLs, with a trailing "/index" collapsed to its parent ("dev/index" -> /dev).
-        const urlName = name.replace(/\/index$/, "").replace(/\//g, "-");
+        const urlName = toDashUrlName(name);
         return [
           {
             name: urlName,

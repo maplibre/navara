@@ -33,7 +33,9 @@ Keep it terse: a reviewer should see what changed at a glance. Leave implementat
 Describe the final diff, not the conversation; the reviewer never saw the chat. A requirement the user added later folds into the item it refines instead of becoming a nested bullet. Leave out who asked for what, code-level trial and error, and bugs introduced and fixed within the branch.
 
 - **Title:** a Conventional Commit, e.g. `feat: support instanced 3D Tiles`. Use `feat!:` for a breaking change.
-- **Overview:** state the problem and how the PR solves it, in two or three sentences. Do not list what was implemented; the next section does that. Put a related issue URL first when there is one.
+- **Overview:** state the problem and how the PR solves it, in two or three sentences. Do not list what was implemented; the next section does that. Put the related issues first, one per line:
+  - `Closes #<n>` for an issue the PR fixes completely, so that merging closes it. One line per issue; `Closes #1, #2` closes only the first.
+  - The issue URL alone for one the PR fixes only partly or is merely related to, so that it stays open. Say in the overview what is left.
   - For a complex feature or a performance change, add the approaches that were compared and why this one was chosen, with the measurements for a performance change. A future reader needs this to know what was already ruled out.
 - **What I've done:** bullets for spec changes, and for public APIs added, changed or removed. Write "No public API change." when that is the case.
   - One sentence per bullet, with any qualification inside it: "Supported I3DM (`.i3dm`) content, including its batch table and glTF referenced by URI (`gltfFormat: 0`)." Nest bullets only to enumerate parallel items.

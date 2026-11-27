@@ -4,12 +4,15 @@
 
 ```typescript
 view.on("featureClick", (info) => info?.properties?.["gml:name"]);   // requires picking: true (default)
-view.on("featureHover", (info) => { ... });   // fires when the hovered feature changes; null = nothing hovered
-view.on("featureEnter", (info) => { ... });   // enter/leave pair synthesized by diffing hover picks
-view.on("featureLeave", (info) => { ... });   // receives the feature that was left
-const ecef = view.pickTerrainPosition(x, y);                  // terrain only
-const ecef2 = view.pickDepthPosition(x, y);                   // anything in the depth buffer
+view.on("featureClick", (info, event) => view.pickDepthPosition(event.clientX, event.clientY));   // drawn point at the click (roof, model, terrain); call it synchronously here
+view.on("featureHover", (info, event) => { ... });   // fires when the hovered feature changes; null = nothing hovered
+view.on("featureEnter", (info, event) => { ... });   // enter/leave pair synthesized by diffing hover picks
+view.on("featureLeave", (info, event) => { ... });   // receives the feature that was left
+const ecef = view.pickTerrainPosition(e.clientX, e.clientY);  // terrain only; client coords, not canvas-relative
+const ecef2 = view.pickDepthPosition(e.clientX, e.clientY);   // anything in the depth buffer
 ```
+
+**Feature + where it was clicked → the feature event's second argument**, not a `click` listener: `featureClick` fires before `click` for the same gesture, so a position saved in `click` belongs to the previous click. All four feature events pass the pointer event that produced the pick (`featureClick`: the `pointerup`, the same object `click` then gets; hover family: the latest `pointermove`, or the `pointerleave`), typed `MapPointerEvent | PointerEvent`: off the globe (sky) it has no `map`, so narrow with `"map" in event`. It comes also when `info` is `null`. `featureClick` fires for **any mouse button** (`click` only for the left): check `event.button === 0`; "before `click`, same object" holds for left clicks. The hover family's `pointermove` arrives about one frame late (picked in the next rAF), so `preventDefault()`/`stopPropagation()` do nothing and `currentTarget` is `null`. `map` is the ray–ellipsoid point; for the drawn point (roof, model, terrain) call `view.pickDepthPosition(event.clientX, event.clientY)` **synchronously in the listener** — the depth (and camera) are still the frame on screen; after an `await`/timeout a newer frame may have rendered. It returns `null` on sky. The feature is searched within `PICK_RADIUS`, the depth read at the exact pixel: beside a thin line the drawn point is the ground behind it, just outside a silhouette against the sky it is `null` while `info` is the feature. With `globe.hideUnderground = false` the depth keeps the nearer of terrain and objects: for an underground object (pipe) `info` is the object but the drawn point is the terrain surface above it. Convert with `vector3ToGeodetic(drawn)`.
 
 **Picking is lazy and throttled:** the GPU pick runs only while someone listens for the result — the click/tap pick needs a `featureClick` listener, the hover pick at least one of `featureHover`/`featureEnter`/`featureLeave` (at most one hover pick per frame, suppressed while a button or finger is down — so touch never hover-picks). The pick searches a window around the pointer and takes the nearest non-zero hit (exported `PICK_RADIUS` = 3 CSS px, `TOUCH_PICK_RADIUS` = 10), so small points and thin lines don't need pixel-perfect aim. Each hover pick forces a main re-render to restore draped vector atlases, so it costs more on scenes heavy with clamped-to-ground vectors. `featureHover` fires only on change (feature-level, unlike MapLibre's layer-level enter/leave). For cursor styling use `view.canvas.style.cursor`. Runnable reference: `example/pages/debug/picking-layers`.
 

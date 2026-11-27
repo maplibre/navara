@@ -253,7 +253,7 @@ per overlapping tile (see
 
 - pairs the material's k-th fragment-less non-hillshade slot with
   `layer_ordinal == k` from `getRasterTileStates` — both sides derive k from
-  the same sorted layer list;
+  the same sorted list of shown layers (a hidden layer takes no slot);
 - keeps one render target per baked layer (lazily allocated per active
   ordinal, disposed when the layer vanishes or flips kind);
 - refreshes on a `rasterRevision()` bump and re-bakes on a slot+texture

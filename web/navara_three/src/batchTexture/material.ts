@@ -27,6 +27,7 @@ export const SCALAR_DEFINE_SUFFIX: Record<BatchScalarSlotKey, string> = {
   outlineOpacity: "OUTLINE_OPACITY",
   outlineWidth: "OUTLINE_WIDTH",
   outlineBlur: "OUTLINE_BLUR",
+  pickId: "PICK_ID",
 };
 
 /** GLSL define suffix per vec3 key (e.g. USE_BATCH_COLOR / BATCHED_TEXTURE_ROW_COLOR). */
@@ -71,6 +72,9 @@ export type BatchTextureState = {
  * circular — state.materials contains the material).
  */
 const states = new WeakMap<Material, BatchTextureState>();
+
+/** Defines appended to the program cache key (see wrapProgramCacheKey). */
+const CACHE_KEY_DEFINE = /^(BATCHED_TEXTURE_|USE_BATCH_|(USE_)?FEATURE_ID_)/;
 
 /** Wrapped program cache key per material (see wrapProgramCacheKey). */
 const wrappedCacheKeys = new WeakMap<Material, () => string>();
@@ -161,8 +165,8 @@ function ensureState(
  * and three.js does not include onBeforeCompile-injected defines in its
  * program cache key. The dynamically allocated row/component defines vary per
  * material instance (allocation order follows first writes), so append them —
- * and the USE_BATCH_* toggles — to the key so two materials with different
- * layouts never share a compiled program.
+ * and the USE_BATCH_* toggles and the feature ID source — to the key so two
+ * materials with different layouts never share a compiled program.
  */
 function wrapProgramCacheKey(material: Material): void {
   // Identity check against the stored wrapper (not a boolean flag): it stays
@@ -176,10 +180,7 @@ function wrapProgramCacheKey(material: Material): void {
     const defines = material.userData.defines ?? {};
     let key = original();
     for (const name of Object.keys(defines).sort()) {
-      if (
-        name.startsWith("BATCHED_TEXTURE_") ||
-        name.startsWith("USE_BATCH_")
-      ) {
+      if (CACHE_KEY_DEFINE.test(name)) {
         key += `|${name}=${defines[name]}`;
       }
     }

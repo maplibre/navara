@@ -2,6 +2,7 @@ import { TEXTURE_LOADER } from "../../event/loaders";
 import { getImageDataFromImageBitmap } from "../../tasks/getImageDataFromImageBitmap";
 
 import type { LoadAtlasImage } from "./billboardAtlas";
+import type { LoadSpriteSheet } from "./spriteCache";
 
 /**
  * Browser decode pipeline for `BillboardAtlas`: fetch via the shared texture
@@ -26,4 +27,20 @@ export const loadAtlasImageFromUrl: LoadAtlasImage = async (url) => {
   } finally {
     texture.dispose();
   }
+};
+
+/** Browser loader for `SpriteCache`: the sheet's JSON index and its image. */
+export const loadSpriteSheetFromUrl: LoadSpriteSheet = async (urls) => {
+  const [index, image] = await Promise.all([
+    fetch(urls.json).then((response) => {
+      if (!response.ok) {
+        throw new Error(
+          `Failed to fetch ${urls.json}: ${response.status} ${response.statusText}`,
+        );
+      }
+      return response.json() as Promise<unknown>;
+    }),
+    loadAtlasImageFromUrl(urls.image),
+  ]);
+  return { index, image };
 };

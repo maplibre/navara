@@ -19,9 +19,13 @@
 // packed value and silently breaks blended selective meshes.
 
 // Per-feature emissive from the batch data texture, folded (rgb × intensity)
-// in the vertex stage (batch_texture_vertex.glsl). Declared here because this
-// chunk reaches every builtin fragment where USE_BATCH_EMISSIVE can be on.
-#ifdef USE_BATCH_EMISSIVE
+// in the vertex stage (batch_texture_vertex.glsl), or per fragment with a
+// feature ID texture (feature_id_texture_fragment.glsl). Declared here because
+// this chunk reaches every builtin fragment where USE_BATCH_EMISSIVE can be on.
+#if defined(USE_BATCH_EMISSIVE) && defined(USE_FEATURE_ID_TEXTURE)
+vec3 nvr_vEmissive = vec3(0.0);
+#define NVR_BATCH_EMISSIVE_OR(fallback) nvr_vEmissive
+#elif defined(USE_BATCH_EMISSIVE)
 in vec3 nvr_vEmissive;
 #define NVR_BATCH_EMISSIVE_OR(fallback) nvr_vEmissive
 #else

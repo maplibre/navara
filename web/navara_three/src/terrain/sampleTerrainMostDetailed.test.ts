@@ -1,6 +1,10 @@
+import {
+  sampleQuantizedMeshHeights,
+  sampleRasterDemHeights,
+} from "@navaramap/engine-api";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { QuantizedMeshSource } from "../type";
+import type { QuantizedMeshSource, RasterDemSource } from "../type";
 
 import { sampleTerrainMostDetailed } from "./sampleTerrainMostDetailed";
 
@@ -166,6 +170,117 @@ describe("sampleTerrainMostDetailed", () => {
     const results = await sampleTerrainMostDetailed(SOURCE, [KARIYA, TOKYO]);
     expect(mocked).toHaveBeenCalledTimes(2);
     expect(results.map((r) => r.height)).toEqual([1014, 1014]);
+  });
+
+  // user: sampleTerrainMostDetailed JSDoc contract (one result per position,
+  // each unique tile fetched once).
+  describe("positions in different tiles that fall back to one parent", () => {
+    // A z14 tile edge a quarter of the way into z12 web-mercator column 3606:
+    // the two points sit in different z14 tiles but in the same z12 tile in
+    // both the geographic and the web-mercator scheme.
+    const EDGE_LNG = ((3606 + 0.25) / 4096) * 360 - 180;
+    const WEST = { lat: 35, lng: EDGE_LNG - 0.001 };
+    const EAST = { lat: 35, lng: EDGE_LNG + 0.001 };
+    const BOTH_RADIANS = Float64Array.from(
+      [WEST.lng, WEST.lat, EAST.lng, EAST.lat].map((d) => (d * Math.PI) / 180),
+    );
+    const DEM_SOURCE: RasterDemSource = {
+      type: "raster-dem",
+      url: SOURCE.url,
+      maxZoom: 14,
+    };
+
+    /** Main-thread image decode stubs and a DEM sampler of `2000 + z`. */
+    function stubDemDecode() {
+      vi.stubGlobal(
+        "createImageBitmap",
+        vi.fn(async () => ({ width: 1, height: 1, close: () => {} })),
+      );
+      vi.stubGlobal(
+        "OffscreenCanvas",
+        class {
+          getContext() {
+            return {
+              drawImage: () => {},
+              getImageData: () => ({ data: new Uint8ClampedArray(4) }),
+            };
+          }
+        },
+      );
+      vi.mocked(sampleRasterDemHeights).mockImplementation(
+        (_rgba, _decoder, _x, _y, z, positions) =>
+          new Float64Array(positions.length / 2).fill(2000 + z),
+      );
+    }
+
+    afterEach(() => {
+      vi.mocked(sampleRasterDemHeights).mockReset();
+    });
+
+    it("samples both from the parent fetched once (quantized-mesh)", async () => {
+      const { seen } = stubFetch(12);
+      const results = await sampleTerrainMostDetailed(SOURCE, [WEST, EAST]);
+      expect(seen.filter((url) => url.includes("/14/"))).toHaveLength(2);
+      expect(seen.filter((url) => url.includes("/12/"))).toHaveLength(1);
+      expect(results.map((r) => [r.height, r.level])).toEqual([
+        [1012, 12],
+        [1012, 12],
+      ]);
+    });
+
+    it("samples both from the parent fetched once (raster-dem)", async () => {
+      stubDemDecode();
+      const { seen } = stubFetch(12);
+      const results = await sampleTerrainMostDetailed(DEM_SOURCE, [WEST, EAST]);
+      expect(seen.filter((url) => url.includes("/14/"))).toHaveLength(2);
+      expect(seen.filter((url) => url.includes("/12/"))).toHaveLength(1);
+      expect(results.map((r) => [r.height, r.level])).toEqual([
+        [2012, 12],
+        [2012, 12],
+      ]);
+    });
+
+    it("decodes the parent once with both positions (quantized-mesh)", async () => {
+      stubFetch(12);
+      await sampleTerrainMostDetailed(SOURCE, [WEST, EAST]);
+      expect(sampleQuantizedMeshHeights).toHaveBeenCalledOnce();
+      expect(vi.mocked(sampleQuantizedMeshHeights).mock.calls[0][5]).toEqual(
+        BOTH_RADIANS,
+      );
+    });
+
+    it("decodes the parent once with both positions (raster-dem)", async () => {
+      stubDemDecode();
+      stubFetch(12);
+      await sampleTerrainMostDetailed(DEM_SOURCE, [WEST, EAST]);
+      expect(sampleRasterDemHeights).toHaveBeenCalledOnce();
+      expect(vi.mocked(sampleRasterDemHeights).mock.calls[0][5]).toEqual(
+        BOTH_RADIANS,
+      );
+    });
+  });
+
+  it("reports undefined heights for a tile whose body fails mid-stream", async () => {
+    // A connection lost after the 200 headers is a network error: no height
+    // for that tile's positions, and the other tiles still sample.
+    const kariyaColumn = Math.floor(((KARIYA.lng + 180) / 360) * 2 ** 15);
+    stubFetch(14, (url) =>
+      url.includes(`/14/${kariyaColumn}/`)
+        ? new Response(
+            new ReadableStream({
+              start(controller) {
+                controller.error(new TypeError("connection reset"));
+              },
+            }),
+            { status: 200 },
+          )
+        : undefined,
+    );
+    const results = await sampleTerrainMostDetailed(SOURCE, [KARIYA, TOKYO]);
+    expect(results.map((r) => [r.height, r.level])).toEqual([
+      [undefined, undefined],
+      [1014, 14],
+    ]);
   });
 
   it("keeps a fixed options.level from falling back to parents", async () => {

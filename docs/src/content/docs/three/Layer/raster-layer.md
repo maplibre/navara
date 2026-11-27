@@ -82,6 +82,12 @@ view.addLayer({
 });
 ```
 
+## Draped layer limit
+
+Only a limited number of layers can be draped on the terrain at once, and the number depends on the device. A `raster` layer hidden with `raster: { show: false }` does not count toward it, so alternative basemaps can stay added and be switched with `show`. :since[0.3.2]
+
+When more layers are shown than fit, the topmost ones are not drawn and the console logs `Too many layers draped on the terrain: …`. See [issue #1039](https://github.com/maplibre/navara/issues/1039) for the details of the limit and the planned improvements.
+
 ## Related Resources
 
 - [Raster Tile Source](../../../three/source/raster-tile-source/) / [Raster DEM Source](../../../three/source/raster-dem-source/)

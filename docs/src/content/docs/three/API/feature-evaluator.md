@@ -154,6 +154,7 @@ The callback function can return an object containing the following properties:
 | `opacity` | `number` | Feature opacity, range 0.0-1.0 (for polygons/points/billboards/models/text) |
 | `declutterPriority` | `number` | Placement priority for decluttering. Higher wins an overlap (for points/billboards/text with [`declutter`](../../../three/material/text-material/#declutter) enabled). Overrides the layer's `declutterPriority`, but never the material's [`declutterRank`](../../../three/material/text-material/#declutterrank), which is compared first |
 | `image` | `string \| null` | Image URL (for billboard features). Each distinct URL is loaded once and packed into the layer's texture atlas. Return `null` to clear a previous per-feature image and revert to the billboard material's default `url` (the feature becomes invisible if the material has no `url`) |
+| `icon` | `string \| null` | Name of an icon in the billboard material's [`sprite`](../../../three/material/billboard-material/#sprite) (for billboard features), drawn in place of `image`. A name the sprite does not have hides the feature. Return `null` to clear a previous per-feature icon and revert to the material's default image. When both are returned, `icon` wins |
 | `facing` | `"upright" \| "flat"` | Whether the point, billboard, or label lies in the screen plane (`"upright"`) or on the globe surface (`"flat"`) (for points/billboards/text). Overrides the value the material's `pointFacing`/`billboardFacing`/`textFacing` resolves to |
 | `rotateWithCamera` | `boolean` | Whether the point, billboard, or label turns with the camera (`true`) or with the map (`false`) (for points/billboards/text). Along a line, `false` makes a label follow the line, and `true` draws it straight unless `spreadGlyphs` is set. Overrides the value the material's `rotateWithCamera` resolves to |
 | `spreadGlyphs` | `boolean` | Whether the label places each glyph on its own along its line (for text placed along a line). Overrides the material's `spreadGlyphs`, for example to keep cursive scripts or fonts word by word in a layer that spreads the rest |
@@ -162,10 +163,10 @@ The callback function can return an object containing the following properties:
 | `offset` | `{ x: number, y: number }` | Shift from the anchor point, `x` right and `y` down: in ems for text, in the unit of `size` for points and billboards. Overrides the material's `offset` (see [`offset`](../../../three/material/text-material/#offset)) |
 | `variableAnchors` | `{ anchor: Anchor, offset?: { x: number, y: number } }[]` | Placements the declutter pass tries in order for this label (for text features), offsets in ems. Overrides the material's [`variableAnchors`](../../../three/material/text-material/#variableanchors) |
 | `textAlign` | `"left" \| "center" \| "right" \| "auto"` | Line justification (for text features). `"auto"` follows the label's `anchor`. Overrides the material's [`textAlign`](../../../three/material/text-material/#textalign) |
-| `outlineColor` | `Color` | Outline color (for text features). Overrides the material's [`outlineColor`](../../../three/material/text-material/#outlinecolor) |
-| `outlineOpacity` | `number` | Outline opacity, range 0.0-1.0 (for text features). Overrides the material's [`outlineOpacity`](../../../three/material/text-material/#outlineopacity) |
-| `outlineWidth` | `number` | Outline thickness in 1/64 em (for text features). Overrides the material's [`outlineWidth`](../../../three/material/text-material/#outlinewidth) |
-| `outlineBlur` | `number` | Width over which the outline fades out, in 1/64 em (for text features). Overrides the material's [`outlineBlur`](../../../three/material/text-material/#outlineblur) |
+| `outlineColor` | `Color` | Outline color (for text features), or halo color of an SDF icon (for billboard features). Overrides the material's `outlineColor` ([text](../../../three/material/text-material/#outlinecolor), [billboard](../../../three/material/billboard-material/#outlinecolor)) |
+| `outlineOpacity` | `number` | Outline or SDF halo opacity, range 0.0-1.0 (for text/billboard features). Overrides the material's `outlineOpacity` ([text](../../../three/material/text-material/#outlineopacity), [billboard](../../../three/material/billboard-material/#outlineopacity)) |
+| `outlineWidth` | `number` | Outline thickness in 1/64 em (for text features), or SDF halo width in screen pixels (for billboard features). Overrides the material's `outlineWidth` ([text](../../../three/material/text-material/#outlinewidth), [billboard](../../../three/material/billboard-material/#outlinewidth)) |
+| `outlineBlur` | `number` | Width over which the outline fades out, in 1/64 em (for text features) or screen pixels (for billboard features). Overrides the material's `outlineBlur` ([text](../../../three/material/text-material/#outlineblur), [billboard](../../../three/material/billboard-material/#outlineblur)) |
 | `emissive` | `Color` | Emissive color (for batched polygons/3D Tiles models/points/billboards/text, ignored on models without batch/feature ids). Pairs with `emissiveIntensity` and drives selective bloom. On text only the glyph fill glows, while the outline and background stay dark |
 | `emissiveIntensity` | `number` | Emissive intensity multiplier (for batched polygons/3D Tiles models/points/billboards/text) |
 
@@ -348,6 +349,9 @@ type EvaluatedValue = {
    * packed into the layer's texture atlas. `null` clears a previous
    * per-feature image, reverting to the billboard material's default url */
   image?: string | null;
+  /** Name of an icon in the billboard material's `sprite`, drawn in place of
+   * `image`. `null` clears a previous per-feature icon */
+  icon?: string | null;
   /** Whether the point, billboard, or label lies in the screen plane
    * ("upright") or on the globe surface ("flat") (for points/billboards/text).
    * Overrides the material's facing option */
@@ -388,17 +392,19 @@ type EvaluatedValue = {
   /** Line justification (for text features); `"auto"` follows `anchor`.
    * Overrides the material's `textAlign` */
   textAlign?: "left" | "center" | "right" | "auto";
-  /** Outline color (for text features). Overrides the material's
-   * `outlineColor` */
+  /** Outline color (for text features), or SDF halo color (for billboard
+   * features). Overrides the material's `outlineColor` */
   outlineColor?: Color;
-  /** Outline opacity, range 0.0-1.0 (for text features). Overrides the
-   * material's `outlineOpacity` */
+  /** Outline or SDF halo opacity, range 0.0-1.0 (for text/billboard
+   * features). Overrides the material's `outlineOpacity` */
   outlineOpacity?: number;
-  /** Outline thickness in 1/64 em (for text features). Overrides the
-   * material's `outlineWidth` */
+  /** Outline thickness in 1/64 em (for text features), or SDF halo width in
+   * screen pixels (for billboard features). Overrides the material's
+   * `outlineWidth` */
   outlineWidth?: number;
-  /** Width over which the outline fades out, in 1/64 em (for text
-   * features). Overrides the material's `outlineBlur` */
+  /** Width over which the outline fades out, in 1/64 em (for text features)
+   * or screen pixels (for billboard features). Overrides the material's
+   * `outlineBlur` */
   outlineBlur?: number;
   /** Emissive color (for batched polygons/3D Tiles models/points/billboards/
    * text; ignored on models without batch/feature ids). Pairs with

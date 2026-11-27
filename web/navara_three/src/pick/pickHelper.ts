@@ -165,7 +165,8 @@ export class PickHelper {
   private _renderer: WebGLRenderer;
   private _camera: PerspectiveCamera;
   private _meshes: MeshCache;
-  private onPickCallback: (pickArr: number[]) => void;
+  /** Receives the click's batch IDs and its `pointerup` event. */
+  private onPickCallback: (pickArr: number[], event: PointerEvent) => void;
 
   /** Dedicated scene used only during the pick render. */
   private readonly pickScene = new Scene();
@@ -185,7 +186,11 @@ export class PickHelper {
   private readonly cullFrustum = new Frustum();
   private readonly cullMatrix = new Matrix4();
 
-  private onHoverCallback: (pickArr: number[]) => void;
+  /**
+   * Receives the hover's batch IDs and the pointer event they were picked
+   * for: the latest `pointermove`, or the `pointerleave`.
+   */
+  private onHoverCallback: (pickArr: number[], event: PointerEvent) => void;
   /** Click picks run only while this returns true (e.g. featureClick listeners exist). */
   private shouldClickPick: () => boolean;
   /** Hover picks run only while this returns true (e.g. hover listeners exist). */
@@ -196,17 +201,17 @@ export class PickHelper {
   private pointerUpHandler: (event: PointerEvent) => void;
   private pointerCancelHandler: () => void;
   private hoverMoveHandler: (event: PointerEvent) => void;
-  private hoverLeaveHandler: () => void;
-  /** Latest pointermove position awaiting a hover pick, in client coords. */
-  private hoverPosition?: Vector2;
+  private hoverLeaveHandler: (event: PointerEvent) => void;
+  /** Latest pointermove awaiting a hover pick. */
+  private hoverEvent?: PointerEvent;
 
   constructor(
     element: HTMLElement,
     renderer: WebGLRenderer,
     camera: PerspectiveCamera,
     meshes: MeshCache,
-    onPickCallback: (pickArr: number[]) => void,
-    onHoverCallback: (pickArr: number[]) => void,
+    onPickCallback: (pickArr: number[], event: PointerEvent) => void,
+    onHoverCallback: (pickArr: number[], event: PointerEvent) => void,
     shouldClickPick: () => boolean,
     shouldHoverPick: () => boolean,
     globeDepth: RefThree<Texture>,
@@ -231,7 +236,8 @@ export class PickHelper {
     this.pointerCancelHandler = () => this.onPointerCancel();
     this.hoverMoveHandler = (event: PointerEvent) =>
       this.onHoverPointerMove(event);
-    this.hoverLeaveHandler = () => this.onHoverPointerLeave();
+    this.hoverLeaveHandler = (event: PointerEvent) =>
+      this.onHoverPointerLeave(event);
 
     const width = this._renderer.getContext().drawingBufferWidth;
     const height = this._renderer.getContext().drawingBufferHeight;
@@ -300,7 +306,7 @@ export class PickHelper {
       );
       this.element.removeEventListener("pointermove", this.hoverMoveHandler);
       this.element.removeEventListener("pointerleave", this.hoverLeaveHandler);
-      this.hoverPosition = undefined;
+      this.hoverEvent = undefined;
     }
   }
 
@@ -314,34 +320,34 @@ export class PickHelper {
   private onHoverPointerMove(event: PointerEvent) {
     if (event.buttons !== 0 || !this.shouldHoverPick()) return;
 
-    if (!this.hoverPosition) this.hoverPosition = new Vector2();
-    this.hoverPosition.set(event.clientX, event.clientY);
+    this.hoverEvent = event;
   }
 
   /**
-   * Picks at the latest pointermove position since the previous call, if
-   * any, and reports the result. The view calls this at the start of a
-   * frame, before its render, so the readback waits for the pick render
-   * alone rather than for that frame's render.
+   * Picks at the latest pointermove since the previous call, if any, and
+   * reports the result with that event. The view calls this at the start
+   * of a frame, before its update and render, so the readback waits for the
+   * pick render alone rather than for that frame's render, and the depth
+   * and the camera are still those of the frame on screen.
    */
   pickHover() {
-    const position = this.hoverPosition;
-    if (!position) return;
-    this.hoverPosition = undefined;
+    const event = this.hoverEvent;
+    if (!event) return;
+    this.hoverEvent = undefined;
 
     // Listeners may have been removed since the pointermove.
     if (!this.shouldHoverPick()) return;
 
-    const batchId = this.pickBatchIdAt(position.x, position.y);
-    this.onHoverCallback(batchId > 0 ? [batchId] : []);
+    const batchId = this.pickBatchIdAt(event.clientX, event.clientY);
+    this.onHoverCallback(batchId > 0 ? [batchId] : [], event);
   }
 
-  private onHoverPointerLeave() {
-    this.hoverPosition = undefined;
+  private onHoverPointerLeave(event: PointerEvent) {
+    this.hoverEvent = undefined;
     // Report "nothing hovered" so diff-based enter/leave synthesis can
     // close out the current hover when the cursor exits the canvas.
     if (this.shouldHoverPick()) {
-      this.onHoverCallback([]);
+      this.onHoverCallback([], event);
     }
   }
 
@@ -537,7 +543,7 @@ export class PickHelper {
       event.pointerType === "touch" ? TOUCH_PICK_RADIUS : PICK_RADIUS;
     const batchId = this.pickBatchIdAt(event.clientX, event.clientY, radius);
     const pickArr = batchId > 0 ? [batchId] : [];
-    this.onPickCallback(pickArr);
+    this.onPickCallback(pickArr, event);
   }
 
   /**
