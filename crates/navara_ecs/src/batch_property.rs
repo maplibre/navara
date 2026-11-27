@@ -21,6 +21,9 @@ pub struct PickedProperties<V> {
     /// The feature set's `RenderableFeature` entity; `None` for a feature
     /// outside a feature set.
     pub feature_set: Option<Entity>,
+    /// The feature's top-level id (GeoJSON `id` or MVT feature id), as a JSON
+    /// string or number; `None` when the source feature has none.
+    pub feature_id: Option<serde_json::Value>,
 }
 
 // Derived `Default` would require `V: Default`.
@@ -31,6 +34,7 @@ impl<V> Default for PickedProperties<V> {
             layer_id: None,
             batch_id: None,
             feature_set: None,
+            feature_id: None,
         }
     }
 }
@@ -57,24 +61,23 @@ impl App {
             self.search_feature_entity_by_global_batch_id(batch_id)
         {
             // A feature without properties still has its feature set.
-            let (properties, layer_id) = self
+            let (properties, layer_id, feature_id) = self
                 .read_batch_table_by_global_batch_id(entity, &in_batch_id)
-                .unwrap_or_default();
+                .unwrap_or((None, None, None));
             return PickedProperties {
                 properties,
                 layer_id,
                 batch_id: Some(canonical_batch_id),
                 feature_set: Some(entity),
+                feature_id,
             };
         };
 
         // For other features like GeoJSON and MVT point
-        let Some(batch_value) = self
-            .app
-            .world()
-            .get_resource::<BatchTable>()
-            .and_then(|bt| bt.get(batch_id))
-        else {
+        let Some(batch_table) = self.app.world().get_resource::<BatchTable>() else {
+            return PickedProperties::default();
+        };
+        let Some(batch_value) = batch_table.get(batch_id) else {
             return PickedProperties::default();
         };
 
@@ -89,6 +92,8 @@ impl App {
             layer_id: batch_value.layer_id.clone(),
             batch_id: Some(*batch_id),
             feature_set: None,
+            // Same single row as the properties above.
+            feature_id: batch_table.feature_id(batch_id, 0).cloned(),
         }
     }
 
@@ -96,7 +101,7 @@ impl App {
         &mut self,
         entity: Entity,
         in_batch_id: &usize,
-    ) -> Option<(Option<V>, Option<String>)> {
+    ) -> Option<(Option<V>, Option<String>, Option<serde_json::Value>)> {
         let world = self.app.world_mut();
         let mut query = world.query::<&RenderableFeature>();
 
@@ -144,15 +149,29 @@ impl App {
                 }
             });
 
-        Some((properties, batch_value.layer_id.clone()))
+        // Ids live beside the properties: in the batch table for GeoJSON rows,
+        // in the layer data for MVT.
+        let feature_id = match batch_value.properties.as_ref() {
+            Some(BatchProperty::Values(_)) => batch_table
+                .feature_id(&feature_batch_id, *in_batch_id)
+                .cloned(),
+            Some(BatchProperty::Mvt(mvt)) => mvt.feature_id(*in_batch_id).map(Into::into),
+            _ => None,
+        };
+
+        Some((properties, batch_value.layer_id.clone(), feature_id))
     }
 
     /// Read properties from a batched feature.
     /// The batched feature contains a lot of feature, so [`callback`] will be invoked to each feature's property.
+    ///
+    /// The last callback argument is the row's top-level id (GeoJSON `id` or
+    /// MVT feature id), kept apart from the properties so it never collides
+    /// with a property name; `None` when the feature has none (and for 3D Tiles).
     pub fn read_all_batched_properties<
         V: PropertyValue,
         E,
-        F: Fn(usize, u32, BatchProperties<V>) -> Result<(), E>,
+        F: Fn(usize, u32, BatchProperties<V>, Option<&serde_json::Value>) -> Result<(), E>,
     >(
         &mut self,
         renderable_feature_bits: u64,
@@ -167,7 +186,7 @@ impl App {
     fn read_batch_table<
         V: PropertyValue,
         E,
-        F: Fn(usize, u32, BatchProperties<V>) -> Result<(), E>,
+        F: Fn(usize, u32, BatchProperties<V>, Option<&serde_json::Value>) -> Result<(), E>,
     >(
         &mut self,
         renderable_feature_entity: Entity,
@@ -289,6 +308,7 @@ impl App {
                                 batch_idx,
                                 global_batch_id(batch_idx, batch_idx as u32),
                                 BatchProperties::All(props),
+                                None,
                             )?;
                         }
                     }
@@ -303,6 +323,7 @@ impl App {
                                 batch_idx,
                                 global_batch_id(batch_idx, batch_idx as u32),
                                 BatchProperties::Filtered(Some(props)),
+                                None,
                             )?;
                         }
                     }
@@ -326,6 +347,7 @@ impl App {
                                 batch_idx,
                                 global_batch_id(batch_idx, batch_idx as u32),
                                 BatchProperties::All(props),
+                                None,
                             )?;
                         }
                     }
@@ -341,6 +363,7 @@ impl App {
                                 batch_idx,
                                 global_batch_id(batch_idx, batch_idx as u32),
                                 BatchProperties::Filtered(props),
+                                None,
                             )?;
                         }
                     }
@@ -349,14 +372,20 @@ impl App {
             BatchProperty::Values(values) => {
                 for (batch_idx, value) in values.iter().enumerate() {
                     let global_batch_id = global_batch_id(batch_idx, feature_batch_id);
+                    let id = batch_table.feature_id(&feature_batch_id, batch_idx);
                     match keys {
                         None => {
                             let props: Option<V> = json_value_to_property(value);
-                            callback(batch_idx, global_batch_id, BatchProperties::All(props))?;
+                            callback(batch_idx, global_batch_id, BatchProperties::All(props), id)?;
                         }
                         Some(keys) => {
                             let props = json_value_to_filtered_properties::<V>(value, keys);
-                            callback(batch_idx, global_batch_id, BatchProperties::Filtered(props))?;
+                            callback(
+                                batch_idx,
+                                global_batch_id,
+                                BatchProperties::Filtered(props),
+                                id,
+                            )?;
                         }
                     }
                 }
@@ -365,15 +394,28 @@ impl App {
                 let key_filter = keys.map(|keys| mvt_layer_data.key_filter(keys));
                 for batch_idx in 0..mvt_layer_data.feature_count() {
                     let global_batch_id = global_batch_id(batch_idx, feature_batch_id);
+                    let id = mvt_layer_data
+                        .feature_id(batch_idx)
+                        .map(serde_json::Value::from);
                     match &key_filter {
                         None => {
                             let props: Option<V> = mvt_layer_data.get_properties(batch_idx);
-                            callback(batch_idx, global_batch_id, BatchProperties::All(props))?;
+                            callback(
+                                batch_idx,
+                                global_batch_id,
+                                BatchProperties::All(props),
+                                id.as_ref(),
+                            )?;
                         }
                         Some(key_filter) => {
                             let props =
                                 mvt_layer_data.get_filtered_properties::<V>(batch_idx, key_filter);
-                            callback(batch_idx, global_batch_id, BatchProperties::Filtered(props))?;
+                            callback(
+                                batch_idx,
+                                global_batch_id,
+                                BatchProperties::Filtered(props),
+                                id.as_ref(),
+                            )?;
                         }
                     }
                 }

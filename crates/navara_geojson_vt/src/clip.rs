@@ -73,6 +73,7 @@ pub fn clip(
                             geometry: InternalGeometry::LineString(new_rings.remove(0)),
                             bbox,
                             properties: feature.properties.clone(),
+                            id: feature.id.clone(),
                             source_index: feature.source_index,
                         }));
                     } else {
@@ -80,6 +81,7 @@ pub fn clip(
                             geometry: InternalGeometry::MultiLineString(new_rings),
                             bbox,
                             properties: feature.properties.clone(),
+                            id: feature.id.clone(),
                             source_index: feature.source_index,
                         }));
                     }
@@ -109,6 +111,7 @@ pub fn clip(
                         geometry: InternalGeometry::MultiLineString(new_rings),
                         bbox,
                         properties: feature.properties.clone(),
+                        id: feature.id.clone(),
                         source_index: feature.source_index,
                     }));
                 }
@@ -124,6 +127,7 @@ pub fn clip(
                         geometry: InternalGeometry::Polygon(new_rings),
                         bbox,
                         properties: feature.properties.clone(),
+                        id: feature.id.clone(),
                         source_index: feature.source_index,
                     }));
                 }
@@ -147,6 +151,7 @@ pub fn clip(
                         geometry: InternalGeometry::MultiPolygon(new_polygons),
                         bbox,
                         properties: feature.properties.clone(),
+                        id: feature.id.clone(),
                         source_index: feature.source_index,
                     }));
                 }
@@ -201,6 +206,7 @@ fn clip_multi_point(
             geometry: InternalGeometry::MultiPoint(new_coords),
             bbox,
             properties: feature.properties.clone(),
+            id: feature.id.clone(),
             source_index: feature.source_index,
         }));
     }
@@ -650,6 +656,7 @@ mod tests {
             geometry,
             bbox,
             properties: Arc::new(serde_json::Value::Null),
+            id: None,
             source_index: 0,
         })
     }
@@ -1337,6 +1344,7 @@ mod tests {
                 max_y: 0.2,
             },
             properties: props.clone(),
+            id: None,
             source_index: 42,
         });
 

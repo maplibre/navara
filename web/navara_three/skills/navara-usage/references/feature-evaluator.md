@@ -31,7 +31,7 @@ layer.on("featureUpdated", ({ evaluator }) => {
 
 ## Restyling interactively (highlight the picked feature)
 
-Change your own state, then call `layer.forceUpdate()`: the next frame re-emits `featureUpdated` and the callback re-runs. A picked feature (`featureClick` / `featureHover` payload) and the `evaluate()` callback argument have the same shape — `{ batchId, properties, layerId }` — so match them by a stable property of your data (read it in both places; with `filters`, include it):
+Change your own state, then call `layer.forceUpdate()`: the next frame re-emits `featureUpdated` and the callback re-runs. A picked feature (`featureClick` / `featureHover` payload) and the `evaluate()` callback argument have the same shape — `{ batchId, properties, layerId, featureId? }` — so match them by a stable key: `featureId` (the GeoJSON top-level `id` or MVT feature id, not part of `properties`) when the data has one, otherwise a stable property (read it in both places; with `filters`, include it):
 
 ```typescript
 let selectedId: string | undefined;

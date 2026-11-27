@@ -266,6 +266,8 @@ export type FilterExpression = unknown[];
  */
 export type EvaluationContext = {
   properties: Record<string, unknown> | undefined;
+  /** Feature id read by `["id"]` (GeoJSON ids already coerced as MapLibre does). */
+  featureId?: string | number;
   zoom?: number;
   /** Terrain elevation in meters for `["elevation"]` (color-relief-color). */
   elevation?: number;
@@ -276,6 +278,8 @@ export type EvaluationContext = {
  */
 export type FeatureContext = {
   properties: Record<string, unknown> | undefined;
+  /** Feature id read by `["id"]` / legacy `$id` (GeoJSON ids already coerced as MapLibre does). */
+  featureId?: string | number;
   zoom?: number;
 };
 

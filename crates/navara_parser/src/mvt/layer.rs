@@ -20,6 +20,8 @@ pub struct MvtLayerData {
     pub feature_tags_flat: Vec<u32>,
     /// Prefix-sum offsets into `feature_tags_flat`; length = feature count + 1.
     pub feature_tag_offsets: Vec<u32>,
+    /// Top-level MVT feature ids by feature index; empty when no feature has one.
+    pub feature_ids: Vec<Option<u64>>,
 }
 
 /// Build prefix-sum offsets (length `sizes.len() + 1`) from per-feature sizes.
@@ -47,7 +49,20 @@ impl MvtLayerData {
             values,
             feature_tags_flat,
             feature_tag_offsets: offsets_from_sizes(feature_tag_sizes),
+            feature_ids: Vec::new(),
         }
+    }
+
+    /// Attach the features' top-level MVT ids (parallel to the tag sizes; empty
+    /// for none).
+    pub fn with_feature_ids(mut self, feature_ids: Vec<Option<u64>>) -> Self {
+        self.feature_ids = feature_ids;
+        self
+    }
+
+    /// The top-level MVT id of `feature_index`, if the feature has one.
+    pub fn feature_id(&self, feature_index: usize) -> Option<u64> {
+        self.feature_ids.get(feature_index).copied().flatten()
     }
 
     /// Number of features (batch entries) stored.
@@ -65,6 +80,7 @@ impl MvtLayerData {
     pub fn owned_bytes(&self) -> usize {
         self.feature_tags_flat.capacity() * size_of::<u32>()
             + self.feature_tag_offsets.capacity() * size_of::<u32>()
+            + self.feature_ids.capacity() * size_of::<Option<u64>>()
     }
 
     /// Stable identity of the shared keys allocation (dedup key).

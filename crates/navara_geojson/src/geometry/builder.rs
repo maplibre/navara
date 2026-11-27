@@ -23,6 +23,9 @@ pub(crate) struct GeometryBuilder<'a> {
     batch_table: &'a mut BatchTable,
     layer_id: &'a str,
     pending_properties: Option<serde_json::Value>,
+    /// Top-level GeoJSON id of the current feature, stored beside (never inside)
+    /// its properties.
+    pending_id: Option<serde_json::Value>,
 }
 
 impl<'a> GeometryBuilder<'a> {
@@ -32,6 +35,7 @@ impl<'a> GeometryBuilder<'a> {
             batch_table,
             layer_id,
             pending_properties: None,
+            pending_id: None,
         }
     }
 
@@ -45,7 +49,14 @@ impl<'a> GeometryBuilder<'a> {
             .and_then(|prop| serde_json::to_value(prop).ok())
             .unwrap_or(serde_json::Value::Null);
         self.pending_properties = Some(props);
+        self.pending_id = None;
         self.groups.begin_feature();
+    }
+
+    /// Set the current feature's top-level GeoJSON id. Call after
+    /// [`Self::begin_feature`].
+    pub(crate) fn set_feature_id(&mut self, id: Option<&navara_parser::geojson::feature::Id>) {
+        self.pending_id = id.and_then(|id| serde_json::to_value(id).ok());
     }
 
     /// Ensure a kind is registered, lazily initializing its batch in the table.
@@ -63,7 +74,8 @@ impl<'a> GeometryBuilder<'a> {
     fn maybe_commit_props(&mut self, commit_batch_id: Option<u32>) {
         if let Some(batch_id) = commit_batch_id {
             let props = self.pending_properties.clone().unwrap();
-            self.batch_table.add_values(batch_id, props);
+            self.batch_table
+                .add_values_with_id(batch_id, props, self.pending_id.clone());
         }
     }
 

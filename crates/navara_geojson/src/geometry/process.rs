@@ -76,6 +76,7 @@ pub fn construct_geometry(
             for feature in features {
                 if let Some(geometry) = &feature.geometry {
                     builder.begin_feature(&feature.properties);
+                    builder.set_feature_id(feature.id.as_ref());
                     process_geometry(&mut builder, geometry, appearances);
                 }
             }
@@ -83,6 +84,7 @@ pub fn construct_geometry(
         GeoJson::Feature(feature) => {
             if let Some(geometry) = &feature.geometry {
                 builder.begin_feature(&feature.properties);
+                builder.set_feature_id(feature.id.as_ref());
                 process_geometry(&mut builder, geometry, appearances);
             }
         }

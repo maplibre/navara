@@ -3655,6 +3655,7 @@ export default class ThreeView<
         // evaluator exposes (a MultiPoint feature spans many instances).
         batchId: prop.batchId ?? batchId,
         layerId: prop.layerId,
+        featureId: toFeatureId(prop.featureId),
         featureSetId: prop.featureSetId,
         content: this._featureSetContent(prop.layerId, prop.featureSetId),
       };
@@ -3798,6 +3799,11 @@ export default class ThreeView<
 
 function newId() {
   return Math.random().toString(36).slice(2);
+}
+
+/** Narrows the engine's untyped feature id to `string | number`. */
+function toFeatureId(id: unknown): string | number | undefined {
+  return typeof id === "string" || typeof id === "number" ? id : undefined;
 }
 
 let engineReady: Promise<unknown> | undefined;

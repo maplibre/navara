@@ -15,4 +15,8 @@ pub struct BatchPropResult {
     /// `bits` of the feature set's entity, as in `RenderableFeatureAddedEvent`.
     #[wasm_bindgen(js_name = featureSetId)]
     pub feature_set_id: Option<u64>,
+    /// The feature's top-level id (GeoJSON `id` or MVT feature id): a string
+    /// or number, or `undefined` when the source feature has none.
+    #[wasm_bindgen(getter_with_clone, js_name = featureId)]
+    pub feature_id: JsValue,
 }

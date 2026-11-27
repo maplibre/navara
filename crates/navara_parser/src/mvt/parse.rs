@@ -91,6 +91,9 @@ pub struct ParsedLayerGroup {
     pub feature_tags_flat: Vec<u32>,
     /// Per-feature tag counts, parallel to `feature_count`.
     pub feature_tag_sizes: Vec<u32>,
+    /// Top-level MVT feature ids, parallel to `feature_tag_sizes`, or empty when
+    /// no feature in the group has an id.
+    pub feature_ids: Vec<Option<u64>>,
     pub keys: Arc<Vec<String>>,
     pub values: Arc<Vec<tile::Value>>,
     pub geometry: ParsedGeometry,
@@ -269,6 +272,7 @@ struct GroupAccum {
     current_batch_index: u32,
     feature_tags_flat: Vec<u32>,
     feature_tag_sizes: Vec<u32>,
+    feature_ids: Vec<Option<u64>>,
     geom: GeomBuf,
 }
 
@@ -281,6 +285,7 @@ impl GroupAccum {
             current_batch_index: 0,
             feature_tags_flat: Vec::new(),
             feature_tag_sizes: Vec::new(),
+            feature_ids: Vec::new(),
             geom: GeomBuf::new(kind),
         }
     }
@@ -306,7 +311,12 @@ impl LayerAccum<'_> {
     /// first use, and return `(group_index, batch_index)`. Returning the index
     /// lets callers address the group directly via `groups[idx]` instead of
     /// re-scanning `groups` for `kind` on every accumulated item.
-    fn commit_group(&mut self, kind: LayerParseKind, pending_tags: &[u32]) -> (usize, u32) {
+    fn commit_group(
+        &mut self,
+        kind: LayerParseKind,
+        pending_tags: &[u32],
+        pending_id: Option<u64>,
+    ) -> (usize, u32) {
         let idx = match self.groups.iter().position(|g| g.kind == kind) {
             Some(idx) => idx,
             None => {
@@ -321,6 +331,7 @@ impl LayerAccum<'_> {
             group.committed = true;
             group.feature_tags_flat.extend_from_slice(pending_tags);
             group.feature_tag_sizes.push(pending_tags.len() as u32);
+            group.feature_ids.push(pending_id);
         }
         (idx, group.current_batch_index)
     }
@@ -415,6 +426,8 @@ struct MvtFeatureProcessor<'a> {
 
     /// Tags of the feature currently being processed (committed lazily per kind).
     pending_tags: Option<Vec<u32>>,
+    /// The current feature's top-level MVT id, committed with its tags.
+    pending_id: Option<u64>,
     /// Whether we are inside a point/multipoint geometry.
     in_point: bool,
     /// Whether `linestring_end` should push to rings (polygon) vs a polyline.
@@ -534,6 +547,7 @@ impl<'a> MvtFeatureProcessor<'a> {
             rtc_center,
             rings: Default::default(),
             pending_tags: None,
+            pending_id: None,
             in_point: false,
             in_polygon: false,
             raw_ring: Vec::new(),
@@ -557,8 +571,9 @@ impl<'a> MvtFeatureProcessor<'a> {
         }
     }
 
-    fn begin_feature(&mut self, tags: Vec<u32>) {
+    fn begin_feature(&mut self, tags: Vec<u32>, id: Option<u64>) {
         self.pending_tags = Some(tags);
+        self.pending_id = id;
         for layer in &mut self.layers {
             for group in &mut layer.groups {
                 group.committed = false;
@@ -573,9 +588,10 @@ impl<'a> MvtFeatureProcessor<'a> {
         let Self {
             layers,
             pending_tags,
+            pending_id,
             ..
         } = self;
-        layers[index].commit_group(kind, pending_tags.as_deref().unwrap_or(&[]))
+        layers[index].commit_group(kind, pending_tags.as_deref().unwrap_or(&[]), *pending_id)
     }
 
     /// Push one already-projected point into layer `index`'s group for `kind`.
@@ -1197,7 +1213,8 @@ fn parse_layer(
     let mut processor = MvtFeatureProcessor::new(&converter, &matched, rtc_center);
     for feature in &mut mvt_layer.features {
         let tags = std::mem::take(&mut feature.tags);
-        processor.begin_feature(tags);
+        let id = feature.id;
+        processor.begin_feature(tags, id);
         let _ = process_geom(feature, &mut processor);
     }
 
@@ -1213,6 +1230,12 @@ fn parse_layer(
                 feature_count: group.feature_count,
                 feature_tags_flat: group.feature_tags_flat,
                 feature_tag_sizes: group.feature_tag_sizes,
+                // Drop the all-`None` vector so id-less tiles carry nothing extra.
+                feature_ids: if group.feature_ids.iter().any(Option::is_some) {
+                    group.feature_ids
+                } else {
+                    Vec::new()
+                },
                 keys: Arc::clone(&keys),
                 values: Arc::clone(&values),
                 geometry,
@@ -1445,6 +1468,29 @@ mod test {
             }
             _ => panic!("expected points"),
         }
+    }
+
+    #[test]
+    fn keeps_the_top_level_feature_id_apart_from_tags() {
+        let mut with_id = point_feature(10, 20, vec![0, 0]);
+        with_id.id = Some(u64::MAX);
+        let bin = encode_tile(vec![make_layer(
+            "l",
+            vec![with_id, point_feature(30, 40, vec![0, 1])],
+        )]);
+        let groups = parse_mvt_tile(&bin, xyz(), Vec3::ZERO, &[point_config()]);
+        assert_eq!(groups[0].feature_ids, vec![Some(u64::MAX), None]);
+        assert_eq!(groups[0].feature_tags_flat, vec![0, 0, 0, 1]);
+    }
+
+    #[test]
+    fn omits_feature_ids_when_no_feature_has_one() {
+        let bin = encode_tile(vec![make_layer(
+            "l",
+            vec![point_feature(10, 20, vec![0, 0])],
+        )]);
+        let groups = parse_mvt_tile(&bin, xyz(), Vec3::ZERO, &[point_config()]);
+        assert!(groups[0].feature_ids.is_empty());
     }
 
     #[test]

@@ -35,7 +35,7 @@ pub fn convert(geojson: &GeoJson, sq_tolerance: f64) -> Vec<InternalFeature> {
         GeoJson::Feature(f) => convert_feature(f, sq_tolerance, features.len(), &mut features),
         GeoJson::Geometry(g) => {
             let props = Arc::new(serde_json::Value::Null);
-            convert_geometry(g, props, sq_tolerance, features.len(), &mut features);
+            convert_geometry(g, props, None, sq_tolerance, features.len(), &mut features);
         }
     }
     features
@@ -64,15 +64,24 @@ fn convert_feature(
             .map(|p| serde_json::Value::Object(p.clone()))
             .unwrap_or(serde_json::Value::Null),
     );
+    let id = feature.id.clone();
 
     if let Some(geometry) = &feature.geometry {
-        convert_geometry(geometry, properties, sq_tolerance, source_index, features);
+        convert_geometry(
+            geometry,
+            properties,
+            id,
+            sq_tolerance,
+            source_index,
+            features,
+        );
     }
 }
 
 fn convert_geometry(
     geometry: &Geometry,
     properties: Arc<serde_json::Value>,
+    id: Option<geojson_lib::feature::Id>,
     sq_tolerance: f64,
     source_index: usize,
     features: &mut Vec<InternalFeature>,
@@ -87,6 +96,7 @@ fn convert_geometry(
                 geometry: InternalGeometry::Point(projected),
                 bbox,
                 properties,
+                id: id.clone(),
                 source_index,
             });
         }
@@ -103,6 +113,7 @@ fn convert_geometry(
                 geometry: InternalGeometry::MultiPoint(flat),
                 bbox,
                 properties,
+                id: id.clone(),
                 source_index,
             });
         }
@@ -115,6 +126,7 @@ fn convert_geometry(
                 geometry: InternalGeometry::LineString(ring),
                 bbox,
                 properties,
+                id: id.clone(),
                 source_index,
             });
         }
@@ -128,6 +140,7 @@ fn convert_geometry(
                 geometry: InternalGeometry::MultiLineString(rings),
                 bbox,
                 properties,
+                id: id.clone(),
                 source_index,
             });
         }
@@ -138,6 +151,7 @@ fn convert_geometry(
                 geometry: InternalGeometry::Polygon(projected_rings),
                 bbox,
                 properties,
+                id: id.clone(),
                 source_index,
             });
         }
@@ -153,6 +167,7 @@ fn convert_geometry(
                 geometry: InternalGeometry::MultiPolygon(projected_polygons),
                 bbox,
                 properties,
+                id: id.clone(),
                 source_index,
             });
         }
@@ -161,6 +176,7 @@ fn convert_geometry(
                 convert_geometry(
                     geom,
                     Arc::clone(&properties),
+                    id.clone(),
                     sq_tolerance,
                     source_index,
                     features,

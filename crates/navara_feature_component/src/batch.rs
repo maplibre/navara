@@ -201,6 +201,11 @@ pub struct BatchTable {
     /// Shared `Arc` allocations by pointer identity, refcounted within this
     /// table so a layer's shared keys/values table is counted once.
     arc_registry: FxHashMap<usize, ArcEntry>,
+    /// Top-level GeoJSON feature ids (`string | number`) per batch, indexed like
+    /// the batch's `Values` rows. Kept apart from the properties so a property
+    /// can never collide with the id. Only batches that have ids appear here,
+    /// and a row without an id is `None`.
+    feature_ids: FxHashMap<u32, Vec<Option<serde_json::Value>>>,
     /// Sum of all owned + shared bytes currently held. Surfaced to the memory
     /// ledger as external (non-BufferStore) CPU bytes.
     total_bytes: usize,
@@ -220,6 +225,7 @@ impl BatchTable {
             map: FxHashMap::default(),
             accounting: FxHashMap::default(),
             arc_registry: FxHashMap::default(),
+            feature_ids: FxHashMap::default(),
             total_bytes: 0,
             unique_feature_batch_id: UniqueFeatureId::new(),
             unique_global_batch_id: UniqueGlobalBatchId::new(),
@@ -364,6 +370,47 @@ impl BatchTable {
         }
     }
 
+    /// Like [`Self::add_values`], also recording the feature's top-level id
+    /// (when it has one) for the row being appended.
+    pub fn add_values_with_id(
+        &mut self,
+        key: u32,
+        props: serde_json::Value,
+        id: Option<serde_json::Value>,
+    ) {
+        let Some(Some(BatchTableValue {
+            properties: Some(BatchProperty::Values(values)),
+            ..
+        })) = self.map.get(&key)
+        else {
+            return;
+        };
+        let row = values.len();
+        self.add_values(key, props);
+
+        let Some(id) = id else {
+            return;
+        };
+        // The id's heap payload (its inline `Value` sits in the vector slot),
+        // plus any growth of the vector itself, padding `None` rows included,
+        // so the ledger counts slots as the MVT path does.
+        let heap = json_bytes(&id) - size_of::<serde_json::Value>();
+        let ids = self.feature_ids.entry(key).or_default();
+        let capacity = ids.capacity();
+        ids.resize(row + 1, None);
+        ids[row] = Some(id);
+        let delta = heap + (ids.capacity() - capacity) * size_of::<Option<serde_json::Value>>();
+        if let Some(acc) = self.accounting.get_mut(&key) {
+            acc.owned_bytes += delta;
+            self.total_bytes += delta;
+        }
+    }
+
+    /// The feature id of `row` in batch `key`, if the source feature had one.
+    pub fn feature_id(&self, key: &u32, row: usize) -> Option<&serde_json::Value> {
+        self.feature_ids.get(key)?.get(row)?.as_ref()
+    }
+
     pub fn get(&self, key: &u32) -> Option<&BatchTableValue> {
         self.map.get(key).and_then(|value| value.as_ref())
     }
@@ -375,8 +422,59 @@ impl BatchTable {
                 self.unregister_arc(ptr);
             }
         }
+        self.feature_ids.remove(key);
         self.map.remove(key);
         self.unique_feature_batch_id.release(*key);
+    }
+}
+
+#[cfg(test)]
+mod feature_id_tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn ids_are_stored_per_row_apart_from_properties() {
+        let mut t = BatchTable::new();
+        let key = t.init_values(None).unwrap();
+        t.add_values_with_id(key, json!({"$id": "b"}), Some(json!(1)));
+        t.add_values_with_id(key, json!({"$id": "b"}), None);
+        t.add_values_with_id(key, json!({}), Some(json!("x")));
+
+        assert_eq!(t.feature_id(&key, 0), Some(&json!(1)));
+        assert_eq!(t.feature_id(&key, 1), None);
+        assert_eq!(t.feature_id(&key, 2), Some(&json!("x")));
+        assert_eq!(t.feature_id(&key, 3), None);
+    }
+
+    #[test]
+    fn remove_balances_bytes_including_ids() {
+        let mut t = BatchTable::new();
+        let key = t.init_values(None).unwrap();
+        t.add_values_with_id(key, json!({"a": 1}), Some(json!("id")));
+        assert!(t.total_bytes() > 0);
+        t.remove(&key);
+        assert_eq!(t.total_bytes(), 0);
+        assert_eq!(t.feature_id(&key, 0), None);
+    }
+
+    #[test]
+    fn counts_the_id_vector_padding() {
+        let mut t = BatchTable::new();
+        let key = t.init_values(None).unwrap();
+        for _ in 0..1000 {
+            t.add_values_with_id(key, json!(null), None);
+        }
+        let before = t.total_bytes();
+        // One id at row 1000 pads 1000 `None` slots in front of it.
+        t.add_values_with_id(key, json!(null), Some(json!(1)));
+        let added = t.total_bytes() - before;
+        assert!(
+            added >= 1001 * size_of::<Option<serde_json::Value>>(),
+            "added {added} bytes"
+        );
+        t.remove(&key);
+        assert_eq!(t.total_bytes(), 0);
     }
 }
 
