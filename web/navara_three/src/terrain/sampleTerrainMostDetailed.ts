@@ -70,6 +70,15 @@ type FetchOutcome =
   /** The request kept failing (5xx / network) or was otherwise rejected. */
   | { kind: "failed" };
 
+/** The deepest tile a probe found, with its response body still unread. */
+type FoundTile = {
+  x: number;
+  y: number;
+  level: number;
+  url: string;
+  response: Response;
+};
+
 type SourceConfig = {
   kind: "quantized-mesh" | "raster-dem";
   url: string;
@@ -132,7 +141,7 @@ export async function sampleTerrainMostDetailed(
   });
 
   // Group positions by their containing tile at the starting level; each
-  // group is fetched and sampled once no matter how many positions share it.
+  // group is probed once no matter how many positions share it.
   const tileXYs = terrainPositionsToTiles(config.geographic, startLevel, flat);
   const groups = new Map<string, { x: number; y: number; indices: number[] }>();
   for (let i = 0; i < positions.length; i++) {
@@ -158,16 +167,10 @@ export async function sampleTerrainMostDetailed(
   // by URL keeps each tile fetched at most once per call.
   const outcomeCache = new Map<string, Promise<FetchOutcome>>();
   const limit = createLimiter(MAX_CONCURRENT_TILE_FETCHES);
-
-  await Promise.all(
-    [...groups.values()].map(async (group) => {
-      const groupFlat = new Float64Array(group.indices.length * 2);
-      group.indices.forEach((originalIndex, i) => {
-        groupFlat[i * 2] = flat[originalIndex * 2];
-        groupFlat[i * 2 + 1] = flat[originalIndex * 2 + 1];
-      });
-
-      const found = await probeMostDetailedTile(
+  const groupList = [...groups.values()];
+  const found = await Promise.all(
+    groupList.map((group) =>
+      probeMostDetailedTile(
         config,
         group,
         startLevel,
@@ -175,16 +178,36 @@ export async function sampleTerrainMostDetailed(
         outcomeCache,
         limit,
         signal,
-      );
-      if (!found) return;
+      ),
+    ),
+  );
 
-      const heights = await sampleTile(config, found, groupFlat, signal);
+  // Regroup by the tile each probe found: a response body can be read only
+  // once, so the groups sharing a tile are read and sampled together.
+  const tiles = new Map<string, { tile: FoundTile; indices: number[] }>();
+  groupList.forEach((group, i) => {
+    const tile = found[i];
+    if (!tile) return;
+    const entry = tiles.get(tile.url);
+    if (entry) entry.indices.push(...group.indices);
+    else tiles.set(tile.url, { tile, indices: [...group.indices] });
+  });
+
+  await Promise.all(
+    [...tiles.values()].map(async ({ tile, indices }) => {
+      const tileFlat = new Float64Array(indices.length * 2);
+      indices.forEach((originalIndex, i) => {
+        tileFlat[i * 2] = flat[originalIndex * 2];
+        tileFlat[i * 2 + 1] = flat[originalIndex * 2 + 1];
+      });
+
+      const heights = await sampleTile(config, tile, tileFlat, signal);
       if (!heights) return;
-      group.indices.forEach((originalIndex, i) => {
+      indices.forEach((originalIndex, i) => {
         const h = heights[i];
         if (h !== undefined && Number.isFinite(h)) {
           results[originalIndex].height = h;
-          results[originalIndex].level = found.level;
+          results[originalIndex].level = tile.level;
         }
       });
     }),
@@ -246,7 +269,7 @@ async function probeMostDetailedTile(
   outcomeCache: Map<string, Promise<FetchOutcome>>,
   limit: <T>(task: () => Promise<T>) => Promise<T>,
   signal: AbortSignal | undefined,
-): Promise<{ x: number; y: number; level: number; response: Response } | null> {
+): Promise<FoundTile | null> {
   let batchTop = startLevel;
   while (batchTop >= floorLevel) {
     const batchSize = batchTop === startLevel ? 1 : PROBE_BATCH_LEVELS;
@@ -273,16 +296,16 @@ async function probeMostDetailedTile(
           outcome = limit(() => fetchTile(config, url, signal));
           outcomeCache.set(url, outcome);
         }
-        return outcome.then((o) => ({ level, x, y, outcome: o }));
+        return outcome.then((o) => ({ level, x, y, url, outcome: o }));
       }),
     );
 
     // Deepest success in the batch wins; a hard failure stops the descent
     // (the tile exists but is unreadable — a coarser parent would silently
     // hide the error behind a coarse height).
-    for (const { level, x, y, outcome } of outcomes) {
+    for (const { level, x, y, url, outcome } of outcomes) {
       if (outcome.kind === "ok")
-        return { x, y, level, response: outcome.response };
+        return { x, y, level, url, response: outcome.response };
       if (outcome.kind === "failed") return null;
     }
     batchTop = batchBottom - 1;
@@ -340,18 +363,21 @@ async function fetchTile(
 
 /**
  * Decode the fetched tile and interpolate a height per position, on the same
- * engine code paths rendering uses. Returns `null` when the payload doesn't
- * decode; `NaN` entries mean the tile had no data at that position.
+ * engine code paths rendering uses. Returns `null` when the body cannot be
+ * read or doesn't decode; `NaN` entries mean the tile had no data at that
+ * position.
  */
 async function sampleTile(
   config: SourceConfig,
-  tile: { x: number; y: number; level: number; response: Response },
+  tile: FoundTile,
   groupFlat: Float64Array,
   signal: AbortSignal | undefined,
 ): Promise<Float64Array | null> {
   if (config.kind === "quantized-mesh") {
-    const bytes = new Uint8Array(await tile.response.arrayBuffer());
+    const buffer = await readBody(tile.response.arrayBuffer(), signal);
     throwIfAborted(signal);
+    if (!buffer) return null;
+    const bytes = new Uint8Array(buffer);
     return (
       sampleQuantizedMeshHeights(
         bytes,
@@ -364,7 +390,10 @@ async function sampleTile(
     );
   }
 
-  const rgba = await decodeImageToRgba(await tile.response.blob());
+  const blob = await readBody(tile.response.blob(), signal);
+  throwIfAborted(signal);
+  if (!blob) return null;
+  const rgba = await decodeImageToRgba(blob);
   throwIfAborted(signal);
   if (!rgba) return null;
   return (
@@ -377,6 +406,22 @@ async function sampleTile(
       groupFlat,
     ) ?? null
   );
+}
+
+/**
+ * Awaits a body read. A failure other than an abort (the connection lost
+ * after the headers) is a network error and yields `null`.
+ */
+async function readBody<T>(
+  read: Promise<T>,
+  signal: AbortSignal | undefined,
+): Promise<T | null> {
+  try {
+    return await read;
+  } catch (e) {
+    if (signal?.aborted) throw e;
+    return null;
+  }
 }
 
 /**
