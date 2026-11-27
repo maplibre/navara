@@ -266,9 +266,11 @@ class ScreenshotGenerator {
    * page happens to add.
    */
   async hidePageUI(page: Page): Promise<void> {
+    // Tweakpane's color picker draws on a canvas of its own, which would keep
+    // its pane on screen.
     await page.addStyleTag({
       content:
-        "body :not(canvas):not(:has(canvas)) { display: none !important; }",
+        "body :not(canvas):not(:has(canvas)), .tp-dfwv { display: none !important; }",
     });
   }
 

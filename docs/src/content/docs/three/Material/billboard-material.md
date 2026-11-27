@@ -289,6 +289,30 @@ import { Color } from "@navaramap/three";
 }
 ```
 
+### icon
+
+**Type:** `string | undefined`
+
+**Description:** Name of the icon in [`sprite`](#sprite) to draw, in place of [`url`](#url). As in MapLibre, a name the sprite does not have draws nothing and logs a warning, and so does any `icon` on a material with no `sprite`. Billboards stay hidden until the sprite has loaded.
+
+Can also be set per feature from a [feature evaluator](../../api/feature-evaluator/).
+
+**Default:** `undefined`
+
+**Example:**
+
+```typescript
+{
+  billboard: {
+    sprite: "https://example.com/sprites/maki",
+    icon: "airport",
+    sizeInMeters: false,
+    sizeRelativeToImage: true,
+    size: 1 // the icon's own size
+  }
+}
+```
+
 ### ignorePlacement
 
 **Type:** `boolean | undefined`
@@ -360,6 +384,91 @@ Can also be set per feature from a [feature evaluator](../../api/feature-evaluat
   billboard: {
     transparent: true,
     opacity: 0.5 // 50% opacity
+  }
+}
+```
+
+### outlineBlur
+
+**Type:** `number | undefined`
+
+**Description:** Width over which the halo of an SDF icon fades out, in screen pixels, as MapLibre's `icon-halo-blur`. The fade shows only with [`transparent`](#transparent) set to `true`: an opaque billboard, the default, cuts the halo where it fades below [`alphaTest`](#alphatest). See [`outlineWidth`](#outlinewidth).
+
+**Default:** `0.0`
+
+**Example:**
+
+```typescript
+{
+  billboard: {
+    outlineWidth: 3,
+    outlineBlur: 1
+  }
+}
+```
+
+### outlineColor
+
+**Type:** `Color | undefined`
+
+**Description:** Color of the halo around an SDF icon, as MapLibre's `icon-halo-color`. See [`outlineWidth`](#outlinewidth).
+
+**Default:** Black
+
+**Example:**
+
+```typescript
+import { Color } from "@navaramap/three";
+
+{
+  billboard: {
+    outlineColor: new Color().setHex(0xffffff),
+    outlineWidth: 2
+  }
+}
+```
+
+### outlineOpacity
+
+**Type:** `number | undefined`
+
+**Description:** Opacity of the halo around an SDF icon, from 0.0 to 1.0. The halo also fades with [`opacity`](#opacity).
+
+**Default:** `1.0`
+
+**Example:**
+
+```typescript
+{
+  billboard: {
+    outlineWidth: 2,
+    outlineOpacity: 0.5
+  }
+}
+```
+
+### outlineWidth
+
+**Type:** `number | undefined`
+
+**Description:** Width of a halo drawn around a [`sprite`](#sprite) icon marked `"sdf": true`, outside its edge, in screen pixels, as MapLibre's `icon-halo-width`. The width stays the same at any icon size. Other images draw no halo. The halo can reach only as far as the distance field in the sheet does (6 icon pixels in MapLibre's sprites, times the icon's scale): a wider or more blurred halo is cut off there. MapLibre instead fills the whole box of the icon.
+
+All four `outline*` fields can also be set per feature from a [feature evaluator](../../api/feature-evaluator/). A field the evaluator leaves out keeps the feature's current value. Once any feature has its own halo, changing a field on the material with `layer.update()` sets that field on every feature, replacing their own values for it.
+
+**Default:** `0.0` (no halo)
+
+**Example:**
+
+```typescript
+import { Color } from "@navaramap/three";
+
+{
+  billboard: {
+    sprite: "https://example.com/sprites/maki",
+    icon: "dot",
+    color: new Color().setHex(0xe53935),
+    outlineColor: new Color().setHex(0xffffff),
+    outlineWidth: 2
   }
 }
 ```
@@ -437,6 +546,8 @@ This option applies when the layer's geometry is built: set it at layer creation
 **Type:** `boolean | undefined`
 
 **Description:** Whether [`size`](#size) scales the image's own pixel height instead of setting the billboard's height, as MapLibre's `icon-size` does. With `true`, a `size` of `1` draws the image at its natural size: in pixels when [`sizeInMeters`](#sizeinmeters) is `false`, or one meter per image pixel otherwise. The width follows the image's aspect ratio either way. [`offset`](#offset) is not scaled by the image and stays in pixels or meters.
+
+The natural size of a [`sprite`](#sprite) icon is its pixel size divided by the `pixelRatio` in the sprite's index, so an icon from a `@2x` sheet draws at the same size as from the 1x sheet.
 
 **Default:** `false`
 
@@ -616,6 +727,32 @@ This option applies when the layer's geometry is built. `layer.update()` does no
 }
 ```
 
+### sprite
+
+**Type:** `string | { id: string; url: string }[] | undefined`
+
+**Description:** Icon sheets that [`icon`](#icon) names refer to, in the format of MapLibre's [`sprite`](https://maplibre.org/maplibre-style-spec/sprite/). A sheet is one PNG image that holds many icons, with a JSON index that gives the position of each icon. Its URL is written without the extension: Navara loads `<url>.json` and `<url>.png`, or `<url>@2x.json` and `<url>@2x.png` on a high-DPI screen, with no fallback to the 1x files.
+
+A string is a single sheet, whose icons keep the names in its index. A list loads several sheets, and their icons are named `<id>:<name>`, except those of the sheet whose `id` is `"default"`. If any sheet fails to load, no icon of the sprite is drawn. The sprite is loaded again the next time a new tile or layer uses it. Each sheet is loaded once, however many layers use it.
+
+An icon marked `"sdf": true` in the index is a signed distance field, as MapLibre encodes it. Its shape is drawn in [`color`](#color), with sharp edges at any size, and the colors in the sheet are not used. MapLibre draws such an icon black by default (`icon-color`), but `color` defaults to white, so set it. [`outlineWidth`](#outlinewidth) draws a halo around it.
+
+**Default:** `undefined`
+
+**Example:**
+
+```typescript
+{
+  billboard: {
+    sprite: [
+      { id: "default", url: "https://example.com/sprites/base" },
+      { id: "maki", url: "https://example.com/sprites/maki" }
+    ],
+    icon: "maki:airport"
+  }
+}
+```
+
 ### standalone
 
 **Type:** `boolean | undefined`
@@ -693,7 +830,7 @@ This option applies when the layer's geometry is built. `layer.update()` does no
 
 **Type:** `string | undefined`
 
-**Description:** Specifies the URL of the object. Supports image files. This is the default image for every feature in the layer. Individual features can override it by returning `image` from [`FeatureEvaluator.evaluate()`](../../api/feature-evaluator/#evaluate), and returning `image: null` reverts an overridden feature to this default.
+**Description:** Specifies the URL of the object. Supports image files. This is the default image for every feature in the layer. Individual features can override it by returning `image` from [`FeatureEvaluator.evaluate()`](../../api/feature-evaluator/#evaluate), and returning `image: null` reverts an overridden feature to this default. Ignored while [`icon`](#icon) is set.
 
 **Default:** `undefined`
 

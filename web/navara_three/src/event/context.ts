@@ -24,6 +24,8 @@ import type { ColorMapAtlas } from "../colorMapAtlas";
 import type { ViewContext } from "../core";
 import type { DeclutterManager } from "../declutter";
 import type { LayersManager } from "../layersManager";
+import { loadSpriteSheetFromUrl } from "../mesh/sprite/billboardAtlasImageLoader";
+import { SpriteCache } from "../mesh/sprite/spriteCache";
 import type { TileMesh } from "../mesh/tile";
 import type { Scenes, TexturizedSceneByTileCoordinates } from "../scene";
 import type { TextureOptions } from "../textures";
@@ -227,6 +229,8 @@ type EventContextArgs = {
   hillshadeContext?: HillshadeContext;
   declutter?: DeclutterManager;
   colorMapAtlas?: ColorMapAtlas;
+  /** Defaults to one that fetches sheets over the network. */
+  sprites?: SpriteCache;
 };
 
 /**
@@ -265,6 +269,8 @@ export class EventContext {
   readonly declutter?: DeclutterManager;
   /** ColorMap atlas for elevation heatmap layers. */
   readonly colorMapAtlas?: ColorMapAtlas;
+  /** Billboard `sprite`s, loaded once for every layer and tile. */
+  readonly sprites: SpriteCache;
 
   updatedAt = 0;
 
@@ -298,5 +304,6 @@ export class EventContext {
     this.hillshadeContext = args.hillshadeContext;
     this.declutter = args.declutter;
     this.colorMapAtlas = args.colorMapAtlas;
+    this.sprites = args.sprites ?? new SpriteCache(loadSpriteSheetFromUrl);
   }
 }

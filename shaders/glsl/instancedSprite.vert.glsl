@@ -18,8 +18,23 @@
     // here (not baked into the attribute) so rects stay valid when the atlas
     // grows — growth only updates the uniform.
     attribute vec4 instanceUvRect;
+    // x: the image's pixels per CSS pixel (2 for a sprite's @2x icons).
+    // y: 1 when its alpha is a signed distance field.
+    attribute vec2 instanceImageInfo;
     uniform vec2 uAtlasSize;
+    flat varying float vSdf;
+    // Screen pixels per icon pixel, which an SDF halo's width is divided by
+    // (MapLibre's fontScale).
+    flat varying float vIconScale;
+    // The SDF halo: color, then (opacity, width, blur), width and blur in
+    // screen pixels.
+    flat varying vec3 vOutlineColor;
+    flat varying vec3 vOutline;
 #endif
+uniform vec3 uOutlineColor;
+uniform float uOutlineOpacity;
+uniform float uOutlineWidth;
+uniform float uOutlineBlur;
 
 attribute float instanceBatchID;
 // Animated hide factor from the screen-space declutter pass (0 = shown,
@@ -94,8 +109,20 @@ void main() {
     bool nvr_batchRotateWithCamera = uRotateWithCamera;
     vec2 nvr_batchAnchor = uAnchor;
     vec2 nvr_batchOffset = uOffset;
+    vec3 nvr_batchOutlineColor = uOutlineColor;
+    float nvr_batchOutlineOpacity = uOutlineOpacity;
+    float nvr_batchOutlineWidth = uOutlineWidth;
+    float nvr_batchOutlineBlur = uOutlineBlur;
     vColor = uColor;
     #include "chunks/batch_texture_vertex.glsl"
+#ifdef BILLBOARD
+    vOutlineColor = nvr_batchOutlineColor;
+    vOutline = vec3(
+        nvr_batchOutlineOpacity,
+        nvr_batchOutlineWidth,
+        nvr_batchOutlineBlur
+    );
+#endif
 
     vOpacity = nvr_vOpacity * (1.0 - instanceDeclutterHide);
 
@@ -108,6 +135,7 @@ void main() {
 
 #ifdef BILLBOARD
     vUv = (instanceUvRect.xy + uv * instanceUvRect.zw) / uAtlasSize;
+    vSdf = instanceImageInfo.y;
 #else
     vUv = uv;
 #endif
@@ -160,7 +188,7 @@ void main() {
     // Per-instance image aspect from the atlas rect (guard empty rects).
     float aspect = instanceUvRect.w > 0.0 ? instanceUvRect.z / instanceUvRect.w : 1.0;
     if (uSizeRelativeToImage) {
-        quadHeight *= instanceUvRect.w;
+        quadHeight *= instanceUvRect.w / instanceImageInfo.x;
     }
 #else
     float aspect = 1.0;
@@ -169,6 +197,12 @@ void main() {
     if (!uSizeInMeters) {
         sizeUnit = worldPerPx;
     }
+#ifdef BILLBOARD
+    float imageHeightPx = instanceUvRect.w / instanceImageInfo.x;
+    vIconScale = imageHeightPx > 0.0
+        ? quadHeight * sizeUnit / worldPerPx / imageHeightPx
+        : 1.0;
+#endif
     vec3 translateOffset = nvr_translateOffset(absTransformed, uTranslate, uTranslateViewport, worldPerPx);
 
     // The quad's axes: view-space x/y for a plain billboard, otherwise a pair

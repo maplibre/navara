@@ -17,16 +17,31 @@ export type AtlasRect = {
   y: number;
   w: number;
   h: number;
+  /** The image's pixels per CSS pixel (see {@link AtlasImage.pixelRatio}). */
+  pixelRatio: number;
+  /** See {@link AtlasImage.sdf}. */
+  sdf: boolean;
 };
+
+type PixelRect = Omit<AtlasRect, "pixelRatio" | "sdf">;
 
 export type AtlasImage = {
   width: number;
   height: number;
   /** RGBA, tightly packed, row 0 = bottom of the image (flipY at decode). */
   data: Uint8Array;
+  /** Image pixels per CSS pixel, as a sprite's `@2x` icons have 2. Divides
+   *  the image's pixel size under `sizeRelativeToImage`. Defaults to 1. */
+  pixelRatio?: number;
+  /** Whether the alpha holds a signed distance field (a sprite's `"sdf":
+   *  true` icons): 0.75 at the shape's edge, more inside, as MapLibre
+   *  encodes it. RGB is ignored and the shape is drawn in the material's
+   *  color. Defaults to false. */
+  sdf?: boolean;
 };
 
 export type LoadAtlasImage = (url: string) => Promise<AtlasImage>;
+type LoadAtlasImageOrNone = (url: string) => Promise<AtlasImage | undefined>;
 
 export type BillboardAtlasOptions = {
   initialSize?: number;
@@ -102,15 +117,21 @@ export class BillboardAtlas {
   }
 
   /**
-   * Load `url` (once) and pack it into the atlas.
+   * Load `url` (once) and pack it into the atlas. `load` replaces the
+   * atlas's `loadImage` for an image that is not fetched by URL; `url` is
+   * then just its cache key, and `load` resolving to `undefined` means there
+   * is no image (reported by `load`, not here).
    * Resolves to the entry's pixel rect, or `undefined` when the image fails
    * to load or the atlas is full even at `maxSize`.
    */
-  pack(url: string): Promise<AtlasRect | undefined> {
+  pack(
+    url: string,
+    load: LoadAtlasImageOrNone = this._loadImage,
+  ): Promise<AtlasRect | undefined> {
     const cached = this._rects.get(url);
     if (cached) return cached;
 
-    const pending = this._loadAndPack(url).catch((error) => {
+    const pending = this._loadAndPack(url, load).catch((error) => {
       console.warn(`BillboardAtlas: failed to load image "${url}"`, error);
       return undefined;
     });
@@ -124,8 +145,12 @@ export class BillboardAtlas {
     this._shelves = [];
   }
 
-  private async _loadAndPack(url: string): Promise<AtlasRect | undefined> {
-    const image = await this._loadImage(url);
+  private async _loadAndPack(
+    url: string,
+    load: LoadAtlasImageOrNone,
+  ): Promise<AtlasRect | undefined> {
+    const image = await load(url);
+    if (!image) return undefined;
     const rect = this._allocate(image.width, image.height);
     if (!rect) {
       console.warn(
@@ -134,10 +159,14 @@ export class BillboardAtlas {
       return undefined;
     }
     this._blit(image, rect);
-    return rect;
+    return {
+      ...rect,
+      pixelRatio: image.pixelRatio ?? 1,
+      sdf: image.sdf ?? false,
+    };
   }
 
-  private _allocate(w: number, h: number): AtlasRect | undefined {
+  private _allocate(w: number, h: number): PixelRect | undefined {
     for (;;) {
       const rect = this._tryAllocate(w, h);
       if (rect) return rect;
@@ -145,7 +174,7 @@ export class BillboardAtlas {
     }
   }
 
-  private _tryAllocate(w: number, h: number): AtlasRect | undefined {
+  private _tryAllocate(w: number, h: number): PixelRect | undefined {
     const needW = w + GUTTER;
     const needH = h + GUTTER;
     if (needW > this._size) return undefined;
@@ -193,7 +222,7 @@ export class BillboardAtlas {
     return true;
   }
 
-  private _blit(image: AtlasImage, rect: AtlasRect): void {
+  private _blit(image: AtlasImage, rect: PixelRect): void {
     for (let row = 0; row < rect.h; row++) {
       this._data.set(
         image.data.subarray(row * rect.w * 4, (row + 1) * rect.w * 4),

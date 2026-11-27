@@ -2,6 +2,47 @@
 #include "chunks/pick.glsl"
 #ifdef BILLBOARD
     uniform sampler2D uTexture;
+    flat varying float vSdf;
+    flat varying float vIconScale;
+    flat varying vec3 vOutlineColor;
+    // (opacity, width, blur), width and blur in screen pixels.
+    flat varying vec3 vOutline;
+
+    // MapLibre's SDF icon encoding: the shape's edge sits at alpha 0.75, and
+    // alpha drops by 1/8 per icon pixel outward. Icon pixels are CSS pixels:
+    // a `@2x` sheet spreads each step over 2 sheet pixels.
+    const float SDF_EDGE = 0.75;
+    const float SDF_PX = 8.0;
+
+    // An SDF icon in `fillColor` over its halo, as MapLibre's symbol_sdf shader
+    // draws it. `gamma` smooths edges over about 1.7 screen pixels
+    // (MapLibre's EDGE_GAMMA).
+    vec4 nvr_sdfColor(float dist, float gamma, vec3 fillColor) {
+        float fill = smoothstep(SDF_EDGE - gamma, SDF_EDGE + gamma, dist);
+        float opacity = vOutline.x;
+        float width = vOutline.y;
+        float blur = vOutline.z;
+        if (width <= 0.0 || opacity <= 0.0) {
+            return vec4(fillColor, fill);
+        }
+        // Distances are in icon pixels; the halo's are in screen pixels.
+        float scale = max(vIconScale, 1e-4);
+        float haloGamma = blur * 1.19 / (SDF_PX * scale) + gamma;
+        float inner = SDF_EDGE + haloGamma;
+        float haloInner = smoothstep(inner - haloGamma, inner + haloGamma, dist);
+        float haloEdge = SDF_EDGE - width / (SDF_PX * scale);
+        // The field ends at alpha 0, where MapLibre's halo would fill the
+        // icon's whole box: fade out there over about a screen pixel instead.
+        float fieldEnd = smoothstep(0.0, 2.0 * gamma, dist);
+        float halo = opacity * fieldEnd * min(
+            smoothstep(haloEdge - haloGamma, haloEdge + haloGamma, dist),
+            1.0 - haloInner
+        );
+        float alpha = fill + (1.0 - fill) * halo;
+        vec3 rgb = (fillColor * fill + vOutlineColor * halo * (1.0 - fill))
+            / max(alpha, 1e-4);
+        return vec4(rgb, alpha);
+    }
 #endif
 
 #include "chunks/gbuffer_pars_fragment.glsl"
@@ -53,8 +94,18 @@ void main() {
     #ifdef BILLBOARD
         // vUv already targets this instance's atlas sub-rect (see vertex shader)
         vec4 color = texture(uTexture, vUv);
-        // Tint RGB only, preserve texture alpha (avoid squaring alpha)
-        color.rgb *= vColor;
+        // Outside the branch: derivatives need every pixel of the quad.
+        float sdfGamma = max(
+            0.84 * length(vec2(dFdx(color.a), dFdy(color.a))),
+            1e-4
+        );
+        if (vSdf > 0.5) {
+            // The shape takes the material color; the sheet's RGB is unused.
+            color = nvr_sdfColor(color.a, sdfGamma, vColor);
+        } else {
+            // Tint RGB only, preserve texture alpha (avoid squaring alpha)
+            color.rgb *= vColor;
+        }
         alphaForTest = color.a;
         alphaForColor = color.a * vOpacity;
     #else
@@ -71,6 +122,11 @@ void main() {
     } else {
         color.a = alphaForColor;
     }
+    #ifdef OPAQUE
+        // three draws `transparent: false` without blending, so a lower alpha
+        // would reach the canvas and show the page through it.
+        color.a = 1.0;
+    #endif
 
     gl_FragColor = color;
 

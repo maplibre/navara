@@ -61,6 +61,10 @@ export const createBaseMutates = (
     uEffectIdsMask: { value: 0 },
     uEmissiveColor: { value: new Color(0, 0, 0) },
     uEmissiveIntensity: { value: 0 },
+    uOutlineColor: { value: new Color(0, 0, 0) },
+    uOutlineOpacity: { value: 1.0 },
+    uOutlineWidth: { value: 0.0 },
+    uOutlineBlur: { value: 0.0 },
     uFovRad: { value: 1.0 },
     uScreenHeightPx: { value: 1080 },
   };
@@ -97,6 +101,10 @@ export const createBaseMutates = (
       refs.uEffectIdsMask.value = state.effectIdsMask;
       refs.uEmissiveColor.value.set(state.emissiveColor);
       refs.uEmissiveIntensity.value = state.emissiveIntensity;
+      refs.uOutlineColor.value.set(state.outlineColor);
+      refs.uOutlineOpacity.value = state.outlineOpacity;
+      refs.uOutlineWidth.value = state.outlineWidth;
+      refs.uOutlineBlur.value = state.outlineBlur;
     },
 
     updateUniforms: (uniforms) => {
@@ -128,6 +136,10 @@ export const createBaseMutates = (
       uniforms.uEffectIdsMask = refs.uEffectIdsMask;
       uniforms.uEmissiveColor = refs.uEmissiveColor;
       uniforms.uEmissiveIntensity = refs.uEmissiveIntensity;
+      uniforms.uOutlineColor = refs.uOutlineColor;
+      uniforms.uOutlineOpacity = refs.uOutlineOpacity;
+      uniforms.uOutlineWidth = refs.uOutlineWidth;
+      uniforms.uOutlineBlur = refs.uOutlineBlur;
 
       if (refs.uTexture) {
         uniforms.uTexture = refs.uTexture;
