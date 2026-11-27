@@ -10,6 +10,7 @@
   "packageManager": "pnpm@11.28.6",
   "scripts": {
     "navara_three": "pnpm -C web/navara_three",
+    "pages:for": "pnpm navara_three pages:for",
     "integration-tests": "pnpm -filter './web/integration-tests/**'",
     "star": "pnpm navara_three start",
     "dev": "pnpm navara_three dev",

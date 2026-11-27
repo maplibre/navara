@@ -22,6 +22,14 @@
       "@/lib/utils": ["./example/lib/utils"]
     }
   },
-  "include": ["src", "example", "vite-plugin-mpa.ts"],
+  "include": [
+    "src",
+    "example",
+    "vite-plugin-mpa.ts",
+    "example-pages.ts",
+    "scripts/devPages.ts",
+    "scripts/devPages.test.ts",
+    "scripts/pages-for.ts"
+  ],
   "exclude": ["./dist", "./node_modules"]
 }
