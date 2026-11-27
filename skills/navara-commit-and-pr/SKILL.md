@@ -12,7 +12,7 @@ description: >
 
 ## Flow
 
-1. Check the branch is committed and pushed (`git status`, `git ls-remote origin <branch>`). Commit only if the user asks.
+1. Check the branch is committed and pushed (`git status`, `git ls-remote origin <branch>`). Commit only if the user asks. If `git commit` fails at signing (e.g. `1Password: agent returned an error`), retry once, then ask the user to unlock or approve it; never pass `--no-gpg-sign` or change the signing config.
 2. Write the description in English from `.github/pull_request_template.md` (rules below).
 3. Capture the screenshots (see below).
 4. Open the PR as a **draft**.
