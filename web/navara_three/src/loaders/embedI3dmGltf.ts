@@ -3,13 +3,22 @@ import { packGltf } from "./packGltf";
 
 const HEADER_LENGTH = 32;
 const GLB_MAGIC = 0x46546c67; // "glTF"
+const CHUNK_JSON = 0x4e4f534a; // "JSON"
+// A URI with a scheme (`data:`, `https:`) is not relative.
+// ref: https://www.rfc-editor.org/rfc/rfc3986#section-3.1
+const HAS_SCHEME = /^[a-z][a-z\d+.-]*:/i;
+
+type UriRef = { uri?: string };
 
 /**
  * Embeds the glTF an I3DM references by URI (`gltfFormat: 0`) into the tile,
  * since the engine reads an embedded glTF only. A `.gltf` is packed into a
- * GLB. Other tiles are returned as is.
+ * GLB. Relative image and buffer URIs in it are rewritten to absolute URLs,
+ * since the engine resolves them against the tile's URL instead of the glTF's.
+ * Other tiles are returned as is.
  *
  * ref: https://github.com/CesiumGS/3d-tiles/blob/main/specification/TileFormats/Instanced3DModel/README.adoc#gltf
+ * ref: https://registry.khronos.org/glTF/specs/2.0/glTF-2.0.html#uris
  */
 export async function embedI3dmGltf(
   tile: Uint8Array<ArrayBuffer>,
@@ -41,6 +50,7 @@ export async function embedI3dmGltf(
   ) {
     glb = await packGltf(glb, gltfUrl, init);
   }
+  glb = absolutizeGlbUris(glb, gltfUrl);
 
   const embedded = new Uint8Array(gltfStart + glb.byteLength);
   embedded.set(tile.subarray(0, gltfStart));
@@ -49,4 +59,39 @@ export async function embedI3dmGltf(
   header.setUint32(8, embedded.byteLength, true);
   header.setUint32(28, 1, true);
   return embedded;
+}
+
+/** Resolves the relative image and buffer URIs of a GLB against `url`. */
+function absolutizeGlbUris(
+  glb: Uint8Array<ArrayBuffer>,
+  url: string,
+): Uint8Array<ArrayBuffer> {
+  const view = new DataView(glb.buffer, glb.byteOffset, glb.byteLength);
+  const jsonEnd = 20 + view.getUint32(12, true);
+  const gltf = JSON.parse(
+    new TextDecoder().decode(glb.subarray(20, jsonEnd)),
+  ) as { images?: UriRef[]; buffers?: UriRef[] };
+  const resolve = mergeQuery(new URL(url).search);
+  let changed = false;
+  for (const ref of [...(gltf.images ?? []), ...(gltf.buffers ?? [])]) {
+    if (ref.uri === undefined || HAS_SCHEME.test(ref.uri)) continue;
+    ref.uri = resolve(new URL(ref.uri, url).href);
+    changed = true;
+  }
+  if (!changed) return glb;
+
+  const json = new TextEncoder().encode(JSON.stringify(gltf));
+  const jsonLength = (json.byteLength + 3) & ~3;
+  const rest = glb.subarray(jsonEnd);
+  const out = new Uint8Array(20 + jsonLength + rest.byteLength);
+  out.set(glb.subarray(0, 12));
+  const header = new DataView(out.buffer);
+  header.setUint32(8, out.byteLength, true);
+  header.setUint32(12, jsonLength, true);
+  header.setUint32(16, CHUNK_JSON, true);
+  out.set(json, 20);
+  // The JSON chunk is padded with spaces.
+  out.fill(0x20, 20 + json.byteLength, 20 + jsonLength);
+  out.set(rest, 20 + jsonLength);
+  return out;
 }
