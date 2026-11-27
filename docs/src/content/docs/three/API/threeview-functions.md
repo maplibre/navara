@@ -1052,7 +1052,7 @@ view.forceUpdate();
 
 ### pickTerrainPosition()
 
-Picks the terrain position at the given screen coordinates. Uses the same CSS pixel coordinates as `clientX` and `clientY` from mouse events.
+Picks the terrain position under a pointer. The coordinates are client coordinates in CSS pixels, such as `clientX` and `clientY` of a mouse event: relative to the viewport, not to the canvas. When the view renders to an `OffscreenCanvas` (for example in a worker), which has no position on the page, the coordinates are relative to the canvas instead.
 
 **Syntax:**
 
@@ -1062,8 +1062,8 @@ pickTerrainPosition(x: number, y: number): Vector3 | null
 
 **Parameters:**
 
-- `x`: Screen X coordinate (CSS pixels, same as `MouseEvent.clientX`)
-- `y`: Screen Y coordinate (CSS pixels, same as `MouseEvent.clientY`)
+- `x`: Client X coordinate (CSS pixels, `MouseEvent.clientX`), relative to the viewport
+- `y`: Client Y coordinate (CSS pixels, `MouseEvent.clientY`), relative to the viewport
 
 **Returns:**
 
@@ -1085,7 +1085,7 @@ view.on("click", (event) => {
 
 ### pickDepthPosition()
 
-Picks the world position at the given screen coordinates using the full scene depth buffer. Unlike `pickTerrainPosition()`, this method reads from the combined depth texture that includes all rendered geometry (terrain, meshes, etc.), so it returns a hit even when non-terrain objects are in front of the terrain.
+Picks the world position under a pointer using the full scene depth buffer. The coordinates are client coordinates, as for `pickTerrainPosition()`. Unlike `pickTerrainPosition()`, this method reads from the combined depth texture that includes all rendered geometry (terrain, meshes, etc.), so it returns a hit even when non-terrain objects are in front of the terrain.
 
 **Syntax:**
 
@@ -1095,8 +1095,8 @@ pickDepthPosition(x: number, y: number): Vector3 | null
 
 **Parameters:**
 
-- `x`: Screen X coordinate (CSS pixels, same as `MouseEvent.clientX`)
-- `y`: Screen Y coordinate (CSS pixels, same as `MouseEvent.clientY`)
+- `x`: Client X coordinate (CSS pixels, `MouseEvent.clientX`), relative to the viewport
+- `y`: Client Y coordinate (CSS pixels, `MouseEvent.clientY`), relative to the viewport
 
 **Returns:**
 

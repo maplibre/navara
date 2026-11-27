@@ -3765,9 +3765,13 @@ export default class ThreeView<
   }
 
   /**
-   * Picks the terrain position at screen coordinates.
-   * @param x - Screen X coordinate in CSS pixels (same as MouseEvent.clientX)
-   * @param y - Screen Y coordinate in CSS pixels (same as MouseEvent.clientY)
+   * Picks the terrain position under a pointer.
+   * On an `OffscreenCanvas`, which has no client rect, x/y are
+   * canvas-relative.
+   * @param x - Client X coordinate in CSS pixels (`MouseEvent.clientX`),
+   * relative to the viewport, not to the canvas
+   * @param y - Client Y coordinate in CSS pixels (`MouseEvent.clientY`),
+   * relative to the viewport, not to the canvas
    * @returns World position Vector3 in ECEF coordinates, or null if no terrain is hit
    */
   pickTerrainPosition(x: number, y: number): Nullable<Vector3> {
@@ -3781,9 +3785,13 @@ export default class ThreeView<
   }
 
   /**
-   * Picks the position at screen coordinates from the depth.
-   * @param x - Screen X coordinate in CSS pixels (same as MouseEvent.clientX)
-   * @param y - Screen Y coordinate in CSS pixels (same as MouseEvent.clientY)
+   * Picks the position under a pointer from the depth.
+   * On an `OffscreenCanvas`, which has no client rect, x/y are
+   * canvas-relative.
+   * @param x - Client X coordinate in CSS pixels (`MouseEvent.clientX`),
+   * relative to the viewport, not to the canvas
+   * @param y - Client Y coordinate in CSS pixels (`MouseEvent.clientY`),
+   * relative to the viewport, not to the canvas
    * @returns World position Vector3 in ECEF coordinates, or null if nothing is hit
    */
   pickDepthPosition(x: number, y: number): Nullable<Vector3> {

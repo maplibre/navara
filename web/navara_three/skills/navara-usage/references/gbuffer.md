@@ -60,7 +60,7 @@ Navara renders into a multi-render-target (MRT) G-buffer, so custom work can bot
   - `ctx.getRenderTarget()` — the main G-buffer render target; `ctx.getNormalTexture()` / `ctx.getEffectIdsTexture()` / `ctx.getEmissiveTexture()` / `ctx.getShadowTexture()` — its optional attachments (`Texture | undefined`)
   - `ctx.getInputBuffer()` — the effect composer's input buffer; `ctx.getRenderer()` — the `WebGLRenderer`
 - **Read the G-buffer back on the CPU** — `BufferView` (from `@navaramap/three`) reads MRT attachments off a render target, e.g. for debug visualization. Use `renderFromPixels()` for HalfFloat attachments (plain `render()` reads `Uint8Array` data only). Reference: `example/pages/debug/selective-effect/debugView.ts` (Navara repo).
-- Depth-position queries from app code (no custom descriptor needed): `view.pickDepthPosition(x, y)` returns the ECEF position under a pixel using the full depth buffer.
+- Depth-position queries from app code (no custom descriptor needed): `view.pickDepthPosition(event.clientX, event.clientY)` returns the ECEF position under the pointer using the full depth buffer.
 
 Gotchas:
 
