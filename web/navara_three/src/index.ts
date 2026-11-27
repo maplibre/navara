@@ -989,10 +989,10 @@ export default class ThreeView<
     reportFeatureGpuBytes: (bits, bytes) => {
       this._core?.reportFeatureGpuBytes(bits, bytes);
     },
-    readAllBatchedProperties: (featureId, f) =>
-      this._core?.readAllBatchedProperties(featureId, f),
-    readFilteredBatchedProperties: (featureId, keys, f) =>
-      this._core?.readFilteredBatchedProperties(featureId, keys, f),
+    readAllBatchedProperties: (featureSetId, f) =>
+      this._core?.readAllBatchedProperties(featureSetId, f),
+    readFilteredBatchedProperties: (featureSetId, keys, f) =>
+      this._core?.readFilteredBatchedProperties(featureSetId, keys, f),
   };
   private _meshHandler: MeshHandler = {
     setTileMeshPrepared: (handle: bigint) => {
