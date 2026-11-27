@@ -7,6 +7,9 @@ use serde_json::Value;
 
 use super::data::{PropertyColumnData, PropertyTableData, encode_no_data, infer_component_type};
 
+/// Features are picked through 24-bit ids, so no tile can use more.
+const MAX_FEATURE_COUNT: u32 = 0xff_ffff;
+
 fn property_table_of(set: &Value) -> Option<usize> {
     Some(set.get("propertyTable")?.as_u64()? as usize)
 }
@@ -105,15 +108,67 @@ impl<'a> GlbSchemaParser<'a> {
     }
 
     /// Largest `featureCount` of the default feature ID sets referencing
-    /// [`Self::property_table_index`]; 0 without one. Only those sets have
-    /// features.
+    /// [`Self::property_table_index`], at most the rows of that table (as
+    /// CesiumJS) and [`MAX_FEATURE_COUNT`]; 0 without one. Only those sets
+    /// have features.
     pub fn feature_count(&self) -> u32 {
         let table = self.property_table_index();
+        let limit = table
+            .and_then(|index| self.property_table_rows(index))
+            .map_or(MAX_FEATURE_COUNT.into(), |rows| {
+                rows.min(MAX_FEATURE_COUNT.into())
+            });
         self.default_feature_id_sets()
             .filter(|set| property_table_of(set) == table)
             .filter_map(|set| set.get("featureCount")?.as_u64())
             .max()
-            .map_or(0, |count| count as u32)
+            .map_or(0, |count| count.min(limit) as u32)
+    }
+
+    /// The `count` of a property table, at most the rows its largest column
+    /// can hold: a row takes at least one bit (BOOLEAN), and a column at
+    /// least its values, array offsets and string offsets.
+    fn property_table_rows(&self, index: usize) -> Option<u64> {
+        let table = self
+            .json
+            .get("extensions")?
+            .get("EXT_structural_metadata")?
+            .get("propertyTables")?
+            .get(index)?;
+        let count = table.get("count")?.as_u64()?;
+        let Some(columns) = table.get("properties").and_then(Value::as_object) else {
+            return Some(count);
+        };
+        let column_bytes = |column: &Value| -> usize {
+            ["values", "arrayOffsets", "stringOffsets"]
+                .into_iter()
+                .filter_map(|key| column.get(key)?.as_u64())
+                .map(|view| self.buffer_view_range(view as usize).len())
+                .sum()
+        };
+        match columns.values().map(column_bytes).max() {
+            Some(bytes) => Some(count.min(bytes as u64 * 8)),
+            None => Some(count),
+        }
+    }
+
+    /// A buffer view as a byte range within the BIN chunk; empty when it
+    /// does not fit.
+    fn buffer_view_range(&self, index: usize) -> Range<usize> {
+        let binary_len = self.binary.map_or(0, <[u8]>::len);
+        let Some(view) = self
+            .json
+            .get("bufferViews")
+            .and_then(|views| views.get(index))
+        else {
+            return 0..0;
+        };
+        let byte_offset = view.get("byteOffset").and_then(Value::as_u64).unwrap_or(0) as usize;
+        let byte_length = view.get("byteLength").and_then(Value::as_u64).unwrap_or(0) as usize;
+        match byte_offset.checked_add(byte_length) {
+            Some(end) if end <= binary_len => byte_offset..end,
+            _ => 0..0,
+        }
     }
 
     /// `propertyTable` of the first default feature ID set with one.
@@ -157,9 +212,6 @@ impl<'a> GlbSchemaParser<'a> {
         });
 
         let props_obj = table.get("properties").and_then(|p| p.as_object())?;
-        let buffer_views = self.json.get("bufferViews").and_then(|bv| bv.as_array());
-
-        let binary_len = self.binary.map_or(0, |b| b.len());
 
         let mut properties = HashMap::new();
         for (name, prop) in props_obj {
@@ -168,23 +220,7 @@ impl<'a> GlbSchemaParser<'a> {
                 None => continue,
             };
 
-            // Helper to resolve a buffer view as a byte range within the BIN chunk.
-            let resolve_buffer_view = |bv_index: usize| -> Range<usize> {
-                if let Some(bvs) = &buffer_views
-                    && let Some(bv) = bvs.get(bv_index)
-                {
-                    let byte_offset =
-                        bv.get("byteOffset").and_then(|o| o.as_u64()).unwrap_or(0) as usize;
-                    let byte_length =
-                        bv.get("byteLength").and_then(|l| l.as_u64()).unwrap_or(0) as usize;
-                    if byte_offset + byte_length <= binary_len {
-                        return byte_offset..byte_offset + byte_length;
-                    }
-                }
-                0..0
-            };
-
-            let values_range = resolve_buffer_view(values_bv_index);
+            let values_range = self.buffer_view_range(values_bv_index);
 
             // Look up type info from the schema class property definition
             let schema_prop = schema_class_props.and_then(|p| p.get(name));
@@ -210,7 +246,7 @@ impl<'a> GlbSchemaParser<'a> {
             let string_offsets_range = prop
                 .get("stringOffsets")
                 .and_then(|v| v.as_u64())
-                .map(|idx| resolve_buffer_view(idx as usize));
+                .map(|idx| self.buffer_view_range(idx as usize));
 
             let string_offset_type = prop
                 .get("stringOffsetType")
@@ -347,6 +383,119 @@ mod tests {
             }]
         }));
         assert_eq!(parser.feature_count(), 100);
+    }
+
+    // standard: EXT_mesh_features "Feature ID by Texture Coordinates"
+    // ref: https://github.com/CesiumGS/glTF/tree/proposal-EXT_mesh_features/extensions/2.0/Vendor/EXT_mesh_features#feature-id-by-texture-coordinates
+    #[test]
+    fn test_feature_count_with_texture() {
+        let parser = make_parser_from_json(json!({
+            "meshes": [{
+                "primitives": [{
+                    "extensions": {
+                        "EXT_mesh_features": {
+                            "featureIds": [{
+                                "featureCount": 4,
+                                "texture": { "index": 1, "texCoord": 0, "channels": [0] },
+                                "propertyTable": 0
+                            }]
+                        }
+                    }
+                }]
+            }]
+        }));
+        assert_eq!(parser.feature_count(), 4);
+        assert_eq!(parser.property_table_index(), Some(0));
+    }
+
+    fn texture_ids_with_table(feature_count: u64, table: Value) -> Value {
+        json!({
+            "meshes": [{
+                "primitives": [{
+                    "extensions": {
+                        "EXT_mesh_features": {
+                            "featureIds": [{
+                                "featureCount": feature_count,
+                                "texture": { "index": 0 },
+                                "propertyTable": 0
+                            }]
+                        }
+                    }
+                }]
+            }],
+            "extensions": {
+                "EXT_structural_metadata": { "propertyTables": [table] }
+            },
+            "bufferViews": [
+                { "byteOffset": 0, "byteLength": 4 },
+                { "byteOffset": 4, "byteLength": 4 }
+            ]
+        })
+    }
+
+    // standard: EXT_structural_metadata "Property Tables" (feature IDs index
+    // the table's rows; CesiumJS takes `count` as the feature count)
+    // ref: https://github.com/CesiumGS/glTF/tree/3d-tiles-next/extensions/2.0/Vendor/EXT_structural_metadata#property-tables
+    #[test]
+    fn test_feature_count_is_capped_to_property_table_count() {
+        let binary = [0u8; 8];
+        let parser = make_parser_with_binary(
+            texture_ids_with_table(
+                10,
+                json!({ "count": 3, "properties": { "a": { "values": 0 } } }),
+            ),
+            &binary,
+        );
+        assert_eq!(parser.feature_count(), 3);
+    }
+
+    // user: allocation-bounded-by-input
+    #[test]
+    fn test_feature_count_is_bounded_by_property_table_bytes() {
+        let binary = [0u8; 8];
+        let parser = make_parser_with_binary(
+            texture_ids_with_table(
+                u32::MAX.into(),
+                json!({
+                    "count": u32::MAX,
+                    "properties": {
+                        "a": { "values": 0 },
+                        "b": { "values": 1, "stringOffsets": 0 }
+                    }
+                }),
+            ),
+            &binary,
+        );
+        // One bit per row of the largest column, "b" (8 bytes).
+        assert_eq!(parser.feature_count(), 64);
+    }
+
+    // user: allocation-bounded-by-input
+    #[test]
+    fn test_feature_count_ignores_buffer_views_outside_the_binary() {
+        let parser = make_parser_from_json(texture_ids_with_table(
+            100,
+            json!({ "count": 100, "properties": { "a": { "values": 0 } } }),
+        ));
+        assert_eq!(parser.feature_count(), 0);
+    }
+
+    // Without a property table nothing bounds the count by input; at least
+    // stay within the pick ID space.
+    #[test]
+    fn test_feature_count_is_capped_to_pick_id_space() {
+        let parser = make_parser_from_json(json!({
+            "meshes": [{
+                "primitives": [{
+                    "extensions": {
+                        "EXT_mesh_features": {
+                            "featureIds": [{ "featureCount": u32::MAX }]
+                        }
+                    }
+                }]
+            }]
+        }));
+        assert_eq!(parser.feature_count(), MAX_FEATURE_COUNT);
     }
 
     #[test]

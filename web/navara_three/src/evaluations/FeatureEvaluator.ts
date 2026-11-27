@@ -11,9 +11,12 @@ import type {
   TextMaterial,
 } from "@navaramap/engine";
 import { BufferGeometry, Mesh, Object3D } from "three";
-import type { NormalBufferAttributes } from "three";
+import type { Material, NormalBufferAttributes } from "three";
 
-import type { BatchedAttributeName } from "../batchTexture";
+import {
+  hasFeatureIdTexture,
+  type BatchedAttributeName,
+} from "../batchTexture";
 import { Color } from "../Color";
 import type { FeatureHandler } from "../event/context";
 import type { LineCap } from "../lineDash";
@@ -759,15 +762,20 @@ export class FeatureEvaluator {
     batchIndex: number,
     evaluated: Partial<EvaluatedValue>,
   ) {
-    const batchIdAttr =
-      "geometry" in m ? m.geometry.getAttribute("_batchid") : undefined;
+    if (parent instanceof ModelMesh && !parent._hasFeatures(m)) return;
 
-    // Non-batched feature mesh path (a mesh without a `_batchid` attribute,
-    // e.g. a plain glTF model layer whose meshes carry no feature ids —
-    // GeoJSON polygons/polylines are batched). Only the attributes below are
-    // applicable here; emissive/emissiveIntensity need the batch texture.
+    // Feature IDs per vertex (`_batchid`) or per texel.
+    const batched =
+      "geometry" in m &&
+      (!!m.geometry.getAttribute("_batchid") ||
+        hasFeatureIdTexture(m.material as Material));
+
+    // Non-batched feature mesh path (a mesh without feature IDs, e.g. a plain
+    // glTF model layer — GeoJSON polygons/polylines are batched). Only the
+    // attributes below are applicable here; emissive/emissiveIntensity need
+    // the batch texture.
     const featureMesh = (() => {
-      if (batchIdAttr) return;
+      if (batched) return;
       if (parent) return isFeatureMesh(parent) ? parent : undefined;
       return isFeatureMesh(m) ? m : undefined;
     })();
@@ -792,7 +800,7 @@ export class FeatureEvaluator {
     }
 
     // Batched mesh path
-    if (!batchIdAttr) return;
+    if (!batched) return;
 
     const mesh =
       parent instanceof ModelMesh

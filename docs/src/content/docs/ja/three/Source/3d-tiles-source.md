@@ -48,19 +48,23 @@ Navara が読み取るのは pnts の feature table の一部です。点の色�
 
 ### 3D Tiles 1.1
 
-| 機能                         | 説明                                                                                          |
-| ---------------------------- | --------------------------------------------------------------------------------------------- |
-| GLB コンテンツ               | GLB（バイナリ glTF）をコンテンツフォーマットとして使用するタイル。                            |
-| glTF コンテンツ              | glTF（JSON 形式の `.gltf`）をコンテンツフォーマットとして使用するタイル。                     |
-| GLB POINTS プリミティブ      | `mode: POINTS` の glTF メッシュを点群として描画（3D Tiles 1.1 の点群対応）。                  |
-| `EXT_mesh_features`          | glTF メッシュ内の FeatureId セットによるフィーチャー識別。                                    |
-| `EXT_structural_metadata`    | glTF アセットに埋め込まれたプロパティテーブルによるフィーチャーごとのメタデータへのアクセス。 |
-| `EXT_mesh_gpu_instancing`    | インスタンス化された三角形メッシュを、メッシュごとに 1 回のドローコールで描画。点と線は 1 つだけ描画されます。 |
-| `EXT_instance_features`      | インスタンスごとのフィーチャー識別。インスタンス単位でピッキングやスタイリングができます。    |
-| tileset のメタデータ         | tileset・タイル・コンテンツ・グループの `metadata`。[メタデータ](#メタデータ)を参照。         |
-| `KHR_draco_mesh_compression` | Draco 圧縮されたメッシュデータのデコード。                                                    |
-| `KHR_mesh_quantization`      | 量子化された頂点属性によるコンパクトな glTF アセットへの対応。                                |
-| `EXT_meshopt_compression`    | meshopt 圧縮バッファのデコード。                                                              |
+| 機能                         | 説明                                                                                                                                                                |
+| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| GLB コンテンツ               | GLB（バイナリ glTF）をコンテンツフォーマットとして使用するタイル。                                                                                                  |
+| glTF コンテンツ              | glTF（JSON 形式の `.gltf`）をコンテンツフォーマットとして使用するタイル。                                                                                           |
+| GLB POINTS プリミティブ      | `mode: POINTS` の glTF メッシュを点群として描画（3D Tiles 1.1 の点群対応）。                                                                                        |
+| `EXT_mesh_features`          | glTF プリミティブごとの最初の FeatureId セットによるフィーチャー識別。頂点単位（attribute または暗黙のインデックス）とテクセル単位（feature ID テクスチャ）に対応。 |
+| `EXT_structural_metadata`    | glTF アセットに埋め込まれたプロパティテーブルによるフィーチャーごとのメタデータへのアクセス。property texture と property attribute は読みません。                  |
+| `EXT_mesh_gpu_instancing`    | インスタンス化された三角形メッシュを、メッシュごとに 1 回のドローコールで描画。点と線は 1 つだけ描画されます。                                                      |
+| `EXT_instance_features`      | インスタンスごとのフィーチャー識別。インスタンス単位でピッキングやスタイリングができます。                                                                          |
+| tileset のメタデータ         | tileset・タイル・コンテンツ・グループの `metadata`。[メタデータ](#メタデータ)を参照。                                                                               |
+| `KHR_draco_mesh_compression` | Draco 圧縮されたメッシュデータのデコード。                                                                                                                          |
+| `KHR_mesh_quantization`      | 量子化された頂点属性によるコンパクトな glTF アセットへの対応。                                                                                                      |
+| `EXT_meshopt_compression`    | meshopt 圧縮バッファのデコード。                                                                                                                                    |
+
+:::note
+feature ID テクスチャを読むのは、ライティングされるマテリアル（`KHR_materials_unlit` 以外）で、テクスチャが指定する `TEXCOORD_n` セットを持つプリミティブだけです。それ以外のプリミティブにはフィーチャーがありません。CesiumJS と同じく、タイルのフィーチャー数はプロパティテーブルの `count` までです。
+:::
 
 :::note
 Implicit tiling には対応していないため、タイルセットは `tileset.json` で明示的なタイル階層を記述する必要があります。

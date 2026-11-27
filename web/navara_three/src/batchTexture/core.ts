@@ -317,21 +317,49 @@ function allocateScalarSlot(
   const slot = state.layout.allocateScalar(key);
   const data = ensureTextureRows(state);
   if (fallback !== 0) {
-    const texture = state.uniform.value;
-    invariant(texture);
     for (let batchId = 0; batchId < state.batchLength; batchId++) {
       data[
         batchBaseIndex(state.width, state.groups, batchId, slot.row) + slot.comp
       ] = fallback;
     }
-    for (let group = 0; group < state.groups; group++) {
-      const rowBase = (slot.row * state.groups + group) * state.width * 4;
-      markTexelDirty(texture, rowBase);
-      markTexelDirty(texture, rowBase + (state.width - 1) * 4);
-    }
+    markRowDirty(state, slot.row);
   }
   stampLayoutDefines(state);
   return slot;
+}
+
+/** Mark every batch of an attribute row dirty. */
+function markRowDirty(state: BatchTextureState, row: number): void {
+  const texture = state.uniform.value;
+  invariant(texture);
+  for (let group = 0; group < state.groups; group++) {
+    const rowBase = (row * state.groups + group) * state.width * 4;
+    markTexelDirty(texture, rowBase);
+    markTexelDirty(texture, rowBase + (state.width - 1) * 4);
+  }
+}
+
+/**
+ * Write every batch's global pick ID into the internal `pickId` slot, for
+ * shaders that resolve the feature per fragment (see `featureIdTexture.ts`).
+ */
+export function writeBatchPickIds(
+  material: Material,
+  pickIds: ArrayLike<number>,
+): void {
+  const state = getBatchTextureState(material);
+  invariant(state && state.batchLength === pickIds.length);
+  const slot =
+    state.layout.getScalarSlot("pickId") ??
+    allocateScalarSlot(state, "pickId", 0);
+  const { data } = textureData(state);
+  for (let batchId = 0; batchId < state.batchLength; batchId++) {
+    data[
+      batchBaseIndex(state.width, state.groups, batchId, slot.row) + slot.comp
+    ] = pickIds[batchId];
+  }
+  markRowDirty(state, slot.row);
+  enableDefine(material, "USE_BATCH_PICK_ID");
 }
 
 /**

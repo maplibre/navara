@@ -1,4 +1,9 @@
-#ifdef USE_BATCH_TEXTURE
+#if defined(USE_BATCH_TEXTURE) && defined(USE_FEATURE_ID_TEXTURE)
+  // The fragment stage applies the batch color (feature_id_texture_fragment).
+  #if defined(USE_BATCH_COLOR) && defined(USE_COLOR)
+    vColor.rgb = vec3(1.0);
+  #endif
+#elif defined(USE_BATCH_TEXTURE)
   // Default source is the `_batchid` attribute; a shader without one (e.g.
   // sdfText, whose glyph instances get the feature index via the label data
   // texture) overrides NVR_BATCH_ID_EXPR before this include.
@@ -12,16 +17,13 @@
   #endif
 
   #ifdef USE_BATCH_SHOW_OPACITY
-    // Packed: sign(show) * (1 + opacity); see packShowOpacity in web/navara_three/src/batchTexture/core.ts
-    float nvr_batchShowOpacity = getBatchTexel(batchId, BATCHED_TEXTURE_ROW_SHOW_OPACITY)[BATCHED_TEXTURE_COMP_SHOW_OPACITY];
-    nvr_vShow = step(0.0, nvr_batchShowOpacity);
-    nvr_vOpacity = clamp(abs(nvr_batchShowOpacity) - 1.0, 0.0, 1.0);
+    vec2 nvr_showOpacity = nvr_batchShowOpacity(batchId);
+    nvr_vShow = nvr_showOpacity.x;
+    nvr_vOpacity = nvr_showOpacity.y;
   #endif
 
   #ifdef USE_BATCH_EMISSIVE
-    // Both slots are always allocated together (see ensureEmissiveSlots).
-    nvr_vEmissive = getBatchTexel(batchId, BATCHED_TEXTURE_ROW_EMISSIVE).rgb
-      * getBatchTexel(batchId, BATCHED_TEXTURE_ROW_EMISSIVE_INTENSITY)[BATCHED_TEXTURE_COMP_EMISSIVE_INTENSITY];
+    nvr_vEmissive = nvr_batchEmissive(batchId);
   #endif
 
   #ifdef USE_BATCH_OUTLINE

@@ -248,9 +248,6 @@ impl App {
         let Some(batch_value) = batch_table.get(&feature_batch_id) else {
             return Ok(None);
         };
-        let Some(batch_prop) = batch_value.properties.as_ref() else {
-            return Ok(None);
-        };
 
         let global_batch_ids_opt = world
             .get_entity(global_batch_ids_entity)
@@ -289,6 +286,28 @@ impl App {
                 .as_ref()
                 .and_then(|ids| ids.get(batch_idx))
                 .unwrap_or(fallback)
+        };
+
+        let Some(batch_prop) = batch_value.properties.as_ref() else {
+            // A model without a property table (e.g. EXT_mesh_features
+            // alone) still has `batch_length` features to style.
+            let is_model = matches!(renderable_feature, RenderableFeature::Model { .. });
+            let Some(batch_length) = model_batch_length.filter(|_| is_model) else {
+                return Ok(None);
+            };
+            for batch_idx in 0..batch_length {
+                let props = match keys {
+                    None => BatchProperties::All(None),
+                    Some(_) => BatchProperties::Filtered(None),
+                };
+                callback(
+                    batch_idx,
+                    global_batch_id(batch_idx, batch_idx as u32),
+                    props,
+                    None,
+                )?;
+            }
+            return Ok(Some(()));
         };
 
         match batch_prop {
@@ -439,6 +458,68 @@ impl FeatureGlobalBatchIds<'_> {
         match self {
             Self::Direct(ids) => ids.get(feature).copied(),
             Self::FirstInstance(ids) => ids.get(feature).copied().flatten(),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::cell::RefCell;
+
+    use navara_feature_component::batch::BatchTableValue;
+
+    use super::*;
+
+    #[test]
+    fn model_without_property_table_yields_each_feature() {
+        let mut app = App::new();
+        app.update(0.);
+        let world = app.app.world_mut();
+        let feature_batch_id = world
+            .resource_mut::<BatchTable>()
+            .add(Some(BatchTableValue {
+                properties: None,
+                layer_id: None,
+            }))
+            .unwrap();
+        let feature_id = world.spawn_empty().id();
+        let renderable = world
+            .spawn(RenderableFeature::Model {
+                coordinates: navara_math::Vec3::ZERO,
+                crs: navara_core::CRS::Geocentric,
+                active: true,
+                material: navara_material::ModelMaterial::default(),
+                transform: navara_math::Transform::default(),
+                feature_id,
+                render_info: Default::default(),
+                bin: None,
+                metadata: None,
+                geometry: Default::default(),
+                aabb: navara_core::Aabb::default(),
+                feature_batch_id,
+                batch_length: 3,
+            })
+            .id();
+
+        for keys in [None, Some(&["a".to_owned()][..])] {
+            let seen = RefCell::new(Vec::new());
+            let read = app.read_all_batched_properties::<serde_json::Value, (), _>(
+                renderable.to_bits(),
+                keys,
+                &|batch_idx, batch_id, props, _| {
+                    let empty = matches!(
+                        props,
+                        BatchProperties::All(None) | BatchProperties::Filtered(None)
+                    );
+                    seen.borrow_mut().push((batch_idx, batch_id, empty));
+                    Ok(())
+                },
+            );
+            assert_eq!(read, Ok(Some(())));
+            assert_eq!(
+                seen.into_inner(),
+                [(0, 0, true), (1, 1, true), (2, 2, true)]
+            );
         }
     }
 }

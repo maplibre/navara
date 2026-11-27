@@ -12,6 +12,7 @@ import {
 import { describe, expect, it } from "vitest";
 
 import {
+  featureIdTextureSet,
   featureIndexAttribute,
   shareAttributes,
   vertexGlobalBatchIds,
@@ -135,6 +136,40 @@ describe("featureIndexAttribute", () => {
     });
 
     expect(featureIndexAttribute(mesh, gltf)).toBeUndefined();
+  });
+
+  describe("featureIdTextureSet", () => {
+    it("gives the default set when it reads a texture", () => {
+      const mesh = withFeatureIds(new Mesh(geometry()), "EXT_mesh_features", {
+        featureCount: 4,
+        texture: { index: 1, channels: [0] },
+        propertyTable: 0,
+      });
+
+      expect(featureIdTextureSet(mesh)).toMatchObject({
+        featureCount: 4,
+        texture: { index: 1 },
+      });
+    });
+
+    it("gives none for an attribute set", () => {
+      const mesh = withFeatureIds(new Mesh(geometry()), "EXT_mesh_features", {
+        attribute: 0,
+      });
+
+      expect(featureIdTextureSet(mesh)).toBeUndefined();
+    });
+
+    it("gives none when the node's instance set takes precedence", () => {
+      const mesh = withFeatureIds(
+        new InstancedMesh(geometry(), undefined, 2),
+        "EXT_mesh_features",
+        { texture: { index: 0 } },
+      );
+      withFeatureIds(new Group(), "EXT_instance_features", {}).add(mesh);
+
+      expect(featureIdTextureSet(mesh)).toBeUndefined();
+    });
   });
 });
 

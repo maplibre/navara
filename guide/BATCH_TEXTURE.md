@@ -1,7 +1,7 @@
 # Batch Data Texture
 
 Per-feature style properties for batched meshes are stored in a small RGBA
-float `DataTexture` per mesh (the *batch data texture*), indexed by
+float `DataTexture` per mesh (the _batch data texture_), indexed by
 `_batchid` in the vertex shader. This keeps per-feature styling cost
 proportional to the **feature count**, not the vertex count: restyling one
 feature writes one or two texels, regardless of how many vertices the feature
@@ -11,9 +11,10 @@ This guide explains the design and mechanisms. For the exact attribute set
 and per-mesh capability lists, read the code: they grow over time, while the
 mechanisms below stay fixed.
 
-Core implementation: `web/navara_three/src/batchTexture/` (`core.ts`, `material.ts`, `layout.ts`, `types.ts`) and the
-shader chunks `shaders/glsl/chunks/batch_texture_pars_vertex.glsl` /
-`batch_texture_vertex.glsl`.
+Core implementation: `web/navara_three/src/batchTexture/` (`core.ts`, `material.ts`, `layout.ts`, `types.ts`, `featureIdTexture.ts`) and the
+shader chunks `shaders/glsl/chunks/batch_texture_pars.glsl` (shared by both
+stages), `batch_texture_pars_vertex.glsl` / `batch_texture_vertex.glsl` and
+`feature_id_texture_*.glsl`.
 
 ## Architecture
 
@@ -91,7 +92,7 @@ instances.
 ### 2D wrap for large batches
 
 Texture width is capped at `MAX_BATCH_TEXTURE_WIDTH` (4096). Batch IDs
-beyond the width wrap to further *batch-row groups*. The layout is planar:
+beyond the width wrap to further _batch-row groups_. The layout is planar:
 each attribute row occupies one contiguous block of `batchRowGroups`
 (= `ceil(batchLength / width)`) physical rows, so adding an attribute row
 later is a plain append. Batch `b` lives at column `b % width`, physical row
@@ -112,7 +113,7 @@ physical row
 ```
 
 `batchLength` is fixed once known (`initBatchDataTexture`): the batch
-*count* never grows, only the attribute row count does.
+_count_ never grows, only the attribute row count does.
 
 ## Capability gating
 
@@ -218,7 +219,9 @@ The batch id defaults to the `_batchid` vertex attribute (per-vertex for
 polygon-like meshes, per-instance for sprites). A shader whose geometry
 carries no such attribute overrides the `NVR_BATCH_ID_EXPR` define before
 including `batch_texture_vertex` — sdfText's glyph instances read their
-feature index out of the label data texture's STATE row instead.
+feature index out of the label data texture's STATE row instead. A feature
+ID texture moves the lookup to the fragment stage (see
+[Feature ID sources](#feature-id-sources)).
 
 Feature defines (`USE_BATCH_TEXTURE`, `USE_BATCH_<ATTR>`) are enabled lazily
 on first write of the corresponding attribute. `material.needsUpdate` is
@@ -237,6 +240,37 @@ to append all `BATCHED_TEXTURE_*`/`USE_BATCH_*` defines, so two materials
 with different layouts never share a compiled program. This wrapper is the
 **single** cache-key mechanism for batch styling. Enhancer state
 deliberately carries no mirror flags.
+
+## Feature ID sources
+
+A material reads its feature index from one of two sources:
+
+| Source    | Stage    | Feature index                                         | Pick ID                                    |
+| --------- | -------- | ----------------------------------------------------- | ------------------------------------------ |
+| attribute | vertex   | `_batchid` (or `NVR_BATCH_ID_EXPR`)                   | the mesh's own per-vertex attribute        |
+| texture   | fragment | a feature ID texture texel (`USE_FEATURE_ID_TEXTURE`) | the internal `pickId` slot of this texture |
+
+`setFeatureIdTexture` (`batchTexture/featureIdTexture.ts`) switches a
+registered material to the texture source: it writes every feature's pick ID
+into the `pickId` slot, stamps `USE_FEATURE_ID_TEXTURE` /
+`FEATURE_ID_TEXCOORD`, and keeps the texture's uniforms, which the enhancer
+merges with `getFeatureIdTextureUniforms`. The ID is the texel's listed
+channels as little-endian bytes; `nullFeatureId` and IDs at or above the
+feature count resolve to no feature, which takes the unstyled defaults and
+pick ID 0.
+
+With the texture source, the shading attributes run per fragment and the
+vertex stage skips the batch lookup: `nvr_vShow` / `nvr_vOpacity` /
+`nvr_vEmissive` become fragment globals, and batch color multiplies
+`diffuseColor` after `<color_fragment>` instead of replacing `vColor`.
+Attributes that move vertices cannot depend on a texel, so the source narrows
+the capability lists to color, emissive and show/opacity.
+
+A mesh type adopts the texture source by including the
+`feature_id_texture_*` chunks around its existing batch chunks, merging the
+uniforms, writing `NVR_PICK_ID_OR(<its vertex pick ID>)` as its pick color,
+and calling `setFeatureIdTexture` after `registerBatchedMaterial`. The model
+enhancer (`modelBaseEnhancer/shader.ts`) is the reference.
 
 ## Shared materials
 
