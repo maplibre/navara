@@ -8,6 +8,7 @@ export const BATCHED_ATTRIBUTE_NAMES = [
   "height",
   "extrudedHeight",
   "lineWidth",
+  "lineBlur",
   "lineDash",
   "size",
   "rotation",
@@ -61,6 +62,7 @@ export const BATCH_SCALAR_KEYS = [
   "height",
   "extrudedHeight",
   "lineWidth",
+  "lineBlur",
   /** Row of the feature's dash pattern in the view's `LineDashAtlas`. */
   "lineDash",
   "size",

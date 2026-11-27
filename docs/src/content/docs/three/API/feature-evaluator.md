@@ -146,6 +146,7 @@ The callback function can return an object containing the following properties:
 | `extrudedHeight` | `number` | Polygon extrusion height (meters) |
 | `text` | `string` | Label text content (for text/label features) |
 | `width` | `number` | Line width (pixels, for polyline features) |
+| `blur` | `number` | Width over which the edge of the line fades out, in pixels inside the line width (for polyline features). Overrides the material's [`blur`](../../../three/material/polyline-material/#blur), from the first time it is returned for the feature: a feature keeps the last value returned for it, also when a later callback returns none. A negative value draws a hard edge |
 | `dashArray` | `number[]` | Dash and gap lengths in line widths (for polyline features). An empty array draws the feature solid. Overrides the material's [`dashArray`](../../../three/material/polyline-material/#dasharray) |
 | `cap` | `"butt" \| "round" \| "square"` | Shape of the ends of each dash (for polyline features). Overrides the material's [`cap`](../../../three/material/polyline-material/#cap) |
 | `size` | `number` | Point/text size (meters or pixels, for point/text features) |
@@ -328,6 +329,10 @@ type EvaluatedValue = {
   text?: string;
   /** Line width (pixels, for polyline features) */
   width?: number;
+  /** Width over which the edge fades out, in pixels inside the line width
+   * (for polyline features). Overrides the material's `blur`; a feature
+   * keeps the last value returned for it */
+  blur?: number;
   /** Point/text size (meters or pixels, for point/text features) */
   size?: number;
   /** Extra space between characters in ems (for text features). Overrides

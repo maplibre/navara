@@ -35,6 +35,7 @@ const DEFAULT_BASE_REFS: PolylineBaseRefs = {
   nvr_uPickingCoord: { value: new ThreeVector2(-1, -1) },
   uDrapeRtSize: { value: DEFAULT_BASE_PROPS.drapeRtSize },
   uLineDashRow: { value: DEFAULT_BASE_PROPS.dashRow },
+  uLineBlur: { value: DEFAULT_BASE_PROPS.blur },
 };
 
 /**
@@ -85,6 +86,7 @@ export const createBaseMutates = (useRTE: boolean): PolylineBaseMutates => {
       refs.uOpacity.value = state.opacity;
       refs.uDrapeRtSize.value = state.drapeRtSize;
       refs.uLineDashRow.value = state.dashRow;
+      refs.uLineBlur.value = state.blur;
 
       // Update color uniform using Color.setHex()
       refs.color.value.setHex(state.color);
@@ -107,6 +109,7 @@ export const createBaseMutates = (useRTE: boolean): PolylineBaseMutates => {
       uniforms.nvr_uPickingCoord = refs.nvr_uPickingCoord;
       uniforms.uDrapeRtSize = refs.uDrapeRtSize;
       uniforms.uLineDashRow = refs.uLineDashRow;
+      uniforms.uLineBlur = refs.uLineBlur;
       if (refs.tLineDashAtlas) {
         uniforms.tLineDashAtlas = refs.tLineDashAtlas;
       }

@@ -818,6 +818,13 @@
         "applies": "live"
       },
       {
+        "name": "blur",
+        "kind": "number",
+        "doc": "Width in pixels over which the line's edge fades out, inside `width` on each side, as MapLibre's `line-blur`. A blur above half the width fades the whole line. Defaults to `0`, a hard edge.",
+        "default": 0,
+        "applies": "live"
+      },
+      {
         "name": "dashArray",
         "kind": "list",
         "doc": "Alternating dash and gap lengths, in multiples of the line width, repeated along the line. The pattern's period is the sum of the entries, so an odd-length array ends in a dash that runs into the first one. An empty array draws a solid line, which is the default.",

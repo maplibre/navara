@@ -156,6 +156,56 @@ describe("polylineBaseEnhancer", () => {
       enhancer.transformShader(shader);
       expect(defines).not.toHaveProperty("NVR_LINE_DASH");
     });
+
+    it("defines the blur path only while the line has a blur", () => {
+      enhancer.mount({ blur: 4 });
+      const defines: Record<string, unknown> = {};
+      const shader = {
+        uniforms: {},
+        vertexShader: "",
+        fragmentShader: "",
+        defines,
+      } as WebGLProgramParametersWithUniforms;
+
+      enhancer.transformShader(shader);
+      expect(defines.NVR_LINE_BLUR).toBe(true);
+      expect(shader.uniforms.uLineBlur.value).toBe(4);
+
+      enhancer.update({ blur: 0 });
+      enhancer.transformShader(shader);
+      expect(defines).not.toHaveProperty("NVR_LINE_BLUR");
+    });
+  });
+
+  describe("blending", () => {
+    it("blends a volume line while it has a blur, and restores its own setting", () => {
+      enhancer.mount({ transparent: false });
+      expect(enhancer.material.transparent).toBe(false);
+
+      let before = enhancer.material.version;
+      enhancer.update({ blur: 3 });
+      expect(enhancer.material.transparent).toBe(true);
+      expect(enhancer.material.version).toBeGreaterThan(before);
+
+      before = enhancer.material.version;
+      enhancer.update({ blur: 0 });
+      expect(enhancer.material.transparent).toBe(false);
+      expect(enhancer.material.version).toBeGreaterThan(before);
+
+      enhancer.update({ transparent: true });
+      enhancer.update({ blur: 2 });
+      enhancer.update({ blur: 0 });
+      expect(enhancer.material.transparent).toBe(true);
+    });
+
+    it("blends once a feature has its own blur", () => {
+      enhancer.mount({});
+      enhancer.update({ batchBlurEnabled: true });
+      expect(enhancer.material.transparent).toBe(true);
+      // The batch slot stays allocated, so the switch is one-way.
+      enhancer.update({ batchBlurEnabled: false });
+      expect(enhancer.material.transparent).toBe(true);
+    });
   });
 
   describe("update", () => {
@@ -172,6 +222,34 @@ describe("polylineBaseEnhancer", () => {
       expect(version()).toBe(before);
 
       enhancer.update({ dashRow: 0 });
+      expect(version()).toBeGreaterThan(before);
+    });
+
+    // standard: MapLibre Style Spec line-blur (minimum 0)
+    // ref: https://maplibre.org/maplibre-style-spec/layers/#line-blur
+    it("takes a negative blur as a hard edge", () => {
+      enhancer.mount({ blur: -2 });
+      expect(enhancer.states().blur).toBe(0);
+      enhancer.update({ blur: 3 });
+      enhancer.update({ blur: -5 });
+      expect(enhancer.states().blur).toBe(0);
+      expect(enhancer.material.transparent).toBe(false);
+    });
+
+    it("recompiles when a blur is set or cleared, not when it changes", () => {
+      enhancer.mount({ transparent: true });
+      const version = () => enhancer.material.version;
+
+      let before = version();
+      enhancer.update({ blur: 2 });
+      expect(version()).toBeGreaterThan(before);
+
+      before = version();
+      enhancer.update({ blur: 6 });
+      expect(version()).toBe(before);
+      expect(enhancer.states().blur).toBe(6);
+
+      enhancer.update({ blur: 0 });
       expect(version()).toBeGreaterThan(before);
     });
   });
@@ -192,6 +270,7 @@ describe("polylineBaseEnhancer", () => {
         useGroundNormals: false,
         useRTE: true,
         dashed: false,
+        blurred: false,
       });
     });
 

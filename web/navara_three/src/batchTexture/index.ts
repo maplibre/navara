@@ -1,4 +1,5 @@
 export {
+  acceptsBatchScalar,
   flushBatchTextureUpdates,
   getBatchDataTexture,
   hasBatchScalarSlot,

@@ -49,6 +49,12 @@ out vec3 vViewPosition;
 flat out float nvr_vBatchId;
 out vec3 vNormal;
 
+#ifdef USE_BATCH_LINE_BLUR
+uniform float uLineBlur;
+// The line's blur in pixels.
+flat out float nvr_vLineBlur;
+#endif
+
 #if defined(NVR_LINE_DASH) || defined(USE_BATCH_LINE_DASH)
 uniform float uLineDashRow;
 // Height range of the terrain under a ground line; minMaxHeightAndWidth also
@@ -104,6 +110,11 @@ void main() {
     #endif
 
     #include chunks/batch_texture_vertex;
+
+    #ifdef USE_BATCH_LINE_BLUR
+        // Negative batchLineBlur follows the material's blur.
+        nvr_vLineBlur = batchLineBlur >= 0.0 ? batchLineBlur : uLineBlur;
+    #endif
 
     #if defined(NVR_LINE_DASH) || defined(USE_BATCH_LINE_DASH)
         nvr_vLineDash.x = abs(end_normal_and_segment_length.w);

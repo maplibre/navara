@@ -44,6 +44,9 @@ order.
   matches Navara's value.
 - Also visible in `fill-opacity/*`, `line-opacity/*`, `combinations/*`, and
   `regressions/mapbox-gl-native#7714`.
+- Also in `line-blur/*`: the blurred edges are lighter than MapLibre's, while
+  their widths and fade lengths match. Converted to opacity, the center of a
+  width 10, blur 10 line is 0.59 in Navara and 0.61 in MapLibre.
 - Also in `fill-extrusion-opacity/*`: a 75% black extrusion over white is ≈137
   in Navara and 64 in MapLibre. Those cases still differ by about 66%, since
   the extrusion's sides are shaded differently too (see "Lighting").

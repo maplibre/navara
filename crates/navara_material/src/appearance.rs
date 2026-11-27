@@ -958,6 +958,9 @@ pub struct PolylineMaterial {
     pub color: u32,
     pub width: f32,
     pub max_width: f32,
+    /// Width in pixels, inside `width` on each side, over which the line's
+    /// edge fades out, as MapLibre's `line-blur`. `0` draws a hard edge.
+    pub blur: f32,
     /// Alternating dash and gap lengths in line widths, repeated along the
     /// line. `None` draws a solid line.
     pub dash_array: Option<Vec<f32>>,
@@ -1000,6 +1003,7 @@ impl Default for PolylineMaterial {
             color: 0xffffff,
             width: 1.,
             max_width: 10000.,
+            blur: 0.,
             dash_array: None,
             cap: LineCap::Butt,
             clamp_to_ground: true,

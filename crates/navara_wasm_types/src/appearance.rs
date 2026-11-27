@@ -1320,6 +1320,10 @@ pub struct PolylineMaterial {
     #[wasm_bindgen(js_name = maxWidth)]
     #[serde(rename = "maxWidth")]
     pub max_width: Option<f32>,
+    /// Width in pixels over which the line's edge fades out, inside `width`
+    /// on each side, as MapLibre's `line-blur`. A blur above half the width
+    /// fades the whole line. Defaults to `0`, a hard edge.
+    pub blur: Option<f32>,
     /// Alternating dash and gap lengths, in multiples of the line width,
     /// repeated along the line. The pattern's period is the sum of the
     /// entries, so an odd-length array ends in a dash that runs into the first
@@ -1420,6 +1424,7 @@ impl PolylineMaterial {
             height,
             width,
             max_width,
+            blur: None,
             dash_array: None,
             cap: None,
             geometry_types: None,
@@ -1447,6 +1452,7 @@ impl PolylineMaterial {
             color: self.color.unwrap_or(other.color),
             width: self.width.unwrap_or(other.width),
             max_width: self.max_width.unwrap_or(other.max_width),
+            blur: self.blur.unwrap_or(other.blur),
             dash_array: self.dash_array.clone().or_else(|| other.dash_array.clone()),
             cap: parse_line_cap(&self.cap).unwrap_or(other.cap),
             clamp_to_ground: self.clamp_to_ground.unwrap_or(other.clamp_to_ground),
@@ -1481,6 +1487,7 @@ impl From<PolylineMaterial> for navara_material::PolylineMaterial {
             color: val.color.unwrap_or(default.color),
             width: val.width.unwrap_or(default.width),
             max_width: val.max_width.unwrap_or(default.max_width),
+            blur: val.blur.unwrap_or(default.blur),
             cap: parse_line_cap(&val.cap).unwrap_or(default.cap),
             dash_array: val.dash_array.or(default.dash_array),
             clamp_to_ground: val.clamp_to_ground.unwrap_or(default.clamp_to_ground),
@@ -1509,6 +1516,7 @@ impl<'a> From<&'a navara_material::PolylineMaterial> for PolylineMaterial {
             color: Some(value.color),
             width: Some(value.width),
             max_width: Some(value.max_width),
+            blur: Some(value.blur),
             dash_array: value.dash_array.clone(),
             cap: Some(value.cap.as_str().to_string()),
             clamp_to_ground: Some(value.clamp_to_ground),
@@ -1537,6 +1545,7 @@ impl From<navara_material::PolylineMaterial> for PolylineMaterial {
             color: Some(value.color),
             width: Some(value.width),
             max_width: Some(value.max_width),
+            blur: Some(value.blur),
             cap: Some(value.cap.as_str().to_string()),
             dash_array: value.dash_array,
             clamp_to_ground: Some(value.clamp_to_ground),
@@ -3287,6 +3296,28 @@ mod test {
         unset.geodesic = None;
         assert!(!unset.merge(&off).geodesic);
         assert!(navara_material::PolylineMaterial::from(unset).geodesic);
+    }
+
+    /// `blur` defaults to a hard edge, survives both conversions, and a patch
+    /// without it keeps the current value.
+    #[test]
+    fn polyline_blur_defaults_converts_and_merges() {
+        let patch = |json: &str| serde_json::from_str::<PolylineMaterial>(json).unwrap();
+        assert_eq!(navara_material::PolylineMaterial::default().blur, 0.0);
+        assert_eq!(
+            navara_material::PolylineMaterial::from(patch(r#"{ "width": 4 }"#)).blur,
+            0.0
+        );
+
+        let blurred = navara_material::PolylineMaterial::from(patch(r#"{ "blur": 6 }"#));
+        assert_eq!(blurred.blur, 6.0);
+        let js = PolylineMaterial::from(&blurred);
+        assert_eq!(js.blur, Some(6.0));
+        assert_eq!(serde_json::to_value(&js).unwrap()["blur"], 6.0);
+        assert_eq!(navara_material::PolylineMaterial::from(js).blur, 6.0);
+
+        assert_eq!(patch(r#"{ "color": 255 }"#).merge(&blurred).blur, 6.0);
+        assert_eq!(patch(r#"{ "blur": 0 }"#).merge(&blurred).blur, 0.0);
     }
 
     /// An update that shows the outline asks for its geometry, as an add does;

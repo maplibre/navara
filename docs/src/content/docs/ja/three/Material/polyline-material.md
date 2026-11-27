@@ -9,6 +9,25 @@ sidebar:
 
 ## Properties
 
+### blur :since[0.3.2]
+
+**Type:** `number | undefined`
+
+**Description:** 線の縁をフェードアウトさせる幅をピクセル単位で指定します。MapLibre Style Spec の `line-blur` プロパティに従います。フェードは線の両側から内側に向かってかかるため、線の太さは [`width`](#width) のまま変わりません。不透明度は縁でゼロとなり、縁から `blur` ピクセル内側で最大になります。線幅の半分より大きい値を指定すると線全体がフェードし、最大の不透明度に達する箇所がなくなります。丸い [`cap`](#cap) は円弧に沿って同じようにフェードしますが、四角い cap とダッシュの端ははっきりした縁のままです。ぼかしのある線は、[`transparent`](#transparent) の設定にかかわらず、背後のものとブレンドして描画されます。地表にドレープされない線では、フェードする縁も深度を書き込むため、後から描画される半透明の物体はその背後にあるとき薄い帯の下に隠れます。`opacity` を 1 未満にした場合と同じです。それが線への深度ベースのエフェクトより問題になる場合は、[`depthWrite`](#depthwrite) を `false` にしてください。`0` を指定すると縁はぼけません。
+
+**Default:** `0`
+
+**Example:**
+
+```typescript
+{
+  polyline: {
+    width: 12,
+    blur: 4
+  }
+}
+```
+
 ### cap
 
 **Type:** `"butt" | "round" | "square" | undefined`

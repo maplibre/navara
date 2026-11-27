@@ -141,6 +141,7 @@ export type LinePaint = {
   "line-color"?: ValueExpression;
   "line-width"?: ValueExpression;
   "line-opacity"?: ValueExpression;
+  "line-blur"?: ValueExpression;
 };
 
 export type CircleLayer = {

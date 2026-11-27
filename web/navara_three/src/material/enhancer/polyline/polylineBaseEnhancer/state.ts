@@ -26,6 +26,7 @@ export const DEFAULT_BASE_PROPS: Required<
   addHeight: 0,
   width: 1,
   maxWidth: 1000,
+  blur: 0,
   dashRow: SOLID_DASH_ROW,
   isTexturized: false,
   drapeRtSize: 512,
@@ -37,6 +38,7 @@ export const DEFAULT_BASE_PROPS: Required<
   emissiveIntensity: 0,
   useRTE: false,
   batchColorEnabled: false,
+  batchBlurEnabled: false,
 };
 
 /** Default state derived from DEFAULT_BASE_PROPS */
@@ -55,11 +57,31 @@ export const DEFAULT_BASE_STATE: PolylineBaseState = {
   addHeight: DEFAULT_BASE_PROPS.addHeight,
   width: DEFAULT_BASE_PROPS.width,
   maxWidth: DEFAULT_BASE_PROPS.maxWidth,
+  blur: DEFAULT_BASE_PROPS.blur,
   dashRow: DEFAULT_BASE_PROPS.dashRow,
   color: DEFAULT_BASE_PROPS.color,
+  transparent: DEFAULT_BASE_PROPS.transparent,
   opacity: DEFAULT_BASE_PROPS.opacity,
   batchColorEnabled: DEFAULT_BASE_PROPS.batchColorEnabled,
+  batchBlurEnabled: DEFAULT_BASE_PROPS.batchBlurEnabled,
 };
+
+/**
+ * A blur as the shaders take it: at least 0, as MapLibre's `line-blur`. Only
+ * the batch texture's "use the material's blur" sentinel is negative.
+ */
+export const clampLineBlur = (blur: number): number => (blur > 0 ? blur : 0);
+
+/** Whether the line's edge fades out, from the material or per feature. */
+export const hasLineBlur = (state: PolylineBaseState): boolean =>
+  state.blur > 0 || state.batchBlurEnabled;
+
+/**
+ * Whether the line draws translucent pixels, which only blending draws: it
+ * asked for `transparent`, or its edge fades out.
+ */
+export const drawsTranslucent = (state: PolylineBaseState): boolean =>
+  state.transparent || hasLineBlur(state);
 
 /**
  * Update immutable state from props.
@@ -93,11 +115,14 @@ export const updateState = (
     addHeight: props.addHeight ?? currentState.addHeight,
     width: props.width ?? currentState.width,
     maxWidth: props.maxWidth ?? currentState.maxWidth,
+    blur: props.blur != null ? clampLineBlur(props.blur) : currentState.blur,
     dashRow: props.dashRow ?? currentState.dashRow,
     color: props.color ?? currentState.color,
+    transparent: props.transparent ?? currentState.transparent,
     opacity: props.opacity ?? currentState.opacity,
     // batchColorEnabled can only transition from false to true, never back
     batchColorEnabled:
       currentState.batchColorEnabled || !!props.batchColorEnabled,
+    batchBlurEnabled: currentState.batchBlurEnabled || !!props.batchBlurEnabled,
   };
 };

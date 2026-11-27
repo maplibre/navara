@@ -10,6 +10,9 @@
  *
  * The two layers set the pattern per feature from a `FeatureEvaluator`, the
  * meshes through their own style, which covers both ways of setting it.
+ * `blur` applies to every line, through the material or, with
+ * `?blurPerFeature`, through the layers' evaluator. An evaluator styles every
+ * feature once it styles any, so switching back needs a reload.
  *
  * Each line bends twice and turns one sharp corner, to show how a pattern
  * crosses a joint. The "ends" rows hold short straight lines instead, to show
@@ -39,6 +42,7 @@ type DashSetting = { dashArray: number[]; cap: LineCap };
 
 const params = {
   width: 6,
+  blur: 0,
   customDashArray: "6, 2, 1, 2",
   customCap: "butt" as LineCap,
   /** Row whose setting the equator lines take. */
@@ -79,6 +83,14 @@ const CUSTOM_ROW = END_ROW + END_ROW_LENGTHS.length;
 
 const describe = ({ dashArray, cap }: DashSetting): string =>
   dashArray.length === 0 ? "solid" : `[${dashArray.join(", ")}] ${cap}`;
+
+/** The layers take `blur` from their evaluator instead of the material. */
+const BLUR_PER_FEATURE = new URLSearchParams(location.search).has(
+  "blurPerFeature",
+);
+const materialBlur = (): number => (BLUR_PER_FEATURE ? 0 : params.blur);
+const featureBlur = (): { blur?: number } =>
+  BLUR_PER_FEATURE ? { blur: params.blur } : {};
 
 const parseDashArray = (text: string): number[] =>
   text
@@ -248,6 +260,7 @@ const addLineLayer = (column: number, clampToGround: boolean) => {
     polyline: {
       color: LINE_COLOR,
       width: params.width,
+      blur: materialBlur(),
       maxWidth: 1_000_000,
       clampToGround,
       height: clampToGround ? 0 : UNCLAMPED_HEIGHT,
@@ -257,7 +270,10 @@ const addLineLayer = (column: number, clampToGround: boolean) => {
   });
   layer.on("featureUpdated", ({ evaluator }) => {
     evaluator.evaluate(
-      ({ properties }) => settingOf(Number(properties?.["row"])),
+      ({ properties }) => ({
+        ...settingOf(Number(properties?.["row"])),
+        ...featureBlur(),
+      }),
       { filters: ["row"] },
     );
   });
@@ -279,6 +295,7 @@ const addLineMeshes = (column: number, clampToGround: boolean) => {
             positions,
             color: LINE_COLOR,
             width: params.width,
+            blur: params.blur,
             maxWidth: 1_000_000,
             clampToGround,
             height: clampToGround ? 0 : UNCLAMPED_HEIGHT,
@@ -333,6 +350,7 @@ const addEquatorLayer = (column: number, clampToGround: boolean) => {
     polyline: {
       color: LINE_COLOR,
       width: params.width,
+      blur: materialBlur(),
       maxWidth: 1_000_000,
       clampToGround,
       height: clampToGround ? 0 : UNCLAMPED_HEIGHT,
@@ -340,7 +358,10 @@ const addEquatorLayer = (column: number, clampToGround: boolean) => {
     },
   });
   layer.on("featureUpdated", ({ evaluator }) => {
-    evaluator.evaluate(() => settingOf(params.equatorRow));
+    evaluator.evaluate(() => ({
+      ...settingOf(params.equatorRow),
+      ...featureBlur(),
+    }));
   });
   return layer;
 };
@@ -352,6 +373,7 @@ const addEquatorMesh = (column: number, clampToGround: boolean) =>
       ring: true,
       color: LINE_COLOR,
       width: params.width,
+      blur: params.blur,
       maxWidth: 1_000_000,
       clampToGround,
       height: clampToGround ? 0 : UNCLAMPED_HEIGHT,
@@ -425,6 +447,33 @@ pane
     for (const mesh of equatorMeshes) {
       mesh.update({ polyline: { width: value } });
     }
+  });
+
+// The meshes have no evaluator, so they always take the blur in their style.
+const applyBlur = () => {
+  for (const layer of [...layers, ...equatorLayers]) {
+    layer.update({ polyline: { blur: materialBlur() } });
+    layer.forceUpdate();
+  }
+  for (const mesh of [...meshColumns.flat(2), ...equatorMeshes]) {
+    mesh.update({ polyline: { blur: params.blur } });
+  }
+};
+pane
+  .addBinding(params, "blur", { min: 0, max: 20, step: 0.5 })
+  .on("change", applyBlur);
+pane
+  .addButton({
+    title: BLUR_PER_FEATURE ? "blur by material" : "blur per feature",
+  })
+  .on("click", () => {
+    const url = new URL(location.href);
+    if (BLUR_PER_FEATURE) {
+      url.searchParams.delete("blurPerFeature");
+    } else {
+      url.searchParams.set("blurPerFeature", "");
+    }
+    location.href = url.href;
   });
 
 // One switch per column, for its cells, its equator line and its label.

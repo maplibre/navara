@@ -18,6 +18,18 @@ uniform float uDrapeRtSize;
 
 flat out float nvr_vBatchId;
 
+#if defined(NVR_LINE_BLUR) || defined(USE_BATCH_LINE_BLUR)
+uniform float uLineBlur;
+// The blur in drape texels.
+flat out float nvr_vLineBlur;
+#if !defined(NVR_LINE_DASH) && !defined(USE_BATCH_LINE_DASH)
+// Signed distance from the center line, and half the line width, in drape
+// texels; with a dash, nvr_vLineDashCoord.y and nvr_vLineDashLine.y carry them.
+out float nvr_vLineAcross;
+flat out float nvr_vLineHalfWidth;
+#endif
+#endif
+
 #if defined(NVR_LINE_DASH) || defined(USE_BATCH_LINE_DASH)
 uniform float uLineDashRow;
 uniform sampler2D tLineDashAtlas;
@@ -77,6 +89,20 @@ void main() {
 
     // Offset position by miter normal scaled by half width and miter length
     vec3 offsetPos = position + vec3(miterNormal * lineWidth * 0.5 * miterLength, 0.0);
+
+    #if defined(NVR_LINE_BLUR) || defined(USE_BATCH_LINE_BLUR)
+        // Negative batchLineBlur follows the material's blur.
+        #ifdef USE_BATCH_LINE_BLUR
+            float nvr_blur = batchLineBlur >= 0.0 ? batchLineBlur : uLineBlur;
+        #else
+            float nvr_blur = uLineBlur;
+        #endif
+        nvr_vLineBlur = nvr_blur;
+        #if !defined(NVR_LINE_DASH) && !defined(USE_BATCH_LINE_DASH)
+            nvr_vLineAcross = sign(miterLength) * 0.5 * baseWidth;
+            nvr_vLineHalfWidth = 0.5 * baseWidth;
+        #endif
+    #endif
 
     #if defined(NVR_LINE_DASH) || defined(USE_BATCH_LINE_DASH)
         #ifdef USE_BATCH_LINE_DASH

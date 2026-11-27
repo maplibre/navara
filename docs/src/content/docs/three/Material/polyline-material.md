@@ -9,6 +9,25 @@ sidebar:
 
 ## Properties
 
+### blur :since[0.3.2]
+
+**Type:** `number | undefined`
+
+**Description:** Width in pixels over which the edge of the line fades out, following the `line-blur` property of the MapLibre Style Spec. The fade runs inward from both sides, so the line keeps its [`width`](#width): its opacity rises from zero at the edge to full at `blur` pixels inside it. A blur larger than half the width fades the whole line, which then never reaches full opacity. A round [`cap`](#cap) fades around its arc in the same way, while a square cap and the ends of the dashes keep a hard edge. A blurred line is blended with what lies behind it, as with [`transparent`](#transparent), whatever `transparent` is set to. Unless the line is draped, its faded edge still writes depth, so a translucent object drawn later behind it is hidden under that faint band, as with an `opacity` below 1; set [`depthWrite`](#depthwrite) to `false` when that matters more than depth-based effects on the line. `0` draws a hard edge.
+
+**Default:** `0`
+
+**Example:**
+
+```typescript
+{
+  polyline: {
+    width: 12,
+    blur: 4
+  }
+}
+```
+
 ### cap
 
 **Type:** `"butt" | "round" | "square" | undefined`

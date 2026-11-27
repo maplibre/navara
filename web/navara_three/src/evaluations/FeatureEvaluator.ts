@@ -56,6 +56,10 @@ export type EvaluatableMaterialProperty = {
   text: AvailableMaterialProperty["text"];
   /** Line width expression from layer configuration (for polylines). */
   width: AvailableMaterialProperty["width"];
+  /** Pixels inside the width over which this line's edge fades out (for
+   *  polylines). Overrides the material's `blur`; a feature keeps the last
+   *  value returned for it. */
+  blur: AvailableMaterialProperty["blur"];
   /** Dash pattern of this line: alternating dash and gap lengths in line
    *  widths. An empty array draws it solid. Overrides the material's
    *  `dashArray`. */
@@ -128,6 +132,7 @@ type EvaluatedMaterialProperty = {
   height: number;
   text: string;
   width: number;
+  blur: number;
   dashArray: number[];
   cap: LineCap;
   size: number;
@@ -478,6 +483,8 @@ export class FeatureEvaluator {
    * - `extrudedHeight` - Extrusion height for polygons in meters
    * - `text` - Label text content (for text/label features)
    * - `width` - Line width in pixels (for polylines)
+   * - `blur` - Pixels inside the width over which the line's edge fades out
+   *   (for polylines)
    * - `size` - Feature size in pixels (for points/text)
    * - `opacity` - Feature opacity 0-1
    * - `declutterPriority` - Placement priority for decluttering; higher wins
@@ -836,6 +843,9 @@ export class FeatureEvaluator {
     }
     if (evaluated.width != null) {
       updateBatchAttribute("lineWidth", evaluated.width);
+    }
+    if (evaluated.blur != null) {
+      updateBatchAttribute("lineBlur", evaluated.blur);
     }
     if (
       mesh instanceof PolylineMesh &&
