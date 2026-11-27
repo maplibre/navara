@@ -341,8 +341,8 @@ fn prepare_vincenty_direct_formula_constants(
 
     let u2_over4 = u_squared / 4.;
     let u4_over16 = u2_over4 * u2_over4;
-    let u6_over64 = u4_over16 * u4_over16;
-    let u8_over256 = u6_over64 * u6_over64;
+    let u6_over64 = u4_over16 * u2_over4;
+    let u8_over256 = u4_over16 * u4_over16;
 
     let a0 =
         1. + u2_over4 - (3. * u4_over16) / 4. + (5. * u6_over64) / 4. - (175. * u8_over256) / 64.;
@@ -379,9 +379,9 @@ mod test {
     use std::f64::consts::PI;
 
     use approx::assert_abs_diff_eq;
-    use navara_math::{EPSILON7, EPSILON11};
+    use navara_math::EPSILON11;
 
-    use radians::Angle;
+    use radians::{Angle, Radians};
 
     use crate::{LLE, Meters, WGS84_64};
 
@@ -464,29 +464,138 @@ mod test {
         assert_abs_diff_eq!(g.distance, 10001966., epsilon = 1.1);
     }
 
+    fn lle_degrees(lat: f64, lng: f64) -> LLE<f64, Radians> {
+        LLE {
+            lng: Angle::new(lng.to_radians()),
+            lat: Angle::new(lat.to_radians()),
+            height: Meters::new(0.),
+        }
+    }
+
+    fn surface_gap(p: LLE<f64, Radians>, q: LLE<f64, Radians>) -> f64 {
+        let (p, q) = (WGS84_64.lle_to_xyz(p), WGS84_64.lle_to_xyz(q));
+        ((p.x.val() - q.x.val()).powi(2)
+            + (p.y.val() - q.y.val()).powi(2)
+            + (p.z.val() - q.z.val()).powi(2))
+        .sqrt()
+    }
+
+    const MILLIMETER: f64 = 1e-3;
+
+    // standard: WGS84 geodesics, endpoint identity of the direct problem, over a
+    // grid including poles, the equator, coincident points and the antimeridian.
     #[test]
-    fn it_interpolate_distance() {
-        let fifteen_degrees = PI / 12.;
-        let start = LLE {
-            lng: Angle::new(fifteen_degrees),
-            lat: Angle::new(fifteen_degrees),
-            height: Meters::new(0.),
-        };
-        let thirty_degrees = PI / 6.;
-        let end = LLE {
-            lng: Angle::new(thirty_degrees),
-            lat: Angle::new(thirty_degrees),
-            height: Meters::new(0.),
-        };
-        let g = EllipsoidGeodesic::new(start, end, &WGS84_64);
+    fn it_starts_and_ends_at_its_endpoints() {
+        let lats = [-90., -89.9, -60., -15., 0., 0.001, 30., 60., 89.9, 90.];
+        let lng_offsets = [0., 0.001, 15., 90., 135., 179., 180., -90.];
+        let mut failures = Vec::new();
+        for lat1 in lats {
+            for lat2 in lats {
+                for lng_offset in lng_offsets {
+                    let start = lle_degrees(lat1, 15.);
+                    let end = lle_degrees(lat2, 15. + lng_offset);
+                    let g = EllipsoidGeodesic::new(start, end, &WGS84_64);
+                    if !g.converged {
+                        continue;
+                    }
+                    let start_error = surface_gap(g.interpolate_distance(&WGS84_64, 0.), start);
+                    let end_error = surface_gap(g.interpolate_distance(&WGS84_64, g.distance), end);
+                    if start_error.max(end_error) >= MILLIMETER {
+                        failures.push(format!(
+                            "({lat1}, 15) to ({lat2}, {}): start off by {start_error} m, end by {end_error} m",
+                            15. + lng_offset
+                        ));
+                    }
+                }
+            }
+        }
+        assert!(failures.is_empty(), "{failures:#?}");
+    }
 
-        let first = g.interpolate_distance(&WGS84_64, 0.);
-        let last = g.interpolate_distance(&WGS84_64, g.distance);
+    // standard: WGS84 geodesics, Vincenty's direct problem.
+    // Reference values from GeographicLib 2.1 (Python), `Geodesic.WGS84.Direct`
+    // at 1/2 and 1 of the distance.
+    // ref: https://geographiclib.sourceforge.io/Python/
+    #[test]
+    fn it_interpolates_along_geographiclib_geodesics() {
+        // (lat1, lng1, s12, [(lat, lng) at s12 / 2, (lat, lng) at s12]) in degrees and meters.
+        let cases = [
+            // Meridian, azimuth 180.
+            (
+                0.0,
+                0.0,
+                9500000.0,
+                [(-42.88550095915056, 0.0), (-85.50579068305177, 0.0)],
+            ),
+            // Equator, azimuth 90.
+            (
+                0.0,
+                0.0,
+                5000000.0,
+                [(0.0, 22.457882102988037), (0.0, 44.915764205976075)],
+            ),
+            // Tokyo to San Francisco, azimuth 54.404407837111684.
+            (
+                35.681,
+                139.767,
+                8284545.286908689,
+                [
+                    (48.66622042752116, -172.21872161140269),
+                    (37.77490000000001, -122.4194),
+                ],
+            ),
+            // 1 km at mid-latitude, azimuth 37.
+            (
+                48.8566,
+                2.3522,
+                1000.0,
+                [
+                    (48.860190688252764, 2.3563008772363),
+                    (48.86378122838547, 2.360402341172884),
+                ],
+            ),
+            // Passing near the pole, azimuth 10.
+            (
+                80.0,
+                -30.0,
+                3000000.0,
+                [
+                    (86.02577321360971, 114.41553757131211),
+                    (72.90098296867136, 134.51988073246181),
+                ],
+            ),
+            // Southern hemisphere, azimuth 250.
+            (
+                -33.86,
+                151.21,
+                12000000.0,
+                [
+                    (-33.915262637825556, 85.10324721584904),
+                    (-5.6360432623899985, 35.34557606796527),
+                ],
+            ),
+        ];
+        let mut failures = Vec::new();
+        for (lat1, lng1, s12, [(mid_lat, mid_lng), (lat2, lng2)]) in cases {
+            let start = lle_degrees(lat1, lng1);
+            let end = lle_degrees(lat2, lng2);
+            let g = EllipsoidGeodesic::new(start, end, &WGS84_64);
 
-        assert_abs_diff_eq!(start.lng.val(), first.lng.val(), epsilon = EPSILON7);
-        assert_abs_diff_eq!(start.lat.val(), first.lat.val(), epsilon = EPSILON7);
-        assert_abs_diff_eq!(end.lng.val(), last.lng.val(), epsilon = EPSILON7);
-        assert_abs_diff_eq!(end.lat.val(), last.lat.val(), epsilon = EPSILON7);
+            assert!(g.converged);
+            let distance_error = (g.distance - s12).abs();
+            let mid_error = surface_gap(
+                g.interpolate_distance(&WGS84_64, s12 / 2.),
+                lle_degrees(mid_lat, mid_lng),
+            );
+            let end_error = surface_gap(g.interpolate_distance(&WGS84_64, s12), end);
+            if distance_error.max(mid_error).max(end_error) >= MILLIMETER {
+                failures.push(format!(
+                    "from ({lat1}, {lng1}) over {s12} m: distance off by {distance_error} m, \
+                     midpoint by {mid_error} m, end by {end_error} m"
+                ));
+            }
+        }
+        assert!(failures.is_empty(), "{failures:#?}");
     }
 
     // Vincenty's inverse method oscillates without ever converging for this
