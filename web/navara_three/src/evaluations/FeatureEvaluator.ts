@@ -175,6 +175,8 @@ export type FeatureInfo = {
    * The feature's canonical global batch id (its first instance's id when a
    * feature spans several instances, e.g. MultiPoint). Pick events report the
    * same canonical id, so picks and evaluations correlate through this field.
+   * Valid only while the feature set exists: removing it frees the id for
+   * reuse by other features.
    */
   batchId: number;
   properties: Record<string, unknown> | undefined;
@@ -248,7 +250,12 @@ export type FeatureEvaluatorCallback = (
 export class FeatureEvaluator {
   private handler: FeatureHandler;
   private layerId: LayerId;
-  private featureSetId: FeatureSetId;
+  /**
+   * The feature set's id, as in the layer's feature events and picks. A tile
+   * loaded again is a new feature set with a new id; to identify a feature,
+   * use {@link FeatureInfo.featureId}.
+   */
+  readonly featureSetId: FeatureSetId;
   private cachedBatchedProperties?: Map<
     number,
     Record<string, unknown> | undefined
@@ -322,13 +329,6 @@ export class FeatureEvaluator {
       }
     }
     return undefined;
-  }
-
-  /**
-   * Gets the unique identifier of this feature set.
-   */
-  get id() {
-    return this.featureSetId;
   }
 
   /**

@@ -79,10 +79,10 @@ Layers support not only declarative addition but also dynamic access to features
 ```typescript
 import { Color } from "@navaramap/three";
 
-layer.on("featureUpdated", (evaluator) => {
+layer.on("featureUpdated", ({ evaluator }) => {
   // Dynamically change styles based on feature properties
-  evaluator.evaluate((batchId, property) => {
-    const population = property?.["population"] as number;
+  evaluator.evaluate(({ properties }) => {
+    const population = properties?.["population"] as number;
     return {
       color: new Color().setHex(population > 1000000 ? 0xff0000 : 0x00ff00),
     };

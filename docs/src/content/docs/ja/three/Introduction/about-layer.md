@@ -33,11 +33,29 @@ graph LR
 
 - **Layer**: `addLayer()` で追加されるトップレベルのコンテナ。各レイヤーは一意の `LayerId` を持ちます。
 - **FeatureSet**: レイヤー内の描画単位。フィーチャーイベント（`featureCreated`、`featureUpdated` など）はフィーチャーセットごとに発行され、それぞれ `FeatureSetId` を持ちます。1 つのフィーチャーセットは複数の LOD レベルにまたがる場合があります。
-- **Feature**: プロパティを持つ概念的な単位。データソースが GIS データの場合、フィーチャーは個々の地理的エンティティ（建物、道路セグメントなど）に対応します。LOD レベルをまたいで特定のフィーチャーを識別するには、プロパティ内の値（`id` フィールドなど）を使用してください。
-- **Batch**: 最下位の単位で、実際のジオメトリで構成されます。各バッチは `batchId` を持ちます。
+- **Feature**: 元データの 1 つの地物（建物、道路セグメントなど）。プロパティを持ち、元データにトップレベルの id があれば `featureId` も持ちます。
+- **Batch**: 1 つのフィーチャーセットの中で描画された地物。各バッチは `batchId` を持ち、ピッキングはこの値を返します。
+
+ベクタータイルのソースの地物と、マテリアルで `clampToGround` または `tiled` を設定した GeoJSON のポリゴン・ポリラインは、またがるタイルごとに分割されます。分割された各部分はそれぞれのフィーチャーセットに属する別のバッチで、`batchId` も別々ですが、`featureId` とプロパティは地物のものを共有します。
+
+### 識別子
+
+| 識別子 | 識別する対象 | 読み取り元 | 有効期間 |
+| --- | --- | --- | --- |
+| `layerId` | レイヤー | `layer.id`、`FeatureInfo`、ピック結果 | レイヤーが削除されるまで |
+| `featureSetId` | フィーチャーセット | `evaluator.featureSetId`、フィーチャーイベント、ピック結果 | フィーチャーセットが削除されるまで。読み込み直されたタイルには新しい値が付きます |
+| `featureId` | 元データの地物 | `FeatureInfo`、ピック結果 | 元データの値なので、タイルを読み込み直しても変わりません |
+| `batchId` | バッチ | `FeatureInfo`、ピック結果 | フィーチャーセットが削除されるまで。その後、同じ番号が別のバッチに割り当てられます |
+
+`batchId` と `featureId` は用途が異なります。
+
+- **`batchId`**: 元データに関係なくすべてのバッチが持ち、現在描画されているバッチの中で一意です。ホバー時のように、地物が画面に表示されている間だけのハイライトに使用してください。タイル分割された地物では、対象は 1 つのタイル内の部分だけで、そのタイルが読み込み直されると値が変わります。古い番号は別のバッチに割り当てられるため、`batchId` で保持した選択状態は別の地物に移ることがあります。
+- **`featureId`**: 元データの値なので、タイルを読み込み直しても変わりません。これで照合すると、タイルをまたぐ地物のすべての部分にスタイルが適用されます。選択状態の保持に使用してください。元データにトップレベルの id がない場合は `undefined` です。3D Tiles には id がなく、GeoJSON やベクタータイルにも id を省略したデータが多くあります。Navara は `featureId` の一意性を検査しません。
+
+`featureId` がないデータで選択状態を保持するには、PLATEAU データの `gml_id` のような安定したプロパティで照合してください。
 
 :::tip
-[`FeatureEvaluator`](../../api/feature-evaluator/) を使用する際、コールバックは `batchId`、`properties`、`layerId` を含む `FeatureInfo` オブジェクトを受け取ります。フィーチャーセット内の個々のフィーチャーを識別するには `properties` を使用してください。
+[`FeatureEvaluator`](../../api/feature-evaluator/) のコールバックは、`batchId`、`featureId`、`properties`、`layerId` を含む `FeatureInfo` オブジェクトを受け取ります。ピック結果（`featureClick`、`featureHover`）も同じフィールドを持つため、`batchId` または `featureId` でピック結果と評価を対応付けられます。
 :::
 
 フィーチャーイベント（`featureCreated`、`featureUpdated` など）の詳細は [Layer Types](../../api/desc-types/#events) を参照してください。
@@ -174,8 +192,8 @@ const layerHandle = view.addLayer({ type: "vector", source });
 layerHandle.update({ type: "vector", source, point: { color: 0x00ff00 } });
 
 // Subscribe to feature events
-layerHandle.on("featureCreated", (evaluator) => {
-  console.log("A feature was created");
+layerHandle.on("featureCreated", ({ featureSetId }) => {
+  console.log("フィーチャーセットが作成されました:", featureSetId);
 });
 
 // Delete the layer

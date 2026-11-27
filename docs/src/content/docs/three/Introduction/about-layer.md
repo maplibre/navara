@@ -33,11 +33,29 @@ graph LR
 
 - **Layer**: The top-level container added via `addLayer()`. Each layer has a unique `LayerId`.
 - **FeatureSet**: A rendering unit within a layer. Feature events (`featureCreated`, `featureUpdated`, etc.) are emitted per feature set, and each carries a `FeatureSetId`. A single feature set may span multiple LOD levels.
-- **Feature**: A conceptual unit that has properties. If the data source is GIS data, a feature corresponds to an individual geographic entity (e.g. a building, a road segment). To identify a specific feature across LOD levels, use a property value (such as an `id` field) from the feature's properties.
-- **Batch**: The lowest-level unit, consisting of actual geometries. Each batch has a `batchId`.
+- **Feature**: One entity of the source data, such as a building or a road segment. It has properties, and a `featureId` when the source data gives it a top-level id.
+- **Batch**: A feature as rendered in one feature set. Each batch has a `batchId`, which picking reports.
+
+Features of vector tile sources, and GeoJSON polygons and polylines whose material sets `clampToGround` or `tiled`, are split across the tiles they cross. Each piece is a separate batch in its own feature set, with its own `batchId`, and all pieces share the feature's `featureId` and properties.
+
+### Identifiers
+
+| Identifier | Identifies | Read from | Lifetime |
+| --- | --- | --- | --- |
+| `layerId` | A layer | `layer.id`, `FeatureInfo`, picks | Until the layer is removed |
+| `featureSetId` | A feature set | `evaluator.featureSetId`, feature events, picks | Until the feature set is removed. A tile loaded again gets a new one |
+| `featureId` | A source feature | `FeatureInfo`, picks | Comes from the source data, so it does not change when tiles are reloaded |
+| `batchId` | A batch | `FeatureInfo`, picks | Until the feature set is removed. The number is then given to other batches |
+
+`batchId` and `featureId` serve different purposes:
+
+- **`batchId`**: Every batch has one, whatever the source data, and it is unique among the batches currently rendered. Use it for a highlight that lasts only while the feature is on screen, such as on hover. For a feature split across tiles, it covers only the piece in one tile, and it changes when that tile is loaded again. The old number is then given to another batch, so a selection kept by `batchId` can move to a different feature.
+- **`featureId`**: It comes from the source data, so it does not change when tiles are reloaded, and matching by it styles every piece of the feature across tiles. Use it to keep a selection. It is `undefined` when the source data has no top-level id: 3D Tiles never have one, and many GeoJSON and vector tile datasets omit it. Navara does not check that `featureId` values are unique.
+
+To keep a selection in data without `featureId`, match by a stable property instead, such as `gml_id` in PLATEAU data.
 
 :::tip
-When working with [`FeatureEvaluator`](../../api/feature-evaluator/), the callback receives a `FeatureInfo` object containing `batchId`, `properties`, and `layerId`. Use `properties` to identify individual features within a feature set.
+[`FeatureEvaluator`](../../api/feature-evaluator/) callbacks receive a `FeatureInfo` object with `batchId`, `featureId`, `properties`, and `layerId`. Picks (`featureClick`, `featureHover`) carry the same fields, so a pick can be matched to an evaluation by `batchId` or `featureId`.
 :::
 
 For details on feature events (`featureCreated`, `featureUpdated`, etc.), see [Layer Types](../../api/desc-types/#events).
@@ -174,8 +192,8 @@ const layerHandle = view.addLayer({ type: "vector", source });
 layerHandle.update({ type: "vector", source, point: { color: 0x00ff00 } });
 
 // Subscribe to feature events
-layerHandle.on("featureCreated", (evaluator) => {
-  console.log("A feature was created");
+layerHandle.on("featureCreated", ({ featureSetId }) => {
+  console.log("A feature set was created:", featureSetId);
 });
 
 // Delete the layer

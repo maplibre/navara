@@ -110,8 +110,8 @@ const run = async () => {
 
     // Feature evaluator: style polylines based on properties
     layer.on("featureUpdated", ({ evaluator }) => {
-      if (updatedFeatures.has(evaluator.id)) return;
-      updatedFeatures.add(evaluator.id);
+      if (updatedFeatures.has(evaluator.featureSetId)) return;
+      updatedFeatures.add(evaluator.featureSetId);
 
       evaluator.evaluate(
         ({ properties }) => {

@@ -17,17 +17,17 @@ For detailed parameter types of events, see [Descriptor Types](../desc-types#eve
 
 ## Properties
 
-### id
+### featureSetId :since[0.3.2]
 
 **Type:** `FeatureSetId`
 
-**Description:** Gets the unique identifier of this feature set.
+**Description:** The ID of the feature set this evaluator covers, the same value as `featureSetId` in the layer's feature events and in picks. A tile that is unloaded and loaded again gets a new feature set with a new ID. To identify a single feature, use `featureId` of [FeatureInfo](#featureinfo) instead. See [Identifiers](../../introduction/about-layer/#identifiers) for how the IDs relate.
 
 **Example:**
 
 ```typescript
 layer.on("featureCreated", ({ evaluator }) => {
-  console.log("Feature ID:", evaluator.id);
+  console.log("Feature set ID:", evaluator.featureSetId);
 });
 ```
 
@@ -37,10 +37,11 @@ layer.on("featureCreated", ({ evaluator }) => {
 
 ```typescript
 type FeatureInfo = {
-  batchId: number;
+  batchId: number; // Picking ID of the rendered feature, valid while its feature set exists
   properties: Record<string, unknown> | undefined;
   featureId?: string | number; // Top-level GeoJSON `id` or MVT feature id, kept apart from `properties` (undefined when the feature has none)
   layerId: string | undefined;
+  meshGeomType?: GeometryType; // Mesh geometry type (e.g. "billboard", "text")
 };
 ```
 
@@ -56,19 +57,19 @@ type FeatureEvaluatorCallback = (
 
 ### readFeatureProperties()
 
-Reads the properties of this feature from the data source. The callback is invoked for each batch within this feature.
+Reads the properties of the features in this feature set from the data source. The callback is invoked once per feature.
 
 **Syntax:**
 
 ```typescript
 readFeatureProperties(
-  f: (info: FeatureInfo) => void
+  f: (info: FeatureInfo, batchIndex: number) => void
 ): void
 ```
 
 **Parameters:**
 
-- `f`: A callback function that receives a FeatureInfo object for each batch
+- `f`: A callback function that receives a FeatureInfo object for each feature, and the feature's 0-based index within this feature set
 
 **Example:**
 
@@ -95,14 +96,14 @@ Reads only the specified root property keys of this feature from the data source
 ```typescript
 readFilteredFeatureProperties(
   keys: string[],
-  f: (info: FeatureInfo) => void
+  f: (info: FeatureInfo, batchIndex: number) => void
 ): void
 ```
 
 **Parameters:**
 
-- `keys`: An array of root property keys to read
-- `f`: A callback function that receives a FeatureInfo object with only the filtered properties
+- `keys`: An array of root property keys to read. `featureId` is passed even when `keys` is empty
+- `f`: A callback function that receives a FeatureInfo object with only the filtered properties, and the feature's 0-based index within this feature set
 
 **Example:**
 
@@ -114,7 +115,7 @@ evaluator.readFilteredFeatureProperties(["height", "name"], ({ batchId, properti
 
 ### evaluate()
 
-Evaluates and applies dynamic styles to features based on their properties. The callback is invoked for each batch (sub-feature) within this feature.
+Evaluates and applies dynamic styles to features based on their properties. The callback is invoked once per feature in this feature set.
 
 **Syntax:**
 

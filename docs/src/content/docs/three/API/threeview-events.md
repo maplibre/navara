@@ -119,7 +119,7 @@ To use this event, you must set `picking: true` in the ThreeView constructor (en
 
 ```tsx
 type PickedFeature = {
-  batchId: number; // Batch ID
+  batchId: number; // Picking ID of the rendered feature, valid while its feature set exists
   properties: Record<string, unknown> | undefined; // Feature properties
   layerId: string | undefined; // Layer ID
   featureId?: string | number; // Top-level GeoJSON `id` or MVT feature id (undefined when the feature has none)
@@ -127,6 +127,8 @@ type PickedFeature = {
   content?: FeatureSetContent; // Source content of the feature set (3D Tiles credit and metadata), as in featureCreated
 };
 ```
+
+To keep a selection, match it by `featureId` or a stable property, not by `batchId`: see [Identifiers](../../introduction/about-layer/#identifiers).
 
 **Example:**
 

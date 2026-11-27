@@ -79,10 +79,10 @@ view.addLight({ sun: { intensity: 1.0 } });
 ```typescript
 import { Color } from "@navaramap/three";
 
-layer.on("featureUpdated", (evaluator) => {
+layer.on("featureUpdated", ({ evaluator }) => {
   // 地物のプロパティに基づいてスタイルを動的に変更
-  evaluator.evaluate((batchId, property) => {
-    const population = property?.["population"] as number;
+  evaluator.evaluate(({ properties }) => {
+    const population = properties?.["population"] as number;
     return {
       color: new Color().setHex(population > 1000000 ? 0xff0000 : 0x00ff00),
     };
