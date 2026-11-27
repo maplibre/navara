@@ -259,9 +259,8 @@ export class FeatureEvaluator {
     Record<string, unknown> | undefined
   >;
   private batchIds: number[] = [];
-
-  /** Top-level feature ids (GeoJSON or MVT) by batch index; read once. */
-  private featureIds?: Map<number, string | number>;
+  /** Top-level feature ids (GeoJSON or MVT) by batch index, for cached reads. */
+  private featureIds: (string | number | undefined)[] = [];
 
   /**
    * The underlying Three.js object representing this feature.
@@ -280,25 +279,6 @@ export class FeatureEvaluator {
     this.layerId = layerId;
     this.featureSetId = featureSetId;
     this.obj = obj;
-  }
-
-  /**
-   * Reads the top-level ids once. Must run before (never inside) a
-   * `read*BatchedProperties` callback: the WASM core is still borrowed there,
-   * and a nested call throws ("recursive use of an object").
-   */
-  private loadFeatureIds(): void {
-    if (this.featureIds) return;
-    const ids = new Map<number, string | number>();
-    this.handler.readBatchedFeatureIds(this.featureSetId, (idx, id) => {
-      ids.set(idx, id);
-    });
-    this.featureIds = ids;
-  }
-
-  /** Reads the ids loaded by {@link loadFeatureIds}; never calls into WASM. */
-  private featureIdOf(batchIdx: number): string | number | undefined {
-    return this.featureIds?.get(batchIdx);
   }
 
   /**
@@ -375,7 +355,6 @@ export class FeatureEvaluator {
   readFeatureProperties(f: (info: FeatureInfo, batchIndex: number) => void) {
     // Read geometry type dynamically to handle cases where it changes after evaluator creation
     const meshGeomType = this.determineGeometryType(this.obj);
-    this.loadFeatureIds();
 
     if (this.cachedBatchedProperties) {
       for (const [batchIdx, properties] of this.cachedBatchedProperties) {
@@ -384,7 +363,7 @@ export class FeatureEvaluator {
             layerId: this.layerId,
             batchId: this.batchIds[batchIdx],
             properties,
-            featureId: this.featureIdOf(batchIdx),
+            featureId: this.featureIds[batchIdx],
             meshGeomType,
           },
           batchIdx,
@@ -398,15 +377,17 @@ export class FeatureEvaluator {
           batchIdx: number,
           batchId: number,
           properties: Record<string, unknown> | undefined,
+          featureId: string | number | undefined,
         ) => {
           this.cachedBatchedProperties?.set(batchIdx, properties);
           this.batchIds[batchIdx] = batchId;
+          this.featureIds[batchIdx] = featureId;
           f(
             {
               layerId: this.layerId,
               batchId,
               properties,
-              featureId: this.featureIdOf(batchIdx),
+              featureId,
               meshGeomType,
             },
             batchIdx,
@@ -436,7 +417,6 @@ export class FeatureEvaluator {
   ) {
     // Read geometry type dynamically to handle cases where it changes after evaluator creation
     const meshGeomType = this.determineGeometryType(this.obj);
-    this.loadFeatureIds();
 
     const cacheKey = keys.join("|");
     if (this.filterCacheKey === cacheKey && this.cachedFilteredProperties) {
@@ -446,7 +426,7 @@ export class FeatureEvaluator {
             layerId: this.layerId,
             batchId: this.batchIds[batchIndex],
             properties: filtered,
-            featureId: this.featureIdOf(batchIndex),
+            featureId: this.featureIds[batchIndex],
             meshGeomType,
           },
           batchIndex,
@@ -459,19 +439,25 @@ export class FeatureEvaluator {
       this.handler.readFilteredBatchedProperties(
         this.featureSetId,
         keys,
-        (batchIndex: number, batchId: number, filtered?: unknown[]) => {
+        (
+          batchIndex: number,
+          batchId: number,
+          filtered?: unknown[],
+          featureId?: string | number,
+        ) => {
           const properties: Record<string, unknown> = {};
           for (let i = 0; i < keys.length; i++) {
             properties[keys[i]] = filtered?.[i];
           }
           this.cachedFilteredProperties?.set(batchIndex, properties);
           this.batchIds[batchIndex] = batchId;
+          this.featureIds[batchIndex] = featureId;
           f(
             {
               layerId: this.layerId,
               batchId,
               properties,
-              featureId: this.featureIdOf(batchIndex),
+              featureId,
               meshGeomType,
             },
             batchIndex,

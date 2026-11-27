@@ -802,41 +802,24 @@ impl Core {
             .read_all_batched_properties::<JsPropertyValue, JsValue, _>(
                 renderable_feature_bits,
                 None,
-                &|batch_idx, batch_id, props| {
+                &|batch_idx, batch_id, props, feature_id| {
                     let batch_idx = JsValue::from(batch_idx as u32);
                     let batch_id = JsValue::from(batch_id);
-                    match props {
-                        BatchProperties::All(Some(v)) => {
-                            callback.call3(&this, &batch_idx, &batch_id, &v.0)?
-                        }
-                        _ => callback.call2(&this, &batch_idx, &batch_id)?,
+                    let props = match props {
+                        BatchProperties::All(Some(v)) => v.0,
+                        _ => JsValue::UNDEFINED,
                     };
+                    callback.call4(
+                        &this,
+                        &batch_idx,
+                        &batch_id,
+                        &props,
+                        &feature_id_to_js(feature_id),
+                    )?;
                     Ok(())
                 },
             )?;
         Ok(())
-    }
-
-    /// Calls `callback(batchIdx, id)` for each row of a batched feature whose
-    /// source feature has a top-level id (GeoJSON `id` or MVT feature id;
-    /// `string | number`).
-    #[wasm_bindgen(js_name = readBatchedFeatureIds)]
-    pub fn read_batched_feature_ids(
-        &mut self,
-        renderable_feature_bits: u64,
-        callback: &js_sys::Function,
-    ) -> Result<(), JsValue> {
-        let this = JsValue::NULL;
-        self.app.read_batched_feature_ids::<JsValue, _>(
-            renderable_feature_bits,
-            &|batch_idx, id| {
-                let id = feature_id_to_js(Some(id));
-                if !id.is_undefined() {
-                    callback.call2(&this, &JsValue::from(batch_idx as u32), &id)?;
-                }
-                Ok(())
-            },
-        )
     }
 
     #[wasm_bindgen(js_name = readFilteredBatchedProperties)]
@@ -853,10 +836,10 @@ impl Core {
             .read_all_batched_properties::<JsPropertyValue, JsValue, _>(
                 renderable_feature_bits,
                 Some(&keys),
-                &|batch_idx, batch_id, props| {
+                &|batch_idx, batch_id, props, feature_id| {
                     let batch_idx = JsValue::from(batch_idx as u32);
                     let batch_id = JsValue::from(batch_id);
-                    match props {
+                    let props = match props {
                         BatchProperties::Filtered(Some(values)) => {
                             let arr = js_sys::Array::new_with_length(values.len() as u32);
                             for (i, val) in values.into_iter().enumerate() {
@@ -865,10 +848,17 @@ impl Core {
                                     None => arr.set(i as u32, JsValue::UNDEFINED),
                                 }
                             }
-                            callback.call3(&this, &batch_idx, &batch_id, &arr.into())?
+                            arr.into()
                         }
-                        _ => callback.call2(&this, &batch_idx, &batch_id)?,
+                        _ => JsValue::UNDEFINED,
                     };
+                    callback.call4(
+                        &this,
+                        &batch_idx,
+                        &batch_id,
+                        &props,
+                        &feature_id_to_js(feature_id),
+                    )?;
                     Ok(())
                 },
             )?;

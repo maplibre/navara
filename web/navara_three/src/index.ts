@@ -991,8 +991,6 @@ export default class ThreeView<
     },
     readAllBatchedProperties: (featureId, f) =>
       this._core?.readAllBatchedProperties(featureId, f),
-    readBatchedFeatureIds: (featureSetId, f) =>
-      this._core?.readBatchedFeatureIds(featureSetId, f),
     readFilteredBatchedProperties: (featureId, keys, f) =>
       this._core?.readFilteredBatchedProperties(featureId, keys, f),
   };
