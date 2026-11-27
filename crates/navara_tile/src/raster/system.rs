@@ -113,17 +113,20 @@ pub struct RasterRevisionParams<'w, 's> {
 }
 
 /// The bake-relevant slice of a layer's config: whether it bakes at all
-/// (hillshade excluded), how it pairs with the baked-slot ordinals and what the
-/// resolve reads (the source's max zoom). A `Changed<TilesLayer>` event that
-/// leaves these untouched — an appearance-only mutation — must not bump the
-/// resolve revision.
-fn bake_config_entry(layer: &TilesLayer) -> (bool, bool, Option<&str>) {
+/// (hillshade excluded, and a hidden layer takes no slot), how it pairs with
+/// the baked-slot ordinals and what the resolve reads (the source's max zoom).
+/// A `Changed<TilesLayer>` event that leaves these untouched — e.g. an opacity
+/// or color change — must not bump the resolve revision.
+fn bake_config_entry(layer: &TilesLayer) -> BakeConfigEntry<'_> {
     (
         layer.hillshade_config.is_some(),
         layer.elevation_heatmap_config.is_some(),
+        layer.appearance().unwrap().show,
         layer.source_id.as_deref(),
     )
 }
+
+type BakeConfigEntry<'a> = (bool, bool, bool, Option<&'a str>);
 
 /// Drives raster tile traversal: select the LOD tiles by screen-space error and
 /// request their textures. The resolved textures are later pulled into terrain
@@ -170,11 +173,11 @@ pub fn update_raster_tiles(
 
     let is_texture_fragment_changed = !changed_texture_fragment.is_empty();
     let is_layers_len_changed = tiles_len != tc.prev_layers_len;
-    // In-place layer mutations too (`updateLayer` toggling hillshade/heatmap config):
-    // they change which layers bake and therefore the baked-slot ordinal pairing.
-    // `Changed` includes `Added`, so this also covers new layers. `Changed` also
-    // fires on appearance-only mutations (opacity/show/color), which cannot affect
-    // the resolve — the fingerprint comparison filters those out, or a per-frame
+    // In-place layer mutations too (`updateLayer` toggling hillshade/heatmap config
+    // or `show`): they change which layers bake and therefore the baked-slot ordinal
+    // pairing. `Changed` includes `Added`, so this also covers new layers. `Changed`
+    // also fires on opacity/color mutations, which cannot affect the resolve — the
+    // fingerprint comparison filters those out, or a per-frame
     // opacity animation would re-resolve every visible tile's drape every frame
     // (the FPS killer the revision gate exists to avoid).
     let is_layers_changed = (is_layers_len_changed
@@ -185,8 +188,8 @@ pub fn update_raster_tiles(
                 .iter()
                 .sort::<&Order>()
                 .zip(tc.bake_config_fingerprint.iter())
-                .all(|((l, _), (hillshade, heatmap, source_id))| {
-                    bake_config_entry(l) == (*hillshade, *heatmap, source_id.as_deref())
+                .all(|((l, _), (hillshade, heatmap, show, source_id))| {
+                    bake_config_entry(l) == (*hillshade, *heatmap, *show, source_id.as_deref())
                 }));
     // `Changed` fires only once, but the returns below (no occluder/camera yet)
     // can cut this run short before the change is committed — carry it so the
@@ -238,8 +241,8 @@ pub fn update_raster_tiles(
             .iter()
             .sort::<&Order>()
             .map(|(l, _)| {
-                let (hillshade, heatmap, source_id) = bake_config_entry(l);
-                (hillshade, heatmap, source_id.map(str::to_owned))
+                let (hillshade, heatmap, show, source_id) = bake_config_entry(l);
+                (hillshade, heatmap, show, source_id.map(str::to_owned))
             })
             .collect();
     }
@@ -346,10 +349,11 @@ pub fn snapshot_raster_bake_inputs(
         return;
     }
 
-    // The sort and the non-hillshade filter MUST match `update_mesh_material`,
-    // which emits the k-th baked composite slot from the same list — the web
-    // pairs slots and states by that ordinal.
-    for (layer_index, (l, _)) in tiles.iter().sort::<&Order>().enumerate() {
+    // The slotted layers and the non-hillshade filter MUST match
+    // `update_mesh_material`, which emits the k-th baked composite slot from the
+    // same list — the web pairs slots and states by that ordinal.
+    let sorted_layers: Vec<_> = tiles.iter().sort::<&Order>().collect();
+    for (layer_index, l) in super::slotted_layers(&sorted_layers) {
         if l.hillshade_config.is_some() {
             continue;
         }
@@ -759,5 +763,150 @@ mod load_gate_tests {
         app.update();
         app.update();
         assert!(app.world().get::<Deleted>(e).is_none());
+    }
+}
+
+#[cfg(test)]
+mod bake_snapshot_tests {
+    use super::*;
+    use bevy_app::{App, Update};
+    use navara_material::{Appearance, HillshadeConfig, RasterMaterial};
+
+    fn layer(layer_id: &str, show: bool, hillshade: bool) -> TilesLayer {
+        TilesLayer {
+            layer_id: layer_id.to_string(),
+            source_id: None,
+            appearance: Some(Appearance::TerrainTile(RasterMaterial {
+                show,
+                ..Default::default()
+            })),
+            elevation_heatmap_config: None,
+            hillshade_config: hillshade.then_some(HillshadeConfig { exaggeration: 1.0 }),
+        }
+    }
+
+    fn baked_layer_indices(app: &App) -> Vec<usize> {
+        app.world()
+            .resource::<crate::raster::RasterBakeSnapshot>()
+            .layers
+            .iter()
+            .map(|l| l.layer_index)
+            .collect()
+    }
+
+    fn set_show(app: &mut App, layer: Entity, show: bool) {
+        let mut l = app.world_mut().get_mut::<TilesLayer>(layer).unwrap();
+        if let Some(Appearance::TerrainTile(m)) = l.appearance.as_mut() {
+            m.show = show;
+        }
+    }
+
+    /// The baked layers pair with the baked composite slots by ordinal, so a
+    /// hidden layer, which takes no slot, must not take an ordinal either. Each
+    /// entry keeps the layer's sorted index for its texture fragment lookup.
+    #[test]
+    fn hidden_layers_take_no_bake_ordinal() {
+        let mut app = App::new();
+        app.insert_resource(navara_globe::Globe {
+            tiling_scheme: TilingScheme::Geographic { tms: true },
+            ..Default::default()
+        });
+        app.insert_resource(navara_source::SourceStore::new());
+        app.init_resource::<crate::raster::RasterResolveRevision>();
+        app.init_resource::<crate::raster::RasterBakeSnapshot>();
+        app.add_systems(Update, snapshot_raster_bake_inputs);
+
+        app.world_mut().spawn((layer("A", true, false), Order(0)));
+        app.world_mut().spawn((layer("H", true, true), Order(1)));
+        let b = app
+            .world_mut()
+            .spawn((layer("B", false, false), Order(2)))
+            .id();
+        app.world_mut().spawn((layer("C", true, false), Order(3)));
+
+        app.update();
+        assert_eq!(baked_layer_indices(&app), vec![0, 3]);
+
+        set_show(&mut app, b, true);
+        app.world_mut()
+            .resource_mut::<crate::raster::RasterResolveRevision>()
+            .bump();
+        app.update();
+        assert_eq!(baked_layer_indices(&app), vec![0, 2, 3]);
+    }
+
+    fn revision(app: &App) -> u32 {
+        app.world()
+            .resource::<crate::raster::RasterResolveRevision>()
+            .0
+    }
+
+    /// Toggling `show` re-pairs the baked-slot ordinals, so `update_raster_tiles`
+    /// must bump the resolve revision for it, in the frame of the toggle. An
+    /// opacity change must not.
+    #[test]
+    fn show_toggle_bumps_the_resolve_revision() {
+        use navara_math::Vec3;
+
+        let mut app = App::new();
+        app.add_plugins(navara_frame::FramePlugin);
+        app.insert_resource(RasterTileQuadtree::new_with_linear_qt());
+        app.init_resource::<RasterTileCacheManager>();
+        app.insert_resource(TerrainTileQuadtree::new_with_linear_qt());
+        app.init_resource::<TerrainExaggeration>();
+        app.init_resource::<Window>();
+        app.insert_resource(navara_globe::Globe::default());
+        app.insert_resource(navara_source::SourceStore::new());
+        app.init_resource::<SsePressure>();
+        app.init_resource::<crate::raster::RasterResolveRevision>();
+        app.world_mut().spawn((
+            Fog {
+                enabled: false,
+                density: 0.,
+                sse_factor: 1.,
+            },
+            DynamicSse::disabled(),
+        ));
+        let transform = Transform::from_translation(Vec3::X * 1e7);
+        app.world_mut().spawn((
+            CameraMarker,
+            transform,
+            CameraFrustum::new(&transform, 0.1, 1e9, 1., 1.),
+        ));
+        app.world_mut().spawn(EllipsoidalOccluder::new(
+            &(Vec3::X * 1e7),
+            navara_core::WGS84_64,
+        ));
+        app.add_systems(Update, update_raster_tiles);
+
+        app.world_mut().spawn((layer("A", true, false), Order(0)));
+        let b = app
+            .world_mut()
+            .spawn((layer("B", true, false), Order(1)))
+            .id();
+        app.update();
+        app.update();
+        let settled = revision(&app);
+
+        if let Some(Appearance::TerrainTile(m)) = app
+            .world_mut()
+            .get_mut::<TilesLayer>(b)
+            .unwrap()
+            .appearance
+            .as_mut()
+        {
+            m.opacity = 0.5;
+        }
+        app.update();
+        assert_eq!(revision(&app), settled, "opacity does not re-pair slots");
+
+        set_show(&mut app, b, false);
+        app.update();
+        assert_ne!(revision(&app), settled, "hiding a layer re-pairs slots");
+        let hidden = revision(&app);
+
+        set_show(&mut app, b, true);
+        app.update();
+        assert_ne!(revision(&app), hidden, "showing a layer re-pairs slots");
     }
 }

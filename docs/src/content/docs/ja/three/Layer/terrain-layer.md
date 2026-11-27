@@ -69,7 +69,7 @@ Cesium Ion の quantized-mesh アセット（エンドポイント + トーク�
 
 ### 地形への画像のドレープ
 
-terrain レイヤーは 3D の地表のみを提供します。その上に [`raster`](../../../three/layer/raster-layer/) レイヤーを追加すると、そのタイルがメッシュ上にドレープされます。後から追加したレイヤーが上に描画されるため、高解像度のオーバーレイで広範囲のベースレイヤーを精細化できます。
+terrain レイヤーは 3D の地表のみを提供します。その上に [`raster`](../../../three/layer/raster-layer/) レイヤーを追加すると、そのタイルがメッシュ上にドレープされます。後から追加したレイヤーが上に描画されるため、高解像度のオーバーレイで広範囲のベースレイヤーを精細化できます。同時にドレープできるレイヤーの数はデバイスによって異なります（[ドレープできるレイヤー数の上限](../../../three/layer/raster-layer/#ドレープできるレイヤー数の上限)を参照）。
 
 ```typescript
 const terrain = view.addSource({ type: "quantized-mesh", url: "https://example.com/{z}/{x}/{y}.terrain", maxZoom: 18 });

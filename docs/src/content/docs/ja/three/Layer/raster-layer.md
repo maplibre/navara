@@ -82,6 +82,12 @@ view.addLayer({
 });
 ```
 
+## ドレープできるレイヤー数の上限
+
+地形に同時にドレープできるレイヤーの数には上限があり、その数はデバイスによって異なります。`raster: { show: false }` で非表示にした `raster` レイヤーは数に含まれないため、切り替え用のベースマップは追加したまま `show` で切り替えられます。 :since[0.3.2]
+
+収まる数より多くのレイヤーを表示すると、上に重なるレイヤーから描画されなくなり、コンソールに `Too many layers draped on the terrain: …` が出力されます。上限の詳細と今後の改善については [issue #1039](https://github.com/maplibre/navara/issues/1039) を参照してください。
+
 ## 関連リソース
 
 - [Raster Tile Source](../../../three/source/raster-tile-source/) / [Raster DEM Source](../../../three/source/raster-dem-source/)

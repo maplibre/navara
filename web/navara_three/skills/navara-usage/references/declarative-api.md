@@ -52,6 +52,7 @@ view.addLayer({ type: "raster", source: imagery });
 Quantized-mesh terrain uses `type: "quantized-mesh"` sources (or `CesiumIonPlugin` for Cesium Ion assets). DEM sources can also feed `raster` layers with `hillshade` or `elevationHeatmap` materials.
 
 - **`terrain: { show: false }` hides the globe surface, not the heights.** The tile meshes stop drawing, and with them the raster layers, hillshade and draped (`clampToGround`) polygons/polylines rendered onto them. Terrain data keeps loading, so `clampToGround` points/billboards/text and terrain sampling still follow the terrain. To flatten the surface instead, `layer.delete()`: it drops to the ellipsoid and draped raster layers re-drape automatically.
+- **Hidden raster layers do not count toward the draped layer limit.** Only a device-dependent number of layers can be draped on the terrain at once; past it the topmost are dropped with a `Too many layers draped on the terrain` console error. A raster layer with `raster: { show: false }` takes no slot, so switch basemaps by toggling `show` on layers kept added. Details and planned changes: https://github.com/maplibre/navara/issues/1039.
 
 ## Elevation heatmap
 

@@ -20,11 +20,11 @@ pub struct RasterTileCacheManager {
     pub prev_layers_len: usize,
     pub min_zoom_descent: MinZoomDescentBudget,
     /// Bake-relevant layer config from the last change, one entry per layer in
-    /// sorted (`Order`) order: (has hillshade, has heatmap, source id). Filters
-    /// appearance-only `Changed<TilesLayer>` events (opacity/show/color) out of
-    /// the resolve-revision bump in `update_raster_tiles` — a per-frame opacity
+    /// sorted (`Order`) order: (has hillshade, has heatmap, shown, source id).
+    /// Filters opacity/color-only `Changed<TilesLayer>` events out of the
+    /// resolve-revision bump in `update_raster_tiles` — a per-frame opacity
     /// animation must not re-resolve every visible terrain tile's drape.
-    pub bake_config_fingerprint: Vec<(bool, bool, Option<String>)>,
+    pub bake_config_fingerprint: Vec<(bool, bool, bool, Option<String>)>,
     /// A bake-relevant layer change observed by a run of `update_raster_tiles`
     /// that early-returned before committing it (occluder/camera not spawned
     /// yet). `Changed<TilesLayer>` fires only once, so the swallowed trigger is

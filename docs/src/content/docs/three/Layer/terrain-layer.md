@@ -69,7 +69,7 @@ For Cesium Ion quantized-mesh assets (endpoint + token resolved at runtime), use
 
 ### Draping imagery onto terrain
 
-A terrain layer provides only the 3D surface. Add a [`raster`](../../../three/layer/raster-layer/) layer over it. Its tiles are draped onto the mesh. Later layers render on top, so a higher-resolution overlay can refine a wider base layer.
+A terrain layer provides only the 3D surface. Add a [`raster`](../../../three/layer/raster-layer/) layer over it. Its tiles are draped onto the mesh. Later layers render on top, so a higher-resolution overlay can refine a wider base layer. The number of layers that can be draped at once depends on the device (see [Draped layer limit](../../../three/layer/raster-layer/#draped-layer-limit)).
 
 ```typescript
 const terrain = view.addSource({ type: "quantized-mesh", url: "https://example.com/{z}/{x}/{y}.terrain", maxZoom: 18 });
