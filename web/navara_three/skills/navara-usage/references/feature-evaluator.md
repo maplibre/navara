@@ -31,7 +31,7 @@ layer.on("featureUpdated", ({ evaluator }) => {
 
 ## Restyling interactively (highlight the picked feature)
 
-Change your own state, then call `layer.forceUpdate()`: the next frame re-emits `featureUpdated` and the callback re-runs. A picked feature (`featureClick` / `featureHover` payload) and the `evaluate()` callback argument share `{ batchId, properties, layerId, featureId? }`. Match them by `featureId` (the GeoJSON top-level `id` or MVT feature id, not part of `properties`) when the data has one: it also styles every tile piece of a feature. `filters: []` reads no properties and still passes `featureId`:
+Change your own state, then call `layer.forceUpdate()`: the next frame re-emits `featureUpdated` and the callback re-runs. A picked feature (`featureClick` / `featureHover` payload) and the `evaluate()` callback argument share `{ batchId, properties, layerId, featureId? }`. Match them by `featureId` (the GeoJSON top-level `id` or MVT feature id, not part of `properties`) when the data has one: it also styles every tile piece of a split feature (vector tiles, and GeoJSON polygons/polylines with `clampToGround` or `tiled`). `filters: []` reads no properties and still passes `featureId`:
 
 ```typescript
 let selectedId: string | number | undefined;
@@ -56,7 +56,7 @@ layer.on("featureUpdated", ({ evaluator }) => {
 });
 ```
 
-Without a `featureId` (3D Tiles, id-less GeoJSON/MVT): a transient highlight (hover) can match `batchId`, which every batch has, but it covers only the picked tile's piece and changes when the tile reloads. A kept selection must match a stable property instead: read it in both places (`info.properties?.["gml_id"]`), and include it in `filters`. Never keep a selection keyed by `batchId`: once its feature set is removed, the number is reused by another feature.
+Without a `featureId` (3D Tiles, id-less GeoJSON/MVT): a transient highlight (hover) can match `batchId`, which every batch has, but for a feature split across tiles it covers only the picked tile's piece and changes when that tile reloads. A kept selection must match a stable property instead: read it in both places (`info.properties?.["gml_id"]`), and include it in `filters`. Never keep a selection keyed by `batchId`: once its feature set is removed, the number is reused by another feature.
 
 Runnable reference: `example/pages/examples/api/picking/main.ts` (Navara repo). Picking events and their cost: [picking-and-events.md](picking-and-events.md).
 

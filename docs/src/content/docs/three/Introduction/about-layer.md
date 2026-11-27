@@ -36,7 +36,7 @@ graph LR
 - **Feature**: One entity of the source data, such as a building or a road segment. It has properties, and a `featureId` when the source data gives it a top-level id.
 - **Batch**: A feature as rendered in one feature set. Each batch has a `batchId`, which picking reports.
 
-Features of GeoJSON and vector tile sources are split across the tiles they cross. Each piece is a separate batch in its own feature set, with its own `batchId`, and all pieces share the feature's `featureId` and properties.
+Features of vector tile sources, and GeoJSON polygons and polylines whose material sets `clampToGround` or `tiled`, are split across the tiles they cross. Each piece is a separate batch in its own feature set, with its own `batchId`, and all pieces share the feature's `featureId` and properties.
 
 ### Identifiers
 
@@ -49,7 +49,7 @@ Features of GeoJSON and vector tile sources are split across the tiles they cros
 
 `batchId` and `featureId` serve different purposes:
 
-- **`batchId`**: Every batch has one, whatever the source data, and it is unique among the batches currently rendered. Use it for a highlight that lasts only while the feature is on screen, such as on hover. It covers only the piece in one tile, and it changes when the tile is loaded again. The old number is then given to another batch, so a selection kept by `batchId` can move to a different feature.
+- **`batchId`**: Every batch has one, whatever the source data, and it is unique among the batches currently rendered. Use it for a highlight that lasts only while the feature is on screen, such as on hover. For a feature split across tiles, it covers only the piece in one tile, and it changes when that tile is loaded again. The old number is then given to another batch, so a selection kept by `batchId` can move to a different feature.
 - **`featureId`**: It comes from the source data, so it does not change when tiles are reloaded, and matching by it styles every piece of the feature across tiles. Use it to keep a selection. It is `undefined` when the source data has no top-level id: 3D Tiles never have one, and many GeoJSON and vector tile datasets omit it. Navara does not check that `featureId` values are unique.
 
 To keep a selection in data without `featureId`, match by a stable property instead, such as `gml_id` in PLATEAU data.
