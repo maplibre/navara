@@ -2,7 +2,7 @@ use bevy_ecs::{component::Component, entity::Entity};
 use navara_component::Priority;
 use navara_memory::RetainedEntry;
 use navara_tile_component::{MinZoomDescentBudget, TileHandle};
-use rustc_hash::FxHashMap;
+use rustc_hash::{FxHashMap, FxHashSet};
 
 // Manage the tiles that are going to be rendered.
 #[derive(Default, Component)]
@@ -18,6 +18,14 @@ pub struct TileCacheManager {
     /// `rendered_tile_caches`.
     pub retained: FxHashMap<TileHandle, RetainedEntry>,
     pub last_rendered_frame: usize,
+    /// The frame of the traversal before the latest one: a tile it reached
+    /// (`visited_at`) and the latest one culls has just left the view.
+    pub previous_pass_frame: usize,
+    /// The tiles the latest traversal keeps drawn only for an area outside
+    /// the view: under a texturized tile outside the frustum, which backs the
+    /// drape. `enforce_memory_budget` evicts them after the pooled tiles. A
+    /// tile an ancestor takes back in the same pass leaves it.
+    pub kept_off_view: FxHashSet<TileHandle>,
     pub is_updated_in_this_frame: bool,
     pub needs_update: bool,
     pub min_zoom_descent: MinZoomDescentBudget,

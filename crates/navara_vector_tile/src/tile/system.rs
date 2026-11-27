@@ -153,7 +153,9 @@ pub fn update_tiles(
             // Every camera's traversal in a frame adds to the same set.
             if tc.last_rendered_frame != frame.rendered_frame() {
                 tc.wanted_data.clear();
+                tc.previous_pass_frame = tc.last_rendered_frame;
             }
+            tc.kept_off_view.clear();
             tc.is_updated_in_this_frame = true;
             tc.last_rendered_frame = frame.rendered_frame();
 
@@ -228,6 +230,7 @@ pub fn update_tiles(
                 &globe,
                 &mut *tile_source.0,
                 &mut buf,
+                None,
             ) {
                 TraversalResult::TileRendered => {
                     spawn_tile_entity(
@@ -239,8 +242,9 @@ pub fn update_tiles(
                     );
                     // Nothing above the root reads whether it is drawn.
                     for handle in
-                        activations.activate(zero_tile_handle, false, 0..activations.mark())
+                        activations.activate(zero_tile_handle, None, false, 0..activations.mark())
                     {
+                        tc.kept_off_view.remove(&handle);
                         write_activation(
                             &mut tc,
                             &handle,
@@ -266,6 +270,7 @@ pub fn update_tiles(
                 _ => {}
             };
             activations.apply(
+                &mut qt,
                 &mut tc,
                 &rendered_tiles,
                 &features,
@@ -440,6 +445,7 @@ fn destroy_rendered_tile(
     tc.rendered_tile_caches.remove(&rendered_tile.tile_handle);
     tc.requested_tile_caches.remove(&rendered_tile.tile_handle);
     tc.retained.remove(&rendered_tile.tile_handle);
+    tc.kept_off_view.remove(&rendered_tile.tile_handle);
 
     let removed_by_layer = rendered_tile.destroy(commands, features, batched_features);
     qt.qt
@@ -735,6 +741,9 @@ pub(crate) fn remove_unvisited_tile(
 }
 
 struct EvictionCandidate {
+    /// Kept drawn only for an area outside the view: evicted after the
+    /// pooled tiles.
+    is_kept_off_view: bool,
     source: Entity,
     quadtree: Entity,
     tile_cache_manager: Entity,
@@ -761,6 +770,7 @@ pub fn enforce_memory_budget(
     batched_features: Query<&BatchedFeature>,
     features: Query<(&FeatureId, &LayerId)>,
     mut tile_sources: Query<&mut TileSource>,
+    tile_costs: Query<&TileCost>,
 ) {
     let current_frame = frame.rendered_frame();
 
@@ -824,37 +834,51 @@ pub fn enforce_memory_budget(
             continue;
         };
 
-        for (handle, entry) in tc.retained.iter() {
-            // Never evict tiles that were only just retained; an immediate
-            // pan-back must not refetch.
-            if !navara_memory::eviction::is_evictable(entry.retained_at, current_frame) {
-                continue;
-            }
-            let Some(entity) = tc.rendered_tile_caches.get(handle).copied() else {
+        // The pooled tiles past their grace, then the tiles kept drawn only
+        // for an area outside the view (the drape of a clamp-to-ground layer):
+        // those are drawn, but a closed load gate must not hold them forever.
+        let pooled = tc
+            .retained
+            .iter()
+            .filter(|(_, entry)| {
+                // Never evict tiles that were only just retained; an immediate
+                // pan-back must not refetch.
+                navara_memory::eviction::is_evictable(entry.retained_at, current_frame)
+            })
+            .map(|(handle, entry)| (*handle, false, Some(entry.cost.gpu_est)));
+        let kept = tc.kept_off_view.iter().map(|handle| (*handle, true, None));
+        for (handle, is_kept_off_view, pooled_gpu_est) in pooled.chain(kept) {
+            let Some(entity) = tc.rendered_tile_caches.get(&handle).copied() else {
                 continue;
             };
-            let Some(tile) = qt.qt.get(*handle) else {
+            let Some(tile) = qt.qt.get(handle) else {
                 continue;
             };
             let distance = rendered_tiles
                 .get(entity)
                 .map(|(_, _, order)| order.distance)
                 .unwrap_or(0.);
+            let gpu_est = pooled_gpu_est
+                .unwrap_or_else(|| tile_costs.get(entity).map(|cost| cost.gpu_est).unwrap_or(0));
             candidates.push(EvictionCandidate {
+                is_kept_off_view,
                 source: resources.source,
                 quadtree: resources.quadtree,
                 tile_cache_manager: resources.tile_cache_manager,
                 entity,
                 visited_at: tile.visited_at,
                 distance,
-                gpu_est: entry.cost.gpu_est,
+                gpu_est,
             });
         }
     }
 
-    // Oldest visit first; evict the farthest tiles first among equals.
+    // The pooled tiles before the kept ones; then oldest visit first, the
+    // farthest tiles first among equals.
     candidates.sort_by(|a, b| {
-        navara_memory::eviction::order((a.visited_at, a.distance), (b.visited_at, b.distance))
+        a.is_kept_off_view.cmp(&b.is_kept_off_view).then_with(|| {
+            navara_memory::eviction::order((a.visited_at, a.distance), (b.visited_at, b.distance))
+        })
     });
 
     let mut budget = navara_memory::eviction::EvictBudget::new(usage_est, ledger.evict_target());
@@ -1356,7 +1380,7 @@ mod memory_budget_tests {
 }
 
 #[cfg(test)]
-mod keep_drawn_descendants_tests {
+pub(crate) mod keep_drawn_descendants_tests {
     use super::*;
     use crate::source::{ReadyState, VectorTileSource};
     use crate::source_cache::{SourceId, TraversalConfig};
@@ -1369,7 +1393,7 @@ mod keep_drawn_descendants_tests {
     use navara_tile_component::{MinZoomDescentBudget, Tile};
     use std::any::Any;
 
-    type Coords = (usize, usize, usize);
+    pub(crate) type Coords = (usize, usize, usize);
 
     const ROOT: Coords = (0, 0, 0);
     /// The z1 tile under test (lng 0°..180°, north), its z2 child that is in
@@ -1379,14 +1403,22 @@ mod keep_drawn_descendants_tests {
     const DRAWN_CHILD: Coords = (2, 1, 2);
     const NEW_CHILD: Coords = (3, 1, 2);
 
-    /// Every tile is loaded, except the `pending` and `failed` ones.
+    /// Every tile is loaded, except the `pending` and `failed` ones. With
+    /// `loaded` set, only those tiles are, and an evicted tile drops out.
     #[derive(Default)]
-    struct MockSource {
-        pending: FxHashSet<Coords>,
-        failed: FxHashSet<Coords>,
+    pub(crate) struct MockSource {
+        pub(crate) pending: FxHashSet<Coords>,
+        pub(crate) failed: FxHashSet<Coords>,
+        pub(crate) loaded: Option<FxHashSet<Coords>>,
         max_feature_height: f64,
         /// Every `prepare_tile` call, in order.
-        requests: Vec<(Coords, Priority)>,
+        pub(crate) requests: Vec<(Coords, Priority)>,
+        /// How many `evict_tile` calls there were.
+        pub(crate) evictions: usize,
+        /// Tiles whose request was cancelled by an eviction and not made
+        /// again.
+        pub(crate) cancelled: FxHashSet<Coords>,
+        requested_handles: rustc_hash::FxHashMap<navara_tile_component::TileHandle, Coords>,
     }
 
     impl VectorTileSource for MockSource {
@@ -1398,15 +1430,33 @@ mod keep_drawn_descendants_tests {
             &mut self,
             _commands: &mut Commands,
             tile: &mut VectorTile,
-            _handle: navara_tile_component::TileHandle,
-            _tc: &mut TileCacheManager,
+            handle: navara_tile_component::TileHandle,
+            tc: &mut TileCacheManager,
             _buf: &mut BufferStore,
             _data_requesters: &VectorTileDataRequesterQuery,
             priority: Priority,
         ) -> bool {
-            self.requests
-                .push(((tile.coords.x, tile.coords.y, tile.coords.z), priority));
+            let coords = (tile.coords.x, tile.coords.y, tile.coords.z);
+            self.requests.push((coords, priority));
+            self.requested_handles.insert(handle, coords);
+            self.cancelled.remove(&coords);
+            // Like the real sources: an unvisited requested tile is removed.
+            if self.loaded.is_some() {
+                tc.requested_tile_caches
+                    .entry(handle)
+                    .or_insert(Entity::PLACEHOLDER);
+            }
             false
+        }
+
+        fn evict_tile(&mut self, handle: navara_tile_component::TileHandle) {
+            self.evictions += 1;
+            if let (Some(loaded), Some(coords)) =
+                (&mut self.loaded, self.requested_handles.get(&handle))
+            {
+                loaded.remove(coords);
+                self.cancelled.insert(*coords);
+            }
         }
 
         fn construct_geometry(
@@ -1433,8 +1483,14 @@ mod keep_drawn_descendants_tests {
                 ReadyState::Pending
             } else if self.failed.contains(&coords) {
                 ReadyState::Failed
-            } else {
+            } else if self
+                .loaded
+                .as_ref()
+                .is_none_or(|loaded| loaded.contains(&coords))
+            {
                 ReadyState::Success
+            } else {
+                ReadyState::Pending
             }
         }
 
@@ -1443,17 +1499,17 @@ mod keep_drawn_descendants_tests {
         }
     }
 
-    struct Scene {
-        quadtree: Entity,
-        tile_cache_manager: Entity,
-        source: Entity,
-        camera: Entity,
-        occluder: Entity,
+    pub(crate) struct Scene {
+        pub(crate) quadtree: Entity,
+        pub(crate) tile_cache_manager: Entity,
+        pub(crate) source: Entity,
+        pub(crate) camera: Entity,
+        pub(crate) occluder: Entity,
     }
 
     /// A source that always subdivides down to z2, seen from twice the Earth
     /// radius above the equator at lng 0°: the horizon is 60° away.
-    fn setup() -> (App, Scene) {
+    pub(crate) fn setup() -> (App, Scene) {
         let mut app = App::new();
         app.add_plugins(FramePlugin);
         app.insert_resource(TerrainInformationQuadtree::new_with_linear_qt());
@@ -1528,7 +1584,7 @@ mod keep_drawn_descendants_tests {
     }
 
     /// Like [`look_from`], with a `fov` degrees wide view.
-    fn look_with_fov(app: &mut App, scene: &Scene, lng: f64, fov: f64) {
+    pub(crate) fn look_with_fov(app: &mut App, scene: &Scene, lng: f64, fov: f64) {
         let lng = lng.to_radians();
         let position = Vec3::new(lng.cos(), lng.sin(), 0.) * (WGS84_A_64 * 2.);
         let transform = Transform::from_translation(position).looking_at(Vec3::ZERO, Vec3::Z);
@@ -1558,11 +1614,11 @@ mod keep_drawn_descendants_tests {
         mock.failed.insert(coords);
     }
 
-    fn set_max_sse(app: &mut App, scene: &Scene, max_sse: f64) {
+    pub(crate) fn set_max_sse(app: &mut App, scene: &Scene, max_sse: f64) {
         traversal_config(app, scene).max_sse_bits = (max_sse as f32).to_bits();
     }
 
-    fn traversal_config<'a>(app: &'a mut App, scene: &Scene) -> &'a mut TraversalConfig {
+    pub(crate) fn traversal_config<'a>(app: &'a mut App, scene: &Scene) -> &'a mut TraversalConfig {
         &mut app
             .world_mut()
             .get_mut::<VectorTileSourceResources>(scene.source)
@@ -1572,7 +1628,7 @@ mod keep_drawn_descendants_tests {
             .traversal_config
     }
 
-    fn traverse(app: &mut App, scene: &Scene) {
+    pub(crate) fn traverse(app: &mut App, scene: &Scene) {
         app.world_mut()
             .get_mut::<TileCacheManager>(scene.tile_cache_manager)
             .unwrap()
