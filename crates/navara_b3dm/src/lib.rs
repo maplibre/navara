@@ -2,6 +2,8 @@
 
 extern crate alloc;
 
+#[cfg(test)]
+mod proptests;
 mod types;
 
 pub use navara_bin::*;
@@ -186,13 +188,20 @@ pub struct BinaryColumn {
 }
 
 impl BinaryColumn {
-    fn from_json(prop: &serde_json::Value) -> Self {
-        Self {
-            byte_offset: prop["byteOffset"].as_u64().unwrap() as usize,
-            component_type: ComponentType::from_str(prop["componentType"].as_str().unwrap()),
-            data_type: DataType::from_str(prop["type"].as_str().unwrap()),
-        }
+    /// `None` for a reference the batch table spec does not allow.
+    fn from_json(prop: &serde_json::Value) -> Option<Self> {
+        Some(Self {
+            byte_offset: usize::try_from(prop["byteOffset"].as_u64()?).ok()?,
+            component_type: ComponentType::parse(prop["componentType"].as_str()?)?,
+            data_type: DataType::parse(prop["type"].as_str()?)?,
+        })
     }
+}
+
+/// Top-level batch table keys that are not properties.
+/// ref: https://github.com/CesiumGS/3d-tiles/blob/main/specification/schema/common/rootProperty.schema.json
+fn is_property_key(key: &str) -> bool {
+    key != "extensions" && key != "extras"
 }
 
 /// Deserializes a JSON object into only its entries named in the keys.
@@ -254,6 +263,9 @@ impl BatchTable {
 
         if let serde_json::Value::Object(map) = batch_table_json {
             for (key, value) in map {
+                if !is_property_key(key) {
+                    continue;
+                }
                 match value {
                     serde_json::Value::Object(_) => {
                         if let Ok(v) = self.read_property_from_binary::<V>(batch_id, value) {
@@ -261,7 +273,10 @@ impl BatchTable {
                         }
                     }
                     serde_json::Value::Array(arr) => {
-                        if let Some(v) = json_value_to_property_value::<V>(&arr[batch_id]) {
+                        if let Some(v) = arr
+                            .get(batch_id)
+                            .and_then(json_value_to_property_value::<V>)
+                        {
                             V::insert(&mut prop, key.clone(), v);
                         }
                     }
@@ -281,8 +296,9 @@ impl BatchTable {
     ) -> Vec<Option<BatchTableColumn<'a>>> {
         keys.iter()
             .map(|key| match batch_table_json.get(key)? {
+                _ if !is_property_key(key) => None,
                 value @ serde_json::Value::Object(_) => {
-                    Some(BatchTableColumn::Binary(BinaryColumn::from_json(value)))
+                    BinaryColumn::from_json(value).map(BatchTableColumn::Binary)
                 }
                 serde_json::Value::Array(arr) => Some(BatchTableColumn::Json(arr)),
                 _ => None,
@@ -301,7 +317,9 @@ impl BatchTable {
             .iter()
             .map(|column| match column.as_ref()? {
                 BatchTableColumn::Binary(col) => self.read_binary_column(col, batch_idx).ok(),
-                BatchTableColumn::Json(arr) => json_value_to_property_value::<V>(&arr[batch_idx]),
+                BatchTableColumn::Json(arr) => {
+                    json_value_to_property_value::<V>(arr.get(batch_idx)?)
+                }
             })
             .collect()
     }
@@ -311,7 +329,8 @@ impl BatchTable {
         idx: usize,
         prop: &serde_json::Value,
     ) -> Result<V, &'static str> {
-        self.read_binary_column(&BinaryColumn::from_json(prop), idx)
+        let col = BinaryColumn::from_json(prop).ok_or("Invalid binary body reference")?;
+        self.read_binary_column(&col, idx)
     }
 
     fn read_binary_column<V: PropertyValue>(
@@ -319,87 +338,42 @@ impl BatchTable {
         col: &BinaryColumn,
         idx: usize,
     ) -> Result<V, &'static str> {
-        match col.data_type {
-            DataType::Scalar => self.read_scalar(col.byte_offset, idx, &col.component_type),
-            DataType::Vec2 | DataType::Vec3 | DataType::Vec4 => {
-                self.read_vector(col.byte_offset, idx, &col.data_type, &col.component_type)
-            }
+        let size = col.component_type.size();
+        let count = col.data_type.size();
+        let element = idx
+            .checked_mul(size * count)
+            .and_then(|start| start.checked_add(col.byte_offset))
+            .and_then(|start| {
+                self.binary_data
+                    .get(start..start.checked_add(size * count)?)
+            })
+            .ok_or("Out of bounds read")?;
+        if let DataType::Scalar = col.data_type {
+            return Ok(read_component(element, &col.component_type));
         }
-    }
-
-    fn read_scalar<V: PropertyValue>(
-        &self,
-        byte_offset: usize,
-        idx: usize,
-        component_type: &ComponentType,
-    ) -> Result<V, &'static str> {
-        let offset = byte_offset + idx * component_type.size();
-        self.read_value(offset, component_type)
-    }
-
-    fn read_vector<V: PropertyValue>(
-        &self,
-        byte_offset: usize,
-        idx: usize,
-        data_type: &DataType,
-        component_type: &ComponentType,
-    ) -> Result<V, &'static str> {
-        let offset = byte_offset + idx * data_type.size() * component_type.size();
-        let values = (0..data_type.size())
-            .map(|j| self.read_value::<V>(offset + j * component_type.size(), component_type))
-            .collect::<Result<Vec<_>, _>>()?;
+        let mut values = Vec::with_capacity(count);
+        for component in element.chunks_exact(size) {
+            values.push(read_component(component, &col.component_type));
+        }
         Ok(V::from_array(values))
     }
+}
 
-    fn read_value<V: PropertyValue>(
-        &self,
-        offset: usize,
-        component_type: &ComponentType,
-    ) -> Result<V, &'static str> {
-        if offset + component_type.size() > self.binary_data.len() {
-            return Err("Out of bounds read");
+/// Reads one little-endian component; `b` holds exactly its bytes.
+fn read_component<V: PropertyValue>(b: &[u8], component_type: &ComponentType) -> V {
+    match component_type {
+        ComponentType::Byte => V::from_i64(b[0] as i8 as i64),
+        ComponentType::UnsignedByte => V::from_u64(b[0] as u64),
+        ComponentType::Short => V::from_i64(i16::from_le_bytes([b[0], b[1]]) as i64),
+        ComponentType::UnsignedShort => V::from_u64(u16::from_le_bytes([b[0], b[1]]) as u64),
+        ComponentType::Int => V::from_i64(i32::from_le_bytes([b[0], b[1], b[2], b[3]]) as i64),
+        ComponentType::UnsignedInt => {
+            V::from_u64(u32::from_le_bytes([b[0], b[1], b[2], b[3]]) as u64)
         }
-
-        match component_type {
-            ComponentType::Byte => Ok(V::from_i64(self.binary_data[offset] as i8 as i64)),
-            ComponentType::UnsignedByte => Ok(V::from_u64(self.binary_data[offset] as u64)),
-            ComponentType::Short => Ok(V::from_i64(i16::from_le_bytes([
-                self.binary_data[offset],
-                self.binary_data[offset + 1],
-            ]) as i64)),
-            ComponentType::UnsignedShort => Ok(V::from_u64(u16::from_le_bytes([
-                self.binary_data[offset],
-                self.binary_data[offset + 1],
-            ]) as u64)),
-            ComponentType::Int => Ok(V::from_i64(i32::from_le_bytes([
-                self.binary_data[offset],
-                self.binary_data[offset + 1],
-                self.binary_data[offset + 2],
-                self.binary_data[offset + 3],
-            ]) as i64)),
-            ComponentType::UnsignedInt => Ok(V::from_u64(u32::from_le_bytes([
-                self.binary_data[offset],
-                self.binary_data[offset + 1],
-                self.binary_data[offset + 2],
-                self.binary_data[offset + 3],
-            ]) as u64)),
-            ComponentType::Float => Ok(V::from_f32(f32::from_le_bytes([
-                self.binary_data[offset],
-                self.binary_data[offset + 1],
-                self.binary_data[offset + 2],
-                self.binary_data[offset + 3],
-            ]))),
-            ComponentType::Double => Ok(V::from_f64(f64::from_le_bytes([
-                self.binary_data[offset],
-                self.binary_data[offset + 1],
-                self.binary_data[offset + 2],
-                self.binary_data[offset + 3],
-                self.binary_data[offset + 4],
-                self.binary_data[offset + 5],
-                self.binary_data[offset + 6],
-                self.binary_data[offset + 7],
-            ]))),
-        }
+        ComponentType::Float => V::from_f32(f32::from_le_bytes([b[0], b[1], b[2], b[3]])),
+        ComponentType::Double => V::from_f64(f64::from_le_bytes([
+            b[0], b[1], b[2], b[3], b[4], b[5], b[6], b[7],
+        ])),
     }
 }
 
@@ -714,6 +688,35 @@ mod tests {
         assert_eq!(filtered.len(), 2);
         assert_eq!(filtered["test_property_vec3"], full["test_property_vec3"]);
         assert_eq!(filtered["some_property"], full["some_property"]);
+    }
+
+    #[test]
+    fn it_should_skip_non_properties_and_malformed_columns() {
+        let table = BatchTable {
+            json_data: serde_json::to_vec(&json!({
+                "id": [7, 8],
+                "short": [1],
+                "half": {"byteOffset": 0, "componentType": "HALF", "type": "SCALAR"},
+                "mat2": {"byteOffset": 0, "componentType": "BYTE", "type": "MAT2"},
+                "no_offset": {"componentType": "BYTE", "type": "SCALAR"},
+                "huge_offset": {"byteOffset": u64::MAX, "componentType": "BYTE", "type": "SCALAR"},
+                "extensions": {"3DTILES_batch_table_hierarchy": {"classes": []}},
+                "extras": [0, 1],
+            }))
+            .unwrap(),
+            binary_data: vec![0; 8],
+        };
+        let json = table.json().unwrap();
+        let keys: Vec<String> = json.as_object().unwrap().keys().cloned().collect();
+        let filtered = table.json_filtered(&keys).unwrap();
+        let columns = BatchTable::filtered_columns(&filtered, &keys);
+
+        assert_eq!(
+            table.get_property::<Value>(&json, 1),
+            Some(json!({"id": 8}))
+        );
+        let props: Vec<Option<Value>> = table.get_filtered_properties(&columns, 1);
+        assert_eq!(props.iter().flatten().collect::<Vec<_>>(), [&json!(8)]);
     }
 
     #[test]

@@ -1,0 +1,8 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc ffdaa62087a280bddc5e3d3ff933b8aeadd43134044c4c0c69c9fc50a36614f8 # shrinks to spec = B3dmSpec { batch_length: 0, json_columns: [], binary_columns: [], extensions: None, extras: Some(Array []), malformed: [] }
+cc 33a02cf697e36fa569a41c2c5a43f01945b7a644bfeb8f6e3d04dbbff64be3bd # shrinks to spec = B3dmSpec { batch_length: 1, json_columns: [], binary_columns: [BinaryColumnSpec { component_type: 0, data_type: 0, bytes: [0], extras: true }, BinaryColumnSpec { component_type: 0, data_type: 2, bytes: [153, 106, 109], extras: true }], extensions: None, extras: Some(Object {"E": String("dtcr")}), malformed: [Scalar(String("fb")), Reference({"byteOffset": Number(0), "componentType": String("float"), "type": String("VEC2")})] }, edits = [(Index(17034239257325695967), 229)], cut = None

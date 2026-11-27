@@ -6,13 +6,14 @@ pub enum DataType {
 }
 
 impl DataType {
-    pub fn from_str(v: &str) -> Self {
+    /// `None` for a `type` the batch table spec does not list.
+    pub fn parse(v: &str) -> Option<Self> {
         match v {
-            "SCALAR" => DataType::Scalar,
-            "VEC2" => DataType::Vec2,
-            "VEC3" => DataType::Vec3,
-            "VEC4" => DataType::Vec4,
-            _ => unimplemented!(),
+            "SCALAR" => Some(DataType::Scalar),
+            "VEC2" => Some(DataType::Vec2),
+            "VEC3" => Some(DataType::Vec3),
+            "VEC4" => Some(DataType::Vec4),
+            _ => None,
         }
     }
 
@@ -38,17 +39,18 @@ pub enum ComponentType {
 }
 
 impl ComponentType {
-    pub fn from_str(v: &str) -> Self {
+    /// `None` for a `componentType` the batch table spec does not list.
+    pub fn parse(v: &str) -> Option<Self> {
         match v {
-            "BYTE" => ComponentType::Byte,
-            "UNSIGNED_BYTE" => ComponentType::UnsignedByte,
-            "SHORT" => ComponentType::Short,
-            "UNSIGNED_SHORT" => ComponentType::UnsignedShort,
-            "INT" => ComponentType::Int,
-            "UNSIGNED_INT" => ComponentType::UnsignedInt,
-            "FLOAT" => ComponentType::Float,
-            "DOUBLE" => ComponentType::Double,
-            _ => unimplemented!(),
+            "BYTE" => Some(ComponentType::Byte),
+            "UNSIGNED_BYTE" => Some(ComponentType::UnsignedByte),
+            "SHORT" => Some(ComponentType::Short),
+            "UNSIGNED_SHORT" => Some(ComponentType::UnsignedShort),
+            "INT" => Some(ComponentType::Int),
+            "UNSIGNED_INT" => Some(ComponentType::UnsignedInt),
+            "FLOAT" => Some(ComponentType::Float),
+            "DOUBLE" => Some(ComponentType::Double),
+            _ => None,
         }
     }
 
