@@ -48,19 +48,23 @@ Navara reads only part of the pnts feature table. Point colors are interpreted a
 
 ### 3D Tiles 1.1
 
-| Feature                      | Description                                                                           |
-| ---------------------------- | ------------------------------------------------------------------------------------- |
-| GLB content                  | Tiles using GLB (binary glTF) as the content format.                                  |
-| glTF content                 | Tiles using glTF (JSON, `.gltf`) as the content format.                               |
-| GLB POINTS primitive         | Point cloud rendering for glTF meshes with `mode: POINTS` (3D Tiles 1.1 point cloud). |
-| `EXT_mesh_features`          | Feature identification via FeatureId sets in glTF meshes.                             |
-| `EXT_structural_metadata`    | Access to per-feature metadata via property tables embedded in glTF assets.           |
-| `EXT_mesh_gpu_instancing`    | Instanced triangle meshes, drawn in one draw call per mesh. Points and lines draw once. |
-| `EXT_instance_features`      | Feature identification per instance, for picking and styling each instance.           |
-| Tileset metadata             | Tileset, tile, content and group `metadata`, see [Metadata](#metadata).               |
-| `KHR_draco_mesh_compression` | Decoding of Draco-compressed mesh data.                                               |
-| `KHR_mesh_quantization`      | Quantized vertex attributes for compact glTF assets.                                  |
-| `EXT_meshopt_compression`    | Decoding of meshopt-compressed buffers.                                               |
+| Feature                      | Description                                                                                                                                            |
+| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| GLB content                  | Tiles using GLB (binary glTF) as the content format.                                                                                                   |
+| glTF content                 | Tiles using glTF (JSON, `.gltf`) as the content format.                                                                                                |
+| GLB POINTS primitive         | Point cloud rendering for glTF meshes with `mode: POINTS` (3D Tiles 1.1 point cloud).                                                                  |
+| `EXT_mesh_features`          | Feature identification via the first FeatureId set of each glTF primitive, per vertex (attribute or implicit index) or per texel (feature ID texture). |
+| `EXT_structural_metadata`    | Access to per-feature metadata via property tables embedded in glTF assets. Property textures and property attributes are not read.                    |
+| `EXT_mesh_gpu_instancing`    | Instanced triangle meshes, drawn in one draw call per mesh. Points and lines draw once.                                                                |
+| `EXT_instance_features`      | Feature identification per instance, for picking and styling each instance.                                                                            |
+| Tileset metadata             | Tileset, tile, content and group `metadata`, see [Metadata](#metadata).                                                                                |
+| `KHR_draco_mesh_compression` | Decoding of Draco-compressed mesh data.                                                                                                                |
+| `KHR_mesh_quantization`      | Quantized vertex attributes for compact glTF assets.                                                                                                   |
+| `EXT_meshopt_compression`    | Decoding of meshopt-compressed buffers.                                                                                                                |
+
+:::note
+A feature ID texture is read only on primitives with a lit material (not `KHR_materials_unlit`) and the `TEXCOORD_n` set it names; other primitives of the tile have no features. A tile has at most as many features as its property table's `count`, as in CesiumJS.
+:::
 
 :::note
 Implicit tiling is not supported, so a tileset must describe its tile hierarchy explicitly in `tileset.json`.

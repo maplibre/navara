@@ -11,6 +11,15 @@ export {
   updateBatchAttribute,
 } from "./core";
 export {
+  featureIdTextureSampling,
+  getFeatureIdTextureUniforms,
+  hasFeatureIdTexture,
+  setFeatureIdTexture,
+  type FeatureIdTextureSampling,
+  type FeatureIdTextureSource,
+  type FeatureIdTextureUniforms,
+} from "./featureIdTexture";
+export {
   BatchTextureLayout,
   MAX_BATCH_TEXTURE_WIDTH,
   batchBaseIndex,

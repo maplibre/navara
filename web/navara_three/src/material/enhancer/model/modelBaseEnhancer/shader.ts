@@ -1,6 +1,11 @@
 import BatchEmissiveFragment from "@shaders/glsl/chunks/batch_emissive_fragment.glsl";
 import BatchTextureParsVertex from "@shaders/glsl/chunks/batch_texture_pars_vertex.glsl";
 import BatchTextureVertex from "@shaders/glsl/chunks/batch_texture_vertex.glsl";
+import FeatureIdTextureColorFragment from "@shaders/glsl/chunks/feature_id_texture_color_fragment.glsl";
+import FeatureIdTextureFragment from "@shaders/glsl/chunks/feature_id_texture_fragment.glsl";
+import FeatureIdTextureParsFragment from "@shaders/glsl/chunks/feature_id_texture_pars_fragment.glsl";
+import FeatureIdTextureParsVertex from "@shaders/glsl/chunks/feature_id_texture_pars_vertex.glsl";
+import FeatureIdTextureVertex from "@shaders/glsl/chunks/feature_id_texture_vertex.glsl";
 import Pick from "@shaders/glsl/chunks/pick.glsl";
 import ShadowMapDepthFragment from "@shaders/glsl/chunks/shadowmap_depth_fragment.glsl";
 import ShadowMapDepthParsFragment from "@shaders/glsl/chunks/shadowmap_depth_pars_fragment.glsl";
@@ -12,6 +17,7 @@ import ShowParsVertex from "@shaders/glsl/chunks/show_pars_vertex.glsl";
 import SpecularParsFragment from "@shaders/glsl/chunks/spucular_pars_fragment.glsl";
 import type { WebGLProgramParametersWithUniforms } from "three";
 
+import { getFeatureIdTextureUniforms } from "../../../../batchTexture";
 import { createReplacer } from "../../../../utils";
 import { GBUFFER_NORMAL_WRITE_PHYSICAL } from "../../../gbufferLayout";
 
@@ -39,6 +45,7 @@ export const transformShader = (
 
   // Assign uniform refs to shader.uniforms via mutates
   mutates.updateUniforms(shader.uniforms, state);
+  Object.assign(shader.uniforms, getFeatureIdTextureUniforms(material));
 
   // Transform vertex shader
   shader.vertexShader = createReplacer(shader.vertexShader)
@@ -53,6 +60,7 @@ out vec3 vPosition;
 
 ${ShowParsVertex}
 ${BatchTextureParsVertex}
+${FeatureIdTextureParsVertex}
 
 ${ShadowMapDepthParsVertex}
 
@@ -66,6 +74,7 @@ void main() {
 #include <color_vertex>
 
 ${BatchTextureVertex}
+${FeatureIdTextureVertex}
 `,
     )
     .replace(
@@ -94,12 +103,14 @@ ${MODEL_BASE_SHADER_MARKERS.fragment.UNIFORM_END}
 flat in float nvr_vBatchId;
 
 ${ShowParsFragment}
+${FeatureIdTextureParsFragment}
 
 ${Pick}
 
 ${ShadowMapDepthParsFragment}
 
 void main() {
+  ${FeatureIdTextureFragment}
   ${ShowFragment}
   ${ShadowMapDepthFragment}
 `,
@@ -108,6 +119,7 @@ void main() {
       "#include <color_fragment>",
       `
 #include <color_fragment>
+${FeatureIdTextureColorFragment}
 
 #ifdef USE_BATCH_SHOW_OPACITY
   diffuseColor.a *= nvr_vOpacity;
@@ -151,7 +163,7 @@ ${MODEL_BASE_SHADER_MARKERS.fragment.OUTGOING_LIGHT_END}
       `
 #include <dithering_fragment>
 if (nvr_uPickable > 0.0 && diffuseColor.a > 0.0) {
-  vec3 pickColor = nvr_batchIdToColor(nvr_vBatchId);
+  vec3 pickColor = nvr_batchIdToColor(NVR_PICK_ID_OR(nvr_vBatchId));
   gl_FragColor = vec4(pickColor.xyz, 1.0);
 }
 `,

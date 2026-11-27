@@ -39,6 +39,29 @@ const placed = (url: string, transform: number[], box: number[]) =>
     }),
   )}`;
 
+/**
+ * The ENU frame at (-75.152408, 39.9471, 1 m), scaled 15x: the Sandcastle
+ * placement of the 3d-tiles-samples.
+ */
+const PHILADELPHIA_15X = [
+  14.499163085582246, 3.8437312364015646, 0, 0, -2.4679831941768637,
+  9.309623546506499, 11.499563834145725, 0, 2.9467488476199777,
+  -11.115603429622823, 9.631200944036403, 0, 1254717.3449038235,
+  -4732992.577051421, 4073484.9527697754, 1,
+];
+
+/** A 3d-tiles-samples `glTF/` sample: one unit quad, placed upright. */
+const gltfSample = (path: string, note: string): Dataset => ({
+  group: "3d-tiles-samples glTF",
+  name: path.split("/")[1],
+  url: placed(
+    `${SAMPLES}/glTF/${path}/tileset.json`,
+    PHILADELPHIA_15X,
+    [0.5, 0, 0.5, 0.5, 0, 0, 0, 0.1, 0, 0, 0, 0.5],
+  ),
+  note,
+});
+
 export const DATASETS: Dataset[] = [
   ...specs("Batched", [
     "BatchedColors",
@@ -210,15 +233,29 @@ export const DATASETS: Dataset[] = [
     name: "MultipleContents",
     url: placed(
       `${SAMPLES}/1.1/MultipleContents/tileset.json`,
-      // The sample's Sandcastle placement: ENU at (-75.152408, 39.9471, 1 m), scaled 15x.
-      [
-        14.499163085582246, 3.8437312364015646, 0, 0, -2.4679831941768637,
-        9.309623546506499, 11.499563834145725, 0, 2.9467488476199777,
-        -11.115603429622823, 9.631200944036403, 0, 1254717.3449038235,
-        -4732992.577051421, 4073484.9527697754, 1,
-      ],
+      PHILADELPHIA_15X,
       [0.5, -0.5, 0, 0.5, 0, 0, 0, 0.5, 0, 0, 0, 0.1],
     ),
     note: "Tile `contents`: two GLBs (triangles and points) render together",
   },
+  gltfSample(
+    "EXT_mesh_features/FeatureIdAttribute",
+    "Feature IDs per vertex, no property table: the picked feature highlights",
+  ),
+  gltfSample(
+    "EXT_mesh_features/FeatureIdTexture",
+    "Feature IDs per texel, no property table: the picked feature highlights",
+  ),
+  gltfSample(
+    "EXT_structural_metadata/FeatureIdAttributeAndPropertyTable",
+    "Feature IDs per vertex: click a feature for its row",
+  ),
+  gltfSample(
+    "EXT_structural_metadata/FeatureIdTextureAndPropertyTable",
+    "Feature IDs per texel: click a region for its row",
+  ),
+  gltfSample(
+    "EXT_structural_metadata/SimplePropertyTexture",
+    "Property textures: not supported, renders without features",
+  ),
 ];
