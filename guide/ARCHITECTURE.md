@@ -261,7 +261,7 @@ Two gestures trigger a pick: a click (emitting `"featureClick"`) and hovering (e
    A draped mesh stays out of the pick scene: the packed globe depth is written into the pick target's depth buffer and the mesh runs its stencil passes (`DrapedMesh.process`) against it, so it is hit only where its volume meets the terrain. Its final pass has no depth test, so it must come after the terrain and before the pickables standing in front of the ground. The depth buffer then goes back to the pickable terrain alone (redrawn depth-only), so the remaining pickables are occluded only by pickable terrain, whether or not a draped pickable exists.
 5. The single pixel is read back and decoded: `batchId = (R << 16) + (G << 8) + B`.
 6. `onAfterPicking()` restores each mesh's normal rendering state, and all meshes are re-parented to their original scenes.
-7. A `"featureClick"` event is emitted with the decoded `PickedFeature` (batch ID, layer ID, properties).
+7. A `"featureClick"` event is emitted with the decoded `PickedFeature` (batch ID, layer ID, properties), or `null`, and the `pointerup` event as a `MapPointerEvent` (the object the `click` event then receives). The hover family passes the picked `pointermove` (or the `pointerleave`) the same way, converted only when an event is emitted. The pick render draws into its own target, and the hover pick runs before the frame's update and render, so a listener's `pickDepthPosition` still reads the depth and camera of the frame on screen.
 
 ### Shader Injection
 
