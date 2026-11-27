@@ -120,6 +120,11 @@ import {
 } from "./event";
 import { disposeAllObjects } from "./event/objectRemoved";
 import { createTileHandler } from "./event/tileHandler";
+import {
+  fitBoundsArgs,
+  type FitBoundsPadding,
+  type FitBoundsTarget,
+} from "./fitBounds";
 import { InMemoryBufferStore } from "./inMemoryBufferStore";
 import { registerInputEvents } from "./input";
 import { Layer, type FeatureSetContent, type LayerEvent } from "./layer";
@@ -211,6 +216,25 @@ export type FlyToOptions = {
    * descending from above 11,500 m. */
   easing?: FlyToEasing;
 };
+
+export type FitBoundsOptions = FlyToOptions & {
+  /** Space in CSS pixels to keep free at the canvas edges, for all four
+   * sides or per side. Defaults to 0. */
+  padding?: FitBoundsPadding;
+  /** Heading in degrees clockwise from north. Defaults to the current
+   * camera's, or 0 before the first frame. */
+  heading?: number;
+  /** Pitch in degrees, in [-90, 0); -90 looks straight down. Defaults to
+   * the current camera's, or -90 before the first frame. */
+  pitch?: number;
+};
+
+export type {
+  FitBoundsBox,
+  FitBoundsPadding,
+  FitBoundsPosition,
+  FitBoundsTarget,
+} from "./fitBounds";
 
 /** In-flight worker tasks the engine may hold per pool worker: one running
  * plus one queued, so a worker never idles between tasks. */
@@ -3214,19 +3238,81 @@ export default class ThreeView<
     const pos = camPos as CameraPosition & { lng: number; lat: number };
     const position = new Float64Array([pos.lng, pos.lat, pos.height ?? 0]);
 
-    const id = this._core?.flyTo(
-      position,
-      pos.pitch,
-      pos.heading,
-      pos.roll,
-      options.duration,
-      options.maxHeight,
-      pos.distance,
-      options.easing === undefined
-        ? undefined
-        : FLY_TO_EASING_CODE[options.easing],
+    return this._awaitFlight(
+      this._core?.flyTo(
+        position,
+        pos.pitch,
+        pos.heading,
+        pos.roll,
+        options.duration,
+        options.maxHeight,
+        pos.distance,
+        options.easing === undefined
+          ? undefined
+          : FLY_TO_EASING_CODE[options.easing],
+      ),
     );
+  }
 
+  /**
+   * Flies the camera so that a box or a set of positions fills the canvas,
+   * less the padding: the closest camera at the given heading and pitch from
+   * which every position is inside the padded frame. The positions touch the
+   * padded frame on one axis and are centered on the other. Accounts for the
+   * canvas aspect ratio, the vertical field of view and the curvature of the
+   * Earth (a box is sampled along its edges).
+   *
+   * `heading` and `pitch` are the camera's own, in the local frame at its
+   * position (`getCamera()` reports them exactly at city scale, within about
+   * 0.1° for continental extents); roll ends at 0. Positions without `height` are at 0 m
+   * above the ellipsoid; the terrain under them is not sampled, so pass
+   * heights (e.g. from `sampleTerrainMostDetailed`) to frame hilly ground.
+   * Every position stays at least 300 m in front of the camera along its
+   * forward direction, so a single position is seen from 300 m. It can be
+   * called right after `init()`, before the first frame. It applies in call
+   * order with the other camera methods, so a later `setCamera` or `flyTo`
+   * overrides it. A canvas resize before the flight ends solves the fit
+   * again; a resize after it does not. The cost grows with the number of
+   * positions: pass a box or a few representative positions for a large
+   * feature.
+   *
+   * @param target - A box `{ west, south, east, north }` in degrees
+   *   (`west > east` crosses the antimeridian), or positions
+   *   `{ lng, lat, height? }`.
+   * @param options - `padding` (CSS pixels), `heading` / `pitch` (degrees)
+   *   and the flight options of `flyTo`. `duration: 0` jumps without a
+   *   flight.
+   * @returns A promise resolving like `flyTo`'s: `true` when the flight
+   *   completes, `false` when it is interrupted. Also `false`, without moving
+   *   the camera, when there are no positions, the padding leaves no room in
+   *   the canvas, the pitch is outside [-90, 0), or no camera at that heading and
+   *   pitch frames them while staying above the ground and seeing every
+   *   position over the Earth's horizon (for example a box spanning a large
+   *   part of a continent at an oblique pitch).
+   */
+  fitBounds(
+    target: FitBoundsTarget,
+    options: FitBoundsOptions = {},
+  ): Promise<boolean> {
+    const { positions, bbox, padding } = fitBoundsArgs(target, options.padding);
+    return this._awaitFlight(
+      this._core?.fitBounds(
+        positions,
+        bbox,
+        padding,
+        options.heading,
+        options.pitch,
+        options.duration,
+        options.maxHeight,
+        options.easing === undefined
+          ? undefined
+          : FLY_TO_EASING_CODE[options.easing],
+      ),
+    );
+  }
+
+  /** The promise `flyTo` and `fitBounds` return for the flight `id`. */
+  private _awaitFlight(id: number | undefined): Promise<boolean> {
     if (id === undefined) {
       return Promise.resolve(false);
     }

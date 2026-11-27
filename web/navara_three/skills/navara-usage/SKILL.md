@@ -65,7 +65,7 @@ When `DefaultPlugin` is used, parameterize the view as `new ThreeView<DefaultDes
 - **Init-only options** cannot change after `init()`: `shadow`, `maxSse`, `segments`, `useNormal`, `workerPoolSize` (page-wide: only the first view's value counts, see [references/view-and-camera.md](references/view-and-camera.md)).
 - **Every `update()` is a partial merge.** `Layer.update()`, `Source.update()` and mesh/effect/light handle `.update()` merge into the current config; omitted fields are preserved.
 - **Layer render order = add order** (e.g. add terrain before the raster basemap draped on it).
-- **Units:** every public lat/lng API takes **degrees** — `setCamera`/`flyTo`, `geodetic`, terrain sampling, `geodeticToVector3`/`vector3ToGeodetic`, `EllipsoidGeodesic` (headings in degrees too). Mesh `position` is ECEF meters. Three.js-level angles stay **radians** (Euler `rotation` fields, `rotateAroundAxis`/`rotateAround` — that's what `degreeToRadian` is still for); batch IDs are 24-bit.
+- **Units:** every public lat/lng API takes **degrees** — `setCamera`/`flyTo`/`fitBounds`, `geodetic`, terrain sampling, `geodeticToVector3`/`vector3ToGeodetic`, `EllipsoidGeodesic` (headings in degrees too). Mesh `position` is ECEF meters. Three.js-level angles stay **radians** (Euler `rotation` fields, `rotateAroundAxis`/`rotateAround` — that's what `degreeToRadian` is still for); batch IDs are 24-bit.
 - **Normals need a light.** A surface that carries normals renders black while the scene has no light → [references/lighting.md](references/lighting.md).
 - **API stability tiers:** `ThreeView` = Tier 0 (stable). `Plugin` + `ViewContext` = Tier 1 (may break between minor versions). Keep app code on Tier 0 where possible.
 

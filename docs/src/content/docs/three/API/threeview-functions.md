@@ -677,6 +677,70 @@ view.flyTo(
 );
 ```
 
+### fitBounds() :since[0.3.2]
+
+Flies the camera so that a box or a set of positions fills the canvas, less the padding. The camera ends at the closest position, for the given heading and pitch, from which every position is inside the padded frame. The positions touch the padded frame on one axis and are centered on the other. The fit accounts for the canvas aspect ratio, the vertical field of view and the curvature of the Earth: a box is sampled along its edges, not only at its corners.
+
+`heading` and `pitch` are those of the camera itself, measured in the local frame at its own position, and roll ends at 0. [`getCamera()`](#getcamera) reports the same values for a city-scale extent and within about 0.1° for a continent-wide one. Positions without `height` are at 0 m above the ellipsoid. The terrain under them is not sampled, so pass heights (for example from [`sampleTerrainMostDetailed()`](#sampleterrainmostdetailed)) to frame hilly ground. Every position stays at least 300 m in front of the camera along its forward direction, so a single position is seen from 300 m. `fitBounds()` can be called right after [`init()`](#init), before the first frame, for example to frame the data a page opens on. Calls take effect in order with the other camera methods, so a `setCamera()` or `flyTo()` made after `fitBounds()` overrides it. If the canvas is resized before the flight ends, the fit is solved again for the new size. A resize after that does not refit, so call `fitBounds()` again from a resize handler if needed. The cost grows with the number of positions: for a large feature, pass a box or a few representative positions instead of every vertex.
+
+**Syntax:**
+
+```tsx
+fitBounds(
+  target: FitBoundsTarget,
+  options?: FitBoundsOptions
+): Promise<boolean>
+
+type FitBoundsTarget =
+  | { west: number; south: number; east: number; north: number }
+  | { lng: number; lat: number; height?: number }[];
+
+type FitBoundsOptions = FlyToOptions & {
+  padding?:
+    | number
+    | { top?: number; right?: number; bottom?: number; left?: number };
+  heading?: number;
+  pitch?: number;
+};
+```
+
+**Parameters:**
+
+- `target`: What to frame.
+  - A box `{ west, south, east, north }` in degrees. `west` greater than `east` crosses the antimeridian.
+  - Or positions `{ lng, lat, height? }`: degrees, and meters above the ellipsoid (default `0`).
+- `options`: Fit and flight options.
+  - `padding`: Space to keep free at the canvas edges (CSS pixels), for all four sides or per side. Default `0`.
+  - `heading`: Heading (degrees, clockwise from north). Defaults to the current camera's, or `0` before the first frame.
+  - `pitch`: Pitch (degrees, from `-90`, straight down, up to but not including `0`). Defaults to the current camera's, or `-90` before the first frame.
+  - `duration`, `maxHeight`, `easing`: As in [`flyTo()`](#flyto). `duration: 0` jumps without a flight.
+
+**Returns:** `Promise<boolean>`: as for `flyTo()`, `true` when the flight completed and `false` when it was interrupted. It is also `false`, without moving the camera, when there are no positions, the padding leaves no room in the canvas, the pitch is outside `[-90, 0)`, or no camera at that heading and pitch frames the positions while staying above the ground and seeing all of them over the Earth's horizon. The last case happens with a large extent at an oblique pitch, for example a box spanning most of a continent at `pitch: -45`.
+
+**Example:**
+
+```tsx
+// A start point and nearby shelters, seen at 45 degrees, clear of a
+// 320 px side panel on the left
+const start = { lng: 139.7671, lat: 35.6812 };
+const shelters = [
+  { lng: 139.756, lat: 35.6735 },
+  { lng: 139.758, lat: 35.6852 },
+  { lng: 139.7633, lat: 35.66 },
+];
+await view.fitBounds([start, ...shelters], {
+  padding: { top: 40, right: 40, bottom: 40, left: 360 },
+  heading: 0,
+  pitch: -45,
+});
+
+// A box, straight down, without a flight
+view.fitBounds(
+  { west: 138.4, south: 34.9, east: 140.9, north: 36.9 },
+  { padding: 40, pitch: -90, duration: 0 }
+);
+```
+
 ### lookAt()
 
 Points the camera at a target position and places it at an offset position. The offset is specified in the East-North-Up (ENU) coordinate system.

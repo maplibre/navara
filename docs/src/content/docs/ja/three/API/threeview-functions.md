@@ -600,6 +600,69 @@ view.flyTo(
 );
 ```
 
+### fitBounds() :since[0.3.2]
+
+ボックスまたは位置の集合が、パディングを除いたキャンバスに収まるようにカメラを飛行させます。カメラは、指定した heading と pitch のもとで、すべての位置がパディング内の枠に入る最も近い位置に移動します。位置は一方の軸で枠に接し、もう一方の軸では中央に配置されます。キャンバスのアスペクト比、垂直画角、地球の曲率を考慮し、ボックスは角だけでなく辺に沿ってサンプリングされます。
+
+`heading` と `pitch` はカメラ自身の位置のローカル座標系で測った値で、roll は 0 になります。[`getCamera()`](#getcamera) は、都市規模の範囲では同じ値を、大陸規模の範囲では約 0.1° 以内の値を返します。`height` を省略した位置は楕円体からの高さ 0 m として扱います。位置の下の地形はサンプリングしないため、起伏のある地面を収めるには（例えば [`sampleTerrainMostDetailed()`](#sampleterrainmostdetailed) で取得した）高さを渡してください。すべての位置は、カメラの前方方向に沿ってカメラから 300 m 以上前方に保たれるため、位置が 1 つだけの場合は 300 m の距離から見ることになります。`fitBounds()` は [`init()`](#init) の直後、最初のフレームの前にも呼び出せるため、例えばページを開いたときに表示するデータを収めるのに使えます。呼び出しはほかのカメラ操作と呼び出した順に反映されるため、`fitBounds()` の後に呼んだ `setCamera()` や `flyTo()` がそれを上書きします。飛行が終わる前にキャンバスのサイズが変わった場合は、新しいサイズでフィットを解き直します。飛行の終了後のサイズ変更ではフィットし直さないため、必要に応じてリサイズのハンドラーから `fitBounds()` を再度呼び出してください。計算量は位置の数に比例して増えるため、大きな地物にはすべての頂点ではなく、ボックスや代表的な少数の位置を渡してください。
+
+**Syntax:**
+
+```tsx
+fitBounds(
+  target: FitBoundsTarget,
+  options?: FitBoundsOptions
+): Promise<boolean>
+
+type FitBoundsTarget =
+  | { west: number; south: number; east: number; north: number }
+  | { lng: number; lat: number; height?: number }[];
+
+type FitBoundsOptions = FlyToOptions & {
+  padding?:
+    | number
+    | { top?: number; right?: number; bottom?: number; left?: number };
+  heading?: number;
+  pitch?: number;
+};
+```
+
+**Parameters:**
+
+- `target`: 収める対象。
+  - ボックス `{ west, south, east, north }`（度）。`west` が `east` より大きい場合は対蹠線（antimeridian）をまたぎます。
+  - または位置の配列 `{ lng, lat, height? }`（度、楕円体からの高さはメートル、デフォルト `0`）。
+- `options`: フィットと飛行のオプション。
+  - `padding`: キャンバスの端に空けておく余白（CSS ピクセル）。4 辺共通の値、または辺ごとの値。デフォルト `0`。
+  - `heading`: ヘディング（度、北から時計回り）。デフォルトは現在のカメラの値で、最初のフレームの前は `0`。
+  - `pitch`: ピッチ（度、真下を向く `-90` 以上 `0` 未満）。デフォルトは現在のカメラの値で、最初のフレームの前は `-90`。
+  - `duration`、`maxHeight`、`easing`: [`flyTo()`](#flyto) と同じ。`duration: 0` の場合は飛行せずに移動します。
+
+**Returns:** `Promise<boolean>`: `flyTo()` と同様に、飛行が完了すると `true`、中断されると `false` を返します。位置が空の場合、パディングでキャンバスに余地がない場合、pitch が `[-90, 0)` の範囲外の場合、そしてその heading と pitch で、地面より上にあり、すべての位置を地球の地平線の手前に見ながら位置を収めるカメラが存在しない場合も、カメラを動かさずに `false` を返します。最後のケースは、斜めの pitch で広い範囲を収めるときに起こります（例えば `pitch: -45` で大陸の大部分にわたるボックス）。
+
+**Example:**
+
+```tsx
+// 出発地点と近くの避難所を 45 度で見下ろし、左側の 320 px のサイドパネルを避ける
+const start = { lng: 139.7671, lat: 35.6812 };
+const shelters = [
+  { lng: 139.756, lat: 35.6735 },
+  { lng: 139.758, lat: 35.6852 },
+  { lng: 139.7633, lat: 35.66 },
+];
+await view.fitBounds([start, ...shelters], {
+  padding: { top: 40, right: 40, bottom: 40, left: 360 },
+  heading: 0,
+  pitch: -45,
+});
+
+// ボックスを真上から、飛行なしで
+view.fitBounds(
+  { west: 138.4, south: 34.9, east: 140.9, north: 36.9 },
+  { padding: 40, pitch: -90, duration: 0 }
+);
+```
+
 ### lookAt()
 
 カメラをターゲット位置に向け、オフセット位置に配置します。オフセットは East-North-Up（ENU）座標系で指定します。

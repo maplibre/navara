@@ -4,8 +4,8 @@ use navara_math::Transform;
 use navara_window::WindowResizeEvent;
 
 use crate::{
-    CameraControlUpdateEvent, CameraController, CameraEvent, CameraFrustum, FlightIdAllocator,
-    FrustumEvent,
+    CameraControlUpdateEvent, CameraController, CameraEvent, CameraFrustum, FitBoundsTargets,
+    FlightIdAllocator, FrustumEvent,
 };
 
 use super::CameraMarker;
@@ -26,6 +26,7 @@ impl bevy_app::Plugin for CameraPlugin {
         app.add_systems(Startup, super::system::startup)
             .init_resource::<FlightIdAllocator>()
             .add_message::<CameraEvent>()
+            .init_resource::<FitBoundsTargets>()
             .add_message::<FrustumEvent>()
             .add_message::<CameraControlUpdateEvent>()
             .add_systems(
