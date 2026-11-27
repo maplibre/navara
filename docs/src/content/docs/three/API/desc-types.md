@@ -153,7 +153,7 @@ For the data structure behind these events (Layer, FeatureSet, Feature, Batch), 
 
 ```typescript
 layer.on("featureCreated", ({ evaluator }) => {
-  console.log("Feature set created:", evaluator.id);
+  console.log("Feature set created:", evaluator.featureSetId);
 });
 ```
 

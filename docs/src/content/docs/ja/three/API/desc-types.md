@@ -153,7 +153,7 @@ view.on("featureClick", (info) => {
 
 ```typescript
 layer.on("featureCreated", ({ evaluator }) => {
-  console.log("フィーチャーセットが作成されました:", evaluator.id);
+  console.log("フィーチャーセットが作成されました:", evaluator.featureSetId);
 });
 ```
 

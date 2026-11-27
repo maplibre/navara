@@ -243,7 +243,7 @@ export class Layer extends EventHandler<LayerEvent> {
     // Process all evaluators with the registered callbacks
     for (const { evaluator } of this.featureSets.values()) {
       this.emit("featureUpdated", {
-        featureSetId: evaluator.id,
+        featureSetId: evaluator.featureSetId,
         evaluator,
         updatedAt,
       });

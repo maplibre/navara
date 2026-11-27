@@ -17,17 +17,17 @@ FeatureEvaluator は、地物データへのアクセスと、プロパティに
 
 ## Properties
 
-### id
+### featureSetId :since[0.3.2]
 
 **Type:** `FeatureSetId`
 
-**Description:** この評価クラスが対象とするフィーチャーセットの ID です。レイヤーのフィーチャーイベントやピック結果の `featureSetId` と同じ値です。読み込み直されたタイルは新しい ID を持つ新しいフィーチャーセットになります。個々の地物を識別するには、[FeatureInfo](#featureinfo) の `featureId` を使用してください。各 ID の関係は [識別子](../../introduction/about-layer/#識別子) を参照してください。
+**Description:** この評価クラスが対象とするフィーチャーセットの ID で、レイヤーのフィーチャーイベントやピック結果の `featureSetId` と同じ値です。読み込み直されたタイルは新しい ID を持つ新しいフィーチャーセットになります。個々の地物を識別するには、[FeatureInfo](#featureinfo) の `featureId` を使用してください。各 ID の関係は [識別子](../../introduction/about-layer/#識別子) を参照してください。
 
 **Example:**
 
 ```typescript
 layer.on("featureCreated", ({ evaluator }) => {
-  console.log("フィーチャーセット ID:", evaluator.id);
+  console.log("フィーチャーセット ID:", evaluator.featureSetId);
 });
 ```
 

@@ -70,7 +70,7 @@ Quantized-mesh terrain uses `type: "quantized-mesh"` sources (or `CesiumIonPlugi
 
 Layer → FeatureSet → Feature → Batch. Feature events fire per FeatureSet, despite the `feature*` names. Which id to key on:
 
-- `featureSetId` (`evaluator.id`, `bigint`): one rendering unit (e.g. one tile's features of one geometry kind). A reloaded tile gets a new one.
+- `featureSetId` (`evaluator.featureSetId`, event params, picks; `bigint`): one rendering unit (e.g. one tile's features of one geometry kind). A reloaded tile gets a new one.
 - `featureId` (`FeatureInfo`/picks, `string | number`): the source feature's top-level GeoJSON `id` / MVT id. Stable, shared by every tile piece of the feature, not checked for uniqueness. Always `undefined` for 3D Tiles — use a stable property (e.g. `gml_id`).
 - `batchId` (24-bit): the picking id of one rendered piece. Always present and unique among what is rendered, so fine for a transient (hover) highlight. Freed and reused when its feature set is removed, so never keep a selection keyed by it.
 

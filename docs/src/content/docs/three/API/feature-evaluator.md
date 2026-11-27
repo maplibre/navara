@@ -17,17 +17,17 @@ For detailed parameter types of events, see [Descriptor Types](../desc-types#eve
 
 ## Properties
 
-### id
+### featureSetId :since[0.3.2]
 
 **Type:** `FeatureSetId`
 
-**Description:** The ID of the feature set this evaluator covers. It equals the `featureSetId` of the layer's feature events and of picks. A tile that is unloaded and loaded again gets a new feature set with a new ID. To identify a single feature, use `featureId` of [FeatureInfo](#featureinfo) instead. See [Identifiers](../../introduction/about-layer/#identifiers) for how the IDs relate.
+**Description:** The ID of the feature set this evaluator covers, the same value as `featureSetId` in the layer's feature events and in picks. A tile that is unloaded and loaded again gets a new feature set with a new ID. To identify a single feature, use `featureId` of [FeatureInfo](#featureinfo) instead. See [Identifiers](../../introduction/about-layer/#identifiers) for how the IDs relate.
 
 **Example:**
 
 ```typescript
 layer.on("featureCreated", ({ evaluator }) => {
-  console.log("Feature set ID:", evaluator.id);
+  console.log("Feature set ID:", evaluator.featureSetId);
 });
 ```
 

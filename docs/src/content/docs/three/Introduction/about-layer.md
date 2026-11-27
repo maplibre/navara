@@ -43,7 +43,7 @@ Features of GeoJSON and vector tile sources are split across the tiles they cros
 | Identifier | Identifies | Read from | Lifetime |
 | --- | --- | --- | --- |
 | `layerId` | A layer | `layer.id`, `FeatureInfo`, picks | Until the layer is removed |
-| `featureSetId` | A feature set | `evaluator.id`, feature events, picks | Until the feature set is removed. A tile loaded again gets a new one |
+| `featureSetId` | A feature set | `evaluator.featureSetId`, feature events, picks | Until the feature set is removed. A tile loaded again gets a new one |
 | `featureId` | A source feature | `FeatureInfo`, picks | Comes from the source data, so it does not change when tiles are reloaded |
 | `batchId` | A batch | `FeatureInfo`, picks | Until the feature set is removed. The number is then given to other batches |
 

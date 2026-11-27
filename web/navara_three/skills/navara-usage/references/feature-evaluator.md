@@ -27,7 +27,7 @@ layer.on("featureUpdated", ({ evaluator }) => {
 
 - Material-specific per-feature values (`facing`, `rotation`, `anchor`, `offset`, outline, `dashArray`, `image`, `declutterPriority`, …) are described with their materials: [vector-styling.md](vector-styling.md), [labels-and-sprites.md](labels-and-sprites.md).
 - **`show` hides single features; the material's `show` hides the whole layer's geometry of that kind.** Every material has `show`, so a runtime toggle needs no evaluator: `layer.update({ polygon: { show: false } })` (partial merge).
-- **Skipping repeat evaluations is a static-styling optimization only.** `featureUpdated` fires once per feature set (`evaluator.id`, a `bigint`), and again for every evaluator of the layer after `layer.forceUpdate()` or `layer.update()`. Some examples keep a `Set<bigint>` of seen ids and return early; that guard swallows exactly those re-emits, so leave it out of any layer you restyle (or clear the set before `forceUpdate()`).
+- **Skipping repeat evaluations is a static-styling optimization only.** `featureUpdated` fires once per feature set (`evaluator.featureSetId`, a `bigint`), and again for every evaluator of the layer after `layer.forceUpdate()` or `layer.update()`. Some examples keep a `Set<bigint>` of seen ids and return early; that guard swallows exactly those re-emits, so leave it out of any layer you restyle (or clear the set before `forceUpdate()`).
 
 ## Restyling interactively (highlight the picked feature)
 

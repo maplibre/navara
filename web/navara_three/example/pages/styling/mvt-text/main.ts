@@ -134,8 +134,8 @@ const run = async () => {
 
     // Feature evaluator: filter and style text labels
     layer.on("featureUpdated", ({ evaluator }) => {
-      if (updatedFeatures.has(evaluator.id)) return;
-      updatedFeatures.add(evaluator.id);
+      if (updatedFeatures.has(evaluator.featureSetId)) return;
+      updatedFeatures.add(evaluator.featureSetId);
 
       const uniqueLabels = new Set<string>();
 

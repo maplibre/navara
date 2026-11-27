@@ -250,7 +250,12 @@ export type FeatureEvaluatorCallback = (
 export class FeatureEvaluator {
   private handler: FeatureHandler;
   private layerId: LayerId;
-  private featureSetId: FeatureSetId;
+  /**
+   * The feature set's id, as in the layer's feature events and picks. A tile
+   * loaded again is a new feature set with a new id; to identify a feature,
+   * use {@link FeatureInfo.featureId}.
+   */
+  readonly featureSetId: FeatureSetId;
   private cachedBatchedProperties?: Map<
     number,
     Record<string, unknown> | undefined
@@ -324,15 +329,6 @@ export class FeatureEvaluator {
       }
     }
     return undefined;
-  }
-
-  /**
-   * The feature set's id, as in the layer's feature events and picks. A tile
-   * loaded again is a new feature set with a new id; to identify a feature,
-   * use {@link FeatureInfo.featureId}.
-   */
-  get id() {
-    return this.featureSetId;
   }
 
   /**
