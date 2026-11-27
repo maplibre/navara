@@ -10,8 +10,9 @@ use bevy_ecs::{
 use navara_buffer_store::{BufferStore, Handle};
 use navara_camera::{
     CamDirType, CameraControlUpdateEvent, CameraController, CameraDirection, CameraEvent,
-    CameraFrustum, CameraMarker, CameraOrientation, CameraStatus, FlightIdAllocator, FlyToEasing,
-    FrustumEvent, calc_camera_target_and_distance, get_heading, get_pitch, get_roll,
+    CameraFrustum, CameraMarker, CameraOrientation, CameraStatus, FitBoundsTarget,
+    FitBoundsTargets, FlightIdAllocator, FlyToEasing, FrustumEvent,
+    calc_camera_target_and_distance, fit_bounds_positions, get_heading, get_pitch, get_roll,
 };
 use navara_component::{Deleted, Rendered};
 use navara_core::{
@@ -983,6 +984,67 @@ impl App {
             duration,
             max_height,
             distance,
+            easing: easing.and_then(|v| FlyToEasing::try_from(v).ok()),
+            id,
+        });
+
+        id
+    }
+
+    /// Starts a flight that frames `positions` (`[lng, lat, height]`
+    /// triples) or `bbox` (`[west, south, east, north]`) in the canvas less
+    /// `padding` (`[top, right, bottom, left]`, CSS pixels), and returns its
+    /// id. When no camera frames them, the flight ends at once as not
+    /// completed, through the same `CameraFlightEnded` event as `fly_to`.
+    #[allow(clippy::too_many_arguments)]
+    pub fn fit_bounds(
+        &mut self,
+        positions: Option<Vec<FloatType>>,
+        bbox: Option<Vec<FloatType>>,
+        padding: Vec<FloatType>,
+        heading: Option<FloatType>,
+        pitch: Option<FloatType>,
+        duration: Option<FloatType>,
+        max_height: Option<FloatType>,
+        easing: Option<u8>,
+    ) -> u32 {
+        let id = self
+            .app
+            .world_mut()
+            .get_resource_or_insert_with(FlightIdAllocator::default)
+            .allocate();
+
+        let target = match bbox.as_deref() {
+            Some(&[west, south, east, north]) => FitBoundsTarget::Box {
+                west,
+                south,
+                east,
+                north,
+            },
+            _ => FitBoundsTarget::Positions(
+                positions
+                    .unwrap_or_default()
+                    .as_chunks::<3>()
+                    .0
+                    .iter()
+                    .map(|&[lng, lat, height]| Vec3::new(lng, lat, height))
+                    .collect(),
+            ),
+        };
+        let padding = match padding.as_slice() {
+            &[top, right, bottom, left] => [top, right, bottom, left],
+            _ => [0.; 4],
+        };
+        let world = self.app.world_mut();
+        world
+            .get_resource_or_insert_with(FitBoundsTargets::default)
+            .insert(id, fit_bounds_positions(&target));
+        world.write_message(CameraEvent::FitBounds {
+            padding,
+            heading,
+            pitch,
+            duration,
+            max_height,
             easing: easing.and_then(|v| FlyToEasing::try_from(v).ok()),
             id,
         });

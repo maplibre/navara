@@ -28,6 +28,12 @@ const ok = await view.flyTo(
 // another camera operation (a newer flyTo, setCamera, etc.). duration
 // defaults to 2–3 s derived from flight distance; easing defaults to
 // quinticInOut (cubicOut when descending from high altitude).
+await view.fitBounds(positions /* or { west, south, east, north } */, {
+  padding: { left: 360, top: 40, right: 40, bottom: 40 }, // CSS px, e.g. clear of a side panel
+  heading: 0,
+  pitch: -45, // in [-90, 0); default: the current camera's
+  duration, // + maxHeight, easing as flyTo; resolves like flyTo
+});
 view.lookAt(target, offsetENU);
 view.camera.on("moveend", () => console.log(view.camera.positionGeographic));
 view.camera.fov = 50; // use setters, never camera.raw.fov
@@ -35,5 +41,6 @@ view.camera.fov; // degrees; vertical fov
 ```
 
 - **Camera events: listen to `move`, not `movestart`.** User interaction and the camera movement methods emit events, but instantaneous ones (`setCamera`, `lookAt`, `rotateAroundAxis`, `flyTo` with `duration: 0`) finish inside one frame and emit only `move` + `moveend` — no `movestart`, since there is no movement to open. Continuous movement (gestures, their inertia, an animated `flyTo`) emits the full `movestart` -> `move`... -> `moveend`. Each event fires at most once per frame, but an instantaneous change emits `move` and `moveend` in the _same_ frame, so a handler bound to both runs twice for one `setCamera` — keep it idempotent. **Follow mode emits nothing:** while `cameraFollow`/`cameraFreeLook` is active the camera is repositioned every frame with no status pushed, so poll `positionGeographic` on `preRender` instead of listening for `move`.
+- **Framing several points: `fitBounds`, not a distance estimated for `flyTo`.** It computes the closest camera for the heading, pitch, field of view, canvas aspect and padding, on the curved Earth (a box is sampled along its edges; `west > east` crosses the antimeridian). It does not sample terrain: positions without `height` sit at 0 m on the ellipsoid, so pass heights from `sampleTerrainMostDetailed` for hilly ground. `heading`/`pitch` are the camera's own at its position (`getCamera()` matches at city scale, within ~0.1° for continental extents). Every point stays at least 300 m in front of the camera (a single point is seen from 300 m). Works right after `init()` (before the first frame it uses heading 0 / pitch -90 unless given). Applies in call order with `setCamera`/`flyTo` (a later one overrides it); a resize during the flight refits, a resize after it does not. Cost grows with the position count: pass a box or a few representative positions for large features. Resolves `false` without moving when the padding leaves no room, the pitch is outside [-90, 0), or no camera above the ground sees every point over the Earth's horizon (e.g. most of a continent at pitch -45: fit top-down or a smaller extent).
 - **`getCamera()` is `undefined` until the engine camera exists** — during plugin `init()` and until the first frame after `view.init()` resolves. Read it from a `move` handler or later, not right after `init()`.
 - **Never write to `view.camera.raw` frustum fields** (`fov` etc.) — the engine overwrites them and Rust-side culling desyncs. Use the `view.camera.fov/near/far` setters.

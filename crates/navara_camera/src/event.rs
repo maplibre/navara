@@ -73,6 +73,18 @@ pub enum CameraEvent {
         easing: Option<FlyToEasing>, // easing applied to the flight time; None = default rule
         id: u32,                     // flight id echoed back through `CameraFlightEnded`
     },
+    /// `fitBounds`: solved against the camera left by the events before it,
+    /// then started as a `FlyTo` with the same id. Its positions wait in
+    /// `FitBoundsTargets` under `id`.
+    FitBounds {
+        padding: [FloatType; 4],     // CSS pixels: top, right, bottom, left
+        heading: Option<FloatType>,  // degrees; the current camera's when None
+        pitch: Option<FloatType>,    // degrees in [-90, 0); the current camera's when None
+        duration: Option<FloatType>, // as FlyTo
+        max_height: Option<FloatType>,
+        easing: Option<FlyToEasing>,
+        id: u32,
+    },
     LookAt {
         target: Vec3, // [longitude, latitude, altitude]
         offset: Vec3, // The offset from the target in the local east-north-up reference frame centered at the target.

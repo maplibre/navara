@@ -910,6 +910,31 @@ impl Core {
         )
     }
 
+    /// Starts a flight that frames `positions` (`[lng, lat, height]`
+    /// triples, degrees and meters) or `bbox` (`[west, south, east, north]`,
+    /// degrees) in the canvas less `padding` (`[top, right, bottom, left]`,
+    /// CSS pixels), and returns its id. Heading and pitch default to the
+    /// current camera's (0 and -90 before it is placed). A
+    /// `CameraFlightEndedEvent` with the id reports the end as for `flyTo`,
+    /// `completed: false` at once when no camera frames the target.
+    #[allow(clippy::too_many_arguments)]
+    #[wasm_bindgen(js_name = fitBounds)]
+    pub fn fit_bounds(
+        &mut self,
+        positions: Option<Vec<FloatType>>,
+        bbox: Option<Vec<FloatType>>,
+        padding: Vec<FloatType>,
+        heading: Option<FloatType>,
+        pitch: Option<FloatType>,
+        duration: Option<FloatType>,
+        max_height: Option<FloatType>,
+        easing: Option<u8>,
+    ) -> u32 {
+        self.app.fit_bounds(
+            positions, bbox, padding, heading, pitch, duration, max_height, easing,
+        )
+    }
+
     #[wasm_bindgen(js_name = lookAt)]
     pub fn look_at(&mut self, target: Vec<FloatType>, offset: Vec<FloatType>) {
         self.app.look_at(target, offset);

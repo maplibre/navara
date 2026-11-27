@@ -25,6 +25,7 @@ use navara_window::Window;
 use crate::{
     CamDirType, CameraController, CameraDirection, CameraEvent, CameraFlight, CameraInertia,
     CameraOrientation, CameraStatus, CameraStatusType, StartFlyResult,
+    fit_bounds::{ActiveFit, FitBoundsTargets, current_orientation},
     follow::handle_follow,
     helpers::{
         get_heading, get_pick_ray_from_camera, get_pitch, get_roll, ray_ellipsoid_intersect,
@@ -83,6 +84,7 @@ pub fn update(
     mut ce: MessageReader<CameraEvent>,
     keys: Res<ButtonInput<KeyCode>>,
     frame: Res<FrameManager>,
+    mut fit_targets: ResMut<FitBoundsTargets>,
 ) {
     let updated_at = frame.updated_at();
     let last_updated_at = frame.last_updated_at();
@@ -112,9 +114,40 @@ pub fn update(
         // Events run before the flight advances so a FlyTo issued mid-flight
         // interrupts the current flight instead of being swallowed.
         for ce in ce.read() {
+            let ce = match *ce {
+                CameraEvent::FitBounds {
+                    padding,
+                    heading,
+                    pitch,
+                    duration,
+                    max_height,
+                    easing,
+                    id,
+                } => {
+                    let (current_heading, current_pitch) = current_orientation(&transform);
+                    let fit = ActiveFit {
+                        id,
+                        positions: fit_targets.take(id),
+                        padding,
+                        heading: heading.unwrap_or(current_heading),
+                        pitch: pitch.unwrap_or(current_pitch),
+                    };
+                    let Some(pose) = fit.solve(&window, frustum) else {
+                        flight.ended.push(navara_event_store::CameraFlightEnded {
+                            id,
+                            completed: false,
+                        });
+                        continue;
+                    };
+                    let fly_to = fit.fly_to(&pose, duration, max_height, easing);
+                    flight.fit = Some(fit);
+                    fly_to
+                }
+                ce => ce,
+            };
             process_camera_event(
                 &window,
-                ce,
+                &ce,
                 &mut transform,
                 &mut orbit,
                 &mut inertia,
@@ -124,6 +157,19 @@ pub fn update(
                 &mut controller,
                 is_cam_moving,
             );
+        }
+
+        // A fit lands on the canvas it is shown in: re-solve it when the
+        // canvas resizes before its flight ends.
+        if window.is_changed() {
+            let refit = flight
+                .fit
+                .as_ref()
+                .filter(|fit| flight.current_id() == Some(fit.id))
+                .and_then(|fit| fit.solve(&window, frustum));
+            if let Some(pose) = refit {
+                flight.retarget(pose.position);
+            }
         }
 
         // flying
@@ -267,6 +313,9 @@ fn process_camera_event(
     is_cam_moving: bool,
 ) {
     match ce {
+        CameraEvent::FitBounds { .. } => {
+            unreachable!("`update` turns a FitBounds into a FlyTo before processing it")
+        }
         CameraEvent::Change {
             position,
             orientation,
@@ -977,7 +1026,7 @@ fn after_inertia(
 /// - `cc.position.z`: camera height above the ground point (along normal)
 /// - `cc.heading`: rotation around the local up axis (degrees)
 /// - `cc.pitch`: tilt around the camera's right axis (degrees)
-fn apply_camera_change(
+pub(crate) fn apply_camera_change(
     window: &Window,
     frustum: &CameraFrustum,
     transform: &mut Transform,
@@ -1084,7 +1133,7 @@ fn apply_camera_change(
 
 /// Calculates the world rotation quaternion based on target direction and heading
 /// Handles special case when looking directly up/down (Z-axis)
-fn calculate_world_quat(target_dir: Vec3, heading: f64) -> Quat {
+pub(crate) fn calculate_world_quat(target_dir: Vec3, heading: f64) -> Quat {
     // Calculate right vector - special case when looking straight up/down
     let right = if target_dir.abs_diff_eq(Vec3::Z, EPSILON3)
         || target_dir.abs_diff_eq(-Vec3::Z, EPSILON3)
@@ -1112,7 +1161,7 @@ fn calculate_world_quat(target_dir: Vec3, heading: f64) -> Quat {
 
 /// Applies pitch and roll rotations to orientation vectors
 /// Returns modified forward and up vectors
-fn apply_orientation_changes(
+pub(crate) fn apply_orientation_changes(
     world_quat: Quat,
     local_forward: Vec3,
     local_up: Vec3,

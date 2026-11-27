@@ -534,6 +534,10 @@ pub struct CameraFlight {
 
     /// Id of the in-progress flight, `None` when idle.
     current_id: Option<u32>,
+    /// The fit a `fitBounds` flight lands on, re-solved when the canvas
+    /// resizes before the flight ends. Applies only while its id is the
+    /// current flight's.
+    pub(crate) fit: Option<crate::fit_bounds::ActiveFit>,
     /// Terminal records drained into the `EventStore` once per frame.
     pub ended: Vec<CameraFlightEnded>,
 }
@@ -763,6 +767,35 @@ impl CameraFlight {
 
     pub fn is_flying(&self) -> bool {
         self.time < self.duration
+    }
+
+    /// Id of the in-progress flight, `None` when idle.
+    pub fn current_id(&self) -> Option<u32> {
+        self.current_id
+    }
+
+    /// Moves the end position (`[lng, lat, height]`, degrees and meters) of
+    /// the flight in progress, keeping its timing, easing and arc height.
+    pub(crate) fn retarget(&mut self, position: Vec3) {
+        if !self.is_flying() {
+            return;
+        }
+        // Keep the short way across the antimeridian chosen at the start.
+        let mut lon = position.x;
+        while lon - self.start_options.lon > 180.0 {
+            lon -= 360.0;
+        }
+        while lon - self.start_options.lon < -180.0 {
+            lon += 360.0;
+        }
+        self.end_options.lon = lon;
+        self.end_options.lat = position.y;
+        self.end_options.height = position.z;
+        self.height_function = Some(Self::create_height_function(
+            self.start_options.height,
+            self.end_options.height,
+            self.max_height,
+        ));
     }
 
     /// True while a flight owns the camera (i.e. its terminal record has not
