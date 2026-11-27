@@ -68,7 +68,7 @@ new OverlayPlugin(config?: OverlayConfig)
 setPositions(positions: WorldPosition[]): void
 ```
 
-Replaces the set of world positions to track. Positions are automatically re-projected on the next render frame.
+Replaces the set of world positions to track. The next frame projects the new positions and calls the `onUpdate` listeners, and a frame is rendered for this even when the map is idle. Calls made within one frame, including from an `onUpdate` listener, are projected together on the next frame.
 
 ### onUpdate(fn)
 
@@ -76,7 +76,7 @@ Replaces the set of world positions to track. Positions are automatically re-pro
 onUpdate(fn: (state: OverlayState) => void): () => void
 ```
 
-Subscribes to projection updates. The callback fires on every render frame with the latest projected screen coordinates. Returns an unsubscribe function.
+Subscribes to projection updates. The callback fires on every rendered frame with the latest projected screen coordinates. Without `animation: true`, the view renders only when something changes (the camera moves, data loads, `setPositions()` is called). A new listener receives the current projection on the next frame, which is rendered for this even when the map is idle. Returns an unsubscribe function.
 
 ### dispose()
 
