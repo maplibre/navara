@@ -1,0 +1,186 @@
+<title>Feature Name</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+JP:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500&family=Space+Grotesk:wght@500;700&display=swap">
+<style>
+/* One reading column with full-width diagram, table and code panels. */
+:root {
+  --bg: #f6f8fb; --surface: #ffffff; --fg: #1a2230; --muted: #5b6678; --line: #dbe1ea;
+  --accent: #0a6fd6; --accent-soft: #e4f0fc; --warn: #b25b00; --warn-soft: #fdf1e3;
+  --ok: #1f7a4d; --ok-soft: #e3f4ea; --code-bg: #eef2f7;
+  --font-display: "Space Grotesk", "IBM Plex Sans JP", system-ui, sans-serif;
+  --font-body: "IBM Plex Sans JP", "Hiragino Sans", "Noto Sans JP", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f141c; --surface: #161d28; --fg: #e3e8f0; --muted: #98a3b5; --line: #2a3444;
+    --accent: #5aa9ff; --accent-soft: #15283f; --warn: #f0a457; --warn-soft: #2e2214;
+    --ok: #5fcf95; --ok-soft: #13291f; --code-bg: #111821; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0f141c; --surface: #161d28; --fg: #e3e8f0; --muted: #98a3b5; --line: #2a3444;
+  --accent: #5aa9ff; --accent-soft: #15283f; --warn: #f0a457; --warn-soft: #2e2214;
+  --ok: #5fcf95; --ok-soft: #13291f; --code-bg: #111821; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body {
+  background: var(--bg); color: var(--fg);
+  font-family: var(--font-body); font-size: 15px; line-height: 1.75;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 40px 80px;
+}
+main { max-width: 920px; margin: 0 auto; display: grid; gap: 56px; }
+.prose { max-width: 72ch; }
+h1, h2, h3 { font-family: var(--font-display); text-wrap: balance; line-height: 1.3; margin: 0; }
+h1 { font-size: 2.1rem; }
+h2 { font-size: 1.45rem; padding-bottom: 8px; border-bottom: 1px solid var(--line); }
+h3 { font-size: 1.08rem; margin-top: 8px; }
+p { margin: 0; }
+section, header { display: grid; gap: 18px; min-width: 0; }
+.eyebrow { font-family: var(--font-mono); font-size: 0.78rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--accent); }
+.lead { color: var(--muted); font-size: 1.02rem; }
+nav { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 0.88rem; }
+a { color: var(--accent); }
+a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+code { font-family: var(--font-mono); font-size: 0.88em; background: var(--code-bg); padding: 1px 5px; border-radius: 4px; overflow-wrap: anywhere; }
+pre.code { font-family: var(--font-mono); font-size: 0.82rem; line-height: 1.6; background: var(--code-bg); border: 1px solid var(--line); border-radius: 8px; padding: 14px 16px; margin: 0; overflow-x: auto; }
+pre.code .c { color: var(--muted); }
+pre.code .k { color: var(--accent); }
+.diagram { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 18px; overflow-x: auto; }
+.diagram pre.mermaid { margin: 0; background: transparent; text-align: center; }
+.caption { font-size: 0.85rem; color: var(--muted); }
+.table-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
+table { border-collapse: collapse; width: 100%; font-size: 0.88rem; }
+th, td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { font-weight: 500; color: var(--muted); font-size: 0.8rem; background: var(--bg); }
+tr:last-child td { border-bottom: 0; }
+.rules { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 360px), 1fr)); gap: 12px; }
+.rule { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; font-size: 0.88rem; min-width: 0; }
+.rule b { display: block; font-weight: 500; }
+.rule span { color: var(--muted); }
+.points { display: grid; gap: 12px; }
+.point { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; padding: 14px 16px; border-radius: 10px; background: var(--surface); border: 1px solid var(--line); }
+.point > div { min-width: 0; }
+.point strong { display: block; font-weight: 500; }
+.point p { color: var(--muted); font-size: 0.9rem; }
+.tag { font-family: var(--font-mono); font-size: 0.72rem; text-transform: uppercase; padding: 2px 8px; border-radius: 999px; height: fit-content; white-space: nowrap; }
+.tag.fix { color: var(--warn); background: var(--warn-soft); }
+.tag.decide { color: var(--accent); background: var(--accent-soft); }
+.tag.good { color: var(--ok); background: var(--ok-soft); }
+@media (max-width: 520px) { h1 { font-size: 1.6rem; } .point { grid-template-columns: 1fr; } }
+</style>
+
+<main>
+<header>
+  <div class="eyebrow">branch-name · for review</div>
+  <h1>Feature Name</h1>
+  <p class="lead prose">What changed and its core idea, in two or three sentences.</p>
+  <nav aria-label="Sections">
+    <a href="#overview">Overview</a>
+    <a href="#flow">One operation</a>
+    <a href="#states">States</a>
+    <a href="#api">Public API</a>
+    <a href="#usage">Usage</a>
+    <a href="#alternatives">Approaches considered</a>
+    <a href="#references">References</a>
+    <a href="#review">Evaluation points</a>
+  </nav>
+</header>
+
+<section id="overview">
+  <h2>Overview</h2>
+  <div class="diagram">
+<pre class="mermaid">
+flowchart LR
+  App["Application"] --> Api["Public API"] --> Core["Internals"] --> Gpu["GPU"]
+</pre>
+  </div>
+  <p class="caption">What the reader should notice in the diagram.</p>
+</section>
+
+<section id="flow">
+  <h2>One operation end to end</h2>
+  <div class="diagram">
+<pre class="mermaid">
+sequenceDiagram
+  participant App as Application
+  participant Render as Render loop
+  App->>Render: a call
+  Render-->>App: an event
+</pre>
+  </div>
+</section>
+
+<section id="states">
+  <h2>States</h2>
+  <div class="diagram">
+<pre class="mermaid">
+stateDiagram-v2
+  direction LR
+  state "Idle" as Idle
+  state "Running" as Running
+  [*] --> Idle
+  Idle --> Running : a value arrives [with a timing]
+  Running --> Idle : the duration passes
+</pre>
+  </div>
+  <div class="rules">
+    <div class="rule"><b>Transitions left out</b><span>What the chart does not draw.</span></div>
+    <div class="rule"><b>A rule</b><span>A decision the reader needs to predict behavior.</span></div>
+  </div>
+</section>
+
+<section id="api">
+  <h2>Public API</h2>
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th>API</th><th>Package</th><th>Role</th></tr></thead>
+    <tbody>
+      <tr><td><code>name</code></td><td>package</td><td>What it does.</td></tr>
+    </tbody>
+  </table>
+  </div>
+</section>
+
+<section id="usage">
+  <h2>Usage</h2>
+  <h3>A use case</h3>
+<pre class="code"><span class="c">// A minimal snippet that runs</span>
+layer.forceUpdate();</pre>
+</section>
+
+<section id="alternatives">
+  <h2>Approaches considered</h2>
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th>Approach</th><th>What it was</th><th>Why not</th></tr></thead>
+    <tbody>
+      <tr><td>Option</td><td>Description.</td><td>Reason.</td></tr>
+    </tbody>
+  </table>
+  </div>
+</section>
+
+<section id="references">
+  <h2>References</h2>
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th>Reference</th><th>What was taken from it</th></tr></thead>
+    <tbody>
+      <tr><td><a href="https://example.com/">Title</a></td><td>The idea or name adopted.</td></tr>
+    </tbody>
+  </table>
+  </div>
+</section>
+
+<section id="review">
+  <h2>Evaluation points</h2>
+  <div class="points">
+    <div class="point"><span class="tag fix">Fix</span><div><strong>A fact that is wrong</strong><p>Where (<code>file.ts:10</code>) and what differs.</p></div></div>
+    <div class="point"><span class="tag decide">Decide</span><div><strong>A trade-off</strong><p>What each side costs.</p></div></div>
+    <div class="point"><span class="tag good">Good</span><div><strong>A strength</strong><p>Why the design holds.</p></div></div>
+  </div>
+</section>
+</main>
