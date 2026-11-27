@@ -46,6 +46,7 @@ export class JsStyleEngine implements StyleEngine {
         // Note: MapLibre uses its own Feature format (not GeoJSON), where type is the geometry type.
         const feature: Feature = {
           type: featureGeometryType as Feature["type"],
+          id: ctx.featureId,
           properties: ctx.properties ?? {},
           geometry: [],
         };
@@ -123,6 +124,7 @@ export class JsStyleEngine implements StyleEngine {
       // Note: MapLibre uses its own Feature format (not GeoJSON), where type is the geometry type.
       const feature: Feature = {
         type: featureGeometryType as Feature["type"], // e.g., "Point", "Polygon", "LineString"
+        id: ctx.featureId,
         properties: ctx.properties ?? {},
         geometry: [], // Empty geometry - most expressions only access properties
       };

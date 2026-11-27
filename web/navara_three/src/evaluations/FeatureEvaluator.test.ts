@@ -149,4 +149,100 @@ describe("FeatureEvaluator", () => {
       expect(capturedGeometryType).toBe("text");
     });
   });
+
+  describe("featureId", () => {
+    // Only row 0 has a top-level id; row 1 only has a `$id` property.
+    function idHandler() {
+      return {
+        readAllBatchedProperties: vi.fn(
+          (
+            _: bigint,
+            cb: (
+              i: number,
+              id: number,
+              p?: Record<string, unknown>,
+              featureId?: string | number,
+            ) => void,
+          ) => {
+            cb(0, 10, {}, 1);
+            cb(1, 11, { $id: "b" }, undefined);
+          },
+        ),
+        readFilteredBatchedProperties: vi.fn(
+          (
+            _: bigint,
+            __: string[],
+            cb: (
+              i: number,
+              id: number,
+              f?: unknown[],
+              featureId?: string | number,
+            ) => void,
+          ) => {
+            cb(0, 10, [undefined], 1);
+            cb(1, 11, ["b"], undefined);
+          },
+        ),
+      } as unknown as FeatureHandler;
+    }
+
+    it("pairs each row with its top-level id", () => {
+      const evaluator = new FeatureEvaluator(
+        idHandler(),
+        "test-layer",
+        0n,
+        new Object3D(),
+      );
+
+      const ids: (string | number | undefined)[] = [];
+      evaluator.readFeatureProperties(({ featureId }, row) => {
+        ids[row] = featureId;
+      });
+
+      // A `$id` property is not the feature id.
+      expect(ids).toEqual([1, undefined]);
+    });
+
+    it("provides ids to filtered reads too", () => {
+      const evaluator = new FeatureEvaluator(
+        idHandler(),
+        "test-layer",
+        0n,
+        new Object3D(),
+      );
+
+      const ids: (string | number | undefined)[] = [];
+      evaluator.readFilteredFeatureProperties(["$id"], ({ featureId }, row) => {
+        ids[row] = featureId;
+      });
+
+      expect(ids).toEqual([1, undefined]);
+    });
+
+    it("keeps the ids when replaying cached properties", () => {
+      const handler = idHandler();
+      const evaluator = new FeatureEvaluator(
+        handler,
+        "test-layer",
+        0n,
+        new Object3D(),
+      );
+
+      const ids: (string | number | undefined)[] = [];
+      const filteredIds: (string | number | undefined)[] = [];
+      evaluator.readFeatureProperties(() => {});
+      evaluator.readFeatureProperties(({ featureId }, row) => {
+        ids[row] = featureId;
+      });
+      evaluator.readFilteredFeatureProperties(["$id"], () => {});
+      evaluator.readFilteredFeatureProperties(["$id"], ({ featureId }, row) => {
+        filteredIds[row] = featureId;
+      });
+
+      expect(ids).toEqual([1, undefined]);
+      expect(filteredIds).toEqual([1, undefined]);
+      expect(handler.readAllBatchedProperties).toHaveBeenCalledTimes(1);
+      expect(handler.readFilteredBatchedProperties).toHaveBeenCalledTimes(1);
+    });
+  });
 });

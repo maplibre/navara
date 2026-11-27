@@ -57,6 +57,9 @@ pub struct ParsedMvtSegmentLens {
     // Property tags (u32 stream).
     pub feature_tags_flat: u32,
     pub feature_tag_sizes: u32,
+    /// Words of packed feature ids: 3 per feature (`present`, low, high), or 0
+    /// when no feature in the group has an id.
+    pub feature_ids: u32,
 }
 
 /// Per-group metadata carried alongside the packed streams (structured clone /
@@ -106,7 +109,9 @@ pub fn pack_parsed_mvt_groups(groups: Vec<ParsedLayerGroup>) -> PackedMvtParseRe
     let mut u32_cap = 0usize;
     let mut u8_cap = 0usize;
     for group in &groups {
-        u32_cap += group.feature_tags_flat.len() + group.feature_tag_sizes.len();
+        u32_cap += group.feature_tags_flat.len()
+            + group.feature_tag_sizes.len()
+            + group.feature_ids.len() * 3;
         match &group.geometry {
             ParsedGeometry::Points {
                 coords,
@@ -196,6 +201,7 @@ pub fn pack_parsed_mvt_groups(groups: Vec<ParsedLayerGroup>) -> PackedMvtParseRe
         let mut lens = ParsedMvtSegmentLens {
             feature_tags_flat: group.feature_tags_flat.len() as u32,
             feature_tag_sizes: group.feature_tag_sizes.len() as u32,
+            feature_ids: (group.feature_ids.len() * 3) as u32,
             ..Default::default()
         };
 
@@ -276,6 +282,15 @@ pub fn pack_parsed_mvt_groups(groups: Vec<ParsedLayerGroup>) -> PackedMvtParseRe
         let mut feature_tag_sizes = group.feature_tag_sizes;
         result.u32_stream.append(&mut feature_tags_flat);
         result.u32_stream.append(&mut feature_tag_sizes);
+        for id in &group.feature_ids {
+            let (present, id) = match id {
+                Some(id) => (1, *id),
+                None => (0, 0),
+            };
+            result
+                .u32_stream
+                .extend_from_slice(&[present, id as u32, (id >> 32) as u32]);
+        }
 
         result.meta.headers.push(ParsedMvtGroupHeader {
             layer_id: group.layer_id,
@@ -295,6 +310,7 @@ pub struct UnpackedMvtGroup {
     pub geometry: ParsedGeometry,
     pub feature_tags_flat: Vec<u32>,
     pub feature_tag_sizes: Vec<u32>,
+    pub feature_ids: Vec<Option<u64>>,
 }
 
 /// Slices groups back out of the four packed streams, advancing cumulative
@@ -469,11 +485,19 @@ impl PackedMvtStreamsCursor {
 
         let feature_tags_flat = self.take_u32(lens.feature_tags_flat)?;
         let feature_tag_sizes = self.take_u32(lens.feature_tag_sizes)?;
+        let feature_ids = self
+            .take_u32(lens.feature_ids)?
+            .as_chunks::<3>()
+            .0
+            .iter()
+            .map(|&[present, lo, hi]| (present != 0).then(|| u64::from(lo) | (u64::from(hi) << 32)))
+            .collect();
 
         Some(UnpackedMvtGroup {
             geometry,
             feature_tags_flat,
             feature_tag_sizes,
+            feature_ids,
         })
     }
 }
@@ -494,6 +518,7 @@ mod test {
             feature_count: 2,
             feature_tags_flat: vec![0, 0, 1, 1],
             feature_tag_sizes: vec![2, 2],
+            feature_ids: vec![Some(7), Some(u64::MAX)],
             keys: Arc::new(vec!["name".to_string()]),
             values: Arc::new(vec![tile::Value {
                 string_value: Some("a".to_string()),
@@ -520,6 +545,7 @@ mod test {
             feature_count: 1,
             feature_tags_flat: vec![],
             feature_tag_sizes: vec![0],
+            feature_ids: vec![],
             keys: Arc::new(vec![]),
             values: Arc::new(vec![]),
             geometry: ParsedGeometry::Polylines {
@@ -538,6 +564,7 @@ mod test {
             feature_count: 2,
             feature_tags_flat: vec![0, 1, 0, 2],
             feature_tag_sizes: vec![2, 2],
+            feature_ids: vec![None, Some(3)],
             keys: Arc::new(vec!["height".to_string()]),
             values: Arc::new(vec![
                 tile::Value {
@@ -639,6 +666,7 @@ mod test {
                     geometry,
                     feature_tags_flat: g.feature_tags_flat.clone(),
                     feature_tag_sizes: g.feature_tag_sizes.clone(),
+                    feature_ids: g.feature_ids.clone(),
                 },
                 ParsedLayerPropertiesMeta::from_parts(&g.keys, &g.values),
             ));

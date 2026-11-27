@@ -56,6 +56,7 @@ pub fn create_tile(
             tile_features.push(TileFeature {
                 geometry: geom,
                 properties: f.properties.clone(),
+                id: f.id.clone(),
             });
         }
 
@@ -376,6 +377,7 @@ mod tests {
                 max_y: 0.5,
             },
             properties: Arc::new(serde_json::json!({"name": "test"})),
+            id: None,
             source_index: 0,
         });
 
@@ -420,6 +422,7 @@ mod tests {
                 max_y: 0.25,
             },
             properties: Arc::new(serde_json::Value::Null),
+            id: None,
             source_index: 0,
         });
 
@@ -458,6 +461,7 @@ mod tests {
                 max_y: 0.5,
             },
             properties: Arc::new(serde_json::Value::Null),
+            id: None,
             source_index: 0,
         });
 
@@ -486,6 +490,7 @@ mod tests {
                 max_y: 0.75,
             },
             properties: Arc::new(serde_json::Value::Null),
+            id: None,
             source_index: 0,
         });
 

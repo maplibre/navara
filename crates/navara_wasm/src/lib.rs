@@ -787,6 +787,7 @@ impl Core {
             layer_id: picked.layer_id,
             batch_id: picked.batch_id,
             feature_set_id: picked.feature_set.map(|e| e.to_bits()),
+            feature_id: feature_id_to_js(picked.feature_id.as_ref()),
         }
     }
 
@@ -801,15 +802,20 @@ impl Core {
             .read_all_batched_properties::<JsPropertyValue, JsValue, _>(
                 renderable_feature_bits,
                 None,
-                &|batch_idx, batch_id, props| {
+                &|batch_idx, batch_id, props, feature_id| {
                     let batch_idx = JsValue::from(batch_idx as u32);
                     let batch_id = JsValue::from(batch_id);
-                    match props {
-                        BatchProperties::All(Some(v)) => {
-                            callback.call3(&this, &batch_idx, &batch_id, &v.0)?
-                        }
-                        _ => callback.call2(&this, &batch_idx, &batch_id)?,
+                    let props = match props {
+                        BatchProperties::All(Some(v)) => v.0,
+                        _ => JsValue::UNDEFINED,
                     };
+                    callback.call4(
+                        &this,
+                        &batch_idx,
+                        &batch_id,
+                        &props,
+                        &feature_id_to_js(feature_id),
+                    )?;
                     Ok(())
                 },
             )?;
@@ -830,10 +836,10 @@ impl Core {
             .read_all_batched_properties::<JsPropertyValue, JsValue, _>(
                 renderable_feature_bits,
                 Some(&keys),
-                &|batch_idx, batch_id, props| {
+                &|batch_idx, batch_id, props, feature_id| {
                     let batch_idx = JsValue::from(batch_idx as u32);
                     let batch_id = JsValue::from(batch_id);
-                    match props {
+                    let props = match props {
                         BatchProperties::Filtered(Some(values)) => {
                             let arr = js_sys::Array::new_with_length(values.len() as u32);
                             for (i, val) in values.into_iter().enumerate() {
@@ -842,10 +848,17 @@ impl Core {
                                     None => arr.set(i as u32, JsValue::UNDEFINED),
                                 }
                             }
-                            callback.call3(&this, &batch_idx, &batch_id, &arr.into())?
+                            arr.into()
                         }
-                        _ => callback.call2(&this, &batch_idx, &batch_id)?,
+                        _ => JsValue::UNDEFINED,
                     };
+                    callback.call4(
+                        &this,
+                        &batch_idx,
+                        &batch_id,
+                        &props,
+                        &feature_id_to_js(feature_id),
+                    )?;
                     Ok(())
                 },
             )?;
@@ -1289,3 +1302,16 @@ pub fn start() {
 
 //     f(app)
 // }
+
+/// A feature's top-level id (a JSON string or number) as a JS `string | number`;
+/// `undefined` for none or any other JSON type. Numbers above 2^53 lose
+/// precision, as they do in MapLibre.
+fn feature_id_to_js(id: Option<&serde_json::Value>) -> JsValue {
+    match id {
+        Some(serde_json::Value::String(s)) => JsValue::from_str(s),
+        Some(serde_json::Value::Number(n)) => {
+            n.as_f64().map_or(JsValue::UNDEFINED, JsValue::from_f64)
+        }
+        _ => JsValue::UNDEFINED,
+    }
+}

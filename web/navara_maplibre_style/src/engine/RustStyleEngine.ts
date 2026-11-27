@@ -44,6 +44,7 @@ export class RustStyleEngine implements StyleEngine {
           ctx.properties ?? {},
           ctx.zoom ?? 0, // Use tile zoom if available, otherwise 0 for non-tiled features
           featureGeometryType, // Pass geometry type for ["geometry-type"] filters
+          ctx.featureId, // ["id"] / legacy $id
         );
         return result;
       } catch (_err) {
@@ -140,6 +141,7 @@ export class RustStyleEngine implements StyleEngine {
           ctx.zoom ?? 0, // Use tile zoom if available, otherwise 0 for non-tiled features
           featureGeometryType, // Pass geometry type for expressions that need it
           ctx.elevation, // ["elevation"] (color-relief-color only)
+          ctx.featureId, // ["id"]
         );
 
         if (result == null) {

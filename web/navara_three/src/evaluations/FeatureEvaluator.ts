@@ -178,6 +178,12 @@ export type FeatureInfo = {
    */
   batchId: number;
   properties: Record<string, unknown> | undefined;
+  /**
+   * The feature's top-level id (GeoJSON `id` or MVT feature id), as a string
+   * or number, when the source data has one. It is stored apart from
+   * `properties`, so it never collides with a property name.
+   */
+  featureId?: string | number;
   layerId: LayerId | undefined;
   /** Mesh geometry type (e.g., "billboard", "text"). Not GeoJSON geometry ("Point", "Polygon"). */
   meshGeomType?: GeometryType;
@@ -253,6 +259,8 @@ export class FeatureEvaluator {
     Record<string, unknown> | undefined
   >;
   private batchIds: number[] = [];
+  /** Top-level feature ids (GeoJSON or MVT) by batch index, for cached reads. */
+  private featureIds: (string | number | undefined)[] = [];
 
   /**
    * The underlying Three.js object representing this feature.
@@ -355,6 +363,7 @@ export class FeatureEvaluator {
             layerId: this.layerId,
             batchId: this.batchIds[batchIdx],
             properties,
+            featureId: this.featureIds[batchIdx],
             meshGeomType,
           },
           batchIdx,
@@ -368,14 +377,17 @@ export class FeatureEvaluator {
           batchIdx: number,
           batchId: number,
           properties: Record<string, unknown> | undefined,
+          featureId: string | number | undefined,
         ) => {
           this.cachedBatchedProperties?.set(batchIdx, properties);
           this.batchIds[batchIdx] = batchId;
+          this.featureIds[batchIdx] = featureId;
           f(
             {
               layerId: this.layerId,
               batchId,
               properties,
+              featureId,
               meshGeomType,
             },
             batchIdx,
@@ -414,6 +426,7 @@ export class FeatureEvaluator {
             layerId: this.layerId,
             batchId: this.batchIds[batchIndex],
             properties: filtered,
+            featureId: this.featureIds[batchIndex],
             meshGeomType,
           },
           batchIndex,
@@ -426,18 +439,25 @@ export class FeatureEvaluator {
       this.handler.readFilteredBatchedProperties(
         this.featureSetId,
         keys,
-        (batchIndex: number, batchId: number, filtered?: unknown[]) => {
+        (
+          batchIndex: number,
+          batchId: number,
+          filtered?: unknown[],
+          featureId?: string | number,
+        ) => {
           const properties: Record<string, unknown> = {};
           for (let i = 0; i < keys.length; i++) {
             properties[keys[i]] = filtered?.[i];
           }
           this.cachedFilteredProperties?.set(batchIndex, properties);
           this.batchIds[batchIndex] = batchId;
+          this.featureIds[batchIndex] = featureId;
           f(
             {
               layerId: this.layerId,
               batchId,
               properties,
+              featureId,
               meshGeomType,
             },
             batchIndex,

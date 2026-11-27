@@ -330,6 +330,67 @@ mod tests {
         );
     }
 
+    /// The top-level `id` survives `convert`, `clip` (a polygon split across the
+    /// z1 tiles at lng 0) and `wrap` (a polygon crossing the antimeridian), and
+    /// stays apart from a property named `$id`.
+    #[test]
+    fn test_feature_id_survives_clip_and_wrap() {
+        use geojson_lib::feature::Id;
+
+        let geojson: GeoJson = serde_json::from_str(
+            r#"{
+                "type": "FeatureCollection",
+                "features": [
+                    {
+                        "type": "Feature",
+                        "id": 1,
+                        "geometry": {
+                            "type": "Polygon",
+                            "coordinates": [[[-10, 5], [10, 5], [10, 15], [-10, 15], [-10, 5]]]
+                        },
+                        "properties": {}
+                    },
+                    {
+                        "type": "Feature",
+                        "id": "am",
+                        "geometry": {
+                            "type": "Polygon",
+                            "coordinates": [[[170, 5], [190, 5], [190, 15], [170, 15], [170, 5]]]
+                        },
+                        "properties": {}
+                    },
+                    {
+                        "type": "Feature",
+                        "geometry": {
+                            "type": "Polygon",
+                            "coordinates": [[[-10, 20], [10, 20], [10, 30], [-10, 30], [-10, 20]]]
+                        },
+                        "properties": {"$id": "b"}
+                    }
+                ]
+            }"#,
+        )
+        .unwrap();
+        let mut vt = GeoJsonVt::new(&geojson, Options::default());
+
+        let id_1 = Some(Id::Number(1.into()));
+        let id_am = Some(Id::String("am".to_string()));
+        // The west (x=0) and east (x=1) z1 tiles each hold a clipped piece of
+        // every feature: the lng-0 square directly, the antimeridian one via wrap.
+        for x in 0..2 {
+            let tile = vt.get_tile(1, x, 0).expect("tile should exist");
+            let ids: Vec<_> = tile.features.iter().map(|f| f.id.clone()).collect();
+            assert!(ids.contains(&id_1), "x={x}: clipped square lost its id");
+            assert!(ids.contains(&id_am), "x={x}: wrapped polygon lost its id");
+            let b = tile
+                .features
+                .iter()
+                .find(|f| f.properties.get("$id").is_some())
+                .expect("the `$id` property feature should be in the tile");
+            assert_eq!(b.id, None, "x={x}: a `$id` property must not become the id");
+        }
+    }
+
     #[test]
     fn test_multiple_features() {
         let geojson: GeoJson = serde_json::from_str(

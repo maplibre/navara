@@ -357,7 +357,8 @@ fn finalize_group(
                 values,
                 group.feature_tags_flat,
                 &group.feature_tag_sizes,
-            ),
+            )
+            .with_feature_ids(group.feature_ids),
         )
         .unwrap_or(0);
 
@@ -479,6 +480,7 @@ mod test {
             feature_count: 2,
             feature_tags_flat: vec![],
             feature_tag_sizes: vec![0, 0],
+            feature_ids: vec![],
             keys: Arc::new(vec![]),
             values: Arc::new(vec![] as Vec<tile::Value>),
             geometry: ParsedGeometry::Points {

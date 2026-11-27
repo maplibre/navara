@@ -102,6 +102,8 @@ pub struct InternalFeature {
     pub geometry: InternalGeometry,
     pub bbox: BBox,
     pub properties: Arc<serde_json::Value>,
+    /// Top-level GeoJSON `id` of the source feature, kept apart from `properties`.
+    pub id: Option<geojson_lib::feature::Id>,
     pub source_index: usize,
 }
 
@@ -127,6 +129,8 @@ pub enum TileGeometry {
 pub struct TileFeature {
     pub geometry: TileGeometry,
     pub properties: Arc<serde_json::Value>,
+    /// Top-level GeoJSON `id` of the source feature, kept apart from `properties`.
+    pub id: Option<geojson_lib::feature::Id>,
 }
 
 /// An output tile containing features for a specific tile coordinate.

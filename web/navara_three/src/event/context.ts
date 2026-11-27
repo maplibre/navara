@@ -165,18 +165,25 @@ export type FeatureHandler = {
    * no owner lookup for are a no-op (currently wired: 3D Tiles models, whose
    * post-glTF/Draco-decode size undercounts otherwise). */
   reportFeatureGpuBytes: (bits: bigint, bytes: number) => void;
+  /** `featureId` is the row's top-level id (GeoJSON `id` or MVT feature id), if any. */
   readAllBatchedProperties(
     bits: bigint,
     callback: (
       batchIdx: number,
       batchId: number,
       properties?: Record<string, unknown>,
+      featureId?: string | number,
     ) => void,
   ): void;
   readFilteredBatchedProperties(
     bits: bigint,
     keys: string[],
-    callback: (batchIdx: number, batchId: number, filtered?: unknown[]) => void,
+    callback: (
+      batchIdx: number,
+      batchId: number,
+      filtered?: unknown[],
+      featureId?: string | number,
+    ) => void,
   ): void;
 };
 
