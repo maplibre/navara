@@ -21,13 +21,13 @@ FeatureEvaluator は、地物データへのアクセスと、プロパティに
 
 **Type:** `FeatureSetId`
 
-**Description:** このフィーチャーセットの一意な識別子を取得します。
+**Description:** この評価クラスが対象とするフィーチャーセットの ID です。レイヤーのフィーチャーイベントやピック結果の `featureSetId` と同じ値です。読み込み直されたタイルは新しい ID を持つ新しいフィーチャーセットになります。個々の地物を識別するには、[FeatureInfo](#featureinfo) の `featureId` を使用してください。各 ID の関係は [識別子](../../introduction/about-layer/#識別子) を参照してください。
 
 **Example:**
 
 ```typescript
 layer.on("featureCreated", ({ evaluator }) => {
-  console.log("地物ID:", evaluator.id);
+  console.log("フィーチャーセット ID:", evaluator.id);
 });
 ```
 
@@ -37,10 +37,11 @@ layer.on("featureCreated", ({ evaluator }) => {
 
 ```typescript
 type FeatureInfo = {
-  batchId: number;
+  batchId: number; // 描画された地物のピッキング ID。フィーチャーセットが存在する間だけ有効
   properties: Record<string, unknown> | undefined;
   featureId?: string | number; // GeoJSON のトップレベル `id` または MVT の地物 ID。`properties` とは別に保持（ない場合は undefined）
   layerId: string | undefined;
+  meshGeomType?: GeometryType; // メッシュのジオメトリ種別（"billboard"、"text" など）
 };
 ```
 
@@ -56,19 +57,19 @@ type FeatureEvaluatorCallback = (
 
 ### readFeatureProperties()
 
-データソースからこの地物のプロパティを読み取ります。コールバックはこの地物内の各バッチに対して呼び出されます。
+データソースからこのフィーチャーセットに含まれる地物のプロパティを読み取ります。コールバックは地物ごとに 1 回呼び出されます。
 
 **Syntax:**
 
 ```typescript
 readFeatureProperties(
-  f: (info: FeatureInfo) => void
+  f: (info: FeatureInfo, batchIndex: number) => void
 ): void
 ```
 
 **Parameters:**
 
-- `f`: 各バッチの FeatureInfo オブジェクトを受け取るコールバック関数
+- `f`: 地物ごとの FeatureInfo オブジェクトと、このフィーチャーセット内での地物の 0 始まりのインデックスを受け取るコールバック関数
 
 **Example:**
 
@@ -88,21 +89,21 @@ evaluator.readFeatureProperties(({ properties }) => {
 
 ### readFilteredFeatureProperties()
 
-データソースからこの地物の指定されたルートプロパティキーのみを読み取ります。少数のプロパティのみが必要な場合、`readFeatureProperties()` よりも効率的です。
+データソースからこのフィーチャーセットに含まれる地物の、指定されたルートプロパティキーのみを読み取ります。少数のプロパティのみが必要な場合、`readFeatureProperties()` よりも効率的です。
 
 **Syntax:**
 
 ```typescript
 readFilteredFeatureProperties(
   keys: string[],
-  f: (info: FeatureInfo) => void
+  f: (info: FeatureInfo, batchIndex: number) => void
 ): void
 ```
 
 **Parameters:**
 
-- `keys`: 読み取るルートプロパティキーの配列
-- `f`: フィルタリングされたプロパティのみを含む FeatureInfo オブジェクトを受け取るコールバック関数
+- `keys`: 読み取るルートプロパティキーの配列。`keys` が空でも `featureId` は渡されます
+- `f`: フィルタリングされたプロパティのみを含む FeatureInfo オブジェクトと、このフィーチャーセット内での地物の 0 始まりのインデックスを受け取るコールバック関数
 
 **Example:**
 
@@ -114,7 +115,7 @@ evaluator.readFilteredFeatureProperties(["height", "name"], ({ batchId, properti
 
 ### evaluate()
 
-プロパティに基づいて地物に動的スタイルを評価・適用します。コールバックはこの地物内の各バッチ（サブ地物）に対して呼び出されます。
+プロパティに基づいて地物に動的スタイルを評価・適用します。コールバックはこのフィーチャーセット内の地物ごとに 1 回呼び出されます。
 
 **Syntax:**
 

@@ -133,7 +133,7 @@ For the data structure behind these events (Layer, FeatureSet, Feature, Batch), 
 
 #### featureCreated
 
-**Description:** Fires when a new feature is created within the layer.
+**Description:** Fires when a new feature set is created within the layer.
 
 **Handler Type:**
 
@@ -153,13 +153,13 @@ For the data structure behind these events (Layer, FeatureSet, Feature, Batch), 
 
 ```typescript
 layer.on("featureCreated", ({ evaluator }) => {
-  console.log("Feature created:", evaluator.id);
+  console.log("Feature set created:", evaluator.id);
 });
 ```
 
 #### featureUpdated
 
-**Description:** Fires when a feature within the layer is updated.
+**Description:** Fires when a feature set within the layer is updated.
 
 **Handler Type:**
 
@@ -179,8 +179,8 @@ layer.on("featureCreated", ({ evaluator }) => {
 
 ```typescript
 layer.on("featureUpdated", ({ evaluator }) => {
-  evaluator.evaluate((_batchId, property) => {
-    const height = property?.["height"] as number;
+  evaluator.evaluate(({ properties }) => {
+    const height = properties?.["height"] as number;
     return {
       color: new Color().setStyle(height > 50 ? "#ff0000" : "#00ff00"),
     };
@@ -190,7 +190,7 @@ layer.on("featureUpdated", ({ evaluator }) => {
 
 #### featureVisibilityChanged
 
-**Description:** Fires when the visibility of a feature changes.
+**Description:** Fires when the visibility of a feature set changes.
 
 **Handler Type:**
 
@@ -207,7 +207,7 @@ layer.on("featureUpdated", ({ evaluator }) => {
 
 #### featureRemoved
 
-**Description:** Fires when a feature is removed from the layer.
+**Description:** Fires when a feature set is removed from the layer.
 
 **Handler Type:**
 

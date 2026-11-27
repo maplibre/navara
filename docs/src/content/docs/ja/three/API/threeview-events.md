@@ -119,7 +119,7 @@ view.on("resize", (width, height) => {
 
 ```tsx
 type PickedFeature = {
-  batchId: number; // バッチ ID
+  batchId: number; // 描画された地物のピッキング ID。フィーチャーセットが存在する間だけ有効
   properties: Record<string, unknown> | undefined; // 地物のプロパティ
   layerId: string | undefined; // レイヤー ID
   featureId?: string | number; // GeoJSON のトップレベル `id` または MVT の地物 ID（ない場合は undefined）
@@ -127,6 +127,8 @@ type PickedFeature = {
   content?: FeatureSetContent; // フィーチャーセットの読み込み元コンテンツ（3D Tiles の credit とメタデータ）。featureCreated と同じ値
 };
 ```
+
+選択状態を保持するには、`batchId` ではなく `featureId` または安定したプロパティで照合してください。[識別子](../../introduction/about-layer/#識別子) を参照してください。
 
 **Example:**
 

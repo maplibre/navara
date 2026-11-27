@@ -133,7 +133,7 @@ view.on("featureClick", (info) => {
 
 #### featureCreated
 
-**Description:** レイヤー内で新しい地物が作成されたときに発火します。
+**Description:** レイヤー内で新しいフィーチャーセットが作成されたときに発火します。
 
 **Handler Type:**
 
@@ -153,13 +153,13 @@ view.on("featureClick", (info) => {
 
 ```typescript
 layer.on("featureCreated", ({ evaluator }) => {
-  console.log("地物が作成されました:", evaluator.id);
+  console.log("フィーチャーセットが作成されました:", evaluator.id);
 });
 ```
 
 #### featureUpdated
 
-**Description:** レイヤー内の地物が更新されたときに発火します。
+**Description:** レイヤー内のフィーチャーセットが更新されたときに発火します。
 
 **Handler Type:**
 
@@ -179,8 +179,8 @@ layer.on("featureCreated", ({ evaluator }) => {
 
 ```typescript
 layer.on("featureUpdated", ({ evaluator }) => {
-  evaluator.evaluate((_batchId, property) => {
-    const height = property?.["height"] as number;
+  evaluator.evaluate(({ properties }) => {
+    const height = properties?.["height"] as number;
     return {
       color: new Color().setStyle(height > 50 ? "#ff0000" : "#00ff00"),
     };
@@ -190,7 +190,7 @@ layer.on("featureUpdated", ({ evaluator }) => {
 
 #### featureVisibilityChanged
 
-**Description:** 地物の可視性が変更されたときに発火します。
+**Description:** フィーチャーセットの可視性が変更されたときに発火します。
 
 **Handler Type:**
 
@@ -207,7 +207,7 @@ layer.on("featureUpdated", ({ evaluator }) => {
 
 #### featureRemoved
 
-**Description:** レイヤーから地物が削除されたときに発火します。
+**Description:** レイヤーからフィーチャーセットが削除されたときに発火します。
 
 **Handler Type:**
 
