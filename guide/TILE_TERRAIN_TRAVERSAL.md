@@ -406,8 +406,12 @@ without it.
 ## Joining the two — the pull
 
 When `update_mesh_material` (`crates/navara_tile/src/tile/system.rs`) builds a
-terrain tile's material, it resolves each layer. Every branch emits **exactly
-one composite slot per layer** (`max_slots = sorted_layers.len()`):
+terrain tile's material, it resolves each layer. Every branch emits **at most
+one composite slot per shown layer**, walking `raster::slotted_layers` (the
+sorted layers minus those with `show: false`; a hidden layer takes no slot).
+The slot index is the push order, while the per-layer arrays
+(`hillshade_entity_ids`, `layer_parents`, the raster tiles' fragments) stay
+indexed by the sorted-layer index:
 
 - **hillshade layers** → from the terrain tile's own `hillshade_entity_ids`
   (with the terrain-side parent fallback),
@@ -489,21 +493,22 @@ sequenceDiagram
   (`uv_rect_from_extents_mercator`) because it frames the offscreen **bake**
   camera, not the composite paste.
 - **Ordinal pairing.** `layer_ordinal` is the layer's position among the baked
-  (non-hillshade) layers in sorted order. `update_mesh_material` emits its k-th
-  fragment-less baked slot from the same sorted, filtered layer list, so the
-  web pairs slot k with ordinal k without any id plumbing. The sort and filter
-  in `snapshot_raster_bake_inputs` MUST stay in lockstep with
-  `update_mesh_material`. An unloaded layer leaves a hole rather than shifting
-  the ordinals after it.
+  (shown, non-hillshade) layers in sorted order. `update_mesh_material` emits
+  its k-th fragment-less baked slot from the same `slotted_layers` list and
+  non-hillshade filter, so the web pairs slot k with ordinal k without any id
+  plumbing. `snapshot_raster_bake_inputs` MUST walk the same list. `show` is
+  part of the bake fingerprint, so toggling it bumps the revision and both
+  sides re-pair in the same frame. An unloaded layer leaves a hole rather than
+  shifting the ordinals after it.
 - **`RasterResolveRevision`** (mirrors `VectorResolveRevision`) gates the
   per-tile pull: it bumps on fragment load completions, bake-relevant layer
   changes, raster tile destruction (cache prune / memory eviction), and globe
   scheme flips — **not** on camera movement (an existing tile's resolve depends
   only on the loaded-fragment set; bumping per traverse made every visible tile
   re-resolve every frame, an FPS killer). Layer changes are filtered through a
-  **bake-config fingerprint** (hillshade/heatmap flags + source id, kept on
-  `RasterTileCacheManager`) so appearance-only mutations — e.g. a per-frame
-  opacity animation — don't bump. The web reads `rasterRevision()` once per
+  **bake-config fingerprint** (hillshade/heatmap flags, `show` + source id,
+  kept on `RasterTileCacheManager`) so opacity/color mutations — e.g. a
+  per-frame opacity animation — don't bump. The web reads `rasterRevision()` once per
   frame and skips `getRasterTileStates` while it is unchanged.
 - **`RasterBakeSnapshot`** caches the resolve inputs (the sorted baked-layer
   list + the loaded-fragment set), refreshed by `snapshot_raster_bake_inputs`
@@ -684,7 +689,7 @@ a query yields; a source it does not render is sampled unexaggerated.
 | Baked-resolve gate + snapshot | `crates/navara_tile/src/raster/mod.rs` / `raster/system.rs` (`RasterResolveRevision`, `RasterBakeSnapshot`, `snapshot_raster_bake_inputs`) |
 | Baked-resolve wasm boundary | `crates/navara_ecs/src/lib.rs` (`get_raster_tiles`, `raster_revision`), `crates/navara_wasm/src/raster_tile.rs` (`getRasterTileStates`, `rasterRevision`) |
 | Mercator bake-camera UV | `crates/navara_geometry/src/tile.rs` (`uv_rect_from_extents_mercator`) |
-| Material drape (one slot per layer) | `crates/navara_tile/src/tile/system.rs` (`update_mesh_material`) |
+| Material drape (one slot per shown layer) | `crates/navara_tile/src/tile/system.rs` (`update_mesh_material`) |
 | Hillshade request | `crates/navara_tile/src/texture_fragment/helpers.rs` |
 | Plugin / system order | `crates/navara_tile/src/lib.rs` |
 | Terrain exaggeration | `crates/navara_tile_component/src/terrain_exaggeration.rs`, `web/navara_three/src/mesh/tile/terrainExaggeration.ts`, `shaders/glsl/chunks/terrain_exaggeration_pars_vertex.glsl` |

@@ -1549,13 +1549,13 @@ ${generateTileCommonInjection(maxTextures)}
 
     // Raster textures fill slots [0, texturizedSceneIndexFrom); texturized vector
     // scenes occupy the rest. Exactly `texturizedSceneIndexFrom` raster layers fit
-    // (indices 0..from-1), so only a strictly larger count overflows. Each layer
-    // costs one slot (a baked layer's overlap is mosaicked into a single render
-    // target), so this guard is the final safety net for an oversized layer
-    // count and the extra fragments are dropped below.
+    // (indices 0..from-1), so only a strictly larger count overflows. Each shown
+    // layer costs one slot (a hidden layer none, and a baked layer's overlap is
+    // mosaicked into a single render target), so this guard is the final safety
+    // net for an oversized layer count and the extra fragments are dropped below.
     if (textureFragmentsLen > this.texturizedSceneIndexFrom) {
       console.error(
-        `Exceeded maximum textures: ${textureFragmentsLen} layers are provided. Maximum the number of textures is ${this.texturizedSceneIndexFrom}.`,
+        `Too many layers draped on the terrain: ${textureFragmentsLen} are shown, but at most ${this.texturizedSceneIndexFrom} fit on this device. Remove or hide layers.`,
       );
     }
 

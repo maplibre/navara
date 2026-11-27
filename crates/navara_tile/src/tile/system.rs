@@ -576,7 +576,7 @@ pub fn transfer_mesh(
         let qm_geographic = terrain_source.is_some_and(|s| s.tiling_scheme().is_geographic());
         let qm_tms = terrain_source.is_some_and(|s| s.tiling_scheme().tms());
 
-        let tile_layers_len = sorted_layers.len();
+        let tile_layers_len = crate::raster::slotted_layers(&sorted_layers).count();
         let mut shows = Vec::with_capacity(tile_layers_len);
         let mut opacities = Vec::with_capacity(tile_layers_len);
         let mut colors = Vec::with_capacity(tile_layers_len);
@@ -599,7 +599,12 @@ pub fn transfer_mesh(
                 .and_then(dem_decoder)
         };
 
-        for (i, (l, _)) in sorted_layers.iter().enumerate() {
+        for (l, _) in &sorted_layers {
+            tile_show_bounding_box =
+                tile_show_bounding_box || l.appearance().unwrap().show_bounding_box;
+        }
+
+        for (i, l) in crate::raster::slotted_layers(&sorted_layers) {
             // The initial material only reflects terrain-owned hillshade readiness;
             // regular raster textures are draped later in `update_mesh_material`.
             let mut should_show = false;
@@ -614,10 +619,9 @@ pub fn transfer_mesh(
             }
 
             let a = l.appearance().unwrap();
-            shows.push(should_show && a.show);
+            shows.push(should_show);
             opacities.push(a.opacity.clamp(0., 1.));
             colors.push(a.color);
-            tile_show_bounding_box = tile_show_bounding_box || a.show_bounding_box;
 
             elevation_heatmap_layers.push(elevation_heatmap_layer_data(l, layer_decoder));
 
@@ -681,7 +685,11 @@ pub fn transfer_mesh(
 
         // The initial material carries only terrain-owned hillshade entities;
         // regular raster textures are pulled by extent in `update_mesh_material`.
-        let merged_texture_fragments = tile.hillshade_entity_ids.clone();
+        let merged_texture_fragments = tile.hillshade_entity_ids.as_ref().map(|ids| {
+            crate::raster::slotted_layers(&sorted_layers)
+                .map(|(i, _)| ids.get(i).copied().flatten())
+                .collect()
+        });
 
         // Reprojection is resolved per raster slot in `update_mesh_material`; the
         // initial (hillshade-only) material never reprojects.
@@ -1699,11 +1707,11 @@ pub fn update_mesh_material(
     // Sort the layer list once per run; the loop below runs per rendered tile.
     let sorted_layers: Vec<_> = tile_layers.iter().sort::<&Order>().collect();
 
-    // Every branch below emits exactly one composite slot per layer: hillshade
-    // is terrain-side, Geographic drapes bake their N overlapping WM tiles into
-    // one render target, and a WebMercator drape is a single identity/ancestor
-    // tile by construction.
-    let max_slots = sorted_layers.len();
+    // Every branch below emits at most one composite slot per shown layer
+    // (`slotted_layers`): hillshade is terrain-side, Geographic drapes bake their
+    // N overlapping WM tiles into one render target, and a WebMercator drape is a
+    // single identity/ancestor tile by construction.
+    let max_slots = crate::raster::slotted_layers(&sorted_layers).count();
 
     for (rendered_tile, _) in rendered_tiles.iter().sort::<&OrderByDistance>() {
         let Some(tile) = qt.qt.get(rendered_tile.tile_handle) else {
@@ -1727,7 +1735,7 @@ pub fn update_mesh_material(
             || tile_mesh_marker.ready_parent_tile_handle
                 != cached_rendered_tile.ready_parent_tile_handle;
 
-        // Per-composite-slot arrays, one slot per layer: hillshade resolves
+        // Per-composite-slot arrays, one slot per shown layer: hillshade resolves
         // terrain-side, a Geographic drape binds its baked render target, and a
         // WebMercator drape is a single identity (or ancestor-fallback) tile.
         // Layers are emitted in sorted order, so z-stacking is preserved.
@@ -1755,7 +1763,9 @@ pub fn update_mesh_material(
                 .and_then(dem_decoder)
         };
 
-        for (i, (l, _)) in sorted_layers.iter().enumerate() {
+        // `i` indexes the per-layer arrays (`hillshade_entity_ids`,
+        // `layer_parents`, the raster tiles' fragments); the slot is the push.
+        for (i, l) in crate::raster::slotted_layers(&sorted_layers) {
             let a = l.appearance().unwrap();
 
             if l.hillshade_config.is_some() {
@@ -1785,7 +1795,7 @@ pub fn update_mesh_material(
                     (None, None, false)
                 };
 
-                shows.push(ready && a.show);
+                shows.push(ready);
                 opacities.push(a.opacity.clamp(0., 1.));
                 colors.push(a.color);
                 elevation_heatmap_layers.push(None);
@@ -1807,8 +1817,8 @@ pub fn update_mesh_material(
                 // `get_raster_tiles` — mirroring the texturized-vector drape), so the
                 // layer costs exactly one composite slot instead of one per
                 // overlapping tile. The k-th baked slot emitted here pairs with
-                // `layer_ordinal == k` in the resolved states: both come from the same
-                // sorted layer list with the same non-hillshade filter.
+                // `layer_ordinal == k` in the resolved states: both come from
+                // `slotted_layers` with the same non-hillshade filter.
                 //
                 // fragment None + identity UV: the web binds the baked render target
                 // (spanning the terrain tile's Mercator-projected extent) to this slot;
@@ -1817,7 +1827,7 @@ pub fn update_mesh_material(
                 // slots reproject the same way — the bake copies the encoded DEM
                 // texels raw (nearest, no color conversion), so the composite decode
                 // stays valid.
-                shows.push(a.show);
+                shows.push(true);
                 opacities.push(a.opacity.clamp(0., 1.));
                 colors.push(a.color);
                 is_hillshades.push(false);
@@ -1848,7 +1858,7 @@ pub fn update_mesh_material(
                     &texture_fragment,
                 );
                 if let Some(r) = resolved {
-                    shows.push(a.show);
+                    shows.push(true);
                     opacities.push(a.opacity.clamp(0., 1.));
                     colors.push(a.color);
                     is_hillshades.push(false);
@@ -4754,6 +4764,84 @@ mod remesh_tests {
         );
     }
 
+    /// The first material of a built mesh already leaves hidden layers out:
+    /// it carries one composite slot per shown layer, in draw order.
+    #[test]
+    fn transfer_mesh_gives_hidden_layers_no_slot() {
+        use navara_material::{Appearance, RasterMaterial};
+        let mut app = new_app();
+        for (i, (id, opacity, show)) in [("A", 0.1, true), ("B", 0.2, false), ("C", 0.3, true)]
+            .into_iter()
+            .enumerate()
+        {
+            app.world_mut().spawn((
+                TilesLayer {
+                    layer_id: id.to_string(),
+                    source_id: None,
+                    appearance: Some(Appearance::TerrainTile(RasterMaterial {
+                        show,
+                        opacity,
+                        ..Default::default()
+                    })),
+                    elevation_heatmap_config: None,
+                    hillshade_config: None,
+                },
+                Order(i),
+            ));
+        }
+        // No terrain layer: the tile gets a flat mesh, built with its first
+        // material in this frame.
+        let mut qt = TerrainTileQuadtree::new_with_linear_qt();
+        qt.qt
+            .initialize_zero(&|(x, y, z)| TerrainTile::new(TileXYZ { x, y, z }, 0., 0.));
+        let handle = qt.qt.zero().unwrap().handle();
+        app.insert_resource(qt);
+        let rendered_tile_entity = app
+            .world_mut()
+            .spawn((
+                RenderedTile {
+                    tile_handle: handle,
+                    terrain_mesh_constructor: None,
+                    terrain_mesh_upsampler: None,
+                },
+                OrderByDistance {
+                    sse: 0.,
+                    distance: 0.,
+                },
+            ))
+            .id();
+        let mut tc = TileCacheManager::default();
+        tc.rendered_tile_caches.insert(
+            handle,
+            crate::tile::tile_cache_manager::RenderedTileCache {
+                mesh_entity: None,
+                ready_parent_tile_handle: None,
+                layer_parents: None,
+                rendered_tile_entity,
+                mesh_prepared: false,
+                needs_material_update: false,
+                prefetched: false,
+            },
+        );
+        app.insert_resource(tc);
+        app.add_systems(Update, transfer_mesh);
+        update_tiles(&mut app);
+
+        let mesh_entity = app
+            .world()
+            .resource::<TileCacheManager>()
+            .rendered_tile_caches[&handle]
+            .mesh_entity
+            .unwrap();
+        let material = app
+            .world()
+            .get::<RasterTileInternalMaterial>(mesh_entity)
+            .unwrap();
+        assert_eq!(material.opacities, vec![0.1, 0.3]);
+        assert_eq!(material.shows.len(), 2);
+        assert_eq!(material.is_hillshades, vec![false, false]);
+    }
+
     /// The level a mesh was clipped from is known even when the source tile
     /// is gone by the time the result lands (evicted mid flight): without it
     /// the tile could never be found stale again.
@@ -5146,5 +5234,241 @@ mod dem_decoder_tests {
             overscaled_max_zoom: 19,
         });
         assert_eq!(dem_decoder(&raster), None);
+    }
+}
+
+#[cfg(test)]
+mod draped_slot_tests {
+    use super::*;
+    use crate::tile::tile_cache_manager::RenderedTileCache;
+    use bevy_app::{App, Update};
+    use navara_material::{Appearance, HillshadeConfig, RasterMaterial};
+    use navara_texture_fragment::{TextureFragment, TextureFragmentStatus};
+    use navara_tile_component::{RasterTile, RasterTileQuadtree};
+
+    fn layer(layer_id: &str, opacity: f32, show: bool, hillshade: bool) -> TilesLayer {
+        TilesLayer {
+            layer_id: layer_id.to_string(),
+            source_id: None,
+            appearance: Some(Appearance::TerrainTile(RasterMaterial {
+                show,
+                opacity,
+                ..Default::default()
+            })),
+            elevation_heatmap_config: None,
+            hillshade_config: hillshade.then_some(HillshadeConfig { exaggeration: 1.0 }),
+        }
+    }
+
+    fn mesh() -> Mesh {
+        Mesh {
+            fill_quadrants: 0,
+            vertices: 0,
+            uvs: 0,
+            indices: 0,
+            active: true,
+            render_order: 0,
+            aabb: Aabb::default(),
+            normals: None,
+            skirt_vertices: None,
+            skirt_uvs: None,
+            skirt_indices: None,
+            skirt_normals: None,
+            heights: None,
+            skirt_heights: None,
+            min_height: 0.,
+            max_height: 0.,
+            watermask: None,
+        }
+    }
+
+    /// One rendered root terrain tile of `scheme` with a mesh, run through
+    /// `update_mesh_material`. Returns the app and the mesh entity.
+    fn setup(
+        scheme: TilingScheme,
+        hillshade_entity_ids: Option<Vec<Option<Entity>>>,
+        raster_qt: RasterTileQuadtree,
+        app: &mut App,
+    ) -> Entity {
+        let mut qt = TerrainTileQuadtree::new_with_linear_qt();
+        qt.qt.initialize_leaf((0, 0, 0), &|(x, y, z)| {
+            TerrainTile::new_with_scheme(TileXYZ { x, y, z }, 0., 0., scheme.clone())
+        });
+        let handle = qt.qt.leaf((0, 0, 0)).unwrap().handle();
+        qt.qt.get_mut(handle).unwrap().hillshade_entity_ids = hillshade_entity_ids;
+
+        let mesh_entity = app
+            .world_mut()
+            .spawn((
+                TileMeshMarker {
+                    handle,
+                    ready_parent_tile_handle: None,
+                },
+                mesh(),
+                RasterTileInternalMaterial::default(),
+            ))
+            .id();
+        let rendered_tile_entity = app
+            .world_mut()
+            .spawn((
+                RenderedTile {
+                    tile_handle: handle,
+                    terrain_mesh_constructor: None,
+                    terrain_mesh_upsampler: None,
+                },
+                OrderByDistance {
+                    sse: 0.,
+                    distance: 0.,
+                },
+                Rendered,
+            ))
+            .id();
+
+        let mut tc = TileCacheManager::default();
+        tc.rendered_tile_caches.insert(
+            handle,
+            RenderedTileCache {
+                mesh_entity: Some(mesh_entity),
+                ready_parent_tile_handle: None,
+                layer_parents: None,
+                rendered_tile_entity,
+                mesh_prepared: true,
+                needs_material_update: false,
+                prefetched: false,
+            },
+        );
+        app.insert_resource(tc);
+        app.insert_resource(qt);
+        app.insert_resource(raster_qt);
+        app.insert_resource(navara_source::SourceStore::new());
+        app.add_systems(Update, update_mesh_material);
+        mesh_entity
+    }
+
+    fn material(app: &App, mesh_entity: Entity) -> &RasterTileInternalMaterial {
+        app.world()
+            .get::<RasterTileInternalMaterial>(mesh_entity)
+            .unwrap()
+    }
+
+    fn set_show(app: &mut App, layer: Entity, show: bool) {
+        let mut l = app.world_mut().get_mut::<TilesLayer>(layer).unwrap();
+        if let Some(Appearance::TerrainTile(m)) = l.appearance.as_mut() {
+            m.show = show;
+        }
+    }
+
+    /// A hidden layer takes no composite slot on Geographic terrain: the baked
+    /// slots (fragment `None`) and the hillshade slot keep the shown layers'
+    /// draw order, and the hillshade slot still reads its entity by the sorted
+    /// layer index. Showing the layer again gives its slot back in place.
+    #[test]
+    fn hidden_layers_take_no_slot_on_geographic_terrain() {
+        let mut app = App::new();
+        let hillshade = app
+            .world_mut()
+            .spawn(DataRequester {
+                status: DataRequesterStatus::Success,
+                ..Default::default()
+            })
+            .id();
+        app.world_mut()
+            .spawn((layer("A", 0.1, true, false), Order(0)));
+        app.world_mut()
+            .spawn((layer("H", 0.2, true, true), Order(1)));
+        let b = app
+            .world_mut()
+            .spawn((layer("B", 0.3, false, false), Order(2)))
+            .id();
+        app.world_mut()
+            .spawn((layer("C", 0.4, true, false), Order(3)));
+        let mesh_entity = setup(
+            TilingScheme::Geographic { tms: true },
+            Some(vec![None, Some(hillshade), None, None]),
+            RasterTileQuadtree::new_with_linear_qt(),
+            &mut app,
+        );
+
+        app.update();
+        let m = material(&app, mesh_entity);
+        assert_eq!(m.opacities, vec![0.1, 0.2, 0.4]);
+        assert_eq!(m.shows, vec![true, true, true]);
+        assert_eq!(m.is_hillshades, vec![false, true, false]);
+        assert_eq!(m.texture_fragments, Some(vec![None, Some(hillshade), None]));
+        assert_eq!(m.layer_reproject, vec![true, false, true]);
+
+        set_show(&mut app, b, true);
+        app.update();
+        let m = material(&app, mesh_entity);
+        assert_eq!(m.opacities, vec![0.1, 0.2, 0.3, 0.4]);
+        assert_eq!(m.is_hillshades, vec![false, true, false, false]);
+        assert_eq!(
+            m.texture_fragments,
+            Some(vec![None, Some(hillshade), None, None])
+        );
+
+        set_show(&mut app, b, false);
+        app.update();
+        assert_eq!(material(&app, mesh_entity).opacities, vec![0.1, 0.2, 0.4]);
+    }
+
+    /// On WebMercator terrain each slot binds its layer's own fragment, looked
+    /// up by the sorted layer index: hiding the middle layer must not shift the
+    /// next layer onto the hidden layer's texture.
+    #[test]
+    fn hidden_layers_take_no_slot_on_web_mercator_terrain() {
+        let mut app = App::new();
+        let fragments: Vec<Entity> = (0..3)
+            .map(|_| {
+                app.world_mut()
+                    .spawn((
+                        TileTextureFragmentMarker(0),
+                        TextureFragment::with_status("u".into(), TextureFragmentStatus::Success),
+                    ))
+                    .id()
+            })
+            .collect();
+        let mut raster_qt = RasterTileQuadtree::new_with_linear_qt();
+        raster_qt
+            .qt
+            .initialize_zero(&|(x, y, z)| RasterTile::new(TileXYZ { x, y, z }, 0., 0.));
+        let root = raster_qt.qt.zero().unwrap().handle();
+        raster_qt
+            .qt
+            .get_mut(root)
+            .unwrap()
+            .texture_fragment_entity_ids = Some(fragments.iter().copied().map(Some).collect());
+
+        app.world_mut()
+            .spawn((layer("A", 0.1, true, false), Order(0)));
+        let b = app
+            .world_mut()
+            .spawn((layer("B", 0.2, false, false), Order(1)))
+            .id();
+        app.world_mut()
+            .spawn((layer("C", 0.3, true, false), Order(2)));
+        let mesh_entity = setup(
+            TilingScheme::WebMercator { tms: false },
+            None,
+            raster_qt,
+            &mut app,
+        );
+
+        app.update();
+        let m = material(&app, mesh_entity);
+        assert_eq!(m.opacities, vec![0.1, 0.3]);
+        assert_eq!(
+            m.texture_fragments,
+            Some(vec![Some(fragments[0]), Some(fragments[2])])
+        );
+
+        set_show(&mut app, b, true);
+        app.update();
+        let m = material(&app, mesh_entity);
+        assert_eq!(m.opacities, vec![0.1, 0.2, 0.3]);
+        assert_eq!(
+            m.texture_fragments,
+            Some(fragments.iter().copied().map(Some).collect())
+        );
     }
 }

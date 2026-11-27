@@ -1387,6 +1387,9 @@ pub struct RasterTileInternalMaterial {
     /// Whether the tile mesh is drawn, from the terrain layer's `show`. The
     /// tile and its terrain data stay loaded either way.
     pub show_mesh: bool,
+    /// One entry per raster composite slot, as are the other per-slot vectors
+    /// below: a slot per shown raster layer, in draw order. A hidden layer
+    /// takes no slot.
     pub shows: Vec<bool>,
     pub colors: Vec<u32>,
     pub opacities: Vec<f32>,
