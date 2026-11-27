@@ -68,6 +68,11 @@ export const DATASETS: Dataset[] = [
     ["BatchedDeprecated1", "BatchedDeprecated2"],
     "Legacy B3DM header",
   ),
+  ...specs(
+    "Hierarchy",
+    ["BatchTableHierarchy"],
+    "Batch table with top-level extensions; 3DTILES_batch_table_hierarchy is not read",
+  ),
   ...specs("Tilesets", [
     "Tileset",
     "TilesetOfTilesets",
