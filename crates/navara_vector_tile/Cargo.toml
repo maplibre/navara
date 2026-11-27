@@ -31,3 +31,6 @@ navara_material.workspace = true
 navara_memory.workspace = true
 navara_mesh.workspace = true
 navara_event_store.workspace = true
+
+[dev-dependencies]
+proptest.workspace = true
