@@ -136,9 +136,16 @@ export class TerrainPicker {
   constructor(private readonly depthEncoding: DepthEncoding = "standard") {
     this.depthPickPass = new DepthPickPass(depthEncoding === "reversed");
   }
+
+  /**
+   * Reads the depth under a pointer and reconstructs its world position.
+   * `clientX`/`clientY` are client coordinates (`MouseEvent.clientX/clientY`);
+   * on a canvas without a client rect (an `OffscreenCanvas`) they are taken as
+   * canvas-relative.
+   */
   pick(
-    x: number,
-    y: number,
+    clientX: number,
+    clientY: number,
     renderer: WebGLRenderer,
     depthTexture: Texture,
     camera: PerspectiveCamera,
@@ -146,6 +153,7 @@ export class TerrainPicker {
     if (!depthTexture) {
       return null;
     }
+    const [x, y] = this._toCanvas(clientX, clientY, renderer);
     this._prepareSample(x, y, renderer, depthTexture);
     return this._positionFromSample(
       this.depthPickPass.render(renderer),
@@ -163,8 +171,8 @@ export class TerrainPicker {
    * reconstruction is the one at call time.
    */
   async pickAsync(
-    x: number,
-    y: number,
+    clientX: number,
+    clientY: number,
     renderer: WebGLRenderer,
     depthTexture: Texture,
     camera: PerspectiveCamera,
@@ -172,6 +180,7 @@ export class TerrainPicker {
     if (!depthTexture) {
       return null;
     }
+    const [x, y] = this._toCanvas(clientX, clientY, renderer);
     this._prepareSample(x, y, renderer, depthTexture);
     const pending = this.depthPickPass.renderAsync(renderer);
     // Snapshot the pose before awaiting: the camera keeps moving while the
@@ -184,6 +193,17 @@ export class TerrainPicker {
       renderer,
       cameraSnapshot,
     );
+  }
+
+  private _toCanvas(
+    clientX: number,
+    clientY: number,
+    renderer: WebGLRenderer,
+  ): [number, number] {
+    const canvas: HTMLCanvasElement | OffscreenCanvas = renderer.domElement;
+    if (!("getBoundingClientRect" in canvas)) return [clientX, clientY];
+    const rect = canvas.getBoundingClientRect();
+    return [clientX - rect.left, clientY - rect.top];
   }
 
   private _positionFromSample(
@@ -240,17 +260,18 @@ export class TerrainPicker {
     );
   }
 
-  // Clamped device-pixel center for a CSS-pixel screen coordinate. Sampling
-  // and ray reconstruction must both use this exact point: the depth copy
-  // target is linearly filtered, and any off-center coordinate would blend
-  // neighboring packed-RGBA texels into meaningless depth values.
+  // Clamped device-pixel center for a canvas-relative CSS-pixel coordinate.
+  // Sampling and ray reconstruction must both use this exact point: the depth
+  // copy target is linearly filtered, and any off-center coordinate would
+  // blend neighboring packed-RGBA texels into meaningless depth values.
   private _texelCenter(cssCoord: number, size: number, pixelRatio: number) {
     return (
       Math.max(0, Math.min(size - 1, Math.floor(cssCoord * pixelRatio))) + 0.5
     );
   }
 
-  // Points the depth pick pass at the texel under the given screen position.
+  // Points the depth pick pass at the texel under the given canvas-relative
+  // position.
   private _prepareSample(
     x: number,
     y: number,

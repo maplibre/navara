@@ -975,7 +975,7 @@ view.forceUpdate();
 
 ### pickTerrainPosition()
 
-スクリーン座標で地形位置をピックします。マウスイベントの `clientX`、`clientY` と同じ CSS ピクセル座標を使用します。
+ポインター位置の地形位置をピックします。座標はマウスイベントの `clientX`、`clientY` と同じ CSS ピクセルのクライアント座標で、キャンバスではなくビューポートを基準とします。ビューが `OffscreenCanvas` に描画する場合（Worker の中など）は、キャンバスにページ上の位置がないため、座標はキャンバスを基準とします。
 
 **Syntax:**
 
@@ -985,8 +985,8 @@ pickTerrainPosition(x: number, y: number): Vector3 | null
 
 **Parameters:**
 
-- `x`: スクリーン X 座標（CSS ピクセル、`MouseEvent.clientX` と同じ）
-- `y`: スクリーン Y 座標（CSS ピクセル、`MouseEvent.clientY` と同じ）
+- `x`: クライアント X 座標（CSS ピクセル、`MouseEvent.clientX`）。ビューポート基準
+- `y`: クライアント Y 座標（CSS ピクセル、`MouseEvent.clientY`）。ビューポート基準
 
 **Returns:**
 
@@ -1008,7 +1008,7 @@ view.on("click", (event) => {
 
 ### pickDepthPosition()
 
-スクリーン座標でシーン全体の深度バッファを使用してワールド位置をピックします。`pickTerrainPosition()` と異なり、このメソッドは地形だけでなく全てのレンダリングジオメトリ（メッシュなど）を含む深度テクスチャを読み取るため、地形の手前に他のオブジェクトがある場合でもヒットを返します。
+ポインター位置のワールド位置を、シーン全体の深度バッファを使用してピックします。座標は `pickTerrainPosition()` と同じくクライアント座標です。`pickTerrainPosition()` と異なり、このメソッドは地形だけでなく全てのレンダリングジオメトリ（メッシュなど）を含む深度テクスチャを読み取るため、地形の手前に他のオブジェクトがある場合でもヒットを返します。
 
 **Syntax:**
 
@@ -1018,8 +1018,8 @@ pickDepthPosition(x: number, y: number): Vector3 | null
 
 **Parameters:**
 
-- `x`: スクリーン X 座標（CSS ピクセル、`MouseEvent.clientX` と同じ）
-- `y`: スクリーン Y 座標（CSS ピクセル、`MouseEvent.clientY` と同じ）
+- `x`: クライアント X 座標（CSS ピクセル、`MouseEvent.clientX`）。ビューポート基準
+- `y`: クライアント Y 座標（CSS ピクセル、`MouseEvent.clientY`）。ビューポート基準
 
 **Returns:**
 

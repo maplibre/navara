@@ -344,11 +344,7 @@ const testScreenToWorld = (
       return;
     }
 
-    const rect = canvas.getBoundingClientRect();
-    const x = event.clientX - rect.left;
-    const y = event.clientY - rect.top;
-
-    const pos = view.pickTerrainPosition(x, y);
+    const pos = view.pickTerrainPosition(event.clientX, event.clientY);
 
     if (gMouseBall && pos) {
       gMouseBall.position.set(pos.x, pos.y, pos.z);

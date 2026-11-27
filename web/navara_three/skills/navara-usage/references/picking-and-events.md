@@ -7,8 +7,8 @@ view.on("featureClick", (info) => info?.properties?.["gml:name"]);   // requires
 view.on("featureHover", (info) => { ... });   // fires when the hovered feature changes; null = nothing hovered
 view.on("featureEnter", (info) => { ... });   // enter/leave pair synthesized by diffing hover picks
 view.on("featureLeave", (info) => { ... });   // receives the feature that was left
-const ecef = view.pickTerrainPosition(x, y);                  // terrain only
-const ecef2 = view.pickDepthPosition(x, y);                   // anything in the depth buffer
+const ecef = view.pickTerrainPosition(e.clientX, e.clientY);  // terrain only; client coords, not canvas-relative
+const ecef2 = view.pickDepthPosition(e.clientX, e.clientY);   // anything in the depth buffer
 ```
 
 **Picking is lazy and throttled:** the GPU pick runs only while someone listens for the result — the click/tap pick needs a `featureClick` listener, the hover pick at least one of `featureHover`/`featureEnter`/`featureLeave` (at most one hover pick per frame, suppressed while a button or finger is down — so touch never hover-picks). The pick searches a window around the pointer and takes the nearest non-zero hit (exported `PICK_RADIUS` = 3 CSS px, `TOUCH_PICK_RADIUS` = 10), so small points and thin lines don't need pixel-perfect aim. Each hover pick forces a main re-render to restore draped vector atlases, so it costs more on scenes heavy with clamped-to-ground vectors. `featureHover` fires only on change (feature-level, unlike MapLibre's layer-level enter/leave). For cursor styling use `view.canvas.style.cursor`. Runnable reference: `example/pages/debug/picking-layers`.
