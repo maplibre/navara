@@ -99,7 +99,7 @@ view.on("resize", (width, height) => {
 
 **Description:**
 
-Fires when a feature is clicked or tapped. Receives the clicked feature information, or `null` if empty space was clicked. For raw click coordinates, use the `click` event instead.
+Fires when a feature is clicked or tapped. Receives the clicked feature information, or `null` if nothing pickable was clicked, and the click's pointer event. It fires for any mouse button, so check `event.button === 0` to act on the left button only. For a left click it fires before the `click` event, which receives the same event object.
 
 The click pick is lazy: the GPU pick runs only while at least one `featureClick` listener is registered.
 
@@ -110,12 +110,13 @@ To use this event, you must set `picking: true` in the ThreeView constructor (en
 **Handler Type:**
 
 ```tsx
-(info: PickedFeature | null) => void
+(info: PickedFeature | null, event: MapPointerEvent | PointerEvent) => void
 ```
 
 **Parameters:**
 
 - `info`: Clicked feature information, or `null`
+- `event`: The click's `pointerup` event, passed also when `info` is `null`. It is a [`MapPointerEvent`](#pointerdown) with the `map` coordinates of the `click` event, or a plain `PointerEvent` without `map` where the pointer is off the globe (the sky) :since[0.3.2]
 
 ```tsx
 type PickedFeature = {
@@ -144,11 +145,36 @@ view.on("featureClick", (info) => {
 });
 ```
 
+#### The point drawn under the pointer :since[0.3.2]
+
+`event.map` is where the camera ray meets the ellipsoid, which ignores buildings and terrain. For the point drawn at the clicked pixel, such as a roof, a model or the terrain, call `view.pickDepthPosition(event.clientX, event.clientY)` in the listener itself. Until the next frame is rendered, the depth buffer still holds the frame on screen, so it returns the point under the pointer, or `null` where nothing is drawn (the sky). Called later, after an `await` or in a timeout, it may read a newer frame.
+
+```tsx
+import { vector3ToGeodetic } from "@navaramap/three";
+
+view.on("featureClick", (info, event) => {
+  console.log(`Screen position: ${event.clientX}, ${event.clientY}`);
+  if ("map" in event) {
+    console.log(`On the ellipsoid (ECEF): ${event.map.x}, ${event.map.y}, ${event.map.z}`);
+  }
+  const drawn = view.pickDepthPosition(event.clientX, event.clientY);
+  if (info && drawn) {
+    const { lng, lat, height } = vector3ToGeodetic(drawn);
+    console.log(`Clicked ${info.featureId} at ${lng}, ${lat}, ${height} m`);
+  }
+});
+```
+
+The same holds in `featureHover`, `featureEnter` and `featureLeave` listeners. In two cases the drawn point is not on the feature:
+
+- The feature is searched within a few pixels around the pointer (`PICK_RADIUS`, or `TOUCH_PICK_RADIUS` for touch), while the depth is read at the pixel itself. A click just beside a thin line returns the line and the ground behind it, and a click a few pixels outside a feature's silhouette against the sky returns the feature and `null`.
+- When the underground is shown (`globe.hideUnderground = false`), the depth keeps whichever of the terrain and the other objects is nearer to the camera, so for an object drawn below the terrain, such as an underground pipe, `info` is that object while the drawn point is the terrain surface above it.
+
 ### featureHover
 
 **Description:**
 
-Fires when the hovered feature changes as the pointer moves. Receives the newly hovered feature, or `null` when the pointer leaves all pickable features. The event fires only on change, not on every pointer move.
+Fires when the hovered feature changes as the pointer moves. Receives the newly hovered feature, or `null` when the pointer leaves all pickable features, and the pointer event the feature was picked for. The event fires only on change, not on every pointer move.
 
 Hover picking runs a GPU pick per frame while the pointer moves, so it is activated lazily: picks run only while at least one `featureHover`, `featureEnter`, or `featureLeave` listener is registered, and are suppressed while a button or finger is pressed (for example, during a camera drag). Because touch contact always counts as pressed, hover events never fire for touch.
 
@@ -159,12 +185,13 @@ To use this event, you must set `picking: true` in the ThreeView constructor (en
 **Handler Type:**
 
 ```tsx
-(info: PickedFeature | null) => void
+(info: PickedFeature | null, event: MapPointerEvent | PointerEvent) => void
 ```
 
 **Parameters:**
 
 - `info`: Hovered feature information, or `null`
+- `event`: The latest `pointermove` before the pick, or the `pointerleave` when the pointer leaves the canvas. It is a [`MapPointerEvent`](#pointerdown), or a plain `PointerEvent` without `map` off the globe, as in `featureClick`; see [The point drawn under the pointer](#the-point-drawn-under-the-pointer). A `pointermove` is delivered with the pick about one frame later, after its dispatch has ended, so `preventDefault()` and `stopPropagation()` have no effect on it and its `currentTarget` is `null` :since[0.3.2]
 
 **Example:**
 
@@ -183,12 +210,13 @@ Fires when the pointer starts hovering a pickable feature. Together with `featur
 **Handler Type:**
 
 ```tsx
-(info: PickedFeature) => void
+(info: PickedFeature, event: MapPointerEvent | PointerEvent) => void
 ```
 
 **Parameters:**
 
 - `info`: The feature the pointer started hovering
+- `event`: The pointer event, as in `featureHover` :since[0.3.2]
 
 **Example:**
 
@@ -207,12 +235,13 @@ Fires when the pointer stops hovering the previously hovered feature. Receives t
 **Handler Type:**
 
 ```tsx
-(info: PickedFeature) => void
+(info: PickedFeature, event: MapPointerEvent | PointerEvent) => void
 ```
 
 **Parameters:**
 
 - `info`: The feature the pointer stopped hovering
+- `event`: The pointer event, as in `featureHover`: the `pointerleave` when the pointer left the canvas :since[0.3.2]
 
 **Example:**
 

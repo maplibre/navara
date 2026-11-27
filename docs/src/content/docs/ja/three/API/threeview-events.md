@@ -99,7 +99,7 @@ view.on("resize", (width, height) => {
 
 **Description:**
 
-地物がクリックまたはタップされたときに発火します。クリックされた地物情報、または何もない場所をクリックした場合は `null` を受け取ります。クリックの生の座標が必要な場合は `click` イベントを使用してください。
+地物がクリックまたはタップされたときに発火します。クリックされた地物情報（ピック可能なものがない場所をクリックした場合は `null`）と、クリックのポインターイベントを受け取ります。どのマウスボタンでも発火するため、左ボタンだけに反応するには `event.button === 0` を確認してください。左クリックでは `click` イベントより先に発火し、`click` イベントは同じイベントオブジェクトを受け取ります。
 
 クリックピックは遅延起動されます。`featureClick` のリスナーが 1 つ以上登録されている間だけ GPU ピックが実行されます。
 
@@ -110,12 +110,13 @@ view.on("resize", (width, height) => {
 **Handler Type:**
 
 ```tsx
-(info: PickedFeature | null) => void
+(info: PickedFeature | null, event: MapPointerEvent | PointerEvent) => void
 ```
 
 **Parameters:**
 
 - `info`: クリックされた地物情報、または `null`
+- `event`: クリックの `pointerup` イベント。`info` が `null` の場合も渡されます。`click` イベントと同じ `map` 座標を持つ [`MapPointerEvent`](#pointerdown) で、ポインタが地球の外（空）にある場合は `map` を持たない通常の `PointerEvent` です :since[0.3.2]
 
 ```tsx
 type PickedFeature = {
@@ -144,11 +145,36 @@ view.on("featureClick", (info) => {
 });
 ```
 
+#### ポインタの下に描画されている点 :since[0.3.2]
+
+`event.map` はカメラからのレイと楕円体の交点で、建物や地形を考慮しません。屋根、モデル、地形など、クリックされたピクセルに描画されている点は、リスナーの中で `view.pickDepthPosition(event.clientX, event.clientY)` を呼んで求めます。次のフレームが描画されるまで、深度バッファは画面に表示されているフレームのままなので、ポインタの下の点が返ります。何も描画されていない場所（空）では `null` です。`await` の後やタイムアウトの中など、後から呼ぶと新しいフレームを読むことがあります。
+
+```tsx
+import { vector3ToGeodetic } from "@navaramap/three";
+
+view.on("featureClick", (info, event) => {
+  console.log(`画面上の位置: ${event.clientX}, ${event.clientY}`);
+  if ("map" in event) {
+    console.log(`楕円体上の位置 (ECEF): ${event.map.x}, ${event.map.y}, ${event.map.z}`);
+  }
+  const drawn = view.pickDepthPosition(event.clientX, event.clientY);
+  if (info && drawn) {
+    const { lng, lat, height } = vector3ToGeodetic(drawn);
+    console.log(`${info.featureId} をクリック: ${lng}, ${lat}, ${height} m`);
+  }
+});
+```
+
+`featureHover`・`featureEnter`・`featureLeave` のリスナーでも同様です。次の 2 つの場合、描画されている点は地物の上にはありません。
+
+- 地物はポインタの周囲数ピクセル（`PICK_RADIUS`、タッチでは `TOUCH_PICK_RADIUS`）から探しますが、深度はそのピクセルそのものから読み取ります。細い線のすぐ横をクリックすると、地物には線が、描画されている点にはその後ろの地面が返ります。空を背にした地物の輪郭の数ピクセル外側をクリックすると、地物にはその地物が入り、描画されている点は `null` になります。
+- 地下を表示している場合（`globe.hideUnderground = false`）、深度は地形とその他のオブジェクトのうちカメラに近い方が残るため、地下の配管のように地形より下に描画されたオブジェクトでは、`info` はそのオブジェクトになり、描画されている点はその上の地形の表面になります。
+
 ### featureHover
 
 **Description:**
 
-ポインタの移動によってホバー中の地物が変わったときに発火します。新たにホバーされた地物、またはどのピッカブルな地物からもポインタが外れた場合は `null` を受け取ります。ポインタ移動のたびではなく、ホバー対象が変化したときのみ発火します。
+ポインタの移動によってホバー中の地物が変わったときに発火します。新たにホバーされた地物（どのピッカブルな地物からもポインタが外れた場合は `null`）と、その地物をピックしたポインターイベントを受け取ります。ポインタ移動のたびではなく、ホバー対象が変化したときのみ発火します。
 
 ホバーピッキングはポインタ移動中に毎フレーム GPU ピックを実行するため、遅延起動されます。`featureHover`・`featureEnter`・`featureLeave` のいずれかのリスナーが登録されている間だけピックが実行され、ボタンや指が押されている間（カメラドラッグ中など）は抑制されます。タッチは接触中が常に押下扱いになるため、ホバー系イベントはタッチでは発火しません。
 
@@ -159,12 +185,13 @@ view.on("featureClick", (info) => {
 **Handler Type:**
 
 ```tsx
-(info: PickedFeature | null) => void
+(info: PickedFeature | null, event: MapPointerEvent | PointerEvent) => void
 ```
 
 **Parameters:**
 
 - `info`: ホバー中の地物情報、または `null`
+- `event`: ピック前の最新の `pointermove`、またはポインタがキャンバスから出た場合の `pointerleave`。`featureClick` と同じく [`MapPointerEvent`](#pointerdown) で、地球の外では `map` を持たない通常の `PointerEvent` です。[ポインタの下に描画されている点](#ポインタの下に描画されている点) を参照してください。`pointermove` はディスパッチが終わった後、およそ 1 フレーム後のピックとともに渡されるため、`preventDefault()` や `stopPropagation()` は効果がなく、`currentTarget` は `null` です :since[0.3.2]
 
 **Example:**
 
@@ -183,12 +210,13 @@ view.on("featureHover", (info) => {
 **Handler Type:**
 
 ```tsx
-(info: PickedFeature) => void
+(info: PickedFeature, event: MapPointerEvent | PointerEvent) => void
 ```
 
 **Parameters:**
 
 - `info`: ホバーが開始された地物
+- `event`: `featureHover` と同じポインターイベント :since[0.3.2]
 
 **Example:**
 
@@ -207,12 +235,13 @@ view.on("featureEnter", (info) => {
 **Handler Type:**
 
 ```tsx
-(info: PickedFeature) => void
+(info: PickedFeature, event: MapPointerEvent | PointerEvent) => void
 ```
 
 **Parameters:**
 
 - `info`: ホバーが終了した地物
+- `event`: `featureHover` と同じポインターイベント。ポインタがキャンバスから出た場合は `pointerleave` です :since[0.3.2]
 
 **Example:**
 

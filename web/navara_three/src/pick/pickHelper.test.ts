@@ -76,6 +76,8 @@ const createRendererStub = () => {
     pixelAt: undefined as
       ((x: number, y: number) => [number, number, number]) | undefined,
     renderCount: 0,
+    /** Every render target set, in order. */
+    targets: [] as unknown[],
     scissors: [] as { x: number; y: number; w: number; h: number }[],
     /** Clears and renders in call order, with each scene's children then. */
     calls: [] as (
@@ -90,7 +92,9 @@ const createRendererStub = () => {
     getClearAlpha: () => 1,
     getRenderTarget: () => null,
     setClearColor: () => undefined,
-    setRenderTarget: () => undefined,
+    setRenderTarget: (target: unknown) => {
+      state.targets.push(target);
+    },
     clear: (color: boolean, depth: boolean, stencil: boolean) => {
       state.calls.push({ clear: [color, depth, stencil] });
     },
@@ -136,6 +140,9 @@ describe("PickHelper", () => {
     const { renderer, state } = createRendererStub();
     const picks: number[][] = [];
     const hovers: number[][] = [];
+    /** The event each pick and hover callback received, in call order. */
+    const pickEvents: PointerEvent[] = [];
+    const hoverEvents: PointerEvent[] = [];
     // Mutable so tests can flip a gate mid-flight (listener removal).
     const gates = {
       clickable: opts?.clickable ?? true,
@@ -146,8 +153,14 @@ describe("PickHelper", () => {
       renderer,
       new PerspectiveCamera(),
       opts?.meshes ?? (new Map() as MeshCache),
-      (arr) => picks.push(arr),
-      (arr) => hovers.push(arr),
+      (arr, event) => {
+        picks.push(arr);
+        pickEvents.push(event);
+      },
+      (arr, event) => {
+        hovers.push(arr);
+        hoverEvents.push(event);
+      },
       () => gates.clickable,
       () => gates.hoverable,
       { value: null },
@@ -155,22 +168,34 @@ describe("PickHelper", () => {
     );
     helper.enablePick(true);
 
+    /** Dispatches a pointer event on the element and returns it. */
     const pointer = (
       type: string,
       x: number,
       y: number,
       init?: PointerEventInit,
-    ) =>
-      element.dispatchEvent(
-        new PointerEvent(type, {
-          clientX: x,
-          clientY: y,
-          isPrimary: true,
-          pointerType: "mouse",
-          ...init,
-        }),
-      );
-    return { helper, element, state, picks, hovers, gates, pointer };
+    ) => {
+      const event = new PointerEvent(type, {
+        clientX: x,
+        clientY: y,
+        isPrimary: true,
+        pointerType: "mouse",
+        ...init,
+      });
+      element.dispatchEvent(event);
+      return event;
+    };
+    return {
+      helper,
+      element,
+      state,
+      picks,
+      hovers,
+      pickEvents,
+      hoverEvents,
+      gates,
+      pointer,
+    };
   };
 
   describe("click picking", () => {
@@ -183,6 +208,36 @@ describe("PickHelper", () => {
 
       expect(picks).toEqual([[258]]);
       expect(state.renderCount).toBe(1);
+    });
+
+    it("passes the pointerup with the result, for a hit and a miss", () => {
+      const { state, picks, pickEvents, pointer } = setup();
+      state.pixel = [0, 0, 7];
+
+      pointer("pointerdown", 100, 100);
+      const hit = pointer("pointerup", 101, 99);
+      state.pixel = [0, 0, 0];
+      pointer("pointerdown", 50, 50);
+      const miss = pointer("pointerup", 50, 50);
+
+      expect(picks).toEqual([[7], []]);
+      expect(pickEvents[0]).toBe(hit);
+      expect(pickEvents[1]).toBe(miss);
+    });
+
+    it("renders only into its own target, so the main pass's depth is kept", () => {
+      // user: pick-returns-drawn-surface — `pickDepthPosition` in a feature
+      // event listener reads the depth copy of the frame on screen, which
+      // the pick render must not overwrite.
+      const { state, pointer } = setup();
+
+      pointer("pointerdown", 100, 100);
+      pointer("pointerup", 100, 100);
+
+      const [pickTarget, ...rest] = state.targets;
+      expect(pickTarget).toBeTruthy();
+      // Back to the renderer's original target (null in the stub) after.
+      expect(rest).toEqual([null]);
     });
 
     it("reports an empty pick for a miss (batch id 0)", () => {
@@ -460,6 +515,18 @@ describe("PickHelper", () => {
       expect(state.renderCount).toBe(1);
     });
 
+    it("passes the latest pointermove with the result", () => {
+      const { helper, state, hoverEvents, pointer } = setup();
+      state.pixel = [0, 0, 7];
+
+      pointer("pointermove", 10, 10);
+      const latest = pointer("pointermove", 30, 30);
+      helper.pickHover();
+
+      expect(hoverEvents).toEqual([latest]);
+      expect(hoverEvents[0]).toBe(latest);
+    });
+
     it("reports an empty hover for a miss", () => {
       const { helper, hovers, pointer } = setup();
 
@@ -507,13 +574,14 @@ describe("PickHelper", () => {
     });
 
     it("pointerleave reports nothing hovered and drops the pending pick", () => {
-      const { helper, state, hovers, pointer } = setup();
+      const { helper, state, hovers, hoverEvents, pointer } = setup();
       state.pixel = [0, 0, 7];
 
       pointer("pointermove", 10, 10);
-      pointer("pointerleave", 10, 10);
+      const leave = pointer("pointerleave", 10, 10);
 
       expect(hovers).toEqual([[]]);
+      expect(hoverEvents[0]).toBe(leave);
 
       helper.pickHover();
       // The pending pick was dropped: no render, no second callback.
