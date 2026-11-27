@@ -26,6 +26,7 @@
     "format": "prettier --write --ignore-path ../../.gitignore --ignore-path ../../.prettierignore .",
     "format:check": "prettier --check --ignore-path ../../.gitignore --ignore-path ../../.prettierignore .",
     "screenshots": "tsx scripts/generate-screenshots.ts",
+    "pages:for": "tsx scripts/pages-for.ts",
     "record-clip": "tsx scripts/record-video-clip.ts"
   },
   "license": "MIT OR Apache-2.0",

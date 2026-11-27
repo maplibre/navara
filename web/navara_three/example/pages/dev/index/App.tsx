@@ -3,6 +3,7 @@ import { useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
 import invariant from "tiny-invariant";
 
+import { isGalleryPage } from "../../../pageNames";
 import { PageList } from "../../index/PageList";
 
 import { useDarkMode } from "@/components/hooks/useDarkMode";
@@ -25,12 +26,7 @@ export const App = () => {
   const pages = useMemo(
     () =>
       (PAGES || [])
-        .filter(
-          (p) =>
-            p.name !== "index" &&
-            p.name !== "dev/index" &&
-            !p.name.startsWith("examples/"),
-        )
+        .filter((p) => !isGalleryPage(p.name) && p.name !== "dev/index")
         .sort((a, b) => a.name.localeCompare(b.name)),
     [],
   );

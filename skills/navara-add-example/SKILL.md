@@ -19,7 +19,11 @@ description: >
 
 ## Two example tracks — and who decides what goes where
 
-1. **Dev/demo examples (the default track):** `pages/<name>/` (URL `/<name>`) or `pages/<category>/<name>/` (URL `/<category>-<name>`). Existing category dirs: `styling/`, `terrain/`, `plugins/`, `use-cases/`, `debug/`, `mesh-layers/`, or root (uncategorized). A directory only acts as a category when it has **no** `main.ts` of its own (see `vite.config.example.ts`) — e.g. `pages/atmosphere/` and `pages/camera/` are single examples, not categories, and the README's `basic/`/`effects/` categories don't exist yet. New examples — including anything for development or debugging — go here.
+1. **Dev/demo examples (the default track):** `pages/<name>/` (URL `/<name>`) or `pages/<category>/<name>/` (URL `/<category>-<name>`). Existing category dirs: `styling/`, `terrain/`, `plugins/`, `use-cases/`, `debug/`, `mesh-layers/`, or root (uncategorized). A directory only acts as a category when it has **no** `main.ts` or `main.tsx` of its own (see `getExamplePages` in `example-pages.ts`) — e.g. `pages/atmosphere/` and `pages/camera/` are single examples, not categories, and the README's `basic/`/`effects/` categories don't exist yet. New examples — including anything for development or debugging — go here.
+
+   Every page here that git does not ignore has a `meta.ts` (`export default { covers, lookFor, params, evidenceFor } satisfies DevPageMeta`, type in `example/helpers/devPageMeta.ts`): `covers` are repo-relative globs of the code the page exercises; `lookFor` says what to check on the page; `params` lists the query parameters it reads; `evidenceFor` lists the issues or PRs that use it as evidence. `scripts/devPages.test.ts` fails when a page has none or a `covers` glob matches no file in the checkout.
+
+   **Before adding a page, look for one to extend:** `pnpm pages:for <files the change touches>` (repo-root-relative file paths, as `git diff --name-only` prints them) lists the pages that cover them, best match first (`pnpm pages:for --all` lists every page). Prefer adding a `?case=` or another query parameter to a page it returns over a new page. A page added or extended as a PR's evidence lists the PR in `evidenceFor`.
 2. **Curated gallery:** `pages/examples/<section>/<name>/` with a `meta.ts` next to `main.ts`.
 
    **The gallery is curated, not exhaustive.** Pages under `pages/examples/` require **design approval** and are planned against the gallery's overall design. Never add a page there for development/debug purposes, and never add one proactively "for coverage" the way docs pages are added — only add a gallery example when explicitly asked to, with the placement already decided.
@@ -120,8 +124,8 @@ Dev/debug page UI is **Tweakpane** (`new Pane({ title })` + `.addBinding(...).on
 
 ## Checklist for a new example
 
-1. Pick the track: dev/debug or unprompted additions → `pages/<category>/<name>/`; curated gallery (`pages/examples/`) only with explicit design approval. Create the directory.
-2. Write `main.ts` (+ `run.ts`, + `meta.ts` for the gallery track). Code comments in English.
+1. Pick the track: dev/debug or unprompted additions → `pages/<category>/<name>/`, after `pnpm pages:for` found no page to extend; curated gallery (`pages/examples/`) only with explicit design approval. Create the directory.
+2. Write `main.ts` (+ `run.ts`) and `meta.ts` (`DevPageMeta` for the dev/debug track, `ExampleMeta` for the gallery). Code comments in English.
 3. Run it: `cargo make dev` (or `pnpm --filter @navaramap/three dev`) → `http://localhost:5173/examples/<category>-<name>`.
 4. Show data credits via `AttributionPlugin` when using external datasets.
 5. Screenshot for the index card: `pnpm navara_three screenshots <page>` (dev server must be running; adjust wait time in `web/navara_three/scripts/generate-screenshots.ts` via `PAGE_CONFIGS` if the scene loads slowly). The script hides everything except the canvas (buttons, panels, attribution) and, for curated demos, waits for the `initializeExample` scene-loaded postMessage before capturing, so thumbnails show only the settled scene.
