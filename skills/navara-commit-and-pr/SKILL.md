@@ -41,9 +41,13 @@ Describe the final diff, not the conversation; the reviewer never saw the chat. 
 - **What I haven't done:** known limitations and out-of-scope items, as bullets. Leave it empty when there are none.
 - **How I tested:** name the example pages and datasets, and the unit-test targets.
 - **Which point I want you to review particularly:** leave it empty unless the user names something.
-- **Screenshots:** images or videos that show the change at a glance.
+- **Screenshots:** images or videos that show the change at a glance. They are the reviewer's evidence of what changed and that it works, so a fix gets them as well as a feature.
   - Use a video when the change is about motion or interaction: picking, hover, animation, camera movement, loading over time. Use images for a static result.
   - Add a before/after only when "before" shows something. When "before" rendered nothing, say so in one line instead.
+  - A fix too small to see from the page's default view: frame the view where it shows (move the camera close to the error, mark the expected position), or show the page's own readout of the fixed value (a pick result, a value in the debug pane).
+  - A fix for a crash or an error: "before" is what the page shows of it (the missing result, the error in the page or console), "after" is the working result.
+  - Capture on a page and dataset in the repository, so that the reviewer can reproduce the shot. When the page cannot show the change, add a debug page or a dataset to its list in the same PR.
+  - Write "No visual change" only when no page can show the change (build, CI or docs-only changes).
   - Lay the images out with a Markdown table and put the captions in the table cells. Do not draw text onto the images.
   - Reference each image or video by its local path; `--attach` uploads it (see "Attaching images and videos").
 - **Checklist:** tick only what holds.
