@@ -13,6 +13,8 @@ import {
 import invariant from "tiny-invariant";
 
 import {
+  acceptsBatchScalar,
+  hasBatchScalarSlot,
   registerBatchedMaterial,
   POLYLINE_BATCH_SUPPORT,
   type BatchedAttributeName,
@@ -26,6 +28,10 @@ import {
 } from "../lineDash";
 import { applyLitOption } from "../material";
 import { createPolylineMaterialEnhancer } from "../material/enhancer";
+import {
+  clampLineBlur,
+  drawsTranslucent,
+} from "../material/enhancer/polyline/polylineBaseEnhancer";
 import type { DrapeBakedMesh } from "../tileTexture/types";
 
 import {
@@ -98,8 +104,6 @@ export class PolylineMesh
   implements DrapeBakedMesh
 {
   readonly ctx: EventContext;
-  /** See {@link DrapeBakedMesh}. */
-  drapeTransparent = false;
   /** Material enhancer for managing shader state */
   private _enhancedMaterial?: ReturnType<typeof createPolylineMaterialEnhancer>;
   /** Flag indicating geometry initialization failed - mesh should never be visible */
@@ -120,6 +124,13 @@ export class PolylineMesh
    * may be drawn so that a line never dashed never uploads it.
    */
   private _pendingLineDistanceAndEnds?: BufferAttribute;
+  /**
+   * Features that asked for the material's blur while no feature had a blur
+   * slot, with the blur each asked for. The material's uniform draws them, so
+   * no slot or shader variant is made for them, until the material's blur
+   * changes or a slot is made.
+   */
+  private readonly _featuresAtMaterialBlur = new Map<number, number>();
 
   constructor(ctx: EventContext) {
     super(new BufferGeometry<Attributes>(), new ShaderMaterial());
@@ -359,6 +370,7 @@ export class PolylineMesh
         addHeight: meshMaterial.height ?? 0,
         width: meshMaterial.width,
         maxWidth: meshMaterial.maxWidth,
+        blur: meshMaterial.blur,
         lineDashAtlas: this.ctx.viewContext.getLineDashAtlasUniform(),
         lineDashSegments: this._lineSegmentTexture,
         isTexturized,
@@ -437,6 +449,21 @@ export class PolylineMesh
     attribute: BatchedAttributeName,
     value: number | number[] | boolean,
   ): boolean {
+    if (attribute === "lineBlur" && typeof value === "number") {
+      // Only the "material's blur" sentinel is negative in the slot.
+      value = clampLineBlur(value);
+      this._featuresAtMaterialBlur.delete(batchId);
+      if (!acceptsBatchScalar(this.material, batchId, "lineBlur")) return false;
+      // The material's blur went through f32.
+      if (
+        !hasBatchScalarSlot(this.material, "lineBlur") &&
+        Math.fround(value) === Math.fround(this.getEnhancer().states().blur)
+      ) {
+        this._featuresAtMaterialBlur.set(batchId, value);
+        return true;
+      }
+    }
+
     // Write the texture first: a rejected write must not stamp any define —
     // the shaders have no safety net for an unwritten receiver.
     if (!super._updateBatchAttribute(batchId, attribute, value)) return false;
@@ -450,7 +477,38 @@ export class PolylineMesh
         });
       }
     }
+    // A feature's blur of 0 is a hard edge, so blending waits for a blurred
+    // one; from then on every write goes to the shared slot.
+    if (
+      attribute === "lineBlur" &&
+      typeof value === "number" &&
+      value > 0 &&
+      !this.getEnhancer().states().batchBlurEnabled
+    ) {
+      this.getEnhancer().update({ base: { batchBlurEnabled: true } });
+    }
+    if (attribute === "lineBlur") this._writeFeaturesAtMaterialBlur();
     return true;
+  }
+
+  /**
+   * Writes the blur of the features the material's uniform drew, before a
+   * slot or a new material blur would change what they draw.
+   */
+  private _writeFeaturesAtMaterialBlur(): void {
+    if (this._featuresAtMaterialBlur.size === 0) return;
+    const features = [...this._featuresAtMaterialBlur];
+    this._featuresAtMaterialBlur.clear();
+    const rejected: [number, number][] = [];
+    for (const [batchId, blur] of features) {
+      if (!this._updateBatchAttribute(batchId, "lineBlur", blur)) {
+        rejected.push([batchId, blur]);
+      }
+    }
+    // Kept for the next try.
+    for (const [batchId, blur] of rejected) {
+      this._featuresAtMaterialBlur.set(batchId, blur);
+    }
   }
 
   /**
@@ -554,7 +612,6 @@ export class PolylineMesh
     this.visible = enhancer.states().isTexturized ? shown : shown && active;
     this.castShadow = !!material.castShadow;
     this.receiveShadow = !!material.receiveShadow;
-    this.drapeTransparent = !!material.transparent;
     applyLitOption(this.material, material.lit);
 
     const base = enhancer.states();
@@ -567,6 +624,7 @@ export class PolylineMesh
 
     // Build update props from material
     const minMaxHeights = material.__internal__?.minMaxHeights;
+    const previousBlur = base.blur;
     enhancer.update({
       base: {
         // `material.color` is used only when `batchColorEnabled` is `false`.
@@ -579,6 +637,7 @@ export class PolylineMesh
         addHeight: material.height,
         width: material.width,
         maxWidth: material.maxWidth,
+        blur: material.blur,
         dashRow: this._dashRow,
         transparent: material.transparent,
         opacity: material.opacity,
@@ -591,6 +650,10 @@ export class PolylineMesh
         emissiveIntensity: material.emissiveIntensity ?? 0,
       },
     });
+
+    if (enhancer.states().blur !== previousBlur) {
+      this._writeFeaturesAtMaterialBlur();
+    }
 
     // Update material.lights flag based on isTexturized state
     // (lighting should be disabled for texturized/draped polylines)
@@ -616,6 +679,14 @@ export class PolylineMesh
 
   get draped(): boolean {
     return this.getEnhancer().states().isTexturized;
+  }
+
+  /**
+   * See {@link DrapeBakedMesh}. A blurred edge draws translucent texels too.
+   */
+  get drapeTransparent(): boolean {
+    const state = this._enhancedMaterial?.states();
+    return !!state && drawsTranslucent(state);
   }
 
   get emissiveColor(): number {

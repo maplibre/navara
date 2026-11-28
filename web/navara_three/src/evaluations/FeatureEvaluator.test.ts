@@ -1,7 +1,8 @@
-import { Object3D } from "three";
+import { BufferAttribute, BufferGeometry, Object3D } from "three";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 import type { FeatureHandler } from "../event/context";
+import { BatchedFeatureMesh } from "../mesh";
 
 import { FeatureEvaluator, type GeometryType } from "./FeatureEvaluator";
 
@@ -243,6 +244,32 @@ describe("FeatureEvaluator", () => {
       expect(filteredIds).toEqual([1, undefined]);
       expect(handler.readAllBatchedProperties).toHaveBeenCalledTimes(1);
       expect(handler.readFilteredBatchedProperties).toHaveBeenCalledTimes(1);
+    });
+  });
+  describe("batched line styles", () => {
+    it("writes `blur` to the lineBlur slot, next to `width`", () => {
+      const geometry = new BufferGeometry();
+      geometry.setAttribute(
+        "_batchid",
+        new BufferAttribute(new Float32Array([0]), 1),
+      );
+      const mesh = new BatchedFeatureMesh(geometry);
+      mesh.batchLength = 1;
+      vi.spyOn(mesh, "_initBatchDataTexture").mockImplementation(() => {});
+      const write = vi
+        .spyOn(mesh, "_updateBatchAttribute")
+        .mockImplementation(() => true);
+
+      const evaluator = new FeatureEvaluator(
+        mockHandler,
+        "test-layer",
+        0n,
+        mesh,
+      );
+      evaluator.evaluate(() => ({ width: 8, blur: 3 }));
+
+      expect(write).toHaveBeenCalledWith(0, "lineWidth", 8);
+      expect(write).toHaveBeenCalledWith(0, "lineBlur", 3);
     });
   });
 });

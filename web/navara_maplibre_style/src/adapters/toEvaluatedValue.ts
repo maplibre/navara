@@ -32,6 +32,8 @@ type EvaluatedResult = {
   color?: Color;
   opacity?: number;
   width?: number;
+  /** Pixels, like MapLibre's `line-blur`. */
+  blur?: number;
   size?: number;
   letterSpacing?: number;
   height?: number;
@@ -399,6 +401,11 @@ function processLineLayer(
   const lineWidth = paintValues["line-width"];
   if (typeof lineWidth === "number" && Number.isFinite(lineWidth)) {
     result.width = lineWidth;
+  }
+
+  const lineBlur = paintValues["line-blur"];
+  if (typeof lineBlur === "number" && Number.isFinite(lineBlur)) {
+    result.blur = lineBlur;
   }
 }
 

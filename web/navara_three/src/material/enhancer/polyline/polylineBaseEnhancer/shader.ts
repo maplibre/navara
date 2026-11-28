@@ -85,6 +85,11 @@ export const transformShader = (
   } else {
     delete shader.defines.NVR_LINE_DASH;
   }
+  if (state.blur > 0) {
+    shader.defines.NVR_LINE_BLUR = true;
+  } else {
+    delete shader.defines.NVR_LINE_BLUR;
+  }
 
   if (material.userData.defines) {
     Object.assign(shader.defines, material.userData.defines);

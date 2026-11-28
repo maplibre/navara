@@ -263,6 +263,7 @@ export class PolylineMeshDesc extends MeshDescWithSelectiveEffect<
       depthWrite: style.depthWrite,
       width: style.width,
       maxWidth: style.maxWidth,
+      blur: style.blur,
       dashRow: this.lineDashRow(style),
       // A clamped volume must enclose the ground, so it is never offset.
       addHeight: isClampedToGround(style) ? 0 : (style.height ?? 0),

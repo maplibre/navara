@@ -26,12 +26,45 @@ in vec3 vNormal;
     #define NVR_USE_LINE_DASH
 #endif
 
-#if defined(NVR_GROUND_POLYLINE) || defined(NVR_USE_LINE_DASH)
+#if defined(NVR_LINE_BLUR) || defined(USE_BATCH_LINE_BLUR)
+    #define NVR_USE_LINE_BLUR
+    #include chunks/line_blur_pars_fragment;
+    #ifdef USE_BATCH_LINE_BLUR
+        flat in float nvr_vLineBlur;
+    #else
+        uniform float uLineBlur;
+    #endif
+#endif
+
+#if defined(NVR_GROUND_POLYLINE) || defined(NVR_USE_LINE_DASH) || defined(NVR_USE_LINE_BLUR)
     flat in vec4 v_rightPlaneEC;
     uniform float maxWidth;
     uniform vec3 viewportAndPixelRatio;
     uniform vec2 frustumNearFar;
     uniform vec4 frustumRatio;
+
+    // At `depth` meters in front of the eye: x, meters per pixel; y, half the
+    // line's width in meters, clamped to maxWidth like the volume the vertex
+    // shader builds.
+    vec2 nvr_lineScaleAtDepth(float depth) {
+        float metersPerPixel = nvr_metersPerPixel(vec4(0.0, 0.0, -depth, 1.0), viewportAndPixelRatio, frustumNearFar, frustumRatio);
+        return vec2(metersPerPixel, min(v_startPlaneNormalEcAndHalfWidth.w * metersPerPixel, 0.5 * maxWidth));
+    }
+
+    // The same at an eye-space point.
+    vec2 nvr_lineScaleAt(vec3 pointEc) {
+        return nvr_lineScaleAtDepth(-pointEc.z);
+    }
+
+    // The line's width in meters at `depth` meters in front of the eye.
+    float nvr_lineWidthAtDepth(float depth) {
+        return 2.0 * nvr_lineScaleAtDepth(depth).y;
+    }
+
+    // The line's width in meters at an eye-space point.
+    float nvr_lineWidthAt(vec3 pointEc) {
+        return nvr_lineWidthAtDepth(-pointEc.z);
+    }
 #endif
 
 #ifdef NVR_USE_LINE_DASH
@@ -146,19 +179,6 @@ in vec3 vNormal;
         bool lineEnds = fromStart < 0.0 ? ends.x : ends.y;
         return lineEnds && (cap == NVR_LINE_CAP_SQUARE || length(vec2(beyond, across)) <= halfWidth);
     }
-
-    // The line's width in meters at `depth` meters in front of the eye.
-    // Clamped to maxWidth like the volume the vertex shader builds.
-    float nvr_lineDashLineWidthAtDepth(float depth) {
-        float lineWidth = 2.0 * v_startPlaneNormalEcAndHalfWidth.w
-            * nvr_metersPerPixel(vec4(0.0, 0.0, -depth, 1.0), viewportAndPixelRatio, frustumNearFar, frustumRatio);
-        return min(lineWidth, maxWidth);
-    }
-
-    // The line's width in meters at an eye-space point.
-    float nvr_lineDashLineWidthAt(vec3 pointEc) {
-        return nvr_lineDashLineWidthAtDepth(-pointEc.z);
-    }
 #endif
 
 #ifdef NVR_GROUND_POLYLINE
@@ -252,12 +272,17 @@ void main() {
     vec3 positionEc = -vViewPosition;
     float nvrFromStart = nvr_planeDistance(v_startPlaneNormalEcAndHalfWidth.xyz, v_startPlaneOffsetEc, positionEc);
     float nvrToEnd = nvr_planeDistance(v_endPlaneNormalEc, v_endPlaneOffsetEc, positionEc);
+#if defined(NVR_USE_LINE_DASH) || defined(NVR_USE_LINE_BLUR)
+    float nvrAcross = nvr_planeDistance(v_rightPlaneEC, positionEc);
+#endif
 #ifdef NVR_USE_LINE_DASH
+    // The scale at the fragment, where the round cap is tested.
+    vec2 nvrFragmentScale = nvr_lineScaleAt(positionEc);
     if (!nvr_lineDashKeepsEnds(
             nvr_vLineDashPlaneScale.x * nvrFromStart,
             nvr_vLineDashPlaneScale.y * nvrToEnd,
-            nvr_planeDistance(v_rightPlaneEC, positionEc),
-            0.5 * nvr_lineDashLineWidthAt(positionEc)
+            nvrAcross,
+            nvrFragmentScale.y
         )) {
         discard;
     }
@@ -269,6 +294,61 @@ void main() {
     // The same depth as the rest of the scene, so the line can be
     // depth-tested against it.
     #include <logdepthbuf_fragment>
+#endif
+
+#ifdef NVR_USE_LINE_BLUR
+    #ifdef USE_BATCH_LINE_BLUR
+        float nvrBlurPixels = nvr_vLineBlur;
+    #else
+        float nvrBlurPixels = uLineBlur;
+    #endif
+    float nvrBeyondLineEnd = 0.0;
+    bool nvrRoundCap = false;
+    #ifdef NVR_USE_LINE_DASH
+        // Only a row other than 0 gives the line a cap, and a kept fragment
+        // lies past a plane only in the cap at the line's own end.
+        int nvrCapRow = int(nvr_vLineDash.w + 0.5);
+        if (nvrCapRow > 0) {
+            nvrRoundCap = nvr_lineDashRound(nvrCapRow);
+            nvrBeyondLineEnd = max(
+                -nvr_vLineDashPlaneScale.x * nvrFromStart,
+                -nvr_vLineDashPlaneScale.y * nvrToEnd
+            );
+        }
+    #endif
+    // How far inside the line's cut the fragment lies, in pixels, so that the
+    // fade ends where the line is cut.
+    #ifdef NVR_GROUND_POLYLINE
+        // The ground test above cuts the sides and the caps.
+        float nvrMetersPerPixel = nvr_metersPerPixel(vec4(positionEc, 1.0), viewportAndPixelRatio, frustumNearFar, frustumRatio);
+        float nvrHalfWidthPixels = nvrHalfWidth / nvrMetersPerPixel;
+        float nvrEdgePixels = nvr_lineEdgeDistance(nvrBeyondLineEnd, nvrAcross, nvrHalfWidth, nvrRoundCap) / nvrMetersPerPixel;
+    #else
+        // The volume's sides follow the width at the center line.
+        vec3 nvrCenterEc = positionEc - v_rightPlaneEC.xyz * nvrAcross;
+        vec2 nvrCenterScale = nvr_lineScaleAt(nvrCenterEc);
+        float nvrHalfWidthPixels = nvrCenterScale.y / nvrCenterScale.x;
+        bool nvrInRoundCap = nvrRoundCap && nvrBeyondLineEnd > 0.0;
+        float nvrEdgePixels = nvr_lineEdgeDistance(nvrBeyondLineEnd, nvrAcross, nvrCenterScale.y, nvrInRoundCap)
+            / nvrCenterScale.x;
+        #ifdef NVR_USE_LINE_DASH
+            if (nvrInRoundCap) {
+                // The round cap's test above takes the width at the fragment.
+                // In perspective the two differ, and the fade ends at the
+                // nearer.
+                nvrEdgePixels = min(
+                    nvrEdgePixels,
+                    nvr_lineEdgeDistance(nvrBeyondLineEnd, nvrAcross, nvrFragmentScale.y, true) / nvrFragmentScale.x
+                );
+            }
+        #endif
+    #endif
+    float nvrLineBlurAlpha = nvr_lineBlurAlpha(nvrEdgePixels, nvrBlurPixels);
+    // Whether the line covers the pixel enough to stand for the surface
+    // there: the pixel reaches where the line has half of its own peak
+    // coverage, which a blur above half the width keeps below 1.
+    bool nvrLineCovers = nvrBlurPixels <= 0.0
+        || nvrEdgePixels >= 0.5 * min(nvrHalfWidthPixels, nvrBlurPixels) - 0.5;
 #endif
 
 #ifdef NVR_USE_LINE_DASH
@@ -287,9 +367,14 @@ void main() {
         if (!nvr_lineDashRound(nvr_lineDashRow)) {
             nvr_alongSegment = clamp(nvr_alongSegment, 0.0, nvr_vLineDash.x);
         }
-        float nvr_across = nvr_planeDistance(v_rightPlaneEC, positionEc);
+        float nvr_across = nvrAcross;
+    #if defined(NVR_USE_LINE_BLUR) && !defined(NVR_GROUND_POLYLINE)
+        vec3 nvr_centerEc = nvrCenterEc;
+        float nvr_lineWidth = 2.0 * nvrCenterScale.y;
+    #else
         vec3 nvr_centerEc = positionEc - v_rightPlaneEC.xyz * nvr_across;
-        float nvr_lineWidth = nvr_lineDashLineWidthAt(nvr_centerEc);
+        float nvr_lineWidth = nvr_lineWidthAt(nvr_centerEc);
+    #endif
         float nvr_periodWidths = texelFetch(tLineDashAtlas, ivec2(0, nvr_lineDashRow), 0).x;
 
         // The pattern is laid out in a unit of a power of two meters, the
@@ -309,11 +394,11 @@ void main() {
             float nvr_minPeriodStartWidth = exp2(float(nvr_unitLog2 - 1));
             float nvr_reach = 1.01 * (nvr_periodWidths * exp2(float(nvr_unitLog2)) + nvr_vLineDashLift.y + nvr_lineWidth)
                 + 1.0e-4 * nvr_depth;
-            if (nvr_lineDashLineWidthAtDepth(nvr_depth + nvr_reach) <= nvr_minPeriodStartWidth) {
+            if (nvr_lineWidthAtDepth(nvr_depth + nvr_reach) <= nvr_minPeriodStartWidth) {
                 nvr_unitLog2 -= 1;
                 continue;
             }
-            if (nvr_lineDashLineWidthAtDepth(nvr_depth - nvr_reach) > nvr_minPeriodStartWidth) {
+            if (nvr_lineWidthAtDepth(nvr_depth - nvr_reach) > nvr_minPeriodStartWidth) {
                 break;
             }
             float nvr_toPeriodStart = -nvr_lineDashPhase(
@@ -323,7 +408,7 @@ void main() {
                 NVR_LINE_LENGTH_HIGH_STEP_LOG2,
                 nvr_unitLog2
             ) * nvr_periodWidths * exp2(float(nvr_unitLog2));
-            float nvr_periodStartWidth = nvr_lineDashLineWidthAt(nvr_lineDashPointAt(
+            float nvr_periodStartWidth = nvr_lineWidthAt(nvr_lineDashPointAt(
                 nvr_vLineDash.y,
                 nvr_vLineDash.z + nvr_alongSegment + nvr_toPeriodStart
             ));
@@ -380,6 +465,9 @@ void main() {
 #ifdef USE_BATCH_SHOW_OPACITY
     diffuseColor.a *= nvr_vOpacity;
 #endif
+#ifdef NVR_USE_LINE_BLUR
+    diffuseColor.a *= nvrLineBlurAlpha;
+#endif
 
     #include <specularmap_fragment>
     #include <normal_fragment_begin>
@@ -409,12 +497,21 @@ void main() {
     }
 
     #ifndef USE_SHADOWMAP_DEPTH
+    #ifdef NVR_USE_LINE_BLUR
+    // A blurred edge stands for the surface only where the line covers the
+    // pixel; elsewhere A = 0 keeps the normal, effect and shadow of what lies
+    // behind. Effect ids are a bitmask that cannot blend, so this is a cut.
+    if (nvrLineCovers) {
+    #endif
     #ifdef NVR_GROUND_POLYLINE_NORMALS
         GBUFFER_WRITE_NORMAL(nvrGroundNormal, 0.0, 1.0)
     #else
         GBUFFER_WRITE_NORMAL(vNormal, 0.0, 1.0)
     #endif
-        #ifdef USE_SELECTIVE_EFFECT
+        #if defined(USE_SELECTIVE_EFFECT) && defined(NVR_USE_LINE_BLUR)
+            // The emissive fades with the edge.
+            GBUFFER_WRITE_EFFECT(uEffectIdsMask, (diffuseColor.rgb + uEmissiveColor) * uEmissiveIntensity * nvrLineBlurAlpha)
+        #elif defined(USE_SELECTIVE_EFFECT)
             GBUFFER_WRITE_EFFECT(uEffectIdsMask, (diffuseColor.rgb + uEmissiveColor) * uEmissiveIntensity)
         #else
             GBUFFER_WRITE_EFFECT_ZERO
@@ -422,5 +519,12 @@ void main() {
 
         // Polyline runs the lit pipeline (CSM accumulates nvr_shadowMask).
         GBUFFER_WRITE_SHADOW
+    #ifdef NVR_USE_LINE_BLUR
+    } else {
+        GBUFFER_WRITE_NORMAL_KEEP
+        GBUFFER_WRITE_EFFECT_ZERO
+        GBUFFER_WRITE_SHADOW_ZERO
+    }
+    #endif
     #endif
 }

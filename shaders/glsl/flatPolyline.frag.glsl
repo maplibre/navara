@@ -13,6 +13,15 @@ flat in float nvr_vBatchId;
 
 #include chunks/show_pars_fragment;
 
+#if defined(NVR_LINE_BLUR) || defined(USE_BATCH_LINE_BLUR)
+#include chunks/line_blur_pars_fragment;
+flat in float nvr_vLineBlur;
+#if !defined(NVR_LINE_DASH) && !defined(USE_BATCH_LINE_DASH)
+in float nvr_vLineAcross;
+flat in float nvr_vLineHalfWidth;
+#endif
+#endif
+
 #if defined(NVR_LINE_DASH) || defined(USE_BATCH_LINE_DASH)
 #include chunks/line_dash_pars_fragment;
 in vec2 nvr_vLineDashCoord;
@@ -69,6 +78,31 @@ void main() {
         // The bake maps one drape texel to one pixel.
         diffuseColor.a *= clamp(0.5 - nvr_dashDistance, 0.0, 1.0);
     }
+#endif
+
+#if defined(NVR_LINE_BLUR) || defined(USE_BATCH_LINE_BLUR)
+    float nvr_beyondLineEnd = 0.0;
+    bool nvr_roundCap = false;
+    #if defined(NVR_LINE_DASH) || defined(USE_BATCH_LINE_DASH)
+        float nvr_blurAcross = nvr_vLineDashCoord.y;
+        float nvr_blurHalfWidth = 0.5 * nvr_vLineDashLine.y;
+        // Only a row other than 0 gives the line a cap.
+        int nvr_capRow = int(nvr_vLineDashLine.x + 0.5);
+        if (nvr_capRow > 0) {
+            nvr_roundCap = nvr_lineDashRound(nvr_capRow);
+            nvr_beyondLineEnd = max(
+                nvr_vLineDashEnds.x - nvr_vLineDashCoord.x,
+                nvr_vLineDashCoord.x - nvr_vLineDashEnds.y
+            );
+        }
+    #else
+        float nvr_blurAcross = nvr_vLineAcross;
+        float nvr_blurHalfWidth = nvr_vLineHalfWidth;
+    #endif
+    diffuseColor.a *= nvr_lineBlurAlpha(
+        nvr_lineEdgeDistance(nvr_beyondLineEnd, nvr_blurAcross, nvr_blurHalfWidth, nvr_roundCap),
+        nvr_vLineBlur
+    );
 #endif
 
     gl_FragColor = diffuseColor;

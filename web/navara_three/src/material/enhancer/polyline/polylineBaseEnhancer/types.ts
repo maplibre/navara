@@ -26,6 +26,11 @@ export type PolylineBaseProps = {
   addHeight?: number;
   width?: number;
   maxWidth?: number;
+  /**
+   * Pixels inside `width`, on each side, over which the edge fades out. A
+   * blurred line blends whatever `transparent` says.
+   */
+  blur?: number;
 
   /**
    * Row of the line's dash pattern in `lineDashAtlas` (`LineDashAtlas.register`);
@@ -88,6 +93,8 @@ export type PolylineBaseProps = {
 
   // When batchColorEnabled is true, material.color is set to white and actual colors come from batch texture
   batchColorEnabled?: boolean;
+  /** A feature has its own blur in the batch texture; turns blending on. */
+  batchBlurEnabled?: boolean;
 
   // RTE (Relative To Eye) support
   useRTE?: boolean;
@@ -113,11 +120,15 @@ export type PolylineBaseState = Readonly<{
   addHeight: number;
   width: number;
   maxWidth: number;
+  blur: number;
   dashRow: number;
   color: number;
+  /** The requested `transparent`; a blurred line blends regardless. */
+  transparent: boolean;
   opacity: number;
   // Batch texture state - when true, material.color is white and colors come from batch texture
   batchColorEnabled: boolean;
+  batchBlurEnabled: boolean;
 }>;
 
 /**
@@ -142,6 +153,7 @@ export type PolylineBaseRefs = {
   nvr_uPickingCoord: UniformValue<Vector2>;
   uDrapeRtSize: UniformValue<number>;
   uLineDashRow: UniformValue<number>;
+  uLineBlur: UniformValue<number>;
 
   // Optional uniforms
   batchDataTexture?: UniformValue<Texture | null>;

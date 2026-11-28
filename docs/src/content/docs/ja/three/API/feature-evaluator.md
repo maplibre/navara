@@ -146,6 +146,7 @@ evaluate(
 | `extrudedHeight` | `number` | ポリゴンの押し出し高さ（メートル） |
 | `text` | `string` | ラベルテキストの内容（テキスト/ラベル地物用） |
 | `width` | `number` | ライン幅（ピクセル、ポリライン地物用） |
+| `blur` | `number` | 線の縁をフェードアウトさせる幅（線幅の内側のピクセル、ポリライン地物用）。一度返すと、その地物ではマテリアルの [`blur`](../../../three/material/polyline-material/#blur) を上書きします。後のコールバックが値を返さなくても、地物は最後に返された値を保ちます。負の値は縁をぼかしません |
 | `dashArray` | `number[]` | ダッシュと隙間の長さ（線幅の倍数、ポリライン地物用）。空の配列を返すとその地物は実線になります。マテリアルの [`dashArray`](../../../three/material/polyline-material/#dasharray) を上書きします |
 | `cap` | `"butt" \| "round" \| "square"` | 各ダッシュの端の形状（ポリライン地物用）。マテリアルの [`cap`](../../../three/material/polyline-material/#cap) を上書きします |
 | `size` | `number` | ポイント/テキストサイズ（メートルまたはピクセル、ポイント/テキスト地物用） |
@@ -317,6 +318,9 @@ type EvaluatedValue = {
   text?: string;
   /** ライン幅（ピクセル、ポリライン地物用） */
   width?: number;
+  /** 線の縁をフェードアウトさせる幅（線幅の内側のピクセル、ポリライン地物用）。
+   * マテリアルの `blur` を上書きし、地物は最後に返された値を保ちます */
+  blur?: number;
   /** ポイント/テキストサイズ（メートルまたはピクセル、ポイント/テキスト地物用） */
   size?: number;
   /** 文字間に追加する間隔（em 単位、テキスト地物用）。マテリアルの

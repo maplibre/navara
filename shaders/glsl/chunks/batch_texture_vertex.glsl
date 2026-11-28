@@ -46,6 +46,11 @@
     batchLineWidth = getBatchTexel(batchId, BATCHED_TEXTURE_ROW_LINE_WIDTH)[BATCHED_TEXTURE_COMP_LINE_WIDTH];
   #endif
 
+  #ifdef USE_BATCH_LINE_BLUR
+    // Negative = fall back to the material's blur.
+    batchLineBlur = getBatchTexel(batchId, BATCHED_TEXTURE_ROW_LINE_BLUR)[BATCHED_TEXTURE_COMP_LINE_BLUR];
+  #endif
+
   #ifdef USE_BATCH_LINE_DASH
     // Row in the view's line dash atlas; 0 is a solid line.
     nvr_batchLineDash = getBatchTexel(batchId, BATCHED_TEXTURE_ROW_LINE_DASH)[BATCHED_TEXTURE_COMP_LINE_DASH];

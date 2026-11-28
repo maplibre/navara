@@ -37,6 +37,9 @@ function scalarDefault(key: BatchScalarKey): number {
     // Negative value indicates shader should fall back to minMaxHeightAndWidth.z
     case "lineWidth":
       return -1.0;
+    // Negative: follow the material's blur. 0 is a styled hard edge.
+    case "lineBlur":
+      return -1.0;
     // The atlas row every view reserves for a solid line.
     case "lineDash":
       return 0.0;
@@ -485,6 +488,27 @@ function ensureOffsetSlots(
 }
 
 /**
+ * Whether a write of a scalar attribute for `batchId` would be accepted: the
+ * material has a batch texture of known length, the id is in range and the
+ * attribute is supported. A mesh that serves a write some other way still
+ * answers as the write would.
+ */
+export function acceptsBatchScalar(
+  material: Material,
+  batchId: number,
+  key: BatchScalarKey,
+): boolean {
+  const state = getBatchTextureState(material);
+  return (
+    !!state &&
+    state.batchLength > 0 &&
+    batchId >= 0 &&
+    batchId < state.batchLength &&
+    state.supported.has(key)
+  );
+}
+
+/**
  * Whether an attribute's slot has already been allocated on this material.
  *
  * Meshes use this to decide whether a **material**-level change has to be
@@ -823,6 +847,7 @@ export function updateBatchAttribute(
     case "height":
     case "extrudedHeight":
     case "lineWidth":
+    case "lineBlur":
     case "lineDash":
     case "size": {
       if (typeof value !== "number") return false;

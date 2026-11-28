@@ -207,6 +207,19 @@ describe("lazy allocation", () => {
     expect(data[batchBaseIndex(6, 1, 5, 0) + 1]).toBe(-1);
   });
 
+  test("lineBlur backfills the material-blur sentinel and keeps a written 0", () => {
+    const { material } = setupBatchMaterial(6, ["lineWidth", "lineBlur"]);
+    updateBatchAttribute(material, 2, "lineBlur", 5);
+    updateBatchAttribute(material, 3, "lineBlur", 0);
+
+    expect(material.userData.defines.USE_BATCH_LINE_BLUR).toBeDefined();
+    expect(material.userData.defines.USE_BATCH_LINE_WIDTH).toBeUndefined();
+    expect(readBatchScalar(material, 2, "lineBlur")).toBe(5);
+    // A styled 0 is a hard edge; untouched batches follow the material.
+    expect(readBatchScalar(material, 3, "lineBlur")).toBe(0);
+    expect(readBatchScalar(material, 5, "lineBlur")).toBe(-1);
+  });
+
   test("lineDash leaves untouched batches on the solid row", () => {
     const { material } = setupBatchMaterial(6, ["lineDash"]);
     updateBatchAttribute(material, 2, "lineDash", 3);

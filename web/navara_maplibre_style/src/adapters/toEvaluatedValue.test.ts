@@ -694,6 +694,52 @@ describe("toEvaluatedValue", () => {
   });
 });
 
+// standard: MapLibre Style Spec line-blur
+// ref: https://maplibre.org/maplibre-style-spec/layers/#line-blur
+describe("line-blur", () => {
+  const engine = new JsStyleEngine();
+  const blurAt = (
+    lineBlur: unknown,
+    properties: Record<string, unknown>,
+    zoom: number,
+  ) => {
+    const layer = {
+      id: "lines",
+      type: "line",
+      source: "test",
+      paint: { "line-blur": lineBlur },
+    } as StyleLayer;
+    const evaluators = createPaintEvaluators(layer, engine, "LineString");
+    const paintValues = {
+      "line-blur": evaluators["line-blur"]({ properties, zoom }),
+    };
+    return toEvaluatedValue(layer, paintValues).blur;
+  };
+
+  it("maps a constant to the line's blur, in pixels", () => {
+    expect(blurAt(4, {}, 10)).toBe(4);
+    expect(blurAt(0, {}, 10)).toBe(0);
+  });
+
+  it("follows a zoom expression", () => {
+    const expr = ["interpolate", ["linear"], ["zoom"], 10, 0, 14, 8];
+    expect(blurAt(expr, {}, 10)).toBe(0);
+    expect(blurAt(expr, {}, 12)).toBe(4);
+    expect(blurAt(expr, {}, 14)).toBe(8);
+  });
+
+  it("follows a data-driven expression per feature", () => {
+    const expr = ["get", "glow"];
+    expect(blurAt(expr, { glow: 2 }, 10)).toBe(2);
+    expect(blurAt(expr, { glow: 6 }, 10)).toBe(6);
+  });
+
+  it("leaves blur unset when the style does not set line-blur", () => {
+    const layer = { id: "lines", type: "line", source: "test" } as StyleLayer;
+    expect(toEvaluatedValue(layer, { "line-width": 3 }).blur).toBeUndefined();
+  });
+});
+
 describe("toNavaraColor", () => {
   it("should parse CSS color strings with MapLibre Color.parse", () => {
     const result = toNavaraColor("#ff0000");

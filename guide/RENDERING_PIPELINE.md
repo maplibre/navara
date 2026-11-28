@@ -293,7 +293,10 @@ attachment, A is the blend factor, not a data channel:
   materials stamped `NVR_BLENDED` (from `material.transparent`) write A = 1.0;
   the non-`USE_ROUGHNESS` fallback is 1.0 (fully rough — physically correct
   for diffuse). When adding a normal write, always route the alpha through
-  `GBUFFER_NORMAL_ALPHA()`, never a raw constant 0.0.
+  `GBUFFER_NORMAL_ALPHA()`, never a raw constant 0.0. The one deliberate
+  A = 0 is `GBUFFER_WRITE_NORMAL_KEEP`: a blended fragment too faint to stand
+  for a surface (a blurred polyline's outer edge) keeps the normal behind it,
+  as it keeps the effect ids and shadow with their `_ZERO` writes.
 
 All G-buffer writes go through the `GBUFFER_WRITE_*` macros from the pars
 chunk — never assign `effectIdBuffer` / `emissiveBuffer` / `shadowBuffer`

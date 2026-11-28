@@ -53,8 +53,13 @@ layout(location = GBUFFER_NORMAL_LOCATION) out vec4 normalBuffer;
 // wholesale. `blue` is the reflectance at normal incidence (F0); unlit writers pass 0.0 and an
 // alpha of 1.0 (they have no roughness to store).
 #define GBUFFER_WRITE_NORMAL(n, blue, roughnessValue) normalBuffer = vec4(packNormalToVec2(n), blue, GBUFFER_NORMAL_ALPHA(roughnessValue));
+// For a blended fragment too faint to stand for a surface (a blurred line's
+// outer edge): A = 0 keeps the normal of what lies behind. Only under
+// blending; unblended it would write a zero normal.
+#define GBUFFER_WRITE_NORMAL_KEEP normalBuffer = vec4(0.0);
 #else
 #define GBUFFER_WRITE_NORMAL(n, blue, roughnessValue)
+#define GBUFFER_WRITE_NORMAL_KEEP
 #endif
 
 #ifdef USE_GBUFFER_SELECTIVE_EFFECT

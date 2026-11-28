@@ -25,11 +25,12 @@ import type {
  * - Clamp to ground (with ground normals support)
  * - Texturized rendering (draped on terrain)
  * - Picking
- * - Batch texture attributes (color, show, height, lineWidth)
+ * - Batch texture attributes (color, show, height, lineWidth, lineBlur)
  * - RTE (Relative-To-Eye) support for high-precision coordinates
  *
  * Supports ShaderMaterial with custom polyline shaders. `opacity` reaches the
- * volume shader as a uniform; it blends only with `transparent`.
+ * volume shader as a uniform; it blends only with `transparent` or while the
+ * line is blurred.
  *
  * @param material - The Three.js ShaderMaterial to enhance
  */
@@ -83,7 +84,7 @@ export function createPolylineBaseEnhancer(
         lineDashAtlas: props.lineDashAtlas,
         lineDashSegments: props.lineDashSegments,
       });
-      updateMaterialProps(material, mergedProps, state.isTexturized);
+      updateMaterialProps(material, mergedProps, state);
     },
 
     update: (props: PolylineBaseProps): void => {
@@ -94,6 +95,7 @@ export function createPolylineBaseEnhancer(
       const prevGroundCulling = state.groundCulling;
       const prevUseGroundNormals = state.useGroundNormals;
       const prevDashed = state.dashRow !== SOLID_DASH_ROW;
+      const prevBlurred = state.blur > 0;
 
       state = updateState(props, state);
       mutates.update(state);
@@ -103,7 +105,8 @@ export function createPolylineBaseEnhancer(
         state.isTexturized !== prevIsTexturized ||
         state.groundCulling !== prevGroundCulling ||
         state.useGroundNormals !== prevUseGroundNormals ||
-        (state.dashRow !== SOLID_DASH_ROW) !== prevDashed
+        (state.dashRow !== SOLID_DASH_ROW) !== prevDashed ||
+        state.blur > 0 !== prevBlurred
       ) {
         material.needsUpdate = true;
       }
@@ -112,7 +115,7 @@ export function createPolylineBaseEnhancer(
         mutates.setBatchDataTexture(props.batchDataTexture);
       }
 
-      updateMaterialProps(material, props, state.isTexturized);
+      updateMaterialProps(material, props, state);
     },
 
     states: (): PolylineBaseState => {
@@ -134,6 +137,7 @@ export function createPolylineBaseEnhancer(
         useGroundNormals: state.useGroundNormals,
         useRTE: state.useRTE,
         dashed: state.dashRow !== SOLID_DASH_ROW,
+        blurred: state.blur > 0,
         // Custom defines that may influence shader variants
         userDataDefines: material.userData?.defines ?? undefined,
       });
@@ -143,6 +147,8 @@ export function createPolylineBaseEnhancer(
 
 // Re-export public types
 export type { PolylineBaseMutates, PolylineBaseProps, PolylineBaseState };
+
+export { clampLineBlur, drawsTranslucent } from "./state";
 
 // Re-export SupportedMaterial for use by composing enhancers
 export type { SupportedMaterial } from "./material";

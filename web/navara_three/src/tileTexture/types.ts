@@ -11,7 +11,8 @@ import type { ColorRampRow } from "../colorMapAtlas";
 
 /**
  * A mesh drawn into a vector drape bake. A bake material always blends, so
- * `drapeTransparent` keeps the material's `transparent` option, one of the
+ * `drapeTransparent` keeps whether the mesh draws translucent texels (the
+ * material's `transparent` option, or a polyline's blurred edge), one of the
  * signals `TileScene.hasTransparentMesh` reads: only a translucent layer
  * needs its overlapping sources clipped (see
  * `TileTextureCompositor.renderVectorScenes`).
